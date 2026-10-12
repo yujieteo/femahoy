@@ -166,7 +166,7 @@ All of these are required. They arrive one per release after the first user test
 | Nonlinear solution | Newton-Raphson, load stepping, automatic cutback |
 | Contact | Frictionless normal contact, active-set loop, augmented Lagrange, node-to-surface |
 | Plasticity | J2 with isotropic hardening, hypoelastic-plastic, corotational stress rate, updated Lagrangian |
-| Large displacement | `NLGEOM=YES`, corotational |
+| Large displacement | `NLGEOM=YES` through the deformation gradient F, which is passed to the material. The exact finite-strain formulation (corotational or other) is chosen at M7. |
 | Element birth and death | `*MODEL CHANGE`. Removed elements leave the stiffness, and their stresses are set to zero. The mesh stays fixed. |
 | Submodelling | Displacement-driven boundary. Global displacements are interpolated at the driven nodes with the global mesh's shape functions. |
 
