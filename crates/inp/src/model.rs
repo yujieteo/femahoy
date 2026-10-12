@@ -8,7 +8,78 @@ pub struct Model {
     pub materials: Vec<Material>,
     /// `*BOUNDARY` data given before the first step.
     pub boundaries: Vec<Boundary>,
+    pub sections: Vec<SolidSection>,
+    pub surfaces: Vec<NodeSurface>,
+    pub equations: Vec<Equation>,
+    pub mpcs: Vec<Mpc>,
+    pub couplings: Vec<Coupling>,
     pub steps: Vec<Step>,
+}
+
+/// `*SOLID SECTION`: a material for an element set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolidSection {
+    pub elset: String,
+    pub material: String,
+}
+
+/// `*SURFACE, TYPE=NODE`: a named list of nodes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeSurface {
+    pub name: String,
+    pub ids: Vec<u32>,
+}
+
+/// One term of an `*EQUATION`: `coefficient * u(node, dof)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EquationTerm {
+    pub node: u32,
+    pub dof: u8,
+    pub coefficient: f64,
+}
+
+/// `*EQUATION`: the sum of the terms is zero.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Equation {
+    pub terms: Vec<EquationTerm>,
+}
+
+/// `*MPC`: a type name and the nodes it joins.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mpc {
+    pub kind: MpcKind,
+    pub nodes: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MpcKind {
+    /// All translations of both nodes are equal.
+    Tie,
+    /// Same as `Tie` for solid nodes.
+    Pin,
+    /// The distance between two nodes stays constant (first order).
+    Link,
+    /// Rigid beam: the second node follows the first, with rotation.
+    Beam,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CouplingKind {
+    /// Slave nodes follow the reference node rigidly (RBE2 behaviour).
+    Kinematic,
+    /// Reference node motion is the weighted average of the slave nodes (RBE3 behaviour).
+    Distributing,
+}
+
+/// `*COUPLING` with `*KINEMATIC` or `*DISTRIBUTING`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Coupling {
+    pub name: String,
+    pub ref_node: u32,
+    pub surface: String,
+    pub kind: CouplingKind,
+    pub first_dof: u8,
+    pub last_dof: u8,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +144,21 @@ pub struct Cload {
     pub magnitude: f64,
 }
 
+/// An element number or an element set name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ElementTarget {
+    Element(u32),
+    Set(String),
+}
+
+/// One `*DLOAD` data line: a pressure on face `face` (1 to 6) of the elements.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dload {
+    pub target: ElementTarget,
+    pub face: u8,
+    pub pressure: f64,
+}
+
 /// `*STATIC` data: initial increment, time period, minimum and maximum increment.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Static {
@@ -89,6 +175,7 @@ pub struct Step {
     pub static_procedure: Option<Static>,
     pub boundaries: Vec<Boundary>,
     pub cloads: Vec<Cload>,
+    pub dloads: Vec<Dload>,
 }
 
 impl Model {

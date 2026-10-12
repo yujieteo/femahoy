@@ -10,7 +10,8 @@ mod parse;
 
 pub use error::ParseError;
 pub use model::{
-    Boundary, Cload, Elastic, Element, ElementSet, Material, Model, Node, NodeSet, Static, Step,
-    Target,
+    Boundary, Cload, Coupling, CouplingKind, Dload, Elastic, Element, ElementSet, ElementTarget,
+    Equation, EquationTerm, Material, Model, Mpc, MpcKind, Node, NodeSet, NodeSurface,
+    SolidSection, Static, Step, Target,
 };
 pub use parse::parse;
