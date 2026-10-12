@@ -1,29 +1,82 @@
-//! The core solver as a protocol v1 executable: `fh-solve <input.inp> <run-dir>`.
+//! The core solver as a protocol v2 executable:
+//! `fh-solve <input.inp> <run-dir> [--restart]`.
+//!
+//! Event lines go to stdout. A `cancel` line on stdin, or the end of stdin,
+//! stops the run. `FH_THREADS` sets the number of element threads.
 
+use std::io::{BufRead, Write};
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use fh_core_solver::CoreSolver;
+use fh_core_solver::{input_hash, run_model, Options};
 use fh_solver_api::PROTOCOL_HEADER;
 
-fn run(inp: &Path, run_dir: &Path) -> Result<(), String> {
+/// Exit code of a run that the user cancelled.
+const CANCELLED: u8 = 130;
+
+fn run(inp: &Path, run_dir: &Path, restart: bool, cancel: Arc<AtomicBool>) -> Result<(), String> {
     let text = std::fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;
     let model = fh_inp::parse(&text).map_err(|e| e.to_string())?;
-    CoreSolver
-        .solve(&model, run_dir)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    let mut options = Options::default();
+    if let Some(n) = std::env::var("FH_THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+    {
+        options.threads = n;
+    }
+    let out = std::io::stdout();
+    let mut emit = |line: &str| {
+        let mut o = out.lock();
+        let _ = writeln!(o, "{line}");
+        let _ = o.flush();
+    };
+    run_model(
+        &model,
+        input_hash(&text),
+        run_dir,
+        &options,
+        restart,
+        &mut emit,
+        &|| cancel.load(Ordering::Relaxed),
+    )
+    .map(|_| ())
+    .map_err(|e| {
+        if e.is_cancelled() {
+            "cancelled".into()
+        } else {
+            e.to_string()
+        }
+    })
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 2 {
-        eprintln!("usage: fh-solve <input.inp> <run-dir>");
+    let restart = args.get(2).is_some_and(|a| a == "--restart");
+    if args.len() != 2 && !(args.len() == 3 && restart) {
+        eprintln!("usage: fh-solve <input.inp> <run-dir> [--restart]");
         return ExitCode::from(2);
     }
     println!("{PROTOCOL_HEADER}");
-    match run(Path::new(&args[0]), Path::new(&args[1])) {
+    let _ = std::io::stdout().flush();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = cancel.clone();
+    std::thread::spawn(move || {
+        for line in std::io::stdin().lock().lines() {
+            match line {
+                Ok(l) if l.trim() != "cancel" => continue,
+                _ => break,
+            }
+        }
+        flag.store(true, Ordering::Relaxed);
+    });
+    match run(Path::new(&args[0]), Path::new(&args[1]), restart, cancel) {
         Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e == "cancelled" => {
+            eprintln!("cancelled");
+            ExitCode::from(CANCELLED)
+        }
         Err(e) => {
             eprintln!("{e}");
             ExitCode::FAILURE

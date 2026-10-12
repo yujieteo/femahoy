@@ -22,13 +22,17 @@ pub struct Elimination {
     users: HashMap<usize, HashSet<usize>>,
 }
 
-/// The result of the elimination.
+/// The result of the elimination. The rows are stored in compressed form.
+#[derive(Debug, Clone)]
 pub struct Transform {
     pub n_free: usize,
-    /// For each full dof, the reduced dofs and coefficients it depends on.
-    pub rows: Vec<Vec<(usize, f64)>>,
+    row_ptr: Vec<u32>,
+    cols: Vec<u32>,
+    coefs: Vec<f64>,
     /// The part of each full dof that does not depend on `u_r`.
     pub offset: Vec<f64>,
+    /// The full dof of each reduced dof.
+    free_dof: Vec<u32>,
 }
 
 const DROP: f64 = 1e-13;
@@ -111,56 +115,95 @@ impl Elimination {
         Ok(())
     }
 
-    pub fn finish(self) -> Transform {
-        let mut reduced = vec![usize::MAX; self.n];
-        let mut n_free = 0;
+    /// Build the transform from the constraints added so far. The elimination
+    /// stays open: more constraints can follow, and `finish` can run again.
+    pub fn finish(&self) -> Transform {
+        let mut reduced = vec![u32::MAX; self.n];
+        let mut free_dof = Vec::new();
         for (d, r) in reduced.iter_mut().enumerate() {
             if !self.slaves.contains_key(&d) {
-                *r = n_free;
-                n_free += 1;
+                *r = free_dof.len() as u32;
+                free_dof.push(d as u32);
             }
         }
-        let mut rows = Vec::with_capacity(self.n);
+        let n_free = free_dof.len();
+        let mut row_ptr = Vec::with_capacity(self.n + 1);
+        let mut cols = Vec::with_capacity(self.n);
+        let mut coefs = Vec::with_capacity(self.n);
         let mut offset = vec![0.0; self.n];
+        row_ptr.push(0);
         for d in 0..self.n {
             match self.slaves.get(&d) {
-                None => rows.push(vec![(reduced[d], 1.0)]),
+                None => {
+                    cols.push(reduced[d]);
+                    coefs.push(1.0);
+                }
                 Some(s) => {
                     offset[d] = s.offset;
-                    rows.push(
-                        s.terms
-                            .iter()
-                            .filter(|(_, c)| **c != 0.0)
-                            .map(|(&m, &c)| (reduced[m], c))
-                            .collect(),
-                    );
+                    for (&m, &c) in s.terms.iter().filter(|(_, c)| **c != 0.0) {
+                        cols.push(reduced[m]);
+                        coefs.push(c);
+                    }
                 }
             }
+            row_ptr.push(cols.len() as u32);
         }
         Transform {
             n_free,
-            rows,
+            row_ptr,
+            cols,
+            coefs,
             offset,
+            free_dof,
         }
     }
 }
 
 impl Transform {
+    /// Number of full dofs.
+    pub fn n_full(&self) -> usize {
+        self.offset.len()
+    }
+
+    /// The reduced dofs and coefficients that full dof `d` depends on.
+    pub fn row(&self, d: usize) -> (&[u32], &[f64]) {
+        let (a, b) = (self.row_ptr[d] as usize, self.row_ptr[d + 1] as usize);
+        (&self.cols[a..b], &self.coefs[a..b])
+    }
+
+    /// The full dof that reduced dof `r` stands for.
+    pub fn full_dof(&self, r: usize) -> usize {
+        self.free_dof[r] as usize
+    }
+
+    /// True if both transforms have the same reduced dofs and the same
+    /// dependencies. The coefficients and the offsets may differ. Then a matrix
+    /// pattern built for one transform fits the other.
+    pub fn same_structure(&self, other: &Transform) -> bool {
+        self.n_free == other.n_free && self.row_ptr == other.row_ptr && self.cols == other.cols
+    }
+
     /// `T * u_r + u_0`.
     pub fn expand(&self, reduced: &[f64]) -> Vec<f64> {
-        self.rows
-            .iter()
-            .zip(&self.offset)
-            .map(|(row, o)| o + row.iter().map(|&(r, c)| c * reduced[r]).sum::<f64>())
+        (0..self.n_full())
+            .map(|d| {
+                let (c, k) = self.row(d);
+                self.offset[d]
+                    + c.iter()
+                        .zip(k)
+                        .map(|(&r, k)| k * reduced[r as usize])
+                        .sum::<f64>()
+            })
             .collect()
     }
 
     /// `Tᵀ * f`.
     pub fn reduce(&self, full: &[f64]) -> Vec<f64> {
         let mut out = vec![0.0; self.n_free];
-        for (row, f) in self.rows.iter().zip(full) {
-            for &(r, c) in row {
-                out[r] += c * f;
+        for (d, f) in full.iter().enumerate() {
+            let (c, k) = self.row(d);
+            for (&r, k) in c.iter().zip(k) {
+                out[r as usize] += k * f;
             }
         }
         out
@@ -222,5 +265,40 @@ mod tests {
         let lhs: f64 = f.iter().zip(t.expand(&x)).map(|(a, b)| a * b).sum();
         let rhs: f64 = t.reduce(&f).iter().zip(x).map(|(a, b)| a * b).sum();
         assert!((lhs - rhs).abs() < 1e-14);
+    }
+
+    #[test]
+    fn elimination_stays_open_after_finish() {
+        let mut e = Elimination::new(3);
+        e.add(&[(1, 1.0), (0, -2.0)], 0.0, Some(1)).unwrap();
+        let first = e.finish();
+        assert_eq!(first.n_free, 2);
+        // A constraint added later changes the result of the next finish.
+        e.add(&[(0, 1.0)], 4.0, Some(0)).unwrap();
+        let second = e.finish();
+        assert_eq!(second.n_free, 1);
+        assert_eq!(second.expand(&[7.0]), vec![4.0, 8.0, 7.0]);
+        assert!(!first.same_structure(&second));
+    }
+
+    #[test]
+    fn same_structure_ignores_the_values() {
+        let make = |rhs: f64, k: f64| {
+            let mut e = Elimination::new(3);
+            e.add(&[(1, 1.0), (0, -k)], rhs, Some(1)).unwrap();
+            e.finish()
+        };
+        assert!(make(0.0, 2.0).same_structure(&make(1.0, 3.0)));
+    }
+
+    #[test]
+    fn full_dof_names_the_free_dof() {
+        let mut e = Elimination::new(4);
+        e.add(&[(1, 1.0)], 0.0, Some(1)).unwrap();
+        let t = e.finish();
+        assert_eq!(
+            (0..t.n_free).map(|r| t.full_dof(r)).collect::<Vec<_>>(),
+            vec![0, 2, 3]
+        );
     }
 }

@@ -39,6 +39,7 @@ fn at(m: [usize; 3], i: usize, j: usize, k: usize) -> usize {
     (k * (m[1] + 1) + j) * (m[0] + 1) + i
 }
 
+#[allow(dead_code)]
 pub fn hex_block(n: [usize; 3], size: [f64; 3], jitter: f64, ty: &'static str) -> Block {
     let mut elements = Vec::new();
     for k in 0..n[2] {

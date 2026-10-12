@@ -7,10 +7,15 @@ mod constraint;
 mod dense;
 pub mod element;
 mod output;
+mod sparse;
 mod system;
 
-pub use output::{write_results, CoreSolver};
-pub use system::{solve, Solution, StepResult};
+pub use output::{input_hash, run_model, write_results, CoreSolver, RESTART_FILE};
+pub use system::{
+    estimate_bytes, solve, solve_from, solve_options, solve_with, step_times, Method, Observer,
+    Options, Sizes, Solution, StepInfo, StepResult, Summary, CANCELLED, DIRECT_MAX_DOFS,
+    RESIDUAL_LIMIT,
+};
 
 use std::fmt;
 
