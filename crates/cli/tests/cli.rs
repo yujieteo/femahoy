@@ -120,10 +120,10 @@ fn validate_reports_no_solver_for_every_case() {
 fn validate_exits_1_when_the_case_folder_is_bad() {
     let dir = std::env::temp_dir().join(format!("fh-cli-val-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("validation/cases/x")).unwrap();
-    std::fs::write(dir.join("validation/cases/x/case.kv"), "id = x\n").unwrap();
+    std::fs::write(dir.join("validation/cases/x/case.toml"), "id = \"x\"\n").unwrap();
     let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(out.stderr).contains("case.kv"));
+    assert!(text(out.stderr).contains("case.toml"));
     let _ = std::fs::remove_dir_all(dir);
 }
 

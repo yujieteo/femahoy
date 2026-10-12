@@ -11,7 +11,7 @@ fn root() -> PathBuf {
 
 fn write_case(dir: &std::path::Path, body: &str) -> Result<Case, fh_validation::FixtureError> {
     std::fs::create_dir_all(dir).unwrap();
-    std::fs::write(dir.join("case.kv"), body).unwrap();
+    std::fs::write(dir.join("case.toml"), body).unwrap();
     std::fs::write(dir.join("m.inp"), "*node\n1, 0, 0, 0\n").unwrap();
     std::fs::write(dir.join("d.md"), "x\n").unwrap();
     Case::load(dir)
@@ -23,7 +23,13 @@ fn tmp(name: &str) -> PathBuf {
     d
 }
 
-const HEAD: &str = "id = t\njustification = why\nderivation = d.md\nmesh = m.inp\nref = q 1.0\n";
+/// A fixture body: the common keys, then `extra` top-level keys, then the `[ref]` table.
+fn body(meshes: usize, extra: &str) -> String {
+    let list = vec!["\"m.inp\""; meshes].join(", ");
+    format!(
+        "id = \"t\"\njustification = \"why\"\nderivation = \"d.md\"\nmesh = [{list}]\n{extra}\n[ref]\nq = 1.0\n"
+    )
+}
 
 #[test]
 fn richardson_recovers_second_order_limit() {
@@ -69,63 +75,69 @@ fn schema_accepts_each_class() {
     let d = tmp("ok");
     let l = write_case(
         &d.join("l"),
-        &format!(
-            "{HEAD}mesh = m.inp\nmesh = m.inp\nclass = L\nratio = 2\nreference_error = 0.01\n"
-        ),
+        &body(3, "class = \"L\"\nratio = 2\nreference_error = 0.01"),
     )
     .unwrap();
     assert!(matches!(l.class, Class::L { .. }));
     let n = write_case(
         &d.join("n"),
-        &format!("{HEAD}class = N\nrel_tol = 1e-6\nabs_tol = 1e-9\n"),
+        &body(1, "class = \"N\"\nrel_tol = 1e-6\nabs_tol = 1e-9"),
     )
     .unwrap();
     assert!(matches!(n.class, Class::N { .. }));
     let r = write_case(
         &d.join("r"),
-        &format!("{HEAD}mesh = m.inp\nclass = R\nrate = 2\nband = 0.2\n"),
+        &body(2, "class = \"R\"\nrate = 2\nband = 0.2"),
     )
     .unwrap();
     assert!(matches!(r.class, Class::R { .. }));
     assert_eq!(r.references[0].name, "q");
+    assert_eq!(r.references[0].value, 1.0);
 }
 
 #[test]
-fn schema_rejects_bad_fixtures_with_a_line_and_a_reason() {
+fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
     let d = tmp("bad");
+    let n = "class = \"N\"\nrel_tol = 1\nabs_tol = 0";
     let cases = [
         (
-            format!("{HEAD}class = L\nratio = 2\nreference_error = 0\n"),
+            body(1, "class = \"L\"\nratio = 2\nreference_error = 0"),
             "at least 3",
+            Some(4),
         ),
+        (body(2, n), "exactly 1", Some(4)),
+        (body(1, "class = \"Z\""), "unknown class", Some(5)),
+        (body(1, "class = \"N\""), "rel_tol", None),
         (
-            format!("{HEAD}mesh = m.inp\nclass = N\nrel_tol = 1e-6\nabs_tol = 0\n"),
-            "exactly 1",
-        ),
-        (format!("{HEAD}class = Z\n"), "class"),
-        (format!("{HEAD}class = N\n"), "rel_tol"),
-        (
-            "id = t\nclass = N\nrel_tol = 1\nabs_tol = 0\n".to_string(),
+            "id = \"t\"\nclass = \"N\"\n[ref]\nq = 1\n".to_string(),
             "justification",
+            None,
+        ),
+        (body(1, &format!("{n}\nbogus = 1")), "unknown key", Some(8)),
+        (body(1, n).replace("m.inp", "nope.inp"), "nope.inp", Some(4)),
+        (
+            body(1, "class = \"N\"\nrel_tol = \"x\"\nabs_tol = 0"),
+            "rel_tol",
+            Some(6),
         ),
         (
-            format!("{HEAD}class = N\nrel_tol = 1\nabs_tol = 0\nbogus = 1\n"),
-            "unknown key",
+            format!("{}\nno equals sign", body(1, n)),
+            "case.toml:11",
+            Some(11),
         ),
         (
-            format!("{HEAD}class = N\nrel_tol = 1\nabs_tol = 0\nmesh = nope.inp\n"),
-            "nope.inp",
+            body(1, n).replace("q = 1.0", "q = \"a\""),
+            "reference `q`",
+            Some(9),
         ),
-        (
-            format!("{HEAD}class = N\nrel_tol = 1\nabs_tol = 0\nno equals sign\n"),
-            "=",
-        ),
+        (body(1, n).replace("[ref]\nq = 1.0\n", ""), "[ref]", None),
     ];
-    for (i, (body, needle)) in cases.iter().enumerate() {
-        let err = write_case(&d.join(format!("c{i}")), body)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains(needle), "case {i}: `{err}` lacks `{needle}`");
+    for (i, (text, needle, line)) in cases.iter().enumerate() {
+        let err = write_case(&d.join(format!("c{i}")), text).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains(needle), "case {i}: `{msg}` lacks `{needle}`");
+        assert!(msg.contains("case.toml"), "case {i}: `{msg}`");
+        assert_eq!(err.line, *line, "case {i}: `{msg}`");
     }
 }
 

@@ -26,7 +26,7 @@ Total:
 
     d = d_b + d_s = 0.019047619 + 0.000148571 = 0.019196190 mm in -z
 
-The reference value in `case.kv` is -0.01919619048 mm (z is the load direction).
+The reference value in `case.toml` is -0.01919619048 mm (z is the load direction).
 
 ## Reference error
 

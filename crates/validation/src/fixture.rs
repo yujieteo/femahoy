@@ -1,7 +1,8 @@
-//! The fixture schema: `validation/cases/<id>/case.kv` (see `SCHEMA.md`).
+//! The fixture schema: `validation/cases/<id>/case.toml` (see `SCHEMA.md`).
 
 use std::fmt;
 use std::path::{Path, PathBuf};
+use toml_edit::{Document, Item, Table};
 
 /// The tolerance class of a case and its parameters.
 #[derive(Debug, Clone, PartialEq)]
@@ -62,29 +63,71 @@ impl fmt::Display for FixtureError {
 impl std::error::Error for FixtureError {}
 
 impl Case {
-    /// Load `<dir>/case.kv`.
+    /// Load `<dir>/case.toml`.
     pub fn load(dir: &Path) -> Result<Case, FixtureError> {
-        let file = dir.join("case.kv");
-        let err = |line: Option<usize>, message: String| FixtureError {
+        let file = dir.join("case.toml");
+        let text = std::fs::read_to_string(&file).map_err(|e| FixtureError {
             file: file.clone(),
-            line,
+            line: None,
+            message: e.to_string(),
+        })?;
+        let doc = Document::parse(text.as_str()).map_err(|e| FixtureError {
+            file: file.clone(),
+            line: e.span().map(|s| line_of(&text, s.start)),
+            message: e.message().to_owned(),
+        })?;
+        let fx = Fx { file, text: &text };
+        fx.build(dir, doc.as_table())
+    }
+}
+
+/// The 1-based line of a byte offset.
+fn line_of(text: &str, offset: usize) -> usize {
+    1 + text.as_bytes()[..offset.min(text.len())]
+        .iter()
+        .filter(|b| **b == b'\n')
+        .count()
+}
+
+/// The parsed text and its file, for errors with line numbers.
+struct Fx<'a> {
+    file: PathBuf,
+    text: &'a str,
+}
+
+impl Fx<'_> {
+    fn err(&self, item: Option<&Item>, message: String) -> FixtureError {
+        FixtureError {
+            file: self.file.clone(),
+            line: item
+                .and_then(Item::span)
+                .map(|s| line_of(self.text, s.start)),
             message,
-        };
-        let text = std::fs::read_to_string(&file).map_err(|e| err(None, e.to_string()))?;
-        let mut kv: Vec<(usize, String, String)> = Vec::new();
-        for (i, raw) in text.lines().enumerate() {
-            let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            let Some((k, v)) = line.split_once('=') else {
-                return Err(err(
-                    Some(i + 1),
-                    format!("expected `key = value`, found `{line}` (no `=`)"),
-                ));
-            };
-            kv.push((i + 1, k.trim().to_owned(), v.trim().to_owned()));
         }
+    }
+
+    fn get<'t>(&self, table: &'t Table, key: &str) -> Result<&'t Item, FixtureError> {
+        table
+            .get(key)
+            .ok_or_else(|| self.err(None, format!("missing key `{key}`")))
+    }
+
+    fn string(&self, table: &Table, key: &str) -> Result<String, FixtureError> {
+        let item = self.get(table, key)?;
+        match item.as_str() {
+            Some(s) if !s.is_empty() => Ok(s.to_owned()),
+            _ => Err(self.err(Some(item), format!("`{key}` must be a non-empty string"))),
+        }
+    }
+
+    fn number(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
+        let item = self.get(table, key)?;
+        item.as_float()
+            .or_else(|| item.as_integer().map(|i| i as f64))
+            .ok_or_else(|| self.err(Some(item), format!("`{key}` must be a number")))
+    }
+
+    fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
         const KEYS: [&str; 12] = [
             "id",
             "class",
@@ -99,109 +142,87 @@ impl Case {
             "rate",
             "band",
         ];
-        for (line, k, _) in &kv {
-            if !KEYS.contains(&k.as_str()) {
-                return Err(err(Some(*line), format!("unknown key `{k}`")));
+        for (k, item) in table.iter() {
+            if !KEYS.contains(&k) {
+                return Err(self.err(Some(item), format!("unknown key `{k}`")));
             }
         }
-        let all = |key: &str| kv.iter().filter(|(_, k, _)| k == key).collect::<Vec<_>>();
-        let one = |key: &str| -> Result<(usize, String), FixtureError> {
-            let mut it = all(key).into_iter();
-            let first = it
-                .next()
-                .ok_or_else(|| err(None, format!("missing key `{key}`")))?;
-            match it.next() {
-                Some((l, _, _)) => Err(err(Some(*l), format!("key `{key}` given twice"))),
-                None => Ok((first.0, first.2.clone())),
-            }
-        };
-        let num = |key: &str| -> Result<f64, FixtureError> {
-            let (l, v) = one(key)?;
-            v.parse::<f64>()
-                .map_err(|_| err(Some(l), format!("`{key}` is not a number: `{v}`")))
-        };
-        let text_of = |key: &str| -> Result<String, FixtureError> {
-            let (l, v) = one(key)?;
-            if v.is_empty() {
-                return Err(err(Some(l), format!("`{key}` is empty")));
-            }
-            Ok(v)
-        };
-
-        let id = text_of("id")?;
-        let justification = text_of("justification")?;
-        let derivation = dir.join(text_of("derivation")?);
+        let id = self.string(table, "id")?;
+        let justification = self.string(table, "justification")?;
+        let derivation = dir.join(self.string(table, "derivation")?);
         if !derivation.is_file() {
-            return Err(err(
-                None,
+            let item = table.get("derivation");
+            return Err(self.err(
+                item,
                 format!("derivation file {} not found", derivation.display()),
             ));
         }
+        let mesh_item = self.get(table, "mesh")?;
+        let list = mesh_item.as_array().ok_or_else(|| {
+            self.err(Some(mesh_item), "`mesh` must be an array of strings".into())
+        })?;
         let mut meshes = Vec::new();
-        for (l, _, v) in all("mesh") {
-            let p = dir.join(v);
-            if !p.is_file() {
-                return Err(err(Some(*l), format!("mesh file {v} not found")));
+        for v in list.iter() {
+            let name = v.as_str().ok_or_else(|| {
+                self.err(Some(mesh_item), "`mesh` must be an array of strings".into())
+            })?;
+            let path = dir.join(name);
+            if !path.is_file() {
+                return Err(self.err(Some(mesh_item), format!("mesh file {name} not found")));
             }
-            meshes.push(p);
+            meshes.push(path);
         }
+        let ref_item = table
+            .get("ref")
+            .ok_or_else(|| self.err(None, "missing table `[ref]`".into()))?;
+        let ref_table = ref_item
+            .as_table_like()
+            .ok_or_else(|| self.err(Some(ref_item), "`ref` must be a table".into()))?;
         let mut references = Vec::new();
-        for (l, _, v) in all("ref") {
-            let mut parts = v.split_whitespace();
-            match (
-                parts.next(),
-                parts.next().map(str::parse::<f64>),
-                parts.next(),
-            ) {
-                (Some(name), Some(Ok(value)), None) => references.push(Reference {
-                    name: name.to_owned(),
-                    value,
-                }),
-                _ => {
-                    return Err(err(
-                        Some(*l),
-                        format!("expected `ref = <name> <value>`, found `{v}`"),
-                    ))
-                }
-            }
+        for (name, item) in ref_table.iter() {
+            let value = item
+                .as_float()
+                .or_else(|| item.as_integer().map(|i| i as f64))
+                .ok_or_else(|| {
+                    self.err(Some(item), format!("reference `{name}` must be a number"))
+                })?;
+            references.push(Reference {
+                name: name.to_owned(),
+                value,
+            });
         }
         if references.is_empty() {
-            return Err(err(None, "missing key `ref`".into()));
+            return Err(self.err(Some(ref_item), "`[ref]` has no entries".into()));
         }
-        let (class_line, class_text) = one("class")?;
-        let class = match class_text.as_str() {
+        let class_item = self.get(table, "class")?;
+        let class = match self.string(table, "class")?.as_str() {
             "L" => Class::L {
-                ratio: num("ratio")?,
-                reference_error: num("reference_error")?,
+                ratio: self.number(table, "ratio")?,
+                reference_error: self.number(table, "reference_error")?,
             },
             "N" => Class::N {
-                rel_tol: num("rel_tol")?,
-                abs_tol: num("abs_tol")?,
+                rel_tol: self.number(table, "rel_tol")?,
+                abs_tol: self.number(table, "abs_tol")?,
             },
             "R" => Class::R {
-                rate: num("rate")?,
-                band: num("band")?,
+                rate: self.number(table, "rate")?,
+                band: self.number(table, "band")?,
             },
             other => {
-                return Err(err(
-                    Some(class_line),
+                return Err(self.err(
+                    Some(class_item),
                     format!("unknown class `{other}`, expected L, N or R"),
                 ))
             }
         };
-        let count_ok = match class {
-            Class::L { .. } => meshes.len() >= 3,
-            Class::N { .. } => meshes.len() == 1,
-            Class::R { .. } => meshes.len() >= 2,
+        let (need, ok) = match class {
+            Class::L { .. } => ("at least 3", meshes.len() >= 3),
+            Class::N { .. } => ("exactly 1", meshes.len() == 1),
+            Class::R { .. } => ("at least 2", meshes.len() >= 2),
         };
-        if !count_ok {
-            let need = match class {
-                Class::L { .. } => "at least 3",
-                Class::N { .. } => "exactly 1",
-                Class::R { .. } => "at least 2",
-            };
-            return Err(err(
-                None,
+        if !ok {
+            return Err(self.err(
+                Some(mesh_item),
                 format!(
                     "class {} needs {need} `mesh` entries, found {}",
                     class.letter(),
