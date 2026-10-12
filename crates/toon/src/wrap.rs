@@ -221,10 +221,15 @@ impl Doc {
                 } => {
                     if rows.is_empty() {
                         lines.push(format!("{name}[0]:"));
-                        lines.push(one(
-                            &format!("{name}_note"),
-                            JsonValue::String(note.clone()),
-                        )?);
+                        if *more > 0 {
+                            let n = JsonValue::Number(Number::from(*more as u64));
+                            lines.push(one(&format!("{name}_more"), n)?);
+                        } else {
+                            lines.push(one(
+                                &format!("{name}_note"),
+                                JsonValue::String(note.clone()),
+                            )?);
+                        }
                         continue;
                     }
                     let objs = rows

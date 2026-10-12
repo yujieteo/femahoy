@@ -419,6 +419,16 @@ fn row_limit_ranks_and_counts_the_rest() {
 }
 
 #[test]
+fn zero_row_limit_reports_the_rows_it_hid() {
+    let text = sample_check().render(&rows(0)).unwrap();
+    assert!(
+        text.contains("element_types[0]:\nelement_types_more: 2\n"),
+        "{text}"
+    );
+    assert!(!text.contains("element_types_note"), "{text}");
+}
+
+#[test]
 fn next_has_at_most_three_rows() {
     let mut c = sample_check();
     c.next = (0..5)
