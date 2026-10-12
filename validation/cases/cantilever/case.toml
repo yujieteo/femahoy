@@ -2,7 +2,7 @@
 schema = 2
 id = "cantilever"
 class = "L"
-justification = "Reference is Timoshenko beam theory. Richardson over the 3 finest of 4 meshes gives the discretisation error. The reference error of 2 percent is an engineering estimate for the 3D effects that beam theory ignores. It is not a derived bound. The captain accepted it. The solver values (PR 10) extrapolate to a limit 0.56 percent below the beam value, so the 3D model is stiffer than the beam. A clamp that stops the end section from warping and contracting may cause this, but it was not isolated. The cause is unexplained. The order band 1.0 to 3.0 holds the expected order of 2 (the solver values give 1.5). A lower order widens the Richardson estimate, so it fails."
+justification = "Reference is Timoshenko beam theory. Richardson over the 3 finest of 4 meshes gives the discretisation error. The reference error of 2 percent is an engineering estimate for the 3D effects that beam theory ignores. It is not a derived bound. The captain accepted it. The solver values (PR 10) are soft against their limit: they grow in size toward it. The limit is 0.56 percent stiff against the beam value: its deflection is smaller than the beam deflection. The cause is unexplained. A clamp that stops the end section from warping may be a cause, but it was not isolated. The order band 1.0 to 3.0 holds the expected order of 2 (the solver values give 1.5). A lower order widens the Richardson estimate, so it fails."
 derivation = "derivation.md"
 element_types = ["C3D8I"]
 mesh = ["../../../fixtures/inp/cantilever.inp", "mesh-8.inp", "mesh-16.inp", "mesh-32.inp"]
