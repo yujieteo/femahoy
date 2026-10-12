@@ -43,5 +43,7 @@ u9_x = 0.000325
 
 - Class L needs at least 3 `mesh` entries. Class N needs exactly 1 (the reference mesh). Class R needs at least 2.
 - Class L passes if the finest value is within the Richardson error estimate plus `reference_error * |ref|`.
+- Class L rejects values whose observed Richardson order is 0 or less (no convergence).
+- A key that belongs to another class is an error.
 - An unknown key, a missing key, a wrong type or a missing file is an error. The message names the file and the line.
 - No Abaqus text, files or numbers. No NAFEMS values.
