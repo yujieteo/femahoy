@@ -203,6 +203,10 @@ dependencies = [
 [[package]]
 name = "fh-solver-api"
 version = "0.0.0"
+dependencies = [
+ "fh-inp",
+ "fh-toon",
+]
 
 [[package]]
 name = "fh-toon"

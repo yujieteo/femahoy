@@ -7,3 +7,5 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+fh-inp = { path = "../inp" }
+fh-toon = { path = "../toon" }
