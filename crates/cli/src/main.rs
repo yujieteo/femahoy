@@ -1,14 +1,20 @@
 //! The `fh` command line binary.
 
+mod check;
+mod validate;
+
 use std::process::ExitCode;
 
-/// Subcommands planned in DESIGN.md section 13. None is implemented in M0.
-const PLANNED: &[&str] = &[
-    "check", "validate", "results", "plot", "serve", "init", "team", "skills",
-];
+/// Subcommands planned in DESIGN.md section 13 and not implemented yet.
+const PLANNED: &[&str] = &["results", "plot", "serve", "init", "team", "skills"];
 
 fn usage() -> String {
-    let mut text = String::from("usage: fh [-h | --help]\n\nplanned subcommands:\n");
+    let mut text = String::from(
+        "usage: fh [-h | --help] <command>\n\ncommands:\n  \
+         check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
+         validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n\n\
+         planned subcommands:\n",
+    );
     for name in PLANNED {
         text.push_str(&format!("  {name:<10}not implemented\n"));
     }
@@ -18,15 +24,25 @@ fn usage() -> String {
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let first = args.first().map(String::as_str);
-    if args.len() <= 1 && matches!(first, None | Some("-h" | "--help")) {
-        print!("{}", usage());
-        return ExitCode::SUCCESS;
-    }
-    if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
-        eprintln!("fh {}: not implemented", args[0]);
-    } else {
-        eprintln!("fh: unknown argument: {}", args.join(" "));
-    }
-    eprint!("{}", usage());
-    ExitCode::from(2)
+    let outcome = match first {
+        None | Some("-h" | "--help") if args.len() <= 1 => {
+            print!("{}", usage());
+            return ExitCode::SUCCESS;
+        }
+        Some("check") => check::run(&args[1..]),
+        Some("validate") => validate::run(&args[1..]),
+        _ => {
+            if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
+                eprintln!("fh {}: not implemented", args[0]);
+            } else {
+                eprintln!("fh: unknown argument: {}", args.join(" "));
+            }
+            eprint!("{}", usage());
+            return ExitCode::from(2);
+        }
+    };
+    outcome.unwrap_or_else(|message| {
+        eprintln!("fh {}: {message}", args[0]);
+        ExitCode::from(2)
+    })
 }
