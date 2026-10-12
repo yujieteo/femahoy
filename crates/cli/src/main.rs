@@ -1,6 +1,7 @@
 //! The `fh` command line binary.
 
 mod check;
+mod measure;
 mod validate;
 
 use std::process::ExitCode;

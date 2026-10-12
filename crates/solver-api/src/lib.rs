@@ -297,6 +297,11 @@ impl SubprocessSolver {
         cancel: &CancelToken,
         on_event: &mut dyn FnMut(&Event),
     ) -> Result<RunReport, ApiError> {
+        // A token that is cancelled before the start must stop the run, even for a model that
+        // would finish before the first poll.
+        if cancel.is_cancelled() {
+            return Err(ApiError::cancelled());
+        }
         let run_dir = prepare_run_dir(run_dir, restart)?;
         let inp = fs::canonicalize(inp).map_err(|e| ApiError(format!("input file: {e}")))?;
         let open = |name: &str| {

@@ -4,22 +4,15 @@
 //! (DESIGN.md section 10.3), and a runner that reports `no solver`.
 
 mod fixture;
+mod run;
 mod tolerance;
 
 pub use fixture::{
     load_all, Case, Class, Field, FixtureError, Op, Quantity, Reference, ELEMENT_TYPES,
     SCHEMA_VERSION,
 };
+pub use run::{run_case_with, run_convergence_with, Outcome, Report, Row, Solve};
 pub use tolerance::{check_l, check_n, check_r, richardson};
-
-/// The result of one case.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Outcome {
-    /// No solver exists yet, so the case cannot run.
-    NoSolver,
-    Pass,
-    Fail(String),
-}
 
 /// Run one case. In M1 no solver exists, so every case reports `NoSolver`.
 pub fn run_case(_case: &Case) -> Outcome {
