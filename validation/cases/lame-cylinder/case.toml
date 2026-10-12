@@ -1,9 +1,10 @@
-# Lame thick cylinder, quarter model, plane strain. Class L: 3 meshes, 4x2, 8x4 and 16x8 elements.
+# Lame thick cylinder, quarter model, plane strain. Class L: 4 meshes, 4x2, 8x4, 16x8 and 32x16 elements.
+schema = 2
 id = "lame-cylinder"
 class = "L"
-justification = "Reference is the closed-form Lame solution. Richardson over 3 meshes gives the discretisation error. The chord approximation of the arc is part of that error. The closed form has no stated error, so reference_error is 0. The captain accepted it."
+justification = "Reference is the closed-form Lame solution. Richardson over the 3 finest of 4 meshes gives the discretisation error. The chord approximation of the arc is part of that error. The closed form has no stated error, so reference_error is 0. The captain accepted it."
 derivation = "derivation.md"
-mesh = ["mesh-4x2.inp", "mesh-8x4.inp", "mesh-16x8.inp"]
+mesh = ["mesh-4x2.inp", "mesh-8x4.inp", "mesh-16x8.inp", "mesh-32x16.inp"]
 ratio = 2
 reference_error = 0
 
@@ -11,3 +12,14 @@ reference_error = 0
 [ref]
 ur_inner = 0.09079365079
 ur_outer = 0.05777777778
+
+# U1 on the theta = 0 plane is the radial displacement.
+[extract.ur_inner]
+field = "U1"
+set = "inner0"
+reduction = "mean"
+
+[extract.ur_outer]
+field = "U1"
+set = "outer0"
+reduction = "mean"

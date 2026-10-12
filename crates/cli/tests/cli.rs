@@ -131,3 +131,55 @@ fn validate_exits_1_when_the_case_folder_is_bad() {
 fn validate_rejects_an_unknown_option_with_exit_2() {
     assert_eq!(fh(&["validate", "--bogus"]).status.code(), Some(2));
 }
+
+#[test]
+fn convergence_on_a_class_l_case_reports_no_solver() {
+    let case = format!("{}/validation/cases/cantilever", root());
+    let out = fh(&["validate", "--convergence", &case]);
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = text(out.stdout);
+    assert!(stdout.starts_with("no solver"), "{stdout}");
+    assert!(
+        stdout.contains("cantilever\tL\t4 meshes\tno solver"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("1 cases: 0 pass, 0 fail, 1 no solver"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn convergence_on_the_case_folder_skips_class_n() {
+    let dir = format!("{}/validation/cases", root());
+    let out = fh(&["validate", "--convergence", &dir]);
+    assert_eq!(out.status.code(), Some(0));
+    let stdout = text(out.stdout);
+    assert!(
+        stdout.contains("lame-cylinder\tL\t4 meshes\tno solver"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("patch-test\tN\tskipped, one mesh"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("3 cases: 0 pass, 0 fail, 2 no solver"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn convergence_on_a_class_n_case_exits_1() {
+    let case = format!("{}/validation/cases/patch-test", root());
+    let out = fh(&["validate", "--convergence", &case]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(out.stderr).contains("class N"));
+}
+
+#[test]
+fn convergence_needs_a_path_that_holds_cases() {
+    assert_eq!(fh(&["validate", "--convergence"]).status.code(), Some(2));
+    let out = fh(&["validate", "--convergence", "/nonexistent"]);
+    assert_eq!(out.status.code(), Some(1));
+}

@@ -176,6 +176,10 @@
 73, 74, 75, 76, 77, 78, 79, 80
 81, 82, 83, 84, 85, 86, 87, 88
 89, 90
+*nset, nset=inner0
+1, 46
+*nset, nset=outer0
+37, 82
 ** Steel, SI-mm units.
 *material, name=steel
 *elastic

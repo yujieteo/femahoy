@@ -1,4 +1,5 @@
 # Patch test. Class N: the field is linear, so the exact result has no discretisation error.
+schema = 2
 id = "patch-test"
 class = "N"
 justification = "The imposed displacement field is linear, so C3D8 must reproduce it and its uniform stress to round-off. No mesh error exists, so Richardson does not apply. The tolerance covers round-off in a sparse solve only."
@@ -18,3 +19,49 @@ s_zz = 226.8
 s_xy = 42.0
 s_yz = 16.8
 s_zx = 25.2
+
+# Node 9 is the interior node. Set N9 is not in patch-test.inp yet (see SCHEMA.md).
+[extract.u9_x]
+field = "U1"
+set = "N9"
+reduction = "value"
+
+[extract.u9_y]
+field = "U2"
+set = "N9"
+reduction = "value"
+
+[extract.u9_z]
+field = "U3"
+set = "N9"
+reduction = "value"
+
+[extract.s_xx]
+field = "S11"
+set = "ALL"
+reduction = "mean"
+
+[extract.s_yy]
+field = "S22"
+set = "ALL"
+reduction = "mean"
+
+[extract.s_zz]
+field = "S33"
+set = "ALL"
+reduction = "mean"
+
+[extract.s_xy]
+field = "S12"
+set = "ALL"
+reduction = "mean"
+
+[extract.s_yz]
+field = "S23"
+set = "ALL"
+reduction = "mean"
+
+[extract.s_zx]
+field = "S13"
+set = "ALL"
+reduction = "mean"

@@ -25,11 +25,40 @@ impl Class {
     }
 }
 
+/// How a set of values reduces to the one number that is compared with the reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reduction {
+    /// The set holds one entity. Its value.
+    Value,
+    Mean,
+    Max,
+    Min,
+}
+
+/// Where a computed quantity comes from: a field, a node or element set, and a reduction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Extract {
+    /// One of `FIELDS`.
+    pub field: String,
+    /// The name of a node set (fields `U*`, `RF*`) or an element set (fields `S*`).
+    pub set: String,
+    pub reduction: Reduction,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reference {
     pub name: String,
     pub value: f64,
+    pub extract: Extract,
 }
+
+/// The version of the fixture schema that this reader accepts.
+pub const SCHEMA_VERSION: i64 = 2;
+
+/// The fields an extraction may name.
+pub const FIELDS: [&str; 12] = [
+    "U1", "U2", "U3", "RF1", "RF2", "RF3", "S11", "S22", "S33", "S12", "S23", "S13",
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Case {
@@ -127,8 +156,68 @@ impl Fx<'_> {
             .ok_or_else(|| self.err(Some(item), format!("`{key}` must be a number")))
     }
 
+    /// The `[extract.<name>]` table of one reference.
+    fn extract(&self, table: &Table, name: &str) -> Result<Extract, FixtureError> {
+        let item = table
+            .get("extract")
+            .and_then(Item::as_table_like)
+            .and_then(|t| t.get(name))
+            .ok_or_else(|| self.err(None, format!("no extraction for reference `{name}`")))?;
+        let t = item
+            .as_table_like()
+            .ok_or_else(|| self.err(Some(item), format!("`extract.{name}` must be a table")))?;
+        for (k, i) in t.iter() {
+            if !["field", "set", "reduction"].contains(&k) {
+                return Err(self.err(Some(i), format!("unknown key `{k}` in `extract.{name}`")));
+            }
+        }
+        let text = |key: &str| -> Result<(String, &Item), FixtureError> {
+            let i = t.get(key).ok_or_else(|| {
+                self.err(
+                    Some(item),
+                    format!("missing key `{key}` in `extract.{name}`"),
+                )
+            })?;
+            match i.as_str() {
+                Some(s) if !s.is_empty() => Ok((s.to_owned(), i)),
+                _ => Err(self.err(Some(i), format!("`{key}` must be a non-empty string"))),
+            }
+        };
+        let (field, fi) = text("field")?;
+        if !FIELDS.contains(&field.as_str()) {
+            return Err(self.err(
+                Some(fi),
+                format!(
+                    "unknown field `{field}`, expected one of {}",
+                    FIELDS.join(", ")
+                ),
+            ));
+        }
+        let (set, _) = text("set")?;
+        let (word, ri) = text("reduction")?;
+        let reduction = match word.as_str() {
+            "value" => Reduction::Value,
+            "mean" => Reduction::Mean,
+            "max" => Reduction::Max,
+            "min" => Reduction::Min,
+            other => {
+                return Err(self.err(
+                    Some(ri),
+                    format!("unknown reduction `{other}`, expected value, mean, max or min"),
+                ))
+            }
+        };
+        Ok(Extract {
+            field,
+            set,
+            reduction,
+        })
+    }
+
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 12] = [
+        const KEYS: [&str; 14] = [
+            "schema",
+            "extract",
             "id",
             "class",
             "justification",
@@ -172,6 +261,18 @@ impl Fx<'_> {
                 ));
             }
         }
+        let version = self.get(table, "schema")?;
+        if version.as_integer() != Some(SCHEMA_VERSION) {
+            return Err(self.err(
+                Some(version),
+                match version.as_integer() {
+                    Some(n) => {
+                        format!("schema version {n} is not supported, expected {SCHEMA_VERSION}")
+                    }
+                    None => "`schema` must be an integer".to_owned(),
+                },
+            ));
+        }
         let id = self.string(table, "id")?;
         let justification = self.string(table, "justification")?;
         let derivation = dir.join(self.string(table, "derivation")?);
@@ -214,10 +315,21 @@ impl Fx<'_> {
             references.push(Reference {
                 name: name.to_owned(),
                 value,
+                extract: self.extract(table, name)?,
             });
         }
         if references.is_empty() {
             return Err(self.err(Some(ref_item), "`[ref]` has no entries".into()));
+        }
+        if let Some(ex) = table.get("extract").and_then(Item::as_table_like) {
+            for (name, item) in ex.iter() {
+                if !references.iter().any(|r| r.name == name) {
+                    return Err(self.err(
+                        Some(item),
+                        format!("extraction `{name}` has no reference in `[ref]`"),
+                    ));
+                }
+            }
         }
         let class_item = self.get(table, "class")?;
         let class = match self.string(table, "class")?.as_str() {

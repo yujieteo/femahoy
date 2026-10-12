@@ -6,7 +6,9 @@
 mod fixture;
 mod tolerance;
 
-pub use fixture::{load_all, Case, Class, FixtureError, Reference};
+pub use fixture::{
+    load_all, Case, Class, Extract, FixtureError, Reduction, Reference, FIELDS, SCHEMA_VERSION,
+};
 pub use tolerance::{check_l, check_n, check_r, richardson};
 
 /// The result of one case.
@@ -21,4 +23,16 @@ pub enum Outcome {
 /// Run one case. In M1 no solver exists, so every case reports `NoSolver`.
 pub fn run_case(_case: &Case) -> Outcome {
     Outcome::NoSolver
+}
+
+/// Run the convergence check of one case. It needs a mesh sequence, so class N has none.
+/// In M1 no solver exists, so a class L or R case reports `NoSolver`.
+pub fn run_convergence(case: &Case) -> Outcome {
+    match case.class {
+        Class::N { .. } => Outcome::Fail(format!(
+            "case {} is class N, which has one mesh and no convergence sequence",
+            case.id
+        )),
+        _ => Outcome::NoSolver,
+    }
 }

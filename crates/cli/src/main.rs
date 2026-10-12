@@ -12,7 +12,7 @@ fn usage() -> String {
     let mut text = String::from(
         "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
-         validate  run the validation suite (fh validate [--root DIR])\n\n\
+         validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n\n\
          planned subcommands:\n",
     );
     for name in PLANNED {
