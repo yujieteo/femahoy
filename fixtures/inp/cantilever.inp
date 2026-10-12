@@ -1,0 +1,51 @@
+** Cantilever, 4 x 1 x 1 mesh of C3D8I elements.
+** Length 10.0, cross section 1.0 x 1.0. Our own input file. Test values are arbitrary.
+** Node id = 1 + i + 5 j + 10 k, for i = 0..4, j = 0..1, k = 0..1.
+** Element e (i = e) lists its nodes bottom face first, then top face.
+*NODE
+1, 0.0, 0.0, 0.0
+2, 2.5, 0.0, 0.0
+3, 5.0, 0.0, 0.0
+4, 7.5, 0.0, 0.0
+5, 10.0, 0.0, 0.0
+6, 0.0, 1.0, 0.0
+7, 2.5, 1.0, 0.0
+8, 5.0, 1.0, 0.0
+9, 7.5, 1.0, 0.0
+10, 10.0, 1.0, 0.0
+11, 0.0, 0.0, 1.0
+12, 2.5, 0.0, 1.0
+13, 5.0, 0.0, 1.0
+14, 7.5, 0.0, 1.0
+15, 10.0, 0.0, 1.0
+16, 0.0, 1.0, 1.0
+17, 2.5, 1.0, 1.0
+18, 5.0, 1.0, 1.0
+19, 7.5, 1.0, 1.0
+20, 10.0, 1.0, 1.0
+*ELEMENT, TYPE=C3D8I, ELSET=EBEAM
+1, 1, 2, 7, 6, 11, 12, 17, 16
+2, 2, 3, 8, 7, 12, 13, 18, 17
+3, 3, 4, 9, 8, 13, 14, 19, 18
+4, 4, 5, 10, 9, 14, 15, 20, 19
+*NSET, NSET=ALL, GENERATE
+1, 20, 1
+*NSET, NSET=FIXED
+1, 6, 11, 16
+*NSET, NSET=TIP
+5, 10, 15, 20
+*ELSET, ELSET=EALL, GENERATE
+1, 4, 1
+*MATERIAL, NAME=TEST_MAT
+*ELASTIC, TYPE=ISOTROPIC
+1000.0, 0.3
+*STEP, NAME=TIP_LOAD, NLGEOM=NO
+*STATIC
+1.0, 1.0
+** Clamp the x = 0 end in all dofs.
+*BOUNDARY
+FIXED, 1, 3
+** Four tip nodes share a total load of -1.0 in dof 3.
+*CLOAD
+TIP, 3, -0.25
+*END STEP
