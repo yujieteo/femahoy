@@ -28,7 +28,7 @@ fn script(dir: &Path, body: &str) -> PathBuf {
 const GOOD: &str = r#"echo "fh-solver-protocol 1"
 echo '<VTKFile type="Collection"><Collection><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>' > results.pvd
 echo "<VTKFile/>" > step-1.vtu
-printf 'status: ok\nsteps: 1\n' > summary.toon"#;
+printf 'status: ok\n' > summary.txt"#;
 
 fn run(name: &str, body: &str) -> Result<fh_solver_api::RunReport, String> {
     let dir = scratch(name);
@@ -39,14 +39,10 @@ fn run(name: &str, body: &str) -> Result<fh_solver_api::RunReport, String> {
 }
 
 #[test]
-fn good_solver_passes_and_is_unvalidated() {
+fn good_solver_passes() {
     let r = run("good", GOOD).unwrap();
-    assert!(!r.validated);
     assert!(r.pvd.ends_with("results.pvd"));
-    assert_eq!(
-        r.summary.get("status"),
-        Some(&fh_toon::Value::Str("ok".into()))
-    );
+    assert_eq!(r.summary, "status: ok\n");
 }
 
 #[test]
@@ -83,4 +79,19 @@ fn time_limit_kills_the_solver() {
     s.timeout = Duration::from_millis(200);
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
     assert!(e.to_string().contains("time limit"), "{e}");
+}
+
+#[test]
+fn memory_limit_kills_the_solver() {
+    // awk builds a string of about 134 MB and then loops. The script replaces
+    // itself with awk, so the process that the runner watches holds the memory.
+    let dir = scratch("memory");
+    let exe = script(
+        &dir,
+        r#"exec awk 'BEGIN { s = "x"; for (i = 0; i < 27; i++) s = s s; while (1) { } }'"#,
+    );
+    let mut s = SubprocessSolver::new(exe);
+    s.memory_limit = 50 << 20;
+    let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
+    assert!(e.to_string().contains("memory limit"), "{e}");
 }

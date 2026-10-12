@@ -4,7 +4,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use fh_core_solver::CoreSolver;
-use fh_solver_api::{Solver, PROTOCOL_HEADER};
+use fh_solver_api::PROTOCOL_HEADER;
 
 fn run(inp: &Path, run_dir: &Path) -> Result<(), String> {
     let text = std::fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;

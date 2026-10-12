@@ -1,4 +1,5 @@
-//! Results files for the subprocess protocol: VTU for each step, PVD, TOON summary.
+//! Results files for the subprocess protocol: VTU for each step, PVD and a
+//! provisional plain text summary.
 
 use std::fs;
 use std::path::Path;
@@ -7,27 +8,19 @@ use fh_inp::Model;
 use fh_io::vtu::{
     write_pvd, write_vtu, Field, Grid, PvdEntry, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA,
 };
-use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
-use fh_toon::{Document, Value};
+use fh_solver_api::{ApiError, RunReport, PVD_FILE, SUMMARY_FILE};
 
 use crate::element::Kind;
 use crate::{solve, Solution};
 
-/// The reference solver. It stays unvalidated until the suite passes.
+/// The reference solver. Its results are unvalidated until the suite passes.
 pub struct CoreSolver;
 
-impl Solver for CoreSolver {
-    fn name(&self) -> &str {
-        "core"
-    }
-
-    fn validated(&self) -> bool {
-        false
-    }
-
-    fn solve(&self, model: &Model, run_dir: &Path) -> Result<RunReport, ApiError> {
+impl CoreSolver {
+    /// Solve `model` and write the protocol files in `run_dir`.
+    pub fn solve(&self, model: &Model, run_dir: &Path) -> Result<RunReport, ApiError> {
         let solution = solve(model).map_err(|e| ApiError(e.to_string()))?;
-        write_results(model, &solution, run_dir, self.validated())
+        write_results(model, &solution, run_dir)
     }
 }
 
@@ -94,18 +87,17 @@ fn base_grid(model: &Model) -> Result<Grid, ApiError> {
     Ok(grid)
 }
 
-/// Write `step-N.vtu`, `results.pvd` and `summary.toon` in `run_dir`.
+/// Write `step-N.vtu`, `results.pvd` and `summary.txt` in `run_dir`.
 pub fn write_results(
     model: &Model,
     solution: &Solution,
     run_dir: &Path,
-    validated: bool,
 ) -> Result<RunReport, ApiError> {
     let io = |what: &str, e: std::io::Error| ApiError(format!("{what}: {e}"));
     fs::create_dir_all(run_dir).map_err(|e| io("run folder", e))?;
     let base = base_grid(model)?;
     let mut entries = Vec::new();
-    let mut rows = Vec::new();
+    let mut lines = Vec::new();
     for (i, step) in solution.steps.iter().enumerate() {
         let mut grid = base.clone();
         grid.point_data
@@ -130,34 +122,27 @@ pub fn write_results(
             time: (i + 1) as f64,
             file,
         });
-        rows.push(vec![
-            Value::from(i + 1),
-            Value::from(step.name.clone().unwrap_or_default()),
-            Value::from(solution.free_dofs[i]),
-            Value::from(max_norm(&step.displacement)),
-            Value::from(step.mises.iter().copied().fold(0.0, f64::max)),
-            Value::from(max_norm(&step.reaction)),
-        ]);
+        let max_u = max_norm(&step.displacement);
+        let max_mises = step.mises.iter().copied().fold(0.0, f64::max);
+        let max_rf = max_norm(&step.reaction);
+        lines.push(format!(
+            "step {}: free_dofs={} max_u={max_u:e} max_mises={max_mises:e} max_rf={max_rf:e}",
+            i + 1,
+            solution.free_dofs[i],
+        ));
     }
     fs::write(run_dir.join(PVD_FILE), write_pvd(&entries)).map_err(|e| io(PVD_FILE, e))?;
-    let mut summary = Document::new();
-    summary
-        .scalar("schema", "femahoy-summary-v1")
-        .scalar("solver", "core")
-        .scalar("validated", if validated { "yes" } else { "no" })
-        .scalar("status", "ok")
-        .scalar("nodes", model.nodes.len())
-        .scalar("elements", model.elements.len())
-        .scalar("dofs", solution.total_dofs);
-    summary.table(
-        "steps",
-        &["step", "name", "free_dofs", "max_u", "max_mises", "max_rf"],
-        rows,
+    // Provisional. The TOON summary schema is an open design item.
+    let summary = format!(
+        "nodes: {}\nelements: {}\ndofs: {}\n{}\n",
+        model.nodes.len(),
+        model.elements.len(),
+        solution.total_dofs,
+        lines.join("\n")
     );
-    fs::write(run_dir.join(SUMMARY_FILE), summary.to_text()).map_err(|e| io(SUMMARY_FILE, e))?;
+    fs::write(run_dir.join(SUMMARY_FILE), &summary).map_err(|e| io(SUMMARY_FILE, e))?;
     Ok(RunReport {
         pvd: run_dir.join(PVD_FILE),
         summary,
-        validated,
     })
 }

@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use fh_core_solver::solve;
 use fh_io::vtu::{read_pvd, read_vtu};
 use fh_solver_api::SubprocessSolver;
-use fh_toon::Value;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(format!(
@@ -27,8 +26,7 @@ fn cantilever_runs_through_protocol_v1() {
     let dir = run_dir("cantilever");
     let solver = SubprocessSolver::new(env!("CARGO_BIN_EXE_fh-solve"));
     let report = solver.run(&inp, &dir).unwrap();
-    assert!(!report.validated);
-    assert_eq!(report.summary.get("status"), Some(&Value::Str("ok".into())));
+    assert!(report.summary.contains("step 1:"), "{}", report.summary);
 
     // The VTU displacement equals the in-process solution.
     let model = fh_inp::parse(&fs::read_to_string(&inp).unwrap()).unwrap();

@@ -1,4 +1,6 @@
 //! Element level checks: symmetry, rigid body modes, constant strain, loads.
+//! Provisional: these tests were written after the code. They may be replaced
+//! and they fix no design decision.
 
 use fh_core_solver::element::{elasticity, mean_stress, pressure_load, stiffness, volume, Kind};
 
