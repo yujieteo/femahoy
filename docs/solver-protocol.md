@@ -1,17 +1,48 @@
-# Subprocess solver protocol v1
+# Subprocess solver protocol v2
 
-The runner starts `exe <input.inp> <run-dir>` in the run folder.
+The runner starts `exe <input.inp> <run-dir> [--restart <file>]` with the run folder as the working directory.
+The runner supports protocol v2 only.
 
-The solver must:
+## Run folder
 
-1. Print `fh-solver-protocol 1` as the first line on stdout.
-2. Write `results.pvd`, each VTU file that the PVD lists, and `summary.txt` in the run folder.
-3. Exit with code 0 on success. On failure, exit with a non-zero code and print the reason on stderr.
+- The runner clears the run folder before a run, but only if the folder has the marker file `.fh-run`.
+- If the folder is not empty and has no marker, the runner stops with an error and deletes nothing.
+- The runner writes the marker on the first run.
+- A restart run needs the marker and keeps the folder content.
 
-The runner stops a solver that exceeds the time limit or the memory limit.
-The memory check covers the solver process, not the processes that it starts.
-The defaults are 10 minutes and 4 GiB. Both values are provisional.
+## Solver output (stdout, one line each)
 
-`summary.txt` is provisional plain text. The TOON summary schema is an open design item.
-The runner does not parse the file.
+1. The first line is `fh-solver-protocol 2`.
+2. Event lines follow:
+   - `progress step=<i>/<n> phase=<name> fraction=<0..1>`
+   - `estimate bytes=<n>` is the peak memory that the solver expects. The runner stops the solver if the value is above the memory limit.
+   - `restart <file>` names a restart file, relative to the run folder.
+3. Any other line is a log line.
+
+## Cancel
+
+The runner sends the line `cancel` on stdin. End of stdin also means cancel.
+The solver must stop, and exit with a non-zero code.
+If the solver is still alive after 5 seconds, the runner kills the whole process group.
+
+## Result files
+
+On success the solver writes these files in the run folder, and exits with code 0:
+
+- `results.pvd` and each VTU file that it lists.
+- `summary.toon`, a TOON document with the first line `schema: fh.run` and a `status:` line (schema in the TOON schema document, sections 3.5 and 3.8).
+
+Each PVD path must be relative, must not contain `..`, and must stay inside the run folder.
+On failure the solver exits with a non-zero code and prints the reason on stderr.
+
+## Limits
+
+- The default time limit is 10 minutes.
+- The default memory limit is 85% of the machine RAM. If the RAM is not known, there is no limit.
+- The runner starts the solver in its own process group, and kills the whole group on a timeout, a memory limit or a cancel.
+- The memory check sums the resident memory of the whole group (Linux: `/proc`, macOS: `ps`, Windows: the process).
+- Linux: the runner also sets a hard address space limit (limit + 256 MiB). Windows: a job object with a process memory limit.
+- macOS has no hard limit that the kernel enforces. Only the probe applies.
+- If the probe fails, the runner stops the solver with an error.
+
 Results from a subprocess solver are always unvalidated.
