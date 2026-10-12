@@ -1,5 +1,5 @@
 //! The core solver as a protocol v2 executable:
-//! `fh-solve <input.inp> <run-dir> [--restart]`.
+//! `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vtk]`.
 //!
 //! Event lines go to stdout. A `cancel` line on stdin, or the end of stdin,
 //! stops the run. `FH_THREADS` sets the number of element threads.
@@ -10,16 +10,25 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use fh_core_solver::{input_hash, run_model, Options};
+use fh_core_solver::{input_hash, run_model, Formats, Options};
 use fh_solver_api::PROTOCOL_HEADER;
 
 /// Exit code of a run that the user cancelled.
 const CANCELLED: u8 = 130;
 
-fn run(inp: &Path, run_dir: &Path, restart: bool, cancel: Arc<AtomicBool>) -> Result<(), String> {
+fn run(
+    inp: &Path,
+    run_dir: &Path,
+    restart: bool,
+    formats: Formats,
+    cancel: Arc<AtomicBool>,
+) -> Result<(), String> {
     let text = std::fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;
     let model = fh_inp::parse(&text).map_err(|e| e.to_string())?;
-    let mut options = Options::default();
+    let mut options = Options {
+        formats,
+        ..Options::default()
+    };
     if let Some(n) = std::env::var("FH_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -52,11 +61,29 @@ fn run(inp: &Path, run_dir: &Path, restart: bool, cancel: Arc<AtomicBool>) -> Re
 }
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let restart = args.get(2).is_some_and(|a| a == "--restart");
-    if args.len() != 2 && !(args.len() == 3 && restart) {
-        eprintln!("usage: fh-solve <input.inp> <run-dir> [--restart]");
-        return ExitCode::from(2);
+    let usage = || {
+        eprintln!("usage: fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vtk]");
+        ExitCode::from(2)
+    };
+    let mut args = Vec::new();
+    let (mut restart, mut formats) = (false, Formats::default());
+    let mut it = std::env::args().skip(1);
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--restart" => restart = true,
+            "--formats" => match it.next().map(|l| Formats::parse(&l)) {
+                Some(Ok(f)) => formats = f,
+                Some(Err(e)) => {
+                    eprintln!("{e}");
+                    return ExitCode::from(2);
+                }
+                None => return usage(),
+            },
+            _ => args.push(a),
+        }
+    }
+    if args.len() != 2 {
+        return usage();
     }
     println!("{PROTOCOL_HEADER}");
     let _ = std::io::stdout().flush();
@@ -85,7 +112,13 @@ fn main() -> ExitCode {
         }
         flag.store(true, Ordering::Relaxed);
     });
-    match run(Path::new(&args[0]), Path::new(&args[1]), restart, cancel) {
+    match run(
+        Path::new(&args[0]),
+        Path::new(&args[1]),
+        restart,
+        formats,
+        cancel,
+    ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e == "cancelled" => {
             eprintln!("cancelled");

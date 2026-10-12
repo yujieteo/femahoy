@@ -38,6 +38,8 @@ impl Solve for Subprocess {
         let mut child = Command::new(&self.exe)
             .arg(mesh)
             .arg(&run)
+            // The harness reads the VTU only.
+            .args(["--formats", "vtu"])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())

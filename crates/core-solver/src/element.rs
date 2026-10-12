@@ -136,6 +136,8 @@ pub struct Evaluation {
     pub volume: f64,
     /// Volume-averaged stress.
     pub mean_stress: [f64; 6],
+    /// Stress at each integration point. Only the first `Kind::point_count` entries are valid.
+    pub ip_stress: [[f64; 6]; MAX_POINTS],
 }
 
 impl Default for Evaluation {
@@ -146,6 +148,7 @@ impl Default for Evaluation {
             k: [[0.0; MAX_DOFS]; MAX_DOFS],
             volume: 0.0,
             mean_stress: [0.0; 6],
+            ip_stress: [[0.0; 6]; MAX_POINTS],
         }
     }
 }
@@ -513,6 +516,9 @@ fn run<const M: usize>(
     }
     out.volume = vol;
     out.mean_stress = mean.map(|v| v / vol);
+    for (dst, ip) in out.ip_stress.iter_mut().zip(&new_ip) {
+        *dst = ip.stress;
+    }
     state.ip = new_ip;
     state.internal = alpha;
     Ok(())

@@ -20,6 +20,12 @@ impl fmt::Display for VtuError {
     }
 }
 
+impl VtuError {
+    pub fn new(message: impl Into<String>) -> Self {
+        VtuError(message.into())
+    }
+}
+
 impl std::error::Error for VtuError {}
 
 fn err<T>(message: impl Into<String>) -> Result<T, VtuError> {

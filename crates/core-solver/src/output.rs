@@ -1,5 +1,6 @@
-//! Results files for the subprocess protocol: one VTU file for each step, a
-//! PVD collection, a restart file and the `fh.run` TOON summary.
+//! Results files for the subprocess protocol: for each step a text table, a VTU file and a
+//! legacy VTK file (each can be switched off with `Options::formats`), a PVD collection, a
+//! restart file and the `fh.run` TOON summary.
 //!
 //! The writer takes one step at a time from the solver and keeps only the
 //! base grid in memory.
@@ -9,6 +10,7 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use fh_inp::Model;
+use fh_io::vtk::write_vtk_to;
 use fh_io::vtu::{
     write_pvd_units, write_vtu_to, Field, Grid, PvdEntry, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA,
 };
@@ -16,7 +18,8 @@ use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
 
 use crate::element::Kind;
 use crate::system::{solve_from, step_times, CANCELLED};
-use crate::{Observer, Options, Solution, SolverError, StepInfo, StepResult, Summary};
+use crate::text::write_text;
+use crate::{Formats, Observer, Options, Solution, SolverError, StepInfo, StepResult, Summary};
 
 /// Name of the restart file in the run folder.
 pub const RESTART_FILE: &str = "restart.fh";
@@ -184,6 +187,18 @@ impl StepLine {
     }
 }
 
+/// Extension of the file that the PVD collection and the restart check use: the first grid
+/// format that is on.
+fn primary(f: Formats) -> &'static str {
+    if f.vtu {
+        "vtu"
+    } else if f.vtk {
+        "vtk"
+    } else {
+        "txt"
+    }
+}
+
 fn io(what: &str, e: std::io::Error) -> ApiError {
     ApiError(format!("{what}: {e}"))
 }
@@ -221,6 +236,7 @@ fn read_restart(dir: &Path, hash: u64) -> Result<Vec<StepLine>, ApiError> {
 
 struct Writer<'a> {
     run_dir: &'a Path,
+    formats: Formats,
     hash: u64,
     grid: Grid,
     n_point: usize,
@@ -235,6 +251,19 @@ struct Writer<'a> {
 }
 
 impl Writer<'_> {
+    /// The ids of the nodes or the elements, in model order, from the base grid.
+    fn ids(&self, nodes: bool) -> Vec<i32> {
+        let (fields, key) = if nodes {
+            (&self.grid.point_data, "NODE_ID")
+        } else {
+            (&self.grid.cell_data, "ELEMENT_ID")
+        };
+        match fields.iter().find(|f| f.name == key).map(|f| &f.values) {
+            Some(fh_io::vtu::Values::I32(v)) => v.clone(),
+            _ => Vec::new(),
+        }
+    }
+
     fn write_pvd(&self) -> Result<(), ApiError> {
         fs::write(
             self.run_dir.join(PVD_FILE),
@@ -277,18 +306,45 @@ impl Writer<'_> {
             step.element_stress.iter().flatten().copied().collect(),
         ));
         g.cell_data.push(Field::f64("MISES", 1, step.mises.clone()));
-        let file = format!("step-{}.vtu", index + 1);
-        let out = fs::File::create(self.run_dir.join(&file)).map_err(|e| io(&file, e))?;
-        let mut w = BufWriter::new(out);
-        let written = write_vtu_to(&self.grid, &mut w).map_err(|e| ApiError(e.to_string()));
+        let name = |ext: &str| format!("step-{}.{ext}", index + 1);
+        let create = |file: &str| -> Result<BufWriter<fs::File>, ApiError> {
+            fs::File::create(self.run_dir.join(file))
+                .map(BufWriter::new)
+                .map_err(|e| io(file, e))
+        };
+        let mut written = Ok(());
+        if self.formats.vtu {
+            let file = name("vtu");
+            let mut w = create(&file)?;
+            written = write_vtu_to(&self.grid, &mut w)
+                .map_err(|e| ApiError(e.to_string()))
+                .and_then(|()| std::io::Write::flush(&mut w).map_err(|e| io(&file, e)));
+        }
+        if written.is_ok() && self.formats.vtk {
+            let file = name("vtk");
+            let mut w = create(&file)?;
+            let title = format!("fh step {} time {}", index + 1, step.time);
+            written = write_vtk_to(&self.grid, &title, &mut w)
+                .map_err(|e| ApiError(e.to_string()))
+                .and_then(|()| std::io::Write::flush(&mut w).map_err(|e| io(&file, e)));
+        }
         // The base grid stays for the next step.
+        let node_ids = self.ids(true);
+        let element_ids = self.ids(false);
+        let cell_types = self.grid.cell_types.clone();
         self.grid.point_data.truncate(self.n_point);
         self.grid.cell_data.truncate(self.n_cell);
         written?;
-        std::io::Write::flush(&mut w).map_err(|e| io(&file, e))?;
+        if self.formats.text {
+            let file = name("txt");
+            let mut w = create(&file)?;
+            write_text(&mut w, index, step, &node_ids, &element_ids, &cell_types)
+                .and_then(|()| std::io::Write::flush(&mut w))
+                .map_err(|e| io(&file, e))?;
+        }
         self.entries.push(PvdEntry {
             time: step.time,
-            file,
+            file: name(primary(self.formats)),
         });
         self.lines.push(StepLine {
             free_dofs: info.free_dofs,
@@ -419,15 +475,25 @@ pub fn run_model(
     }
     let mut entries = Vec::new();
     for (i, &time) in times.iter().enumerate().take(lines.len()) {
-        let file = format!("step-{}.vtu", i + 1);
-        if !run_dir.join(&file).is_file() {
-            return Err(ApiError(format!("restart: {file} is missing")));
+        for (on, ext) in [
+            (options.formats.text, "txt"),
+            (options.formats.vtu, "vtu"),
+            (options.formats.vtk, "vtk"),
+        ] {
+            let file = format!("step-{}.{ext}", i + 1);
+            if on && !run_dir.join(&file).is_file() {
+                return Err(ApiError(format!("restart: {file} is missing")));
+            }
         }
-        entries.push(PvdEntry { time, file });
+        entries.push(PvdEntry {
+            time,
+            file: format!("step-{}.{}", i + 1, primary(options.formats)),
+        });
     }
     let skip = lines.len();
     let mut writer = Writer {
         run_dir,
+        formats: options.formats,
         hash,
         grid,
         n_point,
@@ -476,6 +542,7 @@ pub fn write_results(
     let (n_point, n_cell) = (grid.point_data.len(), grid.cell_data.len());
     let mut writer = Writer {
         run_dir,
+        formats: Formats::default(),
         hash: 0,
         grid,
         n_point,

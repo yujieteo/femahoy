@@ -36,6 +36,9 @@ pub struct StepResult {
     /// Volume-averaged stress `[xx, yy, zz, xy, yz, xz]`, in the order of `Model::elements`.
     pub element_stress: Vec<[f64; 6]>,
     pub mises: Vec<f64>,
+    /// Stress at the integration points, the points of element 0, then element 1, and so on.
+    /// Empty unless `Formats::text` is on, because it is the largest result array.
+    pub ip_stress: Vec<[f64; 6]>,
 }
 
 /// How the reduced system is solved.
@@ -49,9 +52,57 @@ pub enum Method {
     Pcg,
 }
 
+/// The result file formats of a run. All three are on by default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Formats {
+    /// `step-N.txt`: tables of node results, element results and integration point stress.
+    pub text: bool,
+    /// `step-N.vtu`: binary VTU.
+    pub vtu: bool,
+    /// `step-N.vtk`: legacy VTK, ASCII.
+    pub vtk: bool,
+}
+
+impl Default for Formats {
+    fn default() -> Self {
+        Formats {
+            text: true,
+            vtu: true,
+            vtk: true,
+        }
+    }
+}
+
+impl Formats {
+    /// Read a list such as `text,vtu`. The names are `text`, `vtu` and `vtk`; `all` is the three.
+    pub fn parse(list: &str) -> Result<Formats, String> {
+        let mut f = Formats {
+            text: false,
+            vtu: false,
+            vtk: false,
+        };
+        for name in list.split(',').map(str::trim) {
+            match name {
+                "text" => f.text = true,
+                "vtu" => f.vtu = true,
+                "vtk" => f.vtk = true,
+                "all" => f = Formats::default(),
+                other => {
+                    return Err(format!(
+                        "unknown result format `{other}`: use text, vtu, vtk or all"
+                    ))
+                }
+            }
+        }
+        Ok(f)
+    }
+}
+
 /// Settings of the solver.
 #[derive(Debug, Clone)]
 pub struct Options {
+    /// The result files that `run_model` writes.
+    pub formats: Formats,
     pub method: Method,
     /// `Auto` uses Cholesky when the reduced system has at most this many dofs.
     pub direct_max_dofs: usize,
@@ -65,6 +116,7 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Options {
+            formats: Formats::default(),
             method: Method::Auto,
             direct_max_dofs: DIRECT_MAX_DOFS,
             tolerance: 1e-10,
@@ -232,6 +284,7 @@ pub fn solve_from(
         graph_bytes: graph.bytes(),
         threads,
         iterative: method_guess || options.method == Method::Pcg,
+        ip_stress: options.formats.text,
     });
     observer.estimate(summary.estimate_bytes);
 
@@ -306,6 +359,8 @@ pub struct Sizes {
     pub threads: usize,
     /// True for the conjugate gradient solver.
     pub iterative: bool,
+    /// True when the stress at the integration points is kept for the text file.
+    pub ip_stress: bool,
 }
 
 /// Estimate of the peak memory of a run in bytes, without the Cholesky factor.
@@ -332,7 +387,8 @@ pub fn estimate_bytes(s: &Sizes) -> u64 {
         (400.0 * (n as f64).powf(1.35)) as u64
     };
     // The results of one step and the output grid.
-    let results = 72 * nodes + 56 * els + 120 * nodes + 70 * els;
+    let results =
+        72 * nodes + 56 * els + 120 * nodes + 70 * els + if s.ip_stress { 8 * 48 * els } else { 0 };
     // The chunk buffers of the threads.
     let chunks = s.threads as u64 * 256 * std::mem::size_of::<Evaluation>() as u64;
     // Allocator slack, the input text, and parts the terms miss. The measured peak is 1.21 to
@@ -1099,6 +1155,8 @@ impl StepContext<'_> {
         observer.progress(index, n_steps, "recover", 0.0);
         let mut fint = vec![0.0; mesh.n_dofs];
         let mut stress = vec![[0.0; 6]; mesh.kinds.len()];
+        let keep_ip = self.options.formats.text;
+        let mut ip_stress: Vec<[f64; 6]> = Vec::new();
         {
             let work = |e: usize, ev: &mut Evaluation| {
                 let mut dofs = [0; MAX_DOFS];
@@ -1116,6 +1174,9 @@ impl StepContext<'_> {
                     fint[d] += v;
                 }
                 stress[e] = ev.mean_stress;
+                if keep_ip {
+                    ip_stress.extend_from_slice(&ev.ip_stress[..mesh.kinds[e].point_count()]);
+                }
             };
             let mut tick = |fraction: f64| {
                 observer.progress(index, n_steps, "recover", fraction);
@@ -1152,6 +1213,7 @@ impl StepContext<'_> {
             reaction: grab(&fint, 1),
             mises: stress.iter().map(element::von_mises).collect(),
             element_stress: stress,
+            ip_stress,
         };
         let info = StepInfo {
             free_dofs: t.n_free,
