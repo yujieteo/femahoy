@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/inp",
+    "crates/io",
+    "crates/toon",
+    "crates/solver-api",
+    "crates/core-solver",
+    "crates/validation",
+    "crates/daemon",
+    "crates/agents",
+    "crates/cli",
+    "crates/viewer",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+publish = false

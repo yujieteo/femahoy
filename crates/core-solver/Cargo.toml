@@ -1,0 +1,9 @@
+[package]
+name = "fh-core-solver"
+description = "elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
