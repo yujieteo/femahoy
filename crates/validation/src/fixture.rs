@@ -8,7 +8,13 @@ use toml_edit::{Document, Item, Table};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Class {
     /// Richardson over the meshes. `ratio` is the mesh size ratio. `reference_error` is relative.
-    L { ratio: f64, reference_error: f64 },
+    /// The observed order must lie in `order_min..=order_max`.
+    L {
+        ratio: f64,
+        reference_error: f64,
+        order_min: f64,
+        order_max: f64,
+    },
     /// A fixed tolerance on the one reference mesh.
     N { rel_tol: f64, abs_tol: f64 },
     /// An expected convergence rate and the allowed band.
@@ -25,40 +31,52 @@ impl Class {
     }
 }
 
-/// How a set of values reduces to the one number that is compared with the reference.
+/// The field of a measured quantity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reduction {
+pub enum Field {
+    /// Displacement, a nodal field. Components 1 to 3.
+    U,
+    /// Reaction force, a nodal field. Components 1 to 3.
+    RF,
+    /// Stress, an element field. Components 11, 22, 33, 12, 23, 13.
+    S,
+}
+
+/// How the values of a set reduce to the one number that is compared with the reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Op {
     /// The set holds one entity. Its value.
     Value,
     Mean,
     Max,
     Min,
+    Sum,
 }
 
-/// Where a computed quantity comes from: a field, a node or element set, and a reduction.
+/// What to measure: a field component, in a node or element set, at the end of a step.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Extract {
-    /// One of `FIELDS`.
-    pub field: String,
-    /// The name of a node set (fields `U*`, `RF*`) or an element set (fields `S*`).
+pub struct Quantity {
+    /// The name of a node set (fields `U`, `RF`) or an element set (field `S`).
     pub set: String,
-    pub reduction: Reduction,
+    pub field: Field,
+    pub component: u32,
+    /// The name of the step. The result at the end of that step.
+    pub step: String,
+    pub op: Op,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reference {
     pub name: String,
     pub value: f64,
-    pub extract: Extract,
+    pub quantity: Quantity,
 }
+
+/// The element types a case may name.
+pub const ELEMENT_TYPES: [&str; 4] = ["C3D8", "C3D8I", "C3D10", "C3D10M"];
 
 /// The version of the fixture schema that this reader accepts.
 pub const SCHEMA_VERSION: i64 = 2;
-
-/// The fields an extraction may name.
-pub const FIELDS: [&str; 12] = [
-    "U1", "U2", "U3", "RF1", "RF2", "RF3", "S11", "S22", "S33", "S12", "S23", "S13",
-];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Case {
@@ -67,6 +85,8 @@ pub struct Case {
     pub class: Class,
     pub justification: String,
     pub derivation: PathBuf,
+    /// The element types of the meshes. The case runs once for each type (the meshes hold one).
+    pub element_types: Vec<String>,
     /// Input files, coarse to fine. Absolute or relative to the working directory like `dir`.
     pub meshes: Vec<PathBuf>,
     pub references: Vec<Reference>,
@@ -156,68 +176,101 @@ impl Fx<'_> {
             .ok_or_else(|| self.err(Some(item), format!("`{key}` must be a number")))
     }
 
-    /// The `[extract.<name>]` table of one reference.
-    fn extract(&self, table: &Table, name: &str) -> Result<Extract, FixtureError> {
+    /// The `[quantity.<name>]` table of one reference.
+    fn quantity(&self, table: &Table, name: &str) -> Result<Quantity, FixtureError> {
         let item = table
-            .get("extract")
+            .get("quantity")
             .and_then(Item::as_table_like)
             .and_then(|t| t.get(name))
-            .ok_or_else(|| self.err(None, format!("no extraction for reference `{name}`")))?;
+            .ok_or_else(|| self.err(None, format!("no quantity for reference `{name}`")))?;
         let t = item
             .as_table_like()
-            .ok_or_else(|| self.err(Some(item), format!("`extract.{name}` must be a table")))?;
+            .ok_or_else(|| self.err(Some(item), format!("`quantity.{name}` must be a table")))?;
         for (k, i) in t.iter() {
-            if !["field", "set", "reduction"].contains(&k) {
-                return Err(self.err(Some(i), format!("unknown key `{k}` in `extract.{name}`")));
+            if !["set", "field", "component", "step", "op"].contains(&k) {
+                return Err(self.err(Some(i), format!("unknown key `{k}` in `quantity.{name}`")));
             }
         }
-        let text = |key: &str| -> Result<(String, &Item), FixtureError> {
-            let i = t.get(key).ok_or_else(|| {
+        let get = |key: &str| {
+            t.get(key).ok_or_else(|| {
                 self.err(
                     Some(item),
-                    format!("missing key `{key}` in `extract.{name}`"),
+                    format!("missing key `{key}` in `quantity.{name}`"),
                 )
-            })?;
+            })
+        };
+        let text = |key: &str| -> Result<(String, &Item), FixtureError> {
+            let i = get(key)?;
             match i.as_str() {
                 Some(s) if !s.is_empty() => Ok((s.to_owned(), i)),
                 _ => Err(self.err(Some(i), format!("`{key}` must be a non-empty string"))),
             }
         };
-        let (field, fi) = text("field")?;
-        if !FIELDS.contains(&field.as_str()) {
-            return Err(self.err(
-                Some(fi),
-                format!(
-                    "unknown field `{field}`, expected one of {}",
-                    FIELDS.join(", ")
-                ),
-            ));
-        }
         let (set, _) = text("set")?;
-        let (word, ri) = text("reduction")?;
-        let reduction = match word.as_str() {
-            "value" => Reduction::Value,
-            "mean" => Reduction::Mean,
-            "max" => Reduction::Max,
-            "min" => Reduction::Min,
+        let (step, _) = text("step")?;
+        let (field_name, fi) = text("field")?;
+        let (field, valid): (Field, &[u32]) = match field_name.as_str() {
+            "U" => (Field::U, &[1, 2, 3]),
+            "RF" => (Field::RF, &[1, 2, 3]),
+            "S" => (Field::S, &[11, 22, 33, 12, 23, 13]),
             other => {
                 return Err(self.err(
-                    Some(ri),
-                    format!("unknown reduction `{other}`, expected value, mean, max or min"),
+                    Some(fi),
+                    format!("unknown field `{other}`, expected U, RF or S"),
                 ))
             }
         };
-        Ok(Extract {
-            field,
+        let ci = get("component")?;
+        let component = ci
+            .as_integer()
+            .and_then(|c| u32::try_from(c).ok())
+            .ok_or_else(|| self.err(Some(ci), "`component` must be an integer".into()))?;
+        if !valid.contains(&component) {
+            return Err(self.err(
+                Some(ci),
+                format!("component {component} is not valid for field {field_name}"),
+            ));
+        }
+        let (word, oi) = text("op")?;
+        let op = match word.as_str() {
+            "value" => Op::Value,
+            "mean" => Op::Mean,
+            "max" => Op::Max,
+            "min" => Op::Min,
+            "sum" => Op::Sum,
+            other => {
+                return Err(self.err(
+                    Some(oi),
+                    format!("unknown op `{other}`, expected value, mean, max, min or sum"),
+                ))
+            }
+        };
+        Ok(Quantity {
             set,
-            reduction,
+            field,
+            component,
+            step,
+            op,
         })
     }
 
+    /// An observed-order bound. It must be above 0.
+    fn order(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
+        let v = self.number(table, key)?;
+        if v > 0.0 {
+            Ok(v)
+        } else {
+            Err(self.err(table.get(key), format!("{key} must be above 0")))
+        }
+    }
+
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 14] = [
+        const KEYS: [&str; 17] = [
             "schema",
-            "extract",
+            "quantity",
+            "element_types",
+            "order_min",
+            "order_max",
             "id",
             "class",
             "justification",
@@ -239,7 +292,7 @@ impl Fx<'_> {
         // Only the keys of the declared class are allowed.
         let class_name = self.string(table, "class")?;
         let own: &[&str] = match class_name.as_str() {
-            "L" => &["ratio", "reference_error"],
+            "L" => &["ratio", "reference_error", "order_min", "order_max"],
             "N" => &["rel_tol", "abs_tol"],
             "R" => &["rate", "band"],
             _ => &[],
@@ -248,6 +301,8 @@ impl Fx<'_> {
             let is_class_key = [
                 "ratio",
                 "reference_error",
+                "order_min",
+                "order_max",
                 "rel_tol",
                 "abs_tol",
                 "rate",
@@ -283,6 +338,32 @@ impl Fx<'_> {
                 format!("derivation file {} not found", derivation.display()),
             ));
         }
+        let types_item = self.get(table, "element_types")?;
+        let mut element_types = Vec::new();
+        for v in types_item.as_array().into_iter().flat_map(|a| a.iter()) {
+            let t = v.as_str().filter(|t| !t.is_empty()).ok_or_else(|| {
+                self.err(
+                    Some(types_item),
+                    "`element_types` must be an array of strings".into(),
+                )
+            })?;
+            if !ELEMENT_TYPES.contains(&t) {
+                return Err(self.err(
+                    Some(types_item),
+                    format!(
+                        "unknown element type `{t}`, expected one of {}",
+                        ELEMENT_TYPES.join(", ")
+                    ),
+                ));
+            }
+            element_types.push(t.to_owned());
+        }
+        if element_types.is_empty() {
+            return Err(self.err(
+                Some(types_item),
+                "`element_types` must be a non-empty array of strings".into(),
+            ));
+        }
         let mesh_item = self.get(table, "mesh")?;
         let list = mesh_item.as_array().ok_or_else(|| {
             self.err(Some(mesh_item), "`mesh` must be an array of strings".into())
@@ -315,18 +396,18 @@ impl Fx<'_> {
             references.push(Reference {
                 name: name.to_owned(),
                 value,
-                extract: self.extract(table, name)?,
+                quantity: self.quantity(table, name)?,
             });
         }
         if references.is_empty() {
             return Err(self.err(Some(ref_item), "`[ref]` has no entries".into()));
         }
-        if let Some(ex) = table.get("extract").and_then(Item::as_table_like) {
+        if let Some(ex) = table.get("quantity").and_then(Item::as_table_like) {
             for (name, item) in ex.iter() {
                 if !references.iter().any(|r| r.name == name) {
                     return Err(self.err(
                         Some(item),
-                        format!("extraction `{name}` has no reference in `[ref]`"),
+                        format!("quantity `{name}` has no reference in `[ref]`"),
                     ));
                 }
             }
@@ -336,6 +417,8 @@ impl Fx<'_> {
             "L" => Class::L {
                 ratio: self.number(table, "ratio")?,
                 reference_error: self.number(table, "reference_error")?,
+                order_min: self.order(table, "order_min")?,
+                order_max: self.order(table, "order_max")?,
             },
             "N" => Class::N {
                 rel_tol: self.number(table, "rel_tol")?,
@@ -352,6 +435,19 @@ impl Fx<'_> {
                 ))
             }
         };
+        if let Class::L {
+            order_min,
+            order_max,
+            ..
+        } = class
+        {
+            if order_min >= order_max {
+                return Err(self.err(
+                    table.get("order_min"),
+                    "order_min must be below order_max".into(),
+                ));
+            }
+        }
         let (need, ok) = match class {
             Class::L { .. } => ("at least 3", meshes.len() >= 3),
             Class::N { .. } => ("exactly 1", meshes.len() == 1),
@@ -373,6 +469,7 @@ impl Fx<'_> {
             class,
             justification,
             derivation,
+            element_types,
             meshes,
             references,
         })

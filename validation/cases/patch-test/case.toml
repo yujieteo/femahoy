@@ -4,6 +4,7 @@ id = "patch-test"
 class = "N"
 justification = "The imposed displacement field is linear, so C3D8 must reproduce it and its uniform stress to round-off. No mesh error exists, so Richardson does not apply. The tolerance covers round-off in a sparse solve only."
 derivation = "derivation.md"
+element_types = ["C3D8"]
 mesh = ["../../../fixtures/inp/patch-test.inp"]
 rel_tol = 1e-8
 abs_tol = 1e-12
@@ -21,47 +22,66 @@ s_yz = 16.8
 s_zx = 25.2
 
 # Node 9 is the interior node. Set N9 is not in patch-test.inp yet (see SCHEMA.md).
-[extract.u9_x]
-field = "U1"
+
+[quantity.u9_x]
 set = "N9"
-reduction = "value"
+field = "U"
+component = 1
+step = "LOAD"
+op = "value"
 
-[extract.u9_y]
-field = "U2"
+[quantity.u9_y]
 set = "N9"
-reduction = "value"
+field = "U"
+component = 2
+step = "LOAD"
+op = "value"
 
-[extract.u9_z]
-field = "U3"
+[quantity.u9_z]
 set = "N9"
-reduction = "value"
+field = "U"
+component = 3
+step = "LOAD"
+op = "value"
 
-[extract.s_xx]
-field = "S11"
+[quantity.s_xx]
 set = "ALL"
-reduction = "mean"
+field = "S"
+component = 11
+step = "LOAD"
+op = "mean"
 
-[extract.s_yy]
-field = "S22"
+[quantity.s_yy]
 set = "ALL"
-reduction = "mean"
+field = "S"
+component = 22
+step = "LOAD"
+op = "mean"
 
-[extract.s_zz]
-field = "S33"
+[quantity.s_zz]
 set = "ALL"
-reduction = "mean"
+field = "S"
+component = 33
+step = "LOAD"
+op = "mean"
 
-[extract.s_xy]
-field = "S12"
+[quantity.s_xy]
 set = "ALL"
-reduction = "mean"
+field = "S"
+component = 12
+step = "LOAD"
+op = "mean"
 
-[extract.s_yz]
-field = "S23"
+[quantity.s_yz]
 set = "ALL"
-reduction = "mean"
+field = "S"
+component = 23
+step = "LOAD"
+op = "mean"
 
-[extract.s_zx]
-field = "S13"
+[quantity.s_zx]
 set = "ALL"
-reduction = "mean"
+field = "S"
+component = 13
+step = "LOAD"
+op = "mean"

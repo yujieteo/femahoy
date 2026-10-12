@@ -183,3 +183,73 @@ fn convergence_needs_a_path_that_holds_cases() {
     let out = fh(&["validate", "--convergence", "/nonexistent"]);
     assert_eq!(out.status.code(), Some(1));
 }
+
+/// Copy the shipped case folders to a scratch root, so a test can break one of them.
+fn copy_root(tag: &str) -> std::path::PathBuf {
+    let dst = std::env::temp_dir().join(format!("fh-cli-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dst);
+    for sub in ["validation/cases", "fixtures/inp"] {
+        let from = std::path::Path::new(&root()).join(sub);
+        for entry in walk(&from) {
+            let to = dst.join(sub).join(entry.strip_prefix(&from).unwrap());
+            std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+            std::fs::copy(&entry, &to).unwrap();
+        }
+    }
+    dst
+}
+
+fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(dir).unwrap() {
+        let p = e.unwrap().path();
+        if p.is_dir() {
+            out.extend(walk(&p));
+        } else {
+            out.push(p);
+        }
+    }
+    out
+}
+
+#[test]
+fn validate_checks_each_quantity_against_the_meshes() {
+    // The shipped cases pass (sets, steps and element types exist in every mesh).
+    assert_eq!(fh(&["validate", "--root", &root()]).status.code(), Some(0));
+    let cases: [(&str, &str, &str, &str); 3] = [
+        (
+            "cantilever/case.toml",
+            "set = \"tip\"",
+            "set = \"nope\"",
+            "no node set `nope`",
+        ),
+        (
+            "cantilever/case.toml",
+            "step = \"tip-load\"",
+            "step = \"other\"",
+            "no step `other`",
+        ),
+        (
+            "cantilever/case.toml",
+            "[\"C3D8I\"]",
+            "[\"C3D8\"]",
+            "has element type C3D8I",
+        ),
+    ];
+    for (i, (file, from, to, needle)) in cases.iter().enumerate() {
+        let dir = copy_root(&format!("spec{i}"));
+        let path = dir.join("validation/cases").join(file);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains(from), "{from}");
+        std::fs::write(&path, text.replace(from, to)).unwrap();
+        let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
+        assert_eq!(out.status.code(), Some(1), "{needle}");
+        let err = text_of(out.stderr);
+        assert!(err.contains(needle), "`{err}` lacks `{needle}`");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+fn text_of(bytes: Vec<u8>) -> String {
+    String::from_utf8(bytes).unwrap()
+}

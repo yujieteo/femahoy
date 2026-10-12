@@ -30,4 +30,6 @@ The reference value in `case.toml` is -0.01919619048 mm (z is the load direction
 
 ## Reference error
 
-Beam theory ignores the 3D stress state at the clamp. The fixture sets 2 percent of the reference as the stated error. This is an engineering estimate, not a derived bound. It needs captain confirmation.
+Beam theory ignores the 3D stress state at the clamp. The fixture sets 2 percent of the reference as the stated error. This is an engineering estimate, not a derived bound. The captain accepted it.
+
+The 3D model is stiffer than the beam, not softer. The solver values of the 4 meshes (PR 10) extrapolate to a tip deflection 0.56 percent smaller than the beam value. A clamp that stops the end section from warping and contracting may cause this. This cause was not isolated, so the reason is unexplained.

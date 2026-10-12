@@ -7,7 +7,8 @@ mod fixture;
 mod tolerance;
 
 pub use fixture::{
-    load_all, Case, Class, Extract, FixtureError, Reduction, Reference, FIELDS, SCHEMA_VERSION,
+    load_all, Case, Class, Field, FixtureError, Op, Quantity, Reference, ELEMENT_TYPES,
+    SCHEMA_VERSION,
 };
 pub use tolerance::{check_l, check_n, check_r, richardson};
 

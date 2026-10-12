@@ -29,23 +29,30 @@ pub fn richardson(values: &[f64], ratio: f64) -> Result<(f64, f64, f64), String>
     Ok((limit, order, (limit - f3).abs()))
 }
 
-/// Class L. The finest value must be within the estimated discretisation error
-/// plus the stated error of the reference (`reference_error` is relative).
+/// Class L. The extrapolated limit must be within the estimated discretisation error of the
+/// finest value plus the stated error of the reference (`reference_error` is relative).
+/// The observed order must lie in `order_band`. A low order widens the estimate, so it fails.
 pub fn check_l(
     values: &[f64],
     ratio: f64,
     reference: f64,
     reference_error: f64,
+    order_band: (f64, f64),
 ) -> Result<(), String> {
-    let (_, order, estimate) = richardson(values, ratio)?;
-    let fine = values[values.len() - 1];
+    let (limit, order, estimate) = richardson(values, ratio)?;
+    let (low, high) = order_band;
+    if !(low..=high).contains(&order) {
+        return Err(format!(
+            "observed order {order:.3} is outside the band {low} to {high}"
+        ));
+    }
     let allowed = estimate + reference_error * reference.abs();
-    let diff = (fine - reference).abs();
+    let diff = (limit - reference).abs();
     if diff <= allowed {
         Ok(())
     } else {
         Err(format!(
-            "|{fine} - {reference}| = {diff} exceeds {allowed} (order {order:.3})"
+            "|limit {limit} - {reference}| = {diff} exceeds {allowed} (order {order:.3})"
         ))
     }
 }
