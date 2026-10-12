@@ -341,7 +341,7 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     if flat.len() != 3 * n_points {
         return err("point count does not match the Piece tag");
     }
-    grid.points = flat.chunks_exact(3).map(|c| [c[0], c[1], c[2]]).collect();
+    grid.points = flat.as_chunks::<3>().0.to_vec();
     let conn = ints(
         find("Cells", "connectivity")?,
         &block(data, find("Cells", "connectivity")?)?,
@@ -389,8 +389,10 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
 }
 
 fn floats(raw: &[u8]) -> Vec<f64> {
-    raw.chunks_exact(8)
-        .map(|c| f64::from_le_bytes(c.try_into().unwrap_or([0; 8])))
+    raw.as_chunks::<8>()
+        .0
+        .iter()
+        .map(|c| f64::from_le_bytes(*c))
         .collect()
 }
 
