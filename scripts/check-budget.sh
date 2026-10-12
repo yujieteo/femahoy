@@ -17,6 +17,9 @@ cli:3000
 viewer:15000
 "
 
+# Total cap across all crates, from DESIGN.md section 11.
+TOTAL_BUDGET=85000
+
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 if ! command -v tokei >/dev/null 2>&1; then
@@ -57,6 +60,12 @@ for entry in $BUDGETS; do
 done
 
 echo "total: $total lines"
+if [ "$total" -gt "$TOTAL_BUDGET" ]; then
+  echo "OVER  total: $total lines > total budget $TOTAL_BUDGET"
+  status=1
+else
+  echo "ok    total: $total lines <= total budget $TOTAL_BUDGET"
+fi
 if [ "$status" -ne 0 ]; then
   echo "check-budget: FAILED" >&2
 else
