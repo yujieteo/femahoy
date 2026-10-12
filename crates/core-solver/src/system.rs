@@ -75,7 +75,7 @@ impl Default for Options {
 }
 
 /// Switch rule of `Method::Auto`. See DESIGN.md for the measurements.
-pub const DIRECT_MAX_DOFS: usize = 150_000;
+pub const DIRECT_MAX_DOFS: usize = 60_000;
 
 /// A solve fails if the relative residual of the reduced system is above this.
 pub const RESIDUAL_LIMIT: f64 = 1e-6;
@@ -325,11 +325,21 @@ pub fn estimate_bytes(s: &Sizes) -> u64 {
     let matrix = 12 * nnz + 4 * n;
     // The transform, and the full and reduced vectors of the step.
     let vectors = 24 * n + 48 * n + if s.iterative { 72 * n } else { 24 * n };
+    // The Cholesky factor of a 3-D mesh: fill grows as n^1.35 (measured, DESIGN.md section 11).
+    let factor = if s.iterative {
+        0
+    } else {
+        (400.0 * (n as f64).powf(1.35)) as u64
+    };
     // The results of one step and the output grid.
     let results = 72 * nodes + 56 * els + 120 * nodes + 70 * els;
     // The chunk buffers of the threads.
     let chunks = s.threads as u64 * 256 * std::mem::size_of::<Evaluation>() as u64;
-    model + mesh + matrix + vectors + results + chunks
+    // Allocator slack, the input text, and parts the terms miss. The measured peak is 1.21 to
+    // 1.26 times the sum (iterative path, 1M elements: 1.26). The factor 1.35 keeps the
+    // estimate above the peak (DESIGN.md section 11).
+    let sum = model + mesh + matrix + vectors + factor + results + chunks;
+    sum + sum * 7 / 20
 }
 
 struct Mesh<'a> {

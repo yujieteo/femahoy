@@ -4,7 +4,7 @@
 //! Event lines go to stdout. A `cancel` line on stdin, or the end of stdin,
 //! stops the run. `FH_THREADS` sets the number of element threads.
 
-use std::io::{BufRead, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,10 +63,24 @@ fn main() -> ExitCode {
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = cancel.clone();
     std::thread::spawn(move || {
-        for line in std::io::stdin().lock().lines() {
-            match line {
-                Ok(l) if l.trim() != "cancel" => continue,
-                _ => break,
+        // Read in blocks and keep only the start of each line, so a stream with no
+        // line ends (for example /dev/zero) cannot use memory without limit.
+        let mut stdin = std::io::stdin().lock();
+        let (mut block, mut line) = ([0u8; 4096], Vec::<u8>::new());
+        'read: loop {
+            let n = match stdin.read(&mut block) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            for &b in &block[..n] {
+                if b == b'\n' {
+                    if line.trim_ascii() == b"cancel" {
+                        break 'read;
+                    }
+                    line.clear();
+                } else if line.len() < 64 {
+                    line.push(b);
+                }
             }
         }
         flag.store(true, Ordering::Relaxed);
