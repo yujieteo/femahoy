@@ -147,6 +147,31 @@ impl Fx<'_> {
                 return Err(self.err(Some(item), format!("unknown key `{k}`")));
             }
         }
+        // Only the keys of the declared class are allowed.
+        let class_name = self.string(table, "class")?;
+        let own: &[&str] = match class_name.as_str() {
+            "L" => &["ratio", "reference_error"],
+            "N" => &["rel_tol", "abs_tol"],
+            "R" => &["rate", "band"],
+            _ => &[],
+        };
+        for (k, item) in table.iter() {
+            let is_class_key = [
+                "ratio",
+                "reference_error",
+                "rel_tol",
+                "abs_tol",
+                "rate",
+                "band",
+            ]
+            .contains(&k);
+            if is_class_key && !own.contains(&k) && !own.is_empty() {
+                return Err(self.err(
+                    Some(item),
+                    format!("`{k}` does not belong to class {class_name}"),
+                ));
+            }
+        }
         let id = self.string(table, "id")?;
         let justification = self.string(table, "justification")?;
         let derivation = dir.join(self.string(table, "derivation")?);

@@ -20,6 +20,11 @@ pub fn richardson(values: &[f64], ratio: f64) -> Result<(f64, f64, f64), String>
         return Err("values are not monotone, so the mesh is not in the asymptotic range".into());
     }
     let order = (d12 / d23).ln() / ratio.ln();
+    if order <= 0.0 {
+        return Err(format!(
+            "observed order {order:.3} is not above 0, so the values do not converge"
+        ));
+    }
     let limit = f3 - d23 / (ratio.powf(order) - 1.0);
     Ok((limit, order, (limit - f3).abs()))
 }

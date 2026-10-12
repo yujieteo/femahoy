@@ -47,6 +47,14 @@ fn richardson_rejects_fewer_than_three_values_and_non_monotone_data() {
 }
 
 #[test]
+fn richardson_rejects_diverging_values() {
+    // Differences grow towards the fine mesh: observed order is -1.
+    let err = richardson(&[1.0, 1.1, 1.3], 2.0).unwrap_err();
+    assert!(err.contains("order"), "{err}");
+    assert!(check_l(&[1.0, 1.1, 1.3], 2.0, 1.3, 0.5).is_err());
+}
+
+#[test]
 fn class_l_tolerance_is_discretisation_error_plus_reference_error() {
     // Fine value 5, estimated error 3, reference 7.5, stated reference error 0.5 (7.5 * 0.0667).
     let v = [50.0, 14.0, 5.0];
@@ -114,6 +122,19 @@ fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
             None,
         ),
         (body(1, &format!("{n}\nbogus = 1")), "unknown key", Some(8)),
+        (
+            body(1, &format!("{n}\nratio = 2")),
+            "`ratio` does not belong to class N",
+            Some(8),
+        ),
+        (
+            body(
+                3,
+                "class = \"L\"\nratio = 2\nreference_error = 0\nrel_tol = 1",
+            ),
+            "`rel_tol` does not belong to class L",
+            Some(8),
+        ),
         (body(1, n).replace("m.inp", "nope.inp"), "nope.inp", Some(4)),
         (
             body(1, "class = \"N\"\nrel_tol = \"x\"\nabs_tol = 0"),
