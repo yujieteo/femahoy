@@ -52,6 +52,8 @@ impl std::error::Error for Error {}
 pub enum Cell {
     Int(i64),
     Num(f64),
+    /// A margin: below 1 is a pass, so rounding never lifts it to 1.
+    Margin(f64),
     Text(String),
 }
 
@@ -94,13 +96,21 @@ pub fn round_sig(x: f64, digits: usize) -> f64 {
     format!("{:.*e}", digits.max(1) - 1, x).parse().unwrap_or(x)
 }
 
+fn json_num(x: f64) -> JsonValue {
+    Number::from_f64(x)
+        .map(JsonValue::Number)
+        .unwrap_or_else(|| JsonValue::String(x.to_string()))
+}
+
 fn json(cell: &Cell, precision: usize) -> JsonValue {
     match cell {
         Cell::Int(i) => JsonValue::Number(Number::from(*i)),
         Cell::Text(t) => JsonValue::String(t.clone()),
-        Cell::Num(x) => Number::from_f64(round_sig(*x, precision))
-            .map(JsonValue::Number)
-            .unwrap_or_else(|| JsonValue::String(x.to_string())),
+        Cell::Margin(x) if *x < 1.0 => {
+            let below = 1.0 - 10f64.powi(-(precision.max(1) as i32));
+            json_num(round_sig(*x, precision).min(round_sig(below, precision)))
+        }
+        Cell::Num(x) | Cell::Margin(x) => json_num(round_sig(*x, precision)),
     }
 }
 

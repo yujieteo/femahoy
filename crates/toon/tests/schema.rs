@@ -480,3 +480,27 @@ fn exit_codes_match_the_schema() {
     .map(ExitCode::code);
     assert_eq!(codes, [0, 1, 2, 3]);
 }
+
+#[test]
+fn pass_margin_never_prints_as_one() {
+    let mut c = sample_case();
+    c.quantities = vec![
+        quantity("a", 1.0, 1.0, 0.99996),
+        quantity("b", 1.0, 1.0, 1.00004),
+        quantity("c", 1.0, 1.0, 0.5),
+    ];
+    let text = c.render(&Opts::default()).unwrap();
+    assert!(text.contains("  a,1,1,0.9999\n"), "{text}");
+    assert!(text.contains("  b,1,1,1\n"), "{text}");
+    assert!(text.contains("  c,1,1,0.5\n"), "{text}");
+    let v = Validate {
+        header: header("validation/cases", "c01d9e", "unspecified", Status::Ok),
+        cases: vec![case("near", "L", CaseStatus::Pass, 0.99996)],
+        diagnostics: vec![],
+        next: vec![],
+    };
+    assert!(v
+        .render(&Opts::default())
+        .unwrap()
+        .contains("  near,L,pass,0.9999\n"));
+}

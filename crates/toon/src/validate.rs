@@ -1,7 +1,7 @@
 //! `fh.validate` and `fh.validate.case` (schema sections 3.3 and 3.4).
 
 use crate::common::{finish, start, tbl, Diag, Header, Next};
-use crate::wrap::{Doc, Error, Opts};
+use crate::wrap::{Cell, Doc, Error, Opts};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaseStatus {
@@ -64,7 +64,7 @@ impl Validate {
                     c.id.as_str().into(),
                     c.class.as_str().into(),
                     c.status.as_str().into(),
-                    c.margin.into(),
+                    Cell::Margin(c.margin),
                 ]
             },
         );
@@ -136,7 +136,7 @@ impl ValidateCase {
                     q.name.as_str().into(),
                     q.value.into(),
                     q.reference.into(),
-                    q.margin.into(),
+                    Cell::Margin(q.margin),
                 ]
             },
         );
