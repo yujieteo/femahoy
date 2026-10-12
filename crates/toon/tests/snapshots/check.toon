@@ -1,0 +1,37 @@
+schema: fh.check
+version: 1.0.0
+source: models/bracket.inp
+source_hash: 9f3c1a
+units: unspecified
+status: error
+totals:
+  nodes: 48210
+  elements: 30112
+  sets: 14
+  materials: 1
+  steps: 1
+  errors: 1
+  warnings: 2
+element_types[2]{type,count}:
+  C3D10,29800
+  C3D8I,312
+sets[3]{name,kind,size}:
+  Part-1-1.FIXED,nset,412
+  Part-1-1.LOAD,surface,96
+  Part-1-1.ALL,elset,30112
+sets_more: 11
+materials[1]{name,behaviour,used_by}:
+  STEEL,elastic-plastic,1
+steps[1]{name,procedure,nlgeom,loads}:
+  Step-1,static,no,2
+quality[3]{metric,worst,limit,bad}:
+  min_scaled_jacobian,0.21,0.1,0
+  max_aspect_ratio,8.4,10,0
+  inverted,0,0,0
+diagnostics[3]{code,severity,line,message}:
+  INP021,error,1204,unknown keyword *CONTACT CONTROLS
+  INP040,warning,88,set Part-1-1.SPARE is never used
+  MSH003,warning,2310,element E1822 is below the quality limit
+next[2]{cmd,why}:
+  fh check models/bracket.inp --full,see the fix hint for INP021
+  fh docs keywords,list supported keywords

@@ -7,3 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+toon-format = { version = "=0.7.0", default-features = false }
+
+[dev-dependencies]
+serde_json = "1"
