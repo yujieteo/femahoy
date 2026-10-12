@@ -7,7 +7,7 @@
 ## Inputs and outputs
 - Input: fixtures in `validation/cases/<id>/`. Each holds the input files, the reference values, the tolerance class and the justification (DESIGN.md section 10.4).
 - Output: `fh validate` reports pass or fail for each case (DESIGN.md section 10.5).
-- Fixture schema: decided in M1 (DESIGN.md section 10.4).
+- Fixture schema: see `crates/validation/SCHEMA.md`.
 
 ## Invariants the code must keep
 - Fixtures are data files, not prose (DESIGN.md section 10.4).
