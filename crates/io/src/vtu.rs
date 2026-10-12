@@ -309,8 +309,8 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
             .find(|n| tag.strip_prefix(*n).is_some_and(|r| r.starts_with('>')))
         {
             section = name.into();
-        } else if tag.starts_with("DataArray") {
-            let tag = format!(" {}", &tag["DataArray".len()..]);
+        } else if let Some(rest) = tag.strip_prefix("DataArray") {
+            let tag = format!(" {rest}");
             let get = |k: &str| attr(&tag, k).map(str::to_owned);
             headers.push(Header {
                 section: section.clone(),

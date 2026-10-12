@@ -6,8 +6,10 @@
 mod constraint;
 mod dense;
 pub mod element;
+mod output;
 mod system;
 
+pub use output::{write_results, CoreSolver};
 pub use system::{solve, Solution, StepResult};
 
 use std::fmt;

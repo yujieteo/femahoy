@@ -183,6 +183,9 @@ version = "0.0.0"
 dependencies = [
  "faer",
  "fh-inp",
+ "fh-io",
+ "fh-solver-api",
+ "fh-toon",
 ]
 
 [[package]]
