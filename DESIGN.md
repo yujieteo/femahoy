@@ -331,17 +331,21 @@ Distribution: a single `fh` binary (Homebrew and a direct download). The static 
 |---|---|---|
 | M0 Skeleton | Workspace with all crates. `fh --help`. CI: fmt, clippy, test, `tokei` budget check. | CI is green. |
 | M1 Parser and harness | `inp` reads the keyword subset for linear static. Gmsh `.msh` import. Validation harness with the first three fixtures (patch test, cantilever, Lamé). TOON summary schema v1. Fixture schema. | `fh check` works on all fixtures. `fh validate` runs and reports "no solver". |
-| M2 Linear solver | `C3D8I`, `C3D8`, `C3D10`. DOF elimination. `faer` Cholesky. Boundary conditions, loads, `*COUPLING`, `*EQUATION`, `*MPC`. VTU and PVD output. Subprocess protocol v1. | All linear fixtures pass. Manufactured-solution rates pass. |
+| M2 Linear solver | `C3D8I`, `C3D8`, `C3D10`. DOF elimination. Sparse solver (`faer` Cholesky) that fits 1 million `C3D8` elements in 16 GB (D-06). Boundary conditions, loads, `*COUPLING`, `*EQUATION`, `*MPC`. Restart that is safe against partial files (D-09). Three result formats: plain text, VTU with PVD, legacy VTK (D-04). `Material` trait with elasticity, and steps that keep the later analysis types possible (D-10). Subprocess protocol v1. | All linear fixtures pass. Manufactured-solution rates pass. Restart test passes. Builds and passes on aarch64 (D-07). |
 | M3 Daemon and viewer | `fh serve` with token and `Origin` checks. wasm viewer: mesh, outlines, deformed shape, one contour field, step selector. Terminal sidebar. Both pane backends. | The viewer shows the M2 results in a browser. Herdr runs in the sidebar. |
 | M4 Chat and agents | Leader in headless mode in the chat. Teammates in panes. Teammate tree. `femahoy.toml`. `fh init` installs skills. Both connection paths. | The leader builds and solves a cantilever model from one chat request, and every action shows as an `fh` command. |
 | **First user test** | M0 to M4, plus the static demo. Budget review. | |
-| M5 Contact | Newton with load stepping and cutback. `C3D10M`. Augmented Lagrange node-to-surface contact. | Hertz cases pass. |
-| M6 Plasticity | J2 with isotropic hardening. | Hill cylinder and uniaxial bar pass. |
-| M7 Large displacement | `NLGEOM=YES`, corotational update. | Elastica and rigid-rotation cases pass. |
+| M5 Nonlinear solver | Newton with load stepping and cutback. A linear fallback for the same model. Assembly stays ready for parallel work. `C3D10M`. | Nonlinear fixtures pass. A linear case gives the same result in both paths. |
+| M6 Plasticity and contact | J2 plasticity with isotropic hardening, through the `Material` trait. Contact is a separate contribution to the system, not part of the element. Augmented Lagrange node-to-surface contact. | Hill cylinder, uniaxial bar and Hertz cases pass. |
+| M7 Large displacement | `NLGEOM=YES` through the deformation gradient, so that elements and materials use one path. | Elastica and rigid-rotation cases pass. |
 | M8 Birth and death | `*MODEL CHANGE`. | Statically determinate cases pass. |
 | M9 Submodelling | `*SUBMODEL`, `*BOUNDARY, SUBMODEL`. | Lamé sub-region passes against both references. |
 | M10 Native macOS | Native build. | Same tests as M3 and M4, native. |
 | M11 Windows | Windows build, plain PTY backend. | Same tests, on Windows. |
+
+Later, with no milestone number yet: a GPU backend (Metal first, D-08), `fh mesh`, and a mesher written in Rust (D-02).
+
+**Not built yet:** everything from M2 on, the GPU backend, `fh mesh` and the Rust mesher. The decision log (section 17) states the build status of each decision.
 
 The managed LLM tier is a separate track. It starts after the first user test.
 
@@ -356,7 +360,7 @@ The managed LLM tier is a separate track. It starts after the first user test.
 | Subprocess protocol schema | M2 |
 | Daemon HTTP and WebSocket API | M3 |
 | Template mapping format | After the first user test |
-| Friction in contact | After M5 |
+| Friction in contact | After M6 |
 | OS sandbox for subprocess solvers | After M10 |
 | Managed LLM tier (proxy, accounts, billing) | After the first user test |
 | NAFEMS cases | After the legal check |
@@ -383,3 +387,89 @@ The managed LLM tier is a separate track. It starts after the first user test.
 | Fixture | One validation case: inputs, reference values, tolerance class, justification. |
 | Template | A user input syntax with a mapping onto the Abaqus-shaped model. |
 | Unvalidated | A result from a solver that has not passed the validation suite. |
+
+---
+
+## 17. Decision log
+
+Each entry has an ID, the choice, the reason, the rejected options, and what would reverse it. All entries below are decided by the captain. Code that shows a decision has a comment `// Decision D-xx, see DESIGN.md`. A decision with no such comment is not built yet.
+
+### D-01 Fixture schema is TOML
+- **Decided by:** the captain.
+- **Choice:** Each validation case has a `case.toml` file.
+- **Reason:** TOML is easy for people and agents to read and edit. It has comments.
+- **Rejected:** JSON (no comments), YAML (many parse traps).
+- **Reverse if:** the harness needs a structure that TOML cannot express.
+- **Built:** yes (`validation` crate).
+
+### D-02 gmsh stays external, `fh mesh` is approved, own Rust mesher later
+- **Decided by:** the captain.
+- **Choice:** femahoy calls gmsh as an external program and never links it. The command `fh mesh` is approved. A mesher written in Rust comes later.
+- **Reason:** gmsh is GPL, and the commercial licence (section 2) forbids linking GPL code. A Rust mesher removes the need for the user to install gmsh.
+- **Rejected:** link gmsh, bundle gmsh.
+- **Reverse if:** gmsh changes its licence, or the Rust mesher is good enough to replace it.
+- **Built:** `.msh` import only. `fh mesh` and the Rust mesher are not built yet.
+
+### D-03 TOON is for agents, VTU keeps full precision
+- **Decided by:** the captain.
+- **Choice:** TOON output is only for agent reading. VTU files keep the full-precision values. A `precision` key sets the significant figures in TOON. The default is 4.
+- **Reason:** Fewer digits save agent tokens. Full data stays in the files for exact work.
+- **Rejected:** full precision in TOON, one fixed precision with no key.
+- **Reverse if:** agents need more digits to make correct decisions.
+- **Built:** yes (`toon` crate, `--precision`).
+
+### D-04 Result formats are plain text, VTU and legacy VTK
+- **Decided by:** the captain.
+- **Choice:** The solver writes plain text, VTU (with PVD) and legacy VTK. It does not write HDF5 or Exodus.
+- **Reason:** These formats need no large library. HDF5 and Exodus need C libraries that are hard to build on all platforms.
+- **Rejected:** HDF5, Exodus.
+- **Reverse if:** a model is too big for these formats, or a customer needs one of the rejected formats.
+- **Built:** not yet. M2 builds the three formats.
+
+### D-05 Model input stays Abaqus-style `.inp`, TOML holds only case metadata
+- **Decided by:** the captain.
+- **Choice:** The model is an Abaqus-style `.inp` file. TOML files hold case metadata only, such as references and tolerances. TOML never holds model data.
+- **Reason:** One model format keeps the parser small and keeps Abaqus users at home.
+- **Rejected:** a TOML model format, a second model format next to `.inp`.
+- **Reverse if:** the template mapping (section 14) shows that a second format is needed.
+- **Built:** yes (`inp` and `validation` crates).
+
+### D-06 Target machine
+- **Decided by:** the captain.
+- **Choice:** The target is x86-64 with SSE4.2 and no AVX, 4 to 6 cores, 16 GB of RAM, and a slow disk. A model with 1 million C3D8 elements must solve within 16 GB.
+- **Reason:** This is the machine of the expected user.
+- **Rejected:** code that needs AVX, solvers that need more than 16 GB or fast disk swap.
+- **Reverse if:** the captain changes the target machine.
+- **Built:** not yet checked. No memory test exists. M2 adds one.
+
+### D-07 Code builds and passes on aarch64
+- **Decided by:** the captain.
+- **Choice:** The primary test machine is an Apple Silicon MacBook. All code builds and passes tests on aarch64 with default flags.
+- **Reason:** The captain tests on that machine.
+- **Rejected:** x86-only intrinsics, flags that only work on x86-64.
+- **Reverse if:** the captain changes the test machine.
+- **Built:** a rule for all crates. CI does not check aarch64 yet.
+
+### D-08 GPU later, with neutral interfaces
+- **Decided by:** the captain.
+- **Choice:** The solver must work on a GPU later. Interfaces stay neutral. Metal is the GPU API on the Mac. CUDA alone is not enough.
+- **Reason:** The test machine has a Metal GPU.
+- **Rejected:** CUDA-only design.
+- **Reverse if:** no GPU backend is ever needed.
+- **Built:** not yet. No GPU code exists.
+
+### D-09 Restart is safe against partial files
+- **Decided by:** the captain.
+- **Choice:** A run can die part way. A restart must not read a partial file. Writers write to a temporary file and rename it when complete.
+- **Reason:** Long runs on a slow disk can die at any time.
+- **Rejected:** write in place, trust any file that exists.
+- **Reverse if:** a better atomic method exists on all target platforms.
+- **Built:** not yet. M2 builds restart.
+
+### D-10 Element and step design stays open to later analysis types
+- **Decided by:** the captain.
+- **Choice:** The element and step design must stay compatible with parallel assembly, nonlinear analysis (with a linear fallback), plasticity, contact and large displacement. Material is separate from element properties.
+- **Reason:** A change of these interfaces later costs more than a careful design now.
+- **Rejected:** element code that holds material laws, a design for linear analysis only.
+- **Reverse if:** a later milestone shows that the interfaces cannot carry one of these analysis types.
+- **Built:** not yet. The `Material` trait and the step design start in M2.

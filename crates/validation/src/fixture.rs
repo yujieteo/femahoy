@@ -1,4 +1,5 @@
 //! The fixture schema: `validation/cases/<id>/case.toml` (see `SCHEMA.md`).
+//! Decision D-01, see DESIGN.md.
 
 use std::fmt;
 use std::path::{Path, PathBuf};

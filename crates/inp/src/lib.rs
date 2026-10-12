@@ -1,4 +1,5 @@
 //! `.inp` reader and writer, Abaqus-shaped model, template mapping.
+//! Decision D-05, see DESIGN.md: the model input is Abaqus-style `.inp`.
 //!
 //! M1 start: the reader for the linear static keyword subset.
 
