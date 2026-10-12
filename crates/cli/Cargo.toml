@@ -11,3 +11,5 @@ name = "fh"
 path = "src/main.rs"
 
 [dependencies]
+fh-inp = { path = "../inp" }
+fh-validation = { path = "../validation" }

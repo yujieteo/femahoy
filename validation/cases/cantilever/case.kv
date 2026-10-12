@@ -1,0 +1,12 @@
+# Cantilever, tip load in z. Class L: 3 meshes, 4, 8 and 16 elements along x.
+id = cantilever
+class = L
+justification = Reference is Timoshenko beam theory. Richardson over 3 meshes gives the discretisation error. The reference error of 2 percent is a proposal for the captain. It covers the 3D clamp effect, which beam theory ignores.
+derivation = derivation.md
+mesh = ../../../fixtures/inp/cantilever.inp
+mesh = mesh-8.inp
+mesh = mesh-16.inp
+ratio = 2
+reference_error = 0.02
+# Tip deflection in z (mean of the 4 tip nodes), in mm.
+ref = tip_deflection_z -0.01919619048
