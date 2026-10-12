@@ -17,7 +17,7 @@ Rule source: our own rules, based on the AXI principles (Agent eXperience Interf
 | R5 | **Field limit.** A table has at most 4 fields. This rule has no exceptions, including with `--full`. |
 | R6 | **`--full`.** Adds detail tables next to the main tables, joined by a shared key. It never adds fields to an existing table. |
 | R7 | **Truncation.** The array length always equals the rows printed. A truncated table is followed by `<table>_more: <count>`. |
-| R8 | **Empty tables.** An empty table prints as `name[0]:` and is followed by `<table>_note: <reason>`. Never omit a table that the schema lists. |
+| R8 | **Empty tables.** A table with no rows prints as `name[0]:`. If the table has no data, it is followed by `<table>_note: <reason>`. If a row limit hid all rows, it is followed by `<table>_more: <count>` (R7) and has no note. Never omit a table that the schema lists. |
 | R9 | **Names.** Use names from the `.inp` file: instance-qualified names (`Part-1-1.TOP`), and the user's node and element labels (`N3310`, `E1822`). Never print internal indices. |
 | R10 | **Totals.** Every output has a `totals` block with pre-computed counts and statuses, so an agent can decide without reading the tables. |
 | R11 | **Diagnostics.** Every output has a `diagnostics` table (section 2.3), even when it is empty. |
