@@ -1,22 +1,29 @@
 # io skill
 
 ## Purpose
-- gmsh `.msh` import, VTU and PVD write and read (DESIGN.md section 11, row `io`).
+- gmsh `.msh` import. VTU and PVD write and read (DESIGN.md sections 6.2, 8 and 11).
+- Licence role: open API. Line budget: 5k, tests included (DESIGN.md section 11).
 
 ## Inputs and outputs
-- Not defined in M0. The crate holds no logic yet.
-- Licence role: open API. Line budget: 5k, tests included.
+- Input: `.msh` files from gmsh, and `.inp` meshes from other tools (DESIGN.md section 6.2).
+- Output: one VTU file per step, plus one PVD collection file (DESIGN.md section 8).
+- ParaView opens the PVD file directly (DESIGN.md section 8).
 
 ## Invariants the code must keep
-- Stay inside the line budget of 5k (DESIGN.md section 11). A crate over budget needs a written reason before it grows.
-- Licence role is "open API" (DESIGN.md section 11). Keep the crate inside that role.
+- Binary data is appended raw. Sets are stored as integer arrays (DESIGN.md section 8).
+- Read and write run in Rust. No C library is used (DESIGN.md section 8).
+- The wasm viewer and the submodel interpolation read the same files (DESIGN.md section 8).
+- Line budget: 5k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
-- Add a dependency without leader approval. Every dependency must use a permissive licence (AGENTS.md section 3, rule 4).
-- Copy text, `.inp` files, figures, or numbers from Abaqus manuals (AGENTS.md section 4).
+- Link gmsh. gmsh is GPL. femahoy calls it only as an external program (DESIGN.md sections 6.2 and 11.1).
+- Bundle gmsh. The user installs gmsh (DESIGN.md section 6.2).
+- Add a mesher to this crate. femahoy has no mesher of its own (DESIGN.md section 6.2).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
-- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `scripts/check-budget.sh` (AGENTS.md section 6).
+- M1 done-when: `fh check` works on all fixtures, including the gmsh import (DESIGN.md section 13).
+- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
 
 ## Examples
-- None in M0.
+- Not yet decided.

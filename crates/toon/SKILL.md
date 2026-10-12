@@ -1,22 +1,26 @@
 # toon skill
 
 ## Purpose
-- agent-facing summaries and queries (DESIGN.md section 11, row `toon`).
+- Agent-facing summaries and queries (DESIGN.md sections 8 and 11).
+- Licence role: open API. Line budget: 3k, tests included (DESIGN.md section 11).
 
 ## Inputs and outputs
-- Not defined in M0. The crate holds no logic yet.
-- Licence role: open API. Line budget: 3k, tests included.
+- Input: a summary or query that an agent asks for (DESIGN.md section 8).
+- Output: TOON text. `fh check`, `fh results` and the solver subprocess summary use it (DESIGN.md sections 6.1, 8 and 9.1).
+- TOON summary schema v1: decided in M1 (DESIGN.md section 13).
 
 ## Invariants the code must keep
-- Stay inside the line budget of 3k (DESIGN.md section 11). A crate over budget needs a written reason before it grows.
-- Licence role is "open API" (DESIGN.md section 11). Keep the crate inside that role.
+- TOON holds summaries and query answers only (DESIGN.md section 8).
+- Full field data never goes into TOON (DESIGN.md section 8).
+- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
-- Add a dependency without leader approval. Every dependency must use a permissive licence (AGENTS.md section 3, rule 4).
-- Copy text, `.inp` files, figures, or numbers from Abaqus manuals (AGENTS.md section 4).
+- Write full field arrays into TOON (DESIGN.md section 8).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
-- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `scripts/check-budget.sh` (AGENTS.md section 6).
+- M1 done-when: `fh check` works on all fixtures, with the TOON summary schema v1 (DESIGN.md section 13).
+- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
 
 ## Examples
-- None in M0.
+- Query: "maximum Mises stress in set X, step 2" (DESIGN.md section 8).

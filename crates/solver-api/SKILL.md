@@ -1,22 +1,28 @@
 # solver-api skill
 
 ## Purpose
-- `Solver` trait, subprocess protocol, registry (DESIGN.md section 11, row `solver-api`).
+- The `Solver` trait, the subprocess protocol and the registry (DESIGN.md sections 9.1 and 11).
+- Licence role: open API. Line budget: 3k, tests included (DESIGN.md section 11).
 
 ## Inputs and outputs
-- Not defined in M0. The crate holds no logic yet.
-- Licence role: open API. Line budget: 3k, tests included.
+- `Solver` trait: a trusted Rust solver implements it and registers by name. The core solver is the reference implementation (DESIGN.md section 9.1).
+- Subprocess protocol: an executable takes an `.inp` file path. It writes VTU and PVD results and a TOON summary (DESIGN.md section 9.1).
+- The subprocess protocol is versioned. Protocol v1 is built in M2 (DESIGN.md sections 9.1 and 13).
 
 ## Invariants the code must keep
-- Stay inside the line budget of 3k (DESIGN.md section 11). A crate over budget needs a written reason before it grows.
-- Licence role is "open API" (DESIGN.md section 11). Keep the crate inside that role.
+- Each subprocess run has its own working folder (DESIGN.md section 9.2).
+- Each subprocess run has a time limit and a memory limit. The values are not yet decided (DESIGN.md section 9.2).
+- Results from a solver that has not passed the validation suite are marked unvalidated (DESIGN.md section 9.2).
+- The agents run under the harness's own permission system (DESIGN.md section 9.2).
+- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
-- Add a dependency without leader approval. Every dependency must use a permissive licence (AGENTS.md section 3, rule 4).
-- Copy text, `.inp` files, figures, or numbers from Abaqus manuals (AGENTS.md section 4).
+- Mark results from an unvalidated solver as validated (DESIGN.md section 9.2).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
-- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `scripts/check-budget.sh` (AGENTS.md section 6).
+- M2 done-when: all linear fixtures pass, and the subprocess protocol v1 works (DESIGN.md section 13).
+- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
 
 ## Examples
-- None in M0.
+- Not yet decided.

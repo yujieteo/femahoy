@@ -1,26 +1,32 @@
 # cli skill
 
 ## Purpose
-- `fh` commands (DESIGN.md section 11, row `cli`). The binary is `fh`. Never `fea`.
+- The `fh` command line. It works alone over SSH and tmux, with no GUI (DESIGN.md section 3).
+- It talks to a running daemon. It runs the solver directly when no daemon runs (DESIGN.md section 4.2).
+- Licence role: app. Line budget: 3k, tests included (DESIGN.md section 11).
 
 ## Inputs and outputs
-- Input: command line arguments. M0 accepts `-h` and `--help` only.
-- Output: usage text on stdout for help. Usage text and errors on stderr for unknown arguments, exit code 2.
-- Licence role: app. Line budget: 3k, tests included.
+- Input: command line arguments.
+- Planned commands: `check`, `validate`, `results`, `plot`, `serve`, `init`, `team`, `skills` (DESIGN.md sections 5 to 8).
+- `fh check <file.inp>` parses and checks a model. It prints a TOON summary (DESIGN.md section 6.1).
+- `fh results` prints TOON summaries. `fh plot` writes images (DESIGN.md section 8).
+- M0: `fh --help` works (DESIGN.md section 13). The exact help text is not yet decided.
+- Output format for each command beyond M0: not yet decided.
 
 ## Invariants the code must keep
-- `fh --help` prints a usage line and the planned subcommands (`check`, `validate`, `results`, `plot`, `serve`, `init`, `team`, `skills`) marked "not implemented", then exits 0 (DESIGN.md section 13, M0).
-- An unknown argument prints usage to stderr and exits 2.
-- Stay inside the line budget of 3k (DESIGN.md section 11).
+- The binary is `fh`. Never `fea` (CLAUDE.md).
+- Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
+- The line budget is 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
-- Add a dependency without leader approval. M0 uses `std` only (AGENTS.md section 3, rule 4).
-- Use the binary name `fea`. The binary is `fh` (CLAUDE.md).
+- Name the binary `fea`.
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
+- Require a GUI for any command (DESIGN.md section 3).
 
 ## Validation hooks it must pass
-- `cargo test -p fh-cli` (tests in `tests/cli.rs`).
-- `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `scripts/check-budget.sh` (AGENTS.md section 6).
+- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
+- Command-level tests: not yet decided.
 
 ## Examples
-- `fh --help` prints usage and exits 0.
-- `fh --bogus` prints usage to stderr and exits 2.
+- `fh --help` prints the usage (DESIGN.md section 13, M0).
+- `fh check <file.inp>` checks a model and prints a TOON summary (DESIGN.md section 6.1).
