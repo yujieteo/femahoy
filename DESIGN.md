@@ -1,0 +1,385 @@
+# femahoy: Product Design
+
+Status: agreed design, before implementation.
+Scope: this file describes the product only. The rules for the agents that build femahoy are in `AGENTS.md`.
+Working name: "femahoy" stays provisional until the trademark, package-name, and domain checks are done (section 15).
+
+---
+
+## 1. Product
+
+femahoy is a finite element workflow in Rust. LLM agents and humans use it together.
+
+- The **engine** is the `fh` command-line program.
+- The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport and a terminal sidebar are beside the chat.
+- The **chat is the leader**. It plans the work and gives tasks to teammates. The UI shows each teammate while it runs.
+- The **input** is Abaqus-shaped `.inp` text.
+- **Agent-facing output** is TOON.
+- **Results** are VTU files, so ParaView can open them.
+- The **core solver** is validated end to end against analytical references.
+- Users and their agents can build their own solvers and input templates on the same crates.
+
+Description rule: say the product is "heavily inspired by Abaqus input conventions". Never use "Abaqus" as a product name or in a product name.
+
+---
+
+## 2. Licence and income
+
+- **Licence:** AGPL-3.0 for all code. A commercial licence is for sale to companies that cannot accept AGPL.
+- **Contributions:** contributors sign a CLA that lets the owner relicense their code (for example, through CLA Assistant). A lawyer must check the CLA text.
+- **Income:**
+  1. Donations (GitHub Sponsors or similar).
+  2. Commercial licences.
+  3. A managed LLM tier, after the first user test. Users without their own API key pay a subscription, and femahoy supplies the model access through a hosted proxy at a margin over API cost. This tier must use API keys. A personal Claude or ChatGPT subscription cannot be resold.
+- **Portfolio:** a static, read-only web demo of the viewer with stored results. It has no solver and no agents.
+
+---
+
+## 3. Interfaces
+
+| Interface | Purpose |
+|---|---|
+| Chat | Main interface. One conversation with the leader. Every leader action shows as the `fh` command it ran. |
+| Teammate tree | Shows each teammate, its state (working, blocked, done, idle), and its pane. |
+| 3D viewport | Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector (first milestone). |
+| Terminal sidebar | A real shell. Herdr runs here unchanged. |
+| `fh` CLI | Works alone over SSH and tmux, with no GUI. |
+| Custom panels | Buttons for frequent commands. Each button runs an `fh` command. |
+
+Rule: the keyboard is the main input. The mouse is for the viewport and the custom panels.
+
+---
+
+## 4. Architecture
+
+```
+ browser (wasm UI)        native UI (eframe)        fh CLI (SSH / tmux)
+        \                       |                        /
+         \---- HTTP + WebSocket (127.0.0.1, token) -----/
+                                |
+                         fh serve (daemon)
+     +-----------+-----------+-----------+-----------+-----------+
+     |  solver   |   PTY     |  panes    |  agents   |  files    |
+     | (in-proc  | (terminal | (herdr or | (Claude   | (project, |
+     |  or sub-  |  sidebar) |  plain    |  Code,    |  results) |
+     |  process) |           |  PTY)     |  Codex)   |           |
+     +-----------+-----------+-----------+-----------+-----------+
+```
+
+### 4.1 Daemon (`fh serve`)
+
+- Owns the solver runs, the PTY, the pane backend, the agent processes, the API keys, and the project files.
+- Binds to 127.0.0.1 only.
+- Makes a random token at start, as Jupyter does. Every HTTP and WebSocket request must carry the token.
+- Rejects any request whose `Origin` is not the daemon's own page.
+- Serves the wasm UI itself, then opens the user's browser at that page.
+- The browser never holds an API key.
+
+### 4.2 Clients
+
+- **wasm UI:** the first build target. The same `eframe` code as the native UI.
+- **Native UI:** the same code, built for macOS and then for Windows.
+- **`fh` CLI:** talks to a running daemon, or runs the solver directly when no daemon runs.
+
+### 4.3 Pane backend
+
+The daemon defines a `PaneBackend` interface with two implementations:
+
+1. **herdr**, the default when it is installed. The daemon drives it through herdr's CLI and socket.
+2. **Plain PTY**, owned by the daemon. This is used when herdr is not installed, and on Windows while herdr's Windows support is beta.
+
+The teammate tree reads from `PaneBackend`, never from herdr directly. femahoy never bundles herdr.
+
+---
+
+## 5. Agents in the product
+
+### 5.1 Runtime
+
+- Every agent is a CLI harness process: Claude Code or Codex. femahoy has no agent loop of its own.
+- Two connection paths in v1:
+  1. **User's CLI login:** the harness uses the user's own Claude Code or Codex login.
+  2. **User's API key:** the daemon passes the key in the process environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+- The **leader** runs in headless mode with a JSON event stream (for example, `claude -p --output-format stream-json` or `codex exec --json`). The chat renders this stream. Check the exact flags against the current harness docs during M4, because they change between versions.
+- **Teammates** run in panes through `PaneBackend`.
+- The leader starts teammates with `fh team spawn`, so each start is a visible command.
+
+### 5.2 Roles
+
+| Role | Job | Default model |
+|---|---|---|
+| Leader | Plans, delegates, merges accepted work. Writes no solver code. | Strongest model the user has |
+| Modeler | Builds and checks `.inp` models (preprocessing). | Mid tier |
+| Solver developer | Writes and changes user solver code. | Mid tier |
+| Postprocessor | Results queries, TOON summaries, plots. | Mid tier |
+| Validator | Runs the validation suite, reviews changes. | Strongest model the user has |
+
+Rules:
+- `femahoy.toml` in each project sets the harness and model for each role.
+- The validator always runs as a separate process from the leader.
+- When both vendors are available, the validator uses the other vendor. Codex checks Claude's work, and Claude checks Codex's work.
+- A failed validation blocks the merge. The leader cannot override it. The leader can re-plan, re-assign, or make the task smaller.
+- Each teammate works in its own git worktree and returns a structured report.
+
+### 5.3 Skills
+
+- Source: `.femahoy/skills/<role>/SKILL.md` in each project.
+- `fh init` creates the harness wiring: entries in `.claude/skills/` for Claude Code, and an `AGENTS.md` that points Codex to the same files.
+- Skills are versioned with the `fh` binary. `fh skills update` refreshes them.
+- Each `SKILL.md` must have these sections: **purpose**, **inputs and outputs**, **invariants the code must keep**, **forbidden actions**, **validation hooks it must pass**, **examples**. Other content is free-form.
+
+---
+
+## 6. Preprocessing
+
+### 6.1 Input
+
+- `.inp` is the native input format.
+- The internal model is Abaqus-shaped: parts, assembly, instances, nodes, elements, sets, surfaces, materials, sections, steps, loads, boundary conditions, interactions, and constraints mirror the keyword structure.
+- `fh check <file.inp>` parses and checks a model, then prints a TOON summary.
+
+### 6.2 Meshes
+
+- v1 imports meshes from `.inp` files made by other tools, and from gmsh `.msh` files.
+- The daemon can call gmsh as an external program, so agents can mesh geometry. Users install gmsh themselves. femahoy never links gmsh, because gmsh is GPL.
+- femahoy has no mesher of its own.
+
+### 6.3 User templates
+
+- A user can define an input syntax of their own.
+- A template is a mapping file from that syntax onto the Abaqus-shaped model, with its own validation cases.
+- The mapping format is an open item (section 14).
+
+---
+
+## 7. Solver
+
+### 7.1 Core capabilities
+
+All of these are required. They arrive one per release after the first user test (section 13).
+
+| Capability | Method |
+|---|---|
+| Static analysis (implicit, general) | Abaqus-style static step |
+| Linear algebra | `faer`, sparse Cholesky |
+| Constraints | DOF elimination with a master-slave transformation. The matrix stays symmetric positive definite. |
+| Nonlinear solution | Newton-Raphson, load stepping, automatic cutback |
+| Contact | Frictionless normal contact, active-set loop, augmented Lagrange, node-to-surface |
+| Plasticity | J2 with isotropic hardening, hypoelastic-plastic, corotational stress rate, updated Lagrangian |
+| Large displacement | `NLGEOM=YES`, corotational |
+| Element birth and death | `*MODEL CHANGE`. Removed elements leave the stiffness, and their stresses are set to zero. The mesh stays fixed. |
+| Submodelling | Displacement-driven boundary. Global displacements are interpolated at the driven nodes with the global mesh's shape functions. |
+
+### 7.2 Elements
+
+| Element type | Use |
+|---|---|
+| `C3D8I` | Default hex8. Incompatible modes for good bending results. |
+| `C3D8` | Hex8 with selective reduced integration (B-bar), for plasticity and near-incompressible flow. |
+| `C3D10` | Default tet10. |
+| `C3D10M` | Modified tet10 for contact surfaces. Corner-node forces stay correct under pressure. |
+
+For imported input, the `TYPE=` on `*ELEMENT` sets the element. For models that femahoy agents create, use `C3D8I` and `C3D10` unless the task needs the others.
+
+### 7.3 Keywords
+
+Scope: every keyword the validation cases need, in priority order. Any other keyword fails with a clear error that names the keyword and the line number.
+
+Starting list:
+- **Structure:** `*HEADING`, `*INCLUDE`, `*PART`, `*END PART`, `*ASSEMBLY`, `*INSTANCE`, `*END INSTANCE`, `*END ASSEMBLY`
+- **Mesh and sets:** `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*SURFACE`
+- **Material and section:** `*MATERIAL`, `*ELASTIC`, `*PLASTIC`, `*DENSITY`, `*SOLID SECTION`
+- **Steps and loads:** `*STEP` (with `NLGEOM`), `*STATIC`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*END STEP`
+- **Constraints:** `*COUPLING` with `*KINEMATIC` (RBE2 behaviour), `*COUPLING` with `*DISTRIBUTING` (RBE3 behaviour), `*EQUATION` (general linear MPC), `*MPC` (a subset of types)
+- **Contact:** `*SURFACE INTERACTION`, `*SURFACE BEHAVIOR` (with `AUGMENTED LAGRANGE`), `*CONTACT PAIR`
+- **Special:** `*MODEL CHANGE`, `*SUBMODEL`, `*BOUNDARY, SUBMODEL`
+- **Output:** `*OUTPUT`, `*NODE OUTPUT`, `*ELEMENT OUTPUT`, `*NODE PRINT`, `*EL PRINT`
+
+### 7.4 Compatibility
+
+- Keyword names and meanings match Abaqus for the supported subset.
+- `docs/compatibility.md` lists every difference. A test covers each difference.
+- Tests use our own `.inp` files. No Abaqus manual files go in the repo (section 10.1).
+
+---
+
+## 8. Results and postprocessing
+
+- **Results file:** one VTU file per step, plus a PVD collection file. Binary data is appended raw. Sets are stored as integer arrays. femahoy writes and reads these files in Rust, with no C library.
+- ParaView opens the PVD file directly.
+- The wasm viewer and the submodel interpolation read the same files.
+- **TOON** is used only for summaries and queries that agents ask for (for example, "maximum Mises stress in set X, step 2"). Full field data never goes into TOON.
+- **Commands:** `fh results` prints TOON summaries. `fh plot` writes images. The viewer shows the same data in 3D.
+- Weak point: very large models (millions of elements). A binary format of our own can come later if this becomes a problem.
+
+---
+
+## 9. Extensibility
+
+### 9.1 Solver interfaces
+
+| Interface | For | How it works |
+|---|---|---|
+| `Solver` trait | Trusted Rust solvers | A crate implements the trait and registers by name. The core solver is the reference implementation. |
+| Subprocess protocol | Agent-written or untrusted solvers | An executable takes an `.inp` file path and writes VTU and PVD results plus a TOON summary. The protocol is versioned. |
+
+Users can use the open `inp`, `io`, and `toon` crates in their own solvers.
+
+### 9.2 Limits for subprocess solvers (v1)
+
+- Each run has its own working folder.
+- Each run has a time limit and a memory limit.
+- Results from a solver that has not passed the validation suite are marked **unvalidated**.
+- Later: an OS sandbox (Landlock on Linux, `sandbox-exec` on macOS) with no network access and write access to the run folder only.
+
+The agents themselves run under the harness's own permission system.
+
+---
+
+## 10. Validation
+
+### 10.1 References
+
+- Analytical solutions, manufactured solutions, and fine-model comparisons.
+- No Abaqus licence is available, so there are no Abaqus runs.
+- The Abaqus verification manual can be used as a list of problem ideas, cited by number. Never copy its text, `.inp` files, figures, or numbers into the repo.
+- NAFEMS benchmarks: add them only after a legal check. If you add them, use our own input files and cite the target values with the source.
+
+### 10.2 Reference set
+
+| Capability | Cases |
+|---|---|
+| Linear, `C3D8I`, `C3D8`, `C3D10` | Patch test, cantilever (beam theory), Lamé thick cylinder, plate with a hole (Kirsch) |
+| Contact | Hertz: sphere on flat, cylinder on flat |
+| Plasticity | Elastic-plastic thick cylinder (Hill), uniaxial bar |
+| Large displacement | Cantilever large deflection (elastica), rigid rotation (zero stress) |
+| Birth and death | Statically determinate structures where removing a member gives a reaction change you can calculate by hand |
+| Submodelling | Lamé cylinder sub-region, compared with the analytical field and with a fine global model |
+| All elements | Method of manufactured solutions, to check the convergence rate |
+
+### 10.3 Tolerance classes
+
+| Class | Applies to | Rule |
+|---|---|---|
+| L | Linear cases | Richardson extrapolation over at least three mesh refinements. Tolerance = estimated discretisation error + the reference's own stated error. |
+| N | Nonlinear and contact cases | A fixed tolerance per case, written and justified in the fixture file, checked on a named reference mesh. |
+| R | Manufactured solutions | The fixture states the expected convergence rate and the allowed band. |
+
+Contact cases compare integrated values: total contact force, contact area or radius, and peak pressure. They never compare node-by-node contact status.
+
+### 10.4 Fixtures
+
+- Each case is a folder in `validation/cases/<id>/` with the input files, the reference values, the tolerance class, and the justification.
+- Fixtures are data files, not prose.
+- The exact fixture schema is decided in M1.
+
+### 10.5 Gate
+
+- `fh validate` runs the suite and reports pass or fail per case.
+- A change to the core solver merges only if the full suite passes, and a convergence check passes for each changed element or contact path.
+- A failure blocks the merge. There is no override.
+
+---
+
+## 11. Workspace and budget
+
+Cargo workspace. The cap is **85k lines of Rust, tests included**. Data files do not count: fixture `.inp` files, reference values, VTU files, and generated code. CI counts lines with `tokei` and fails when a crate goes over its budget.
+
+| Crate | Scope | Licence role | Budget |
+|---|---|---|---|
+| `inp` | `.inp` reader and writer, Abaqus-shaped model, template mapping | open API | 9k |
+| `io` | gmsh `.msh` import, VTU and PVD write and read | open API | 5k |
+| `toon` | agent-facing summaries and queries | open API | 3k |
+| `solver-api` | `Solver` trait, subprocess protocol, registry | open API | 3k |
+| `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core | 30k |
+| `validation` | harness, tolerance classes, manufactured solutions | validated core | 6k |
+| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | app | 7k |
+| `agents` | harness start, JSON stream parsing, skills install, role config | app | 4k |
+| `cli` | `fh` commands | app | 3k |
+| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | app | 15k |
+| **Total** | | | **85k** |
+
+Rules:
+- A crate that goes over budget needs a written reason before it grows more.
+- Review the whole budget at the first user test, with real line counts.
+
+### 11.1 Key dependencies
+
+| Dependency | Use | Note |
+|---|---|---|
+| `faer` | sparse linear algebra | pure Rust |
+| `eframe` / `egui` / `wgpu` | UI and 3D renderer, native and wasm | |
+| `alacritty_terminal` | terminal emulator core | Pin an exact version. Wrap it behind our own interface. |
+| herdr | pane backend | External program. Never bundled. Confirm its licence. |
+| gmsh | meshing | External program. Never linked (GPL). |
+
+---
+
+## 12. Platforms and distribution
+
+1. **Web (wasm) first.** The user installs `fh`, runs `fh serve`, and the UI opens in the browser.
+2. **Native macOS second.**
+3. **Windows third.** Uses the plain PTY backend until herdr's Windows support is stable.
+
+Distribution: a single `fh` binary (Homebrew and a direct download). The static demo is published on a separate web page.
+
+---
+
+## 13. Milestones
+
+| Milestone | Content | Done when |
+|---|---|---|
+| M0 Skeleton | Workspace with all crates. `fh --help`. CI: fmt, clippy, test, `tokei` budget check. | CI is green. |
+| M1 Parser and harness | `inp` reads the keyword subset for linear static. Gmsh `.msh` import. Validation harness with the first three fixtures (patch test, cantilever, Lamé). TOON summary schema v1. Fixture schema. | `fh check` works on all fixtures. `fh validate` runs and reports "no solver". |
+| M2 Linear solver | `C3D8I`, `C3D8`, `C3D10`. DOF elimination. `faer` Cholesky. Boundary conditions, loads, `*COUPLING`, `*EQUATION`, `*MPC`. VTU and PVD output. Subprocess protocol v1. | All linear fixtures pass. Manufactured-solution rates pass. |
+| M3 Daemon and viewer | `fh serve` with token and `Origin` checks. wasm viewer: mesh, outlines, deformed shape, one contour field, step selector. Terminal sidebar. Both pane backends. | The viewer shows the M2 results in a browser. Herdr runs in the sidebar. |
+| M4 Chat and agents | Leader in headless mode in the chat. Teammates in panes. Teammate tree. `femahoy.toml`. `fh init` installs skills. Both connection paths. | The leader builds and solves a cantilever model from one chat request, and every action shows as an `fh` command. |
+| **First user test** | M0 to M4, plus the static demo. Budget review. | |
+| M5 Contact | Newton with load stepping and cutback. `C3D10M`. Augmented Lagrange node-to-surface contact. | Hertz cases pass. |
+| M6 Plasticity | J2 with isotropic hardening. | Hill cylinder and uniaxial bar pass. |
+| M7 Large displacement | `NLGEOM=YES`, corotational update. | Elastica and rigid-rotation cases pass. |
+| M8 Birth and death | `*MODEL CHANGE`. | Statically determinate cases pass. |
+| M9 Submodelling | `*SUBMODEL`, `*BOUNDARY, SUBMODEL`. | Lamé sub-region passes against both references. |
+| M10 Native macOS | Native build. | Same tests as M3 and M4, native. |
+| M11 Windows | Windows build, plain PTY backend. | Same tests, on Windows. |
+
+The managed LLM tier is a separate track. It starts after the first user test.
+
+---
+
+## 14. Open items
+
+| Item | Decide in |
+|---|---|
+| TOON summary and query schema | M1 |
+| Validation fixture schema | M1 |
+| Subprocess protocol schema | M2 |
+| Daemon HTTP and WebSocket API | M3 |
+| Template mapping format | After the first user test |
+| Friction in contact | After M5 |
+| OS sandbox for subprocess solvers | After M10 |
+| Managed LLM tier (proxy, accounts, billing) | After the first user test |
+| NAFEMS cases | After the legal check |
+
+---
+
+## 15. Checks before public launch
+
+- A lawyer checks: the "heavily inspired by Abaqus" wording, use of Abaqus element and keyword names, the CLA text, and the NAFEMS use.
+- Trademark, package-name (crates.io, npm, PyPI), GitHub org, and domain checks for "femahoy".
+- Read herdr's `LICENSE` file. Sources disagree (Apache-2.0 or AGPL-3.0-or-later). If it is AGPL, the commercial edition must not bundle it. The current design never bundles it.
+- Check the Anthropic and OpenAI terms for the managed tier.
+
+---
+
+## 16. Glossary
+
+| Term | Meaning |
+|---|---|
+| Leader | The chat. Plans and delegates. Writes no solver code. |
+| Teammate | An agent that the leader starts, with its own role and skills. |
+| Validator | The teammate that runs the suite and gates merges. Separate from the leader. |
+| Pane backend | The interface that runs teammates: herdr or plain PTY. |
+| Fixture | One validation case: inputs, reference values, tolerance class, justification. |
+| Template | A user input syntax with a mapping onto the Abaqus-shaped model. |
+| Unvalidated | A result from a solver that has not passed the validation suite. |
