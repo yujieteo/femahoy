@@ -25,6 +25,9 @@ version = "0.0.0"
 [[package]]
 name = "fh-io"
 version = "0.0.0"
+dependencies = [
+ "fh-inp",
+]
 
 [[package]]
 name = "fh-solver-api"
