@@ -86,3 +86,58 @@ fn pvd_round_trip() {
     assert_eq!(read_pvd(&text).unwrap(), e);
     assert!(read_pvd("<VTKFile/>").is_err());
 }
+
+/// A writer that remembers the largest single write.
+struct Spy {
+    bytes: Vec<u8>,
+    biggest: usize,
+}
+
+impl std::io::Write for Spy {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.biggest = self.biggest.max(buf.len());
+        self.bytes.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn streaming_writer_matches_write_vtu_and_writes_in_pieces() {
+    // 200 000 points is 4.8 MB of coordinates and 1.6 MB of one scalar field.
+    let n = 200_000;
+    let g = Grid {
+        points: (0..n).map(|i| [i as f64, 0.5, -1.0]).collect(),
+        point_data: vec![Field::f64("T", 1, (0..n).map(|i| i as f64).collect())],
+        ..Grid::default()
+    };
+    let mut spy = Spy {
+        bytes: Vec::new(),
+        biggest: 0,
+    };
+    fh_io::vtu::write_vtu_to(&g, &mut spy).unwrap();
+    assert_eq!(spy.bytes, write_vtu(&g).unwrap());
+    assert!(spy.biggest <= 1 << 20, "largest write {}", spy.biggest);
+    assert_eq!(read_vtu(&spy.bytes).unwrap(), g);
+}
+
+#[test]
+fn pvd_keeps_step_times_and_units() {
+    let e = vec![
+        PvdEntry {
+            time: 1.0,
+            file: "step-1.vtu".into(),
+        },
+        PvdEntry {
+            time: 3.5,
+            file: "step-2.vtu".into(),
+        },
+    ];
+    let text = fh_io::vtu::write_pvd_units(&e, "mm-N-s");
+    assert!(text.contains("units=\"mm-N-s\""), "{text}");
+    assert!(text.contains("timestep=\"3.5\""));
+    assert_eq!(read_pvd(&text).unwrap(), e);
+    assert!(write_pvd(&e).contains("units=\"unspecified\""));
+}

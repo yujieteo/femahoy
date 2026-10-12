@@ -101,47 +101,94 @@ impl Grid {
     }
 }
 
-/// Collects the appended block and the matching XML tags.
-struct Appended {
-    bytes: Vec<u8>,
-}
-
-impl Appended {
-    fn array(
-        &mut self,
-        xml: &mut String,
-        name: &str,
-        type_name: &str,
-        components: usize,
-        payload: &[u8],
-    ) {
-        let offset = self.bytes.len();
-        self.bytes
-            .extend_from_slice(&(payload.len() as u32).to_le_bytes());
-        self.bytes.extend_from_slice(payload);
-        let _ = writeln!(
-            xml,
-            "<DataArray type=\"{type_name}\" Name=\"{name}\" NumberOfComponents=\"{components}\" format=\"appended\" offset=\"{offset}\"/>"
-        );
-    }
-
-    fn field(&mut self, xml: &mut String, f: &Field) {
-        let payload: Vec<u8> = match &f.values {
-            Values::F64(v) => v.iter().flat_map(|x| x.to_le_bytes()).collect(),
-            Values::I32(v) => v.iter().flat_map(|x| x.to_le_bytes()).collect(),
-        };
-        self.array(xml, &f.name, f.values.type_name(), f.components, &payload);
-    }
-}
-
 fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('"', "&quot;")
 }
 
-/// Write a grid as a VTU file with appended raw data.
-pub fn write_vtu(grid: &Grid) -> Result<Vec<u8>, VtuError> {
+/// Where the bytes of one array come from. The writer converts a piece at a
+/// time, so it never holds a second copy of an array.
+enum Source<'a> {
+    Points(&'a [[f64; 3]]),
+    Connectivity(&'a [Vec<u32>]),
+    Offsets(&'a [Vec<u32>]),
+    Bytes(&'a [u8]),
+    F64(&'a [f64]),
+    I32(&'a [i32]),
+}
+
+struct Array<'a> {
+    name: String,
+    type_name: &'static str,
+    components: usize,
+    bytes: u64,
+    source: Source<'a>,
+}
+
+/// The appended data of an array has a `UInt32` byte count in front. A larger
+/// array has no valid header, so it is an error.
+fn header_len(name: &str, bytes: u64) -> Result<u32, VtuError> {
+    u32::try_from(bytes).map_err(|_| {
+        VtuError(format!(
+            "array {name} has {bytes} bytes, more than the 4 GiB limit of a UInt32 VTU header"
+        ))
+    })
+}
+
+/// Values converted per piece: 64 Ki values is at most 512 KiB.
+const PIECE: usize = 1 << 16;
+
+fn emit<T, const N: usize, W: std::io::Write>(
+    w: &mut W,
+    items: impl Iterator<Item = T>,
+    mut bytes: impl FnMut(T) -> [u8; N],
+) -> std::io::Result<()> {
+    let mut buf = Vec::with_capacity(PIECE * N);
+    for item in items {
+        buf.extend_from_slice(&bytes(item));
+        if buf.len() >= PIECE * N {
+            w.write_all(&buf)?;
+            buf.clear();
+        }
+    }
+    w.write_all(&buf)
+}
+
+impl Array<'_> {
+    fn write<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
+        match &self.source {
+            Source::Points(p) => emit(w, p.iter().flatten(), |x| x.to_le_bytes()),
+            Source::Connectivity(c) => emit(w, c.iter().flatten(), |i| i64::from(*i).to_le_bytes()),
+            Source::Offsets(c) => {
+                let mut end = 0_i64;
+                emit(w, c.iter(), |cell| {
+                    end += cell.len() as i64;
+                    end.to_le_bytes()
+                })
+            }
+            Source::Bytes(b) => w.write_all(b),
+            Source::F64(v) => emit(w, v.iter(), |x| x.to_le_bytes()),
+            Source::I32(v) => emit(w, v.iter(), |x| x.to_le_bytes()),
+        }
+    }
+}
+
+fn field_array(f: &Field) -> Array<'_> {
+    let (bytes, source) = match &f.values {
+        Values::F64(v) => (8 * v.len() as u64, Source::F64(v)),
+        Values::I32(v) => (4 * v.len() as u64, Source::I32(v)),
+    };
+    Array {
+        name: escape(&f.name),
+        type_name: f.values.type_name(),
+        components: f.components,
+        bytes,
+        source,
+    }
+}
+
+fn check(grid: &Grid) -> Result<(), VtuError> {
     if grid.cells.len() != grid.cell_types.len() {
         return err("cells and cell_types differ in length");
     }
@@ -157,7 +204,66 @@ pub fn write_vtu(grid: &Grid) -> Result<Vec<u8>, VtuError> {
             }
         }
     }
-    let mut app = Appended { bytes: Vec::new() };
+    Ok(())
+}
+
+/// Write a grid as a VTU file with appended raw data.
+pub fn write_vtu(grid: &Grid) -> Result<Vec<u8>, VtuError> {
+    let mut out = Vec::new();
+    write_vtu_to(grid, &mut out)?;
+    Ok(out)
+}
+
+/// Write a grid as a VTU file to `w`, one piece of an array at a time.
+pub fn write_vtu_to<W: std::io::Write>(grid: &Grid, w: &mut W) -> Result<(), VtuError> {
+    check(grid)?;
+    let n_conn: u64 = grid.cells.iter().map(|c| c.len() as u64).sum();
+    let cell = |name: &str, type_name, bytes, source| Array {
+        name: name.into(),
+        type_name,
+        components: 1,
+        bytes,
+        source,
+    };
+    let points = Array {
+        name: "Points".into(),
+        type_name: "Float64",
+        components: 3,
+        bytes: 24 * grid.points.len() as u64,
+        source: Source::Points(&grid.points),
+    };
+    let cells = [
+        cell(
+            "connectivity",
+            "Int64",
+            8 * n_conn,
+            Source::Connectivity(&grid.cells),
+        ),
+        cell(
+            "offsets",
+            "Int64",
+            8 * grid.cells.len() as u64,
+            Source::Offsets(&grid.cells),
+        ),
+        cell(
+            "types",
+            "UInt8",
+            grid.cell_types.len() as u64,
+            Source::Bytes(&grid.cell_types),
+        ),
+    ];
+    let point_data: Vec<Array> = grid.point_data.iter().map(field_array).collect();
+    let cell_data: Vec<Array> = grid.cell_data.iter().map(field_array).collect();
+    // Offsets follow from the sizes, so the XML can be written before the data.
+    let mut order: Vec<&Array> = vec![&points];
+    order.extend(cells.iter().chain(&point_data).chain(&cell_data));
+    let mut offset = 0_u64;
+    let mut tag = std::collections::HashMap::new();
+    for (i, a) in order.iter().enumerate() {
+        header_len(&a.name, a.bytes)?;
+        let _ = tag.insert(i, offset);
+        offset += 4 + a.bytes;
+    }
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\"?>\n<VTKFile type=\"UnstructuredGrid\" version=\"1.0\" byte_order=\"LittleEndian\" header_type=\"UInt32\">\n<UnstructuredGrid>\n");
     let _ = writeln!(
@@ -166,58 +272,34 @@ pub fn write_vtu(grid: &Grid) -> Result<Vec<u8>, VtuError> {
         grid.points.len(),
         grid.cells.len()
     );
+    let mut next = 0;
+    let mut tags = |xml: &mut String, list: &[Array]| {
+        for a in list {
+            let _ = writeln!(
+                xml,
+                "<DataArray type=\"{}\" Name=\"{}\" NumberOfComponents=\"{}\" format=\"appended\" offset=\"{}\"/>",
+                a.type_name, a.name, a.components, tag[&next]
+            );
+            next += 1;
+        }
+    };
     xml.push_str("<Points>\n");
-    let pts: Vec<u8> = grid
-        .points
-        .iter()
-        .flatten()
-        .flat_map(|x| x.to_le_bytes())
-        .collect();
-    app.array(&mut xml, "Points", "Float64", 3, &pts);
+    tags(&mut xml, std::slice::from_ref(&points));
     xml.push_str("</Points>\n<Cells>\n");
-    let conn: Vec<u8> = grid
-        .cells
-        .iter()
-        .flatten()
-        .flat_map(|i| i64::from(*i).to_le_bytes())
-        .collect();
-    app.array(&mut xml, "connectivity", "Int64", 1, &conn);
-    let mut end = 0_i64;
-    let offsets: Vec<u8> = grid
-        .cells
-        .iter()
-        .flat_map(|c| {
-            end += c.len() as i64;
-            end.to_le_bytes()
-        })
-        .collect();
-    app.array(&mut xml, "offsets", "Int64", 1, &offsets);
-    app.array(&mut xml, "types", "UInt8", 1, &grid.cell_types);
+    tags(&mut xml, &cells);
     xml.push_str("</Cells>\n<PointData>\n");
-    for f in &grid.point_data {
-        app.field(
-            &mut xml,
-            &Field {
-                name: escape(&f.name),
-                ..f.clone()
-            },
-        );
-    }
+    tags(&mut xml, &point_data);
     xml.push_str("</PointData>\n<CellData>\n");
-    for f in &grid.cell_data {
-        app.field(
-            &mut xml,
-            &Field {
-                name: escape(&f.name),
-                ..f.clone()
-            },
-        );
-    }
+    tags(&mut xml, &cell_data);
     xml.push_str("</CellData>\n</Piece>\n</UnstructuredGrid>\n<AppendedData encoding=\"raw\">\n_");
-    let mut out = xml.into_bytes();
-    out.extend_from_slice(&app.bytes);
-    out.extend_from_slice(b"\n</AppendedData>\n</VTKFile>\n");
-    Ok(out)
+    let io = |e: std::io::Error| VtuError(format!("write failed: {e}"));
+    w.write_all(xml.as_bytes()).map_err(io)?;
+    for a in order {
+        // The length was checked above.
+        w.write_all(&(a.bytes as u32).to_le_bytes()).map_err(io)?;
+        a.write(w).map_err(io)?;
+    }
+    w.write_all(b"\n</AppendedData>\n</VTKFile>\n").map_err(io)
 }
 
 /// The value of an attribute in a tag text.
@@ -403,9 +485,15 @@ pub struct PvdEntry {
     pub file: String,
 }
 
-/// Write a PVD collection file.
+/// Write a PVD collection file with the units `unspecified`.
 pub fn write_pvd(entries: &[PvdEntry]) -> String {
-    let mut s = String::from("<?xml version=\"1.0\"?>\n<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n<Collection>\n");
+    write_pvd_units(entries, "unspecified")
+}
+
+/// Write a PVD collection file. `time` is the step time at the end of each
+/// step. `units` names the unit system of the model, or `unspecified`.
+pub fn write_pvd_units(entries: &[PvdEntry], units: &str) -> String {
+    let mut s = format!("<?xml version=\"1.0\"?>\n<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n<Collection units=\"{}\">\n", escape(units));
     for e in entries {
         let _ = writeln!(
             s,
@@ -438,4 +526,16 @@ pub fn read_pvd(text: &str) -> Result<Vec<PvdEntry>, VtuError> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn header_over_4_gib_is_an_error() {
+        assert_eq!(header_len("a", u64::from(u32::MAX)).unwrap(), u32::MAX);
+        let e = header_len("big", u64::from(u32::MAX) + 1).unwrap_err();
+        assert!(e.to_string().contains("big") && e.to_string().contains("4 GiB"));
+    }
 }
