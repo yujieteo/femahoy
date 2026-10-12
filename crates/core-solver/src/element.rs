@@ -337,8 +337,19 @@ pub fn mean_stress(
     d: &[[f64; 6]; 6],
     u: &[f64],
 ) -> Result<[f64; 6], SolverError> {
+    Ok(response(kind, coords, d, u)?.1)
+}
+
+/// Internal nodal forces `K * u` and the volume-averaged stress.
+pub fn response(
+    kind: Kind,
+    coords: &[[f64; 3]],
+    d: &[[f64; 6]; 6],
+    u: &[f64],
+) -> Result<(Vec<f64>, [f64; 6]), SolverError> {
     let (pts, c) = condense(kind, coords, d)?;
     let n3 = 3 * kind.node_count();
+    let fint = a_b(&c.k, u, n3, n3, 1);
     let alpha = c.recover.map(|r| a_b(&r, u, 9, n3, 1));
     let mut s = [0.0; 6];
     let mut vol = 0.0;
@@ -354,7 +365,7 @@ pub fn mean_stress(
         }
         vol += p.w;
     }
-    Ok(s.map(|v| v / vol))
+    Ok((fint, s.map(|v| v / vol)))
 }
 
 /// Von Mises equivalent stress from `[xx, yy, zz, xy, yz, xz]`.

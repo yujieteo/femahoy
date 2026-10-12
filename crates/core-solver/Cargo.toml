@@ -7,4 +7,5 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+fh-inp = { path = "../inp" }
 faer = { version = "0.24.4", default-features = false, features = ["std", "sparse-linalg"] }

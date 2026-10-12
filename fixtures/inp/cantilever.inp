@@ -39,6 +39,7 @@
 *material, name=steel
 *elastic
 210000.0, 0.3
+*solid section, elset=beam, material=steel
 *step, name=tip-load
 *static
 1.0, 1.0, 1e-4, 1.0

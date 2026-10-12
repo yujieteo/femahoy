@@ -3,8 +3,12 @@
 //!
 //! M2: linear static analysis with `C3D8`, `C3D8I` and `C3D10`.
 
+mod constraint;
 mod dense;
 pub mod element;
+mod system;
+
+pub use system::{solve, Solution, StepResult};
 
 use std::fmt;
 
