@@ -321,6 +321,33 @@ fn kill_group(pid: &str) {
 }
 
 #[test]
+fn a_process_outside_the_tree_cannot_hold_the_run_past_the_time_limit() {
+    let dir = scratch("stray");
+    // The stray process leads its own process group, so the kill of the tree misses it.
+    // It keeps the stdout pipe and writes without end after the solver exits.
+    let stray = format!(
+        "perl -e 'setpgrp(0, 0); $| = 1; while (1) {{ print \"stray\\n\"; \
+select(undef, undef, undef, 0.05) }}' &\necho $! > {}/stray.pid",
+        dir.display()
+    );
+    let mut s = solver(&dir, &GOOD.replacen('\n', &format!("\n{stray}\n"), 1));
+    s.timeout = Duration::from_secs(2);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let d = dir.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(s.run(&d.join("a.inp"), &d.join("run")).map(|_| ()));
+    });
+    let result = rx.recv_timeout(Duration::from_secs(10));
+    // The end of the stray process also ends a run that waits for the pipe.
+    let pid = fs::read_to_string(dir.join("stray.pid")).unwrap_or_default();
+    kill_group(pid.trim());
+    let e = result
+        .expect("the run did not end at the time limit")
+        .unwrap_err();
+    assert!(e.to_string().contains("time limit"), "{e}");
+}
+
+#[test]
 fn a_log_file_that_cannot_open_leaves_no_solver() {
     // stdout.txt is a folder, so the runner cannot open its log.
     let dir = scratch("log-error");

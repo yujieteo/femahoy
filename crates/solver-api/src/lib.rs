@@ -534,6 +534,17 @@ impl SubprocessSolver {
                 restart_file = Some(f.clone());
             }
             on_event(&event);
+            // The backlog is short, but a process outside the tree can keep the pipe and
+            // write without end. The time limit and a cancel also stop this read.
+            if cancel.is_cancelled() {
+                break;
+            }
+            if start.elapsed() > self.timeout {
+                return fail(format!(
+                    "solver stopped after the time limit of {} s",
+                    self.timeout.as_secs_f64()
+                ));
+            }
         }
         drop(reader);
         // A cancel stops the run, also when the solver exits with code 0, or when the cancel
