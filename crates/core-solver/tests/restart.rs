@@ -361,7 +361,13 @@ fn results_beyond_the_resumed_increment_are_deleted() {
 
 /// A linear model with many steps, so that the run has many restart points.
 fn long_input() -> String {
-    let b = common::hex_block([8, 8, 8], [1.0, 1.0, 1.0], 0.1, "C3D8");
+    block_input([8, 8, 8], [1.0, 1.0, 1.0], 8)
+}
+
+/// A C3D8 block with `steps` steps: the face x = 0 is fixed and the face x = size[0] has a
+/// load that grows from step to step.
+fn block_input(n: [usize; 3], size: [f64; 3], steps: usize) -> String {
+    let b = common::hex_block(n, size, 0.1, "C3D8");
     let mut t = String::from("*NODE\n");
     for (i, p) in b.nodes.iter().enumerate() {
         t.push_str(&format!("{},{},{},{}\n", i + 1, p[0], p[1], p[2]));
@@ -384,13 +390,13 @@ fn long_input() -> String {
             .map(|(i, _)| i + 1)
             .collect()
     };
-    for s in 0..8 {
+    for s in 0..steps {
         t.push_str("*STEP\n*STATIC\n*BOUNDARY\n");
         for n in at(0, 0.0) {
             t.push_str(&format!("{n},1,3\n"));
         }
         t.push_str("*CLOAD\n");
-        for n in at(0, 1.0) {
+        for n in at(0, size[0]) {
             t.push_str(&format!("{n},1,{}\n", 0.1 * (s + 1) as f64));
         }
         t.push_str("*END STEP\n");
@@ -400,7 +406,7 @@ fn long_input() -> String {
 
 fn spawn(inp: &Path, d: &Path, restart: bool) -> std::process::Child {
     let mut c = Command::new(env!("CARGO_BIN_EXE_fh-solve"));
-    c.arg(inp).arg(d).args(["--formats", "vtu,text"]);
+    c.arg(inp).arg(d).args(["--formats", "vtu,vtk,text"]);
     if restart {
         c.arg("--restart");
     }
@@ -480,6 +486,141 @@ fn killing_fh_solve_three_times_and_resuming_gives_the_same_result() {
     }
     run_until(spawn(&inp, &d, restart), &mut |_| false);
     eprintln!("kills (restart point, event lines after it): {targets:?}");
+    assert_same(&want, &snapshot(&d));
+}
+
+// ---- SIGKILL in the middle of a write and in the middle of an increment ----
+//
+// `fh` has no run command in M2, so these tests kill `fh-solve`, the solver process that
+// `fh` starts. `Child::kill` sends SIGKILL on Unix: the process gets no chance to clean up.
+
+/// A bar of 48 x 6 x 6 C3D8 elements with 4 steps. A run of the debug build takes some
+/// seconds, and most of it is the Cholesky factor. Each start of the process factors again.
+fn bar_of_4_steps() -> String {
+    block_input([48, 6, 6], [8.0, 1.0, 1.0], 4)
+}
+
+/// Start the bar, and return the input file, the folder of an uninterrupted run and its
+/// result files.
+fn uninterrupted(name: &str) -> (PathBuf, PathBuf, Vec<(String, Vec<u8>)>) {
+    let base = dir(name);
+    let inp = base.join("bar.inp");
+    fs::write(&inp, bar_of_4_steps()).unwrap();
+    let whole = base.join("whole");
+    run_until(spawn(&inp, &whole, false), &mut |_| false);
+    let want = snapshot(&whole);
+    (inp, base, want)
+}
+
+/// The newest usable restart point of `d` as (step index, increment, step complete).
+fn latest(d: &Path, hash: u64) -> Option<(usize, usize, bool)> {
+    read_latest(d, hash)
+        .ok()
+        .map(|r| (r.step, r.number, r.complete))
+}
+
+/// Start `fh-solve` and send SIGKILL at the first moment when the name of a file in `d`
+/// ends with `suffix`. Returns that name, or `None` when the run ended first.
+fn kill_at_file(inp: &Path, d: &Path, restart: bool, suffix: &str) -> Option<String> {
+    let mut child = spawn(inp, d, restart);
+    let _hold = child.stdin.take();
+    let mut out = BufReader::new(child.stdout.take().unwrap());
+    let drain = std::thread::spawn(move || std::io::copy(&mut out, &mut std::io::sink()));
+    let found = loop {
+        let name = fs::read_dir(d).ok().and_then(|r| {
+            r.flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .find(|n| n.ends_with(suffix))
+        });
+        if name.is_some() {
+            child.kill().unwrap();
+            break name;
+        }
+        if child.try_wait().unwrap().is_some() {
+            break None;
+        }
+        std::thread::yield_now();
+    };
+    let status = child.wait().unwrap();
+    assert!(found.is_some() || status.success(), "the run failed");
+    drain.join().unwrap().unwrap();
+    found
+}
+
+#[test]
+fn sigkill_in_the_middle_of_three_writes_and_a_resume_give_the_same_bytes() {
+    let (inp, base, want) = uninterrupted("sigkill-write");
+    let hash = input_hash(&bar_of_4_steps());
+    let d = base.join("killed");
+    // Three moments: the VTU file of step 2, a restart file (the resumed run writes its
+    // first one at the end of step 2 and syncs it to the disk), and the text file of step 4.
+    // The temporary file that is still there after the kill shows that the kill came
+    // between its creation and its rename. If the write ended first, kill again.
+    let mut restart = false;
+    let mut moments = Vec::new();
+    for suffix in ["step-2.vtu.tmp", "restart.fh.tmp", "step-4.txt.tmp"] {
+        let mut tries = 0;
+        loop {
+            tries += 1;
+            assert!(tries <= 5, "5 kills came after the write of {suffix} ended");
+            let before = latest(&d, hash);
+            let name = kill_at_file(&inp, &d, restart, suffix)
+                .unwrap_or_else(|| panic!("the run ended before the write of {suffix}"));
+            let left = d.join(&name).exists();
+            let after = latest(&d, hash);
+            restart = after.is_some();
+            if left {
+                moments.push((name, tries, before, after));
+                break;
+            }
+        }
+    }
+    eprintln!("kills (file, tries, restart point before, after): {moments:?}");
+    run_until(spawn(&inp, &d, restart), &mut |_| false);
+    assert_same(&want, &snapshot(&d));
+}
+
+/// The fraction of a `progress` line of `step` (for example "2/4") in `phase`.
+fn fraction(line: &str, step: &str, phase: &str) -> Option<f64> {
+    line.strip_prefix(&format!("progress step={step} phase={phase} fraction="))?
+        .parse()
+        .ok()
+}
+
+#[test]
+fn sigkill_in_the_middle_of_three_increments_and_a_resume_give_the_same_bytes() {
+    let (inp, base, want) = uninterrupted("sigkill-increment");
+    let hash = input_hash(&bar_of_4_steps());
+    let d = base.join("killed");
+    // Three moments in step 2: the stress recovery (a new run, which reuses the factor of
+    // step 1), the assembly (a resumed run assembles again), and the Cholesky factor (the
+    // first solve of a resumed run).
+    type At = fn(&str) -> bool;
+    let moments: [(&str, At); 3] = [
+        ("recovery", |l| {
+            fraction(l, "2/4", "recover").is_some_and(|f| f >= 0.25)
+        }),
+        ("assembly", |l| {
+            fraction(l, "2/4", "assemble").is_some_and(|f| f >= 0.25)
+        }),
+        ("factor", |l| fraction(l, "2/4", "solve") == Some(0.0)),
+    ];
+    let mut restart = false;
+    for (what, at) in moments {
+        let killed = run_until(spawn(&inp, &d, restart), &mut |l| at(l));
+        assert!(killed, "the run ended before the kill in the {what}");
+        // The kill came before the end of the increment: the restart point is still the
+        // end of step 1, and no result file of step 2 exists.
+        assert_eq!(latest(&d, hash), Some((0, 1, true)), "kill in the {what}");
+        let names: Vec<String> = fs::read_dir(&d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with("step-2"))
+            .collect();
+        assert!(names.is_empty(), "kill in the {what}: {names:?}");
+        restart = true;
+    }
+    run_until(spawn(&inp, &d, restart), &mut |_| false);
     assert_same(&want, &snapshot(&d));
 }
 
