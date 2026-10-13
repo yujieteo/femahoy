@@ -522,6 +522,19 @@ mod tests {
     }
 
     #[test]
+    fn c3d4_fixture_draws_without_skips() {
+        let m = build(&fixture("viewer-c3d4.inp"));
+        assert_eq!(
+            (m.node_count, m.element_count, m.skipped_elements),
+            (4, 1, 0)
+        );
+        assert_eq!(m.positions.len(), 4);
+        assert_eq!(m.triangles.len(), 4);
+        assert_eq!(m.edges.len(), 6);
+        assert_eq!(m.feature_edges.len(), 6);
+    }
+
+    #[test]
     fn c3d10_fixture_draws_without_skips() {
         let m = build(&fixture("m2-keywords.inp"));
         assert!(m.triangles.len() >= 16);
