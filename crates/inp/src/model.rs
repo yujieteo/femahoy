@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 /// The Abaqus-shaped model for the linear static subset.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Model {
@@ -15,6 +17,27 @@ pub struct Model {
     pub mpcs: Vec<Mpc>,
     pub couplings: Vec<Coupling>,
     pub steps: Vec<Step>,
+    /// `*INSTANCE` entries of the `*ASSEMBLY`, in file order.
+    pub instances: Vec<Instance>,
+    /// Global node id to the instance and part label. Flat nodes have no entry.
+    pub node_origin: BTreeMap<u32, Origin>,
+    /// Global element id to the instance and part label. Flat elements have no entry.
+    pub element_origin: BTreeMap<u32, Origin>,
+}
+
+/// `*INSTANCE`: a named copy of a `*PART`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instance {
+    pub name: String,
+    pub part: String,
+}
+
+/// Where a global node or element came from: an index into `Model::instances`
+/// and the label the part gave it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Origin {
+    pub instance: usize,
+    pub label: u32,
 }
 
 /// `*SOLID SECTION`: a material for an element set.
@@ -211,6 +234,18 @@ impl Model {
 
     pub fn element_surface(&self, name: &str) -> Option<&ElementSurface> {
         self.element_surfaces.iter().find(|s| s.name == name)
+    }
+
+    /// The instance and part label of a global node id.
+    pub fn node_instance(&self, id: u32) -> Option<(&Instance, u32)> {
+        let o = self.node_origin.get(&id)?;
+        Some((&self.instances[o.instance], o.label))
+    }
+
+    /// The instance and part label of a global element id.
+    pub fn element_instance(&self, id: u32) -> Option<(&Instance, u32)> {
+        let o = self.element_origin.get(&id)?;
+        Some((&self.instances[o.instance], o.label))
     }
 
     pub fn material(&self, name: &str) -> Option<&Material> {
