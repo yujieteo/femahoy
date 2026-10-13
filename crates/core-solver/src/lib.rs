@@ -3,19 +3,24 @@
 //!
 //! M2: linear static analysis with `C3D8`, `C3D8I` and `C3D10`.
 
+mod assembly;
 mod constraint;
 mod dense;
 pub mod element;
+mod mesh;
 mod output;
+pub mod restart;
 mod sparse;
+pub mod state;
+mod step;
 mod system;
 mod text;
 
 pub use output::{input_hash, run_model, write_results, CoreSolver, RESTART_FILE};
 pub use system::{
-    estimate_bytes, solve, solve_from, solve_options, solve_with, step_times, Formats, Method,
-    Observer, Options, Sizes, Solution, StepInfo, StepResult, Summary, CANCELLED, DIRECT_MAX_DOFS,
-    RESIDUAL_LIMIT,
+    estimate_bytes, solve, solve_from, solve_options, solve_with, step_times, Formats, Increment,
+    MaterialFactory, Method, Observer, Options, Resume, Sizes, Solution, StepInfo, StepResult,
+    Summary, CANCELLED, DIRECT_MAX_DOFS, RESIDUAL_LIMIT,
 };
 pub use text::TEXT_HEADER;
 

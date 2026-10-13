@@ -2,7 +2,19 @@
 //! Provisional: these tests were written after the code. They may be replaced
 //! and they fix no design decision.
 
-use fh_core_solver::element::{elasticity, mean_stress, pressure_load, stiffness, volume, Kind};
+use fh_core_solver::element::{
+    elasticity, mean_stress, pressure_load, stiffness, volume, Kind, Placement,
+};
+
+static ZERO: [f64; 30] = [0.0; 30];
+
+/// The nodes at their start positions.
+fn place(c: &[[f64; 3]]) -> Placement<'_> {
+    Placement {
+        start: c,
+        disp: &ZERO[..3 * c.len()],
+    }
+}
 
 const HEX: [[f64; 3]; 8] = [
     [0.0, 0.0, 0.0],
@@ -200,13 +212,13 @@ fn hex_pressure_pushes_into_the_body() {
     ];
     for kind in [Kind::C3D8, Kind::C3D8I] {
         for (f, n) in inward.iter().enumerate() {
-            let t = total(&pressure_load(kind, &c, f as u8 + 1, 2.0).unwrap());
+            let t = total(&pressure_load(kind, &place(&c), f as u8 + 1, 2.0).unwrap());
             for k in 0..3 {
                 assert!((t[k] - 2.0 * n[k]).abs() < 1e-13, "face {} {t:?}", f + 1);
             }
         }
     }
-    assert!(pressure_load(Kind::C3D8, &c, 7, 1.0).is_err());
+    assert!(pressure_load(Kind::C3D8, &place(&c), 7, 1.0).is_err());
 }
 
 #[test]
@@ -220,7 +232,7 @@ fn tet_pressure_pushes_into_the_body() {
         (4, [1.0, 0.0, 0.0], 0.5),
     ];
     for (face, n, area) in cases {
-        let t = total(&pressure_load(Kind::C3D10, &c, face, 3.0).unwrap());
+        let t = total(&pressure_load(Kind::C3D10, &place(&c), face, 3.0).unwrap());
         for k in 0..3 {
             assert!(
                 (t[k] - 3.0 * area * n[k]).abs() < 1e-13,

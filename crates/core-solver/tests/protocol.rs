@@ -91,11 +91,8 @@ fn events_report_the_estimate_progress_and_restart_marker() {
         .iter()
         .any(|e| matches!(e, Event::Progress { phase, .. } if phase == "solve")));
     assert!(seen.contains(&Event::Restart("restart.fh".into())));
-    let restart = fs::read_to_string(dir.join("run/restart.fh")).unwrap();
-    assert!(
-        restart.starts_with("fh-restart 1\ninput-hash "),
-        "{restart}"
-    );
+    let restart = fs::read(dir.join("run/restart.fh")).unwrap();
+    assert_eq!(&restart[..4], b"FHRS");
 }
 
 #[test]
@@ -109,26 +106,8 @@ fn a_restart_skips_the_finished_steps() {
     let solver = SubprocessSolver::new(env!("CARGO_BIN_EXE_fh-solve"));
     let report = solver.run(&inp, &dir.join("run")).unwrap();
     let first = fs::read(dir.join("run/step-1.vtu")).unwrap();
-    // Cut the restart file back to one finished step, then resume.
-    let restart = fs::read_to_string(dir.join("run/restart.fh")).unwrap();
-    let kept: Vec<&str> = restart
-        .lines()
-        .filter(|l| !l.starts_with("step ") || l.is_empty())
-        .collect();
-    let one_line = restart.lines().find(|l| l.starts_with("step ")).unwrap();
-    let cut = kept
-        .iter()
-        .map(|l| {
-            if l.starts_with("steps-done") {
-                "steps-done 1"
-            } else {
-                l
-            }
-        })
-        .chain(std::iter::once(one_line))
-        .collect::<Vec<_>>()
-        .join("\n");
-    fs::write(dir.join("run/restart.fh"), format!("{cut}\n")).unwrap();
+    // Remove the newest restart file: the older one holds the end of step 1.
+    fs::remove_file(dir.join("run/restart.fh")).unwrap();
     fs::remove_file(dir.join("run/step-2.vtu")).ok();
     let again = solver
         .resume_with(&inp, &dir.join("run"), &CancelToken::new(), &mut |_| {})

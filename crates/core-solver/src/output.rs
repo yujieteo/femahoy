@@ -2,12 +2,13 @@
 //! legacy VTK file (each can be switched off with `Options::formats`), a PVD collection, a
 //! restart file and the `fh.run` TOON summary.
 //!
-//! The writer takes one step at a time from the solver and keeps only the
-//! base grid in memory.
+//! The writer takes one increment at a time from the solver and keeps only the
+//! base grid in memory. Every file is written under a temporary name and renamed.
 
 use std::fs;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::path::Path;
+use std::time::Instant;
 
 use fh_inp::Model;
 use fh_io::vtk::write_vtk_to;
@@ -17,9 +18,13 @@ use fh_io::vtu::{
 use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
 
 use crate::element::Kind;
-use crate::system::{solve_from, step_times, CANCELLED};
+use crate::restart::{read_latest, Restart};
+use crate::system::{solve_from, CANCELLED};
 use crate::text::write_text;
-use crate::{Formats, Observer, Options, Solution, SolverError, StepInfo, StepResult, Summary};
+use crate::{
+    Formats, Increment, Observer, Options, Resume, Solution, SolverError, StepInfo, StepResult,
+    Summary,
+};
 
 /// Name of the restart file in the run folder.
 pub const RESTART_FILE: &str = "restart.fh";
@@ -203,35 +208,125 @@ fn io(what: &str, e: std::io::Error) -> ApiError {
     ApiError(format!("{what}: {e}"))
 }
 
-/// Read the restart file. Returns the lines of the finished steps.
-fn read_restart(dir: &Path, hash: u64) -> Result<Vec<StepLine>, ApiError> {
-    let text = fs::read_to_string(dir.join(RESTART_FILE))
-        .map_err(|e| ApiError(format!("{RESTART_FILE}: {e}")))?;
-    let mut lines = text.lines();
-    if lines.next() != Some("fh-restart 1") {
-        return Err(ApiError(format!("{RESTART_FILE}: unknown format")));
+/// Write a file under a temporary name and rename it. A stop never leaves half a file.
+fn atomic(
+    dir: &Path,
+    file: &str,
+    body: impl FnOnce(&mut BufWriter<fs::File>) -> Result<(), ApiError>,
+) -> Result<(), ApiError> {
+    let tmp = dir.join(format!("{file}.tmp"));
+    let mut w = BufWriter::new(fs::File::create(&tmp).map_err(|e| io(file, e))?);
+    body(&mut w)?;
+    w.flush().map_err(|e| io(file, e))?;
+    drop(w);
+    fs::rename(&tmp, dir.join(file)).map_err(|e| io(file, e))
+}
+
+/// Name of the result files of an increment, without the extension. The last increment of a
+/// step has the name of the step.
+fn result_name(step: usize, number: usize, last: bool) -> String {
+    if last {
+        format!("step-{}", step + 1)
+    } else {
+        format!("step-{}-inc-{number}", step + 1)
     }
-    let want = format!("input-hash {hash:016x}");
-    if lines.next() != Some(want.as_str()) {
-        return Err(ApiError(format!(
-            "{RESTART_FILE}: the input file is not the one of the earlier run"
-        )));
+}
+
+/// The lines of the history text of a restart file.
+fn history_text(entries: &[PvdEntry], lines: &[StepLine], part: Option<&StepInfo>) -> String {
+    let mut s = String::new();
+    for e in entries {
+        s.push_str(&format!("entry {:e} {}\n", e.time, e.file));
     }
-    let done: usize = lines
-        .next()
-        .and_then(|l| l.strip_prefix("steps-done "))
-        .and_then(|n| n.parse().ok())
-        .ok_or_else(|| ApiError(format!("{RESTART_FILE}: bad steps-done line")))?;
-    let steps: Vec<StepLine> = lines
-        .filter_map(|l| l.strip_prefix("step "))
-        .map(|l| {
-            StepLine::parse(l).ok_or_else(|| ApiError(format!("{RESTART_FILE}: bad step line")))
-        })
-        .collect::<Result<_, _>>()?;
-    if steps.len() != done {
-        return Err(ApiError(format!("{RESTART_FILE}: step lines do not match")));
+    for l in lines {
+        s.push_str(&format!("step {}\n", l.text()));
     }
-    Ok(steps)
+    if let Some(i) = part {
+        s.push_str(&format!(
+            "part {} {} {} {:e} {} {} {}\n",
+            i.free_dofs,
+            method_name(i),
+            i.iterations,
+            i.residual,
+            i.increments,
+            i.cutbacks,
+            i.newton_iterations
+        ));
+    }
+    s
+}
+
+/// The inverse of [`history_text`].
+fn parse_history(
+    text: &str,
+) -> Result<(Vec<PvdEntry>, Vec<StepLine>, Option<StepInfo>), ApiError> {
+    let bad = || ApiError(format!("{RESTART_FILE}: bad history line"));
+    let (mut entries, mut lines, mut part) = (Vec::new(), Vec::new(), None);
+    for l in text.lines() {
+        if let Some(r) = l.strip_prefix("entry ") {
+            let (t, f) = r.split_once(' ').ok_or_else(bad)?;
+            entries.push(PvdEntry {
+                time: t.parse().map_err(|_| bad())?,
+                file: f.to_string(),
+            });
+        } else if let Some(r) = l.strip_prefix("step ") {
+            lines.push(StepLine::parse(r).ok_or_else(bad)?);
+        } else if let Some(r) = l.strip_prefix("part ") {
+            let w: Vec<&str> = r.split_whitespace().collect();
+            if w.len() != 7 {
+                return Err(bad());
+            }
+            let num = |i: usize| w[i].parse::<usize>().map_err(|_| bad());
+            part = Some(StepInfo {
+                free_dofs: num(0)?,
+                method: if w[1] == "pcg" {
+                    crate::Method::Pcg
+                } else {
+                    crate::Method::Cholesky
+                },
+                iterations: num(2)?,
+                residual: w[3].parse().map_err(|_| bad())?,
+                increments: num(4)?,
+                cutbacks: num(5)?,
+                newton_iterations: num(6)?,
+            });
+        } else {
+            return Err(bad());
+        }
+    }
+    Ok((entries, lines, part))
+}
+
+/// Delete the temporary files and the result files of increments that the restart point does
+/// not include. The run writes them again.
+fn clean_run_folder(dir: &Path, r: &Restart) -> Result<(), ApiError> {
+    let done = |step0: usize, number: Option<usize>| match number {
+        Some(n) => step0 < r.step || (step0 == r.step && n <= r.number),
+        None => step0 < r.step || (step0 == r.step && r.complete),
+    };
+    for e in fs::read_dir(dir).map_err(|e| io("run folder", e))? {
+        let e = e.map_err(|e| io("run folder", e))?;
+        let name = e.file_name().to_string_lossy().to_string();
+        let stale = if name.ends_with(".tmp") {
+            true
+        } else if let Some(rest) = name.strip_prefix("step-") {
+            let stem = rest.rsplit_once('.').map_or(rest, |x| x.0);
+            let mut p = stem.split("-inc-");
+            let step = p.next().and_then(|s| s.parse::<usize>().ok());
+            let number = p.next().map(|s| s.parse::<usize>().ok());
+            match (step, number) {
+                (Some(s), None) if s >= 1 => !done(s - 1, None),
+                (Some(s), Some(Some(n))) if s >= 1 => !done(s - 1, Some(n)),
+                _ => false,
+            }
+        } else {
+            false
+        };
+        if stale {
+            fs::remove_file(e.path()).map_err(|e| io(&name, e))?;
+        }
+    }
+    Ok(())
 }
 
 struct Writer<'a> {
@@ -241,7 +336,9 @@ struct Writer<'a> {
     grid: Grid,
     n_point: usize,
     n_cell: usize,
-    times: Vec<f64>,
+    restart_every: usize,
+    restart_minutes: Option<f64>,
+    last_restart: Instant,
     entries: Vec<PvdEntry>,
     lines: Vec<StepLine>,
     emit: &'a mut dyn FnMut(&str),
@@ -265,70 +362,50 @@ impl Writer<'_> {
     }
 
     fn write_pvd(&self) -> Result<(), ApiError> {
-        fs::write(
-            self.run_dir.join(PVD_FILE),
-            write_pvd_units(&self.entries, "unspecified"),
-        )
-        .map_err(|e| io(PVD_FILE, e))
+        let text = write_pvd_units(&self.entries, "unspecified");
+        atomic(self.run_dir, PVD_FILE, |w| {
+            w.write_all(text.as_bytes()).map_err(|e| io(PVD_FILE, e))
+        })
     }
 
-    fn write_restart(&self) -> Result<(), ApiError> {
-        let mut text = format!(
-            "fh-restart 1\ninput-hash {:016x}\nsteps-done {}\n",
-            self.hash,
-            self.lines.len()
-        );
-        for l in &self.lines {
-            text.push_str(&format!("step {}\n", l.text()));
-        }
-        // Write a new file and rename it, so that a stop never leaves half a file.
-        let tmp = self.run_dir.join(format!("{RESTART_FILE}.tmp"));
-        fs::write(&tmp, text).map_err(|e| io(RESTART_FILE, e))?;
-        fs::rename(&tmp, self.run_dir.join(RESTART_FILE)).map_err(|e| io(RESTART_FILE, e))
-    }
-
-    fn write_step(
+    /// Write the result files of one increment. Each file is new and is never changed later.
+    fn write_files(
         &mut self,
-        index: usize,
-        step: &StepResult,
+        step: usize,
+        number: usize,
+        last: bool,
+        result: &StepResult,
         info: &StepInfo,
     ) -> Result<(), ApiError> {
         let g = &mut self.grid;
         g.point_data
-            .push(Field::f64("U", 3, flat(&step.displacement)));
-        g.point_data.push(Field::f64("RF", 3, flat(&step.reaction)));
-        if step.rotation.iter().flatten().any(|v| *v != 0.0) {
-            g.point_data.push(Field::f64("UR", 3, flat(&step.rotation)));
+            .push(Field::f64("U", 3, flat(&result.displacement)));
+        g.point_data.push(Field::f64("RF", 3, flat(&result.reaction)));
+        if result.rotation.iter().flatten().any(|v| *v != 0.0) {
+            g.point_data.push(Field::f64("UR", 3, flat(&result.rotation)));
         }
         g.cell_data.push(Field::f64(
             "S",
             6,
-            step.element_stress.iter().flatten().copied().collect(),
+            result.element_stress.iter().flatten().copied().collect(),
         ));
-        g.cell_data.push(Field::f64("MISES", 1, step.mises.clone()));
-        let name = |ext: &str| format!("step-{}.{ext}", index + 1);
-        let create = |file: &str| -> Result<BufWriter<fs::File>, ApiError> {
-            fs::File::create(self.run_dir.join(file))
-                .map(BufWriter::new)
-                .map_err(|e| io(file, e))
-        };
+        g.cell_data.push(Field::f64("MISES", 1, result.mises.clone()));
+        let stem = result_name(step, number, last);
         let mut written = Ok(());
         if self.formats.vtu {
-            let file = name("vtu");
-            let mut w = create(&file)?;
-            written = write_vtu_to(&self.grid, &mut w)
-                .map_err(|e| ApiError(e.to_string()))
-                .and_then(|()| std::io::Write::flush(&mut w).map_err(|e| io(&file, e)));
+            let file = format!("{stem}.vtu");
+            written = atomic(self.run_dir, &file, |w| {
+                write_vtu_to(&self.grid, w).map_err(|e| ApiError(e.to_string()))
+            });
         }
         if written.is_ok() && self.formats.vtk {
-            let file = name("vtk");
-            let mut w = create(&file)?;
-            let title = format!("fh step {} time {}", index + 1, step.time);
-            written = write_vtk_to(&self.grid, &title, &mut w)
-                .map_err(|e| ApiError(e.to_string()))
-                .and_then(|()| std::io::Write::flush(&mut w).map_err(|e| io(&file, e)));
+            let file = format!("{stem}.vtk");
+            let title = format!("fh step {} time {}", step + 1, result.time);
+            written = atomic(self.run_dir, &file, |w| {
+                write_vtk_to(&self.grid, &title, w).map_err(|e| ApiError(e.to_string()))
+            });
         }
-        // The base grid stays for the next step.
+        // The base grid stays for the next increment.
         let node_ids = self.ids(true);
         let element_ids = self.ids(false);
         let cell_types = self.grid.cell_types.clone();
@@ -336,27 +413,56 @@ impl Writer<'_> {
         self.grid.cell_data.truncate(self.n_cell);
         written?;
         if self.formats.text {
-            let file = name("txt");
-            let mut w = create(&file)?;
-            write_text(&mut w, index, step, &node_ids, &element_ids, &cell_types)
-                .and_then(|()| std::io::Write::flush(&mut w))
-                .map_err(|e| io(&file, e))?;
+            let file = format!("{stem}.txt");
+            atomic(self.run_dir, &file, |w| {
+                write_text(w, step, result, &node_ids, &element_ids, &cell_types)
+                    .map_err(|e| io(&file, e))
+            })?;
         }
         self.entries.push(PvdEntry {
-            time: step.time,
-            file: name(primary(self.formats)),
+            time: result.time,
+            file: format!("{stem}.{}", primary(self.formats)),
         });
-        self.lines.push(StepLine {
-            free_dofs: info.free_dofs,
-            method: method_name(info).into(),
-            iterations: info.iterations,
-            residual: info.residual,
-            max_u: max_norm(&step.displacement),
-            max_mises: step.mises.iter().copied().fold(0.0, f64::max),
-            max_rf: max_norm(&step.reaction),
-        });
-        self.write_pvd()?;
-        self.write_restart()?;
+        if last {
+            self.lines.push(StepLine {
+                free_dofs: info.free_dofs,
+                method: method_name(info).into(),
+                iterations: info.iterations,
+                residual: info.residual,
+                max_u: max_norm(&result.displacement),
+                max_mises: result.mises.iter().copied().fold(0.0, f64::max),
+                max_rf: max_norm(&result.reaction),
+            });
+        }
+        Ok(())
+    }
+
+    fn restart_due(&self, inc: &Increment) -> bool {
+        inc.last
+            || inc.number % self.restart_every.max(1) == 0
+            || self
+                .restart_minutes
+                .is_some_and(|m| self.last_restart.elapsed().as_secs_f64() >= 60.0 * m)
+    }
+
+    fn write_restart(&mut self, inc: &Increment) -> Result<(), ApiError> {
+        let part = (!inc.last).then_some(&inc.info);
+        let restart = Restart {
+            hash: self.hash,
+            step: inc.step,
+            number: inc.number,
+            complete: inc.last,
+            time: inc.time,
+            lambda: inc.lambda,
+            next_size: inc.next_size,
+            displacement: inc.displacement.to_vec(),
+            base: if inc.last { Vec::new() } else { inc.base.to_vec() },
+            image: inc.states.image(),
+            contact: Vec::new(),
+            history: history_text(&self.entries, &self.lines, part),
+        };
+        restart.write(self.run_dir).map_err(|e| io(RESTART_FILE, e))?;
+        self.last_restart = Instant::now();
         (self.emit)(&format!("restart {RESTART_FILE}"));
         Ok(())
     }
@@ -395,13 +501,15 @@ impl Observer for Writer<'_> {
         (self.cancel)()
     }
 
-    fn step_done(
-        &mut self,
-        index: usize,
-        result: StepResult,
-        info: &StepInfo,
-    ) -> Result<(), SolverError> {
-        self.write_step(index, &result, info).map_err(|e| {
+    fn increment_done(&mut self, inc: &Increment, result: StepResult) -> Result<(), SolverError> {
+        let mut run = || -> Result<(), ApiError> {
+            self.write_files(inc.step, inc.number, inc.last, &result, &inc.info)?;
+            if self.restart_due(inc) {
+                self.write_restart(inc)?;
+            }
+            self.write_pvd()
+        };
+        run().map_err(|e| {
             let message = e.to_string();
             self.error = Some(e);
             SolverError::new(message)
@@ -447,9 +555,33 @@ fn summary_toon(model: &Model, lines: &[StepLine], summary: &Summary) -> String 
     s
 }
 
+fn finish(
+    model: &Model,
+    writer: &mut Writer,
+    run_dir: &Path,
+    summary: &Summary,
+) -> Result<RunReport, ApiError> {
+    writer.write_pvd()?;
+    let text = summary_toon(model, &writer.lines, summary);
+    atomic(run_dir, SUMMARY_FILE, |w| {
+        w.write_all(text.as_bytes()).map_err(|e| io(SUMMARY_FILE, e))
+    })?;
+    // Times change from run to run, so they go to the event stream and not to the files.
+    (writer.emit)(&format!(
+        "timing assemble={:.3} factor={:.3} solve={:.3}",
+        summary.assemble_seconds, summary.factor_seconds, summary.solve_seconds
+    ));
+    Ok(RunReport {
+        pvd: run_dir.join(PVD_FILE),
+        summary: text,
+        validated: false,
+        restart: Some(run_dir.join(RESTART_FILE)),
+    })
+}
+
 /// Solve `model` and write the protocol files in `run_dir`. Event lines go to
 /// `emit` (without the line end). `cancel` is polled during the run. With
-/// `restart`, the steps that the restart file lists are not solved again.
+/// `restart`, the run continues from the newest valid restart file.
 pub fn run_model(
     model: &Model,
     hash: u64,
@@ -462,35 +594,38 @@ pub fn run_model(
     fs::create_dir_all(run_dir).map_err(|e| io("run folder", e))?;
     let grid = base_grid(model)?;
     let (n_point, n_cell) = (grid.point_data.len(), grid.cell_data.len());
-    let times = step_times(model);
-    let lines = if restart {
-        read_restart(run_dir, hash)?
+    let (mut entries, mut lines, mut resume) = (Vec::new(), Vec::new(), None);
+    if restart {
+        let r = read_latest(run_dir, hash).map_err(ApiError)?;
+        if r.step >= model.steps.len() {
+            return Err(ApiError(format!(
+                "{RESTART_FILE}: more steps than the input file has"
+            )));
+        }
+        clean_run_folder(run_dir, &r)?;
+        let (e, l, part) = parse_history(&r.history)?;
+        entries = e;
+        lines = l;
+        resume = Some(Resume {
+            step: r.step,
+            number: r.number,
+            complete: r.complete,
+            time: r.time,
+            lambda: r.lambda,
+            next_size: r.next_size,
+            displacement: r.displacement,
+            base: r.base,
+            image: r.image,
+            info: if r.complete { None } else { part },
+        });
     } else {
-        Vec::new()
-    };
-    if lines.len() > times.len() {
-        return Err(ApiError(format!(
-            "{RESTART_FILE}: more steps than the input file has"
-        )));
-    }
-    let mut entries = Vec::new();
-    for (i, &time) in times.iter().enumerate().take(lines.len()) {
-        for (on, ext) in [
-            (options.formats.text, "txt"),
-            (options.formats.vtu, "vtu"),
-            (options.formats.vtk, "vtk"),
-        ] {
-            let file = format!("step-{}.{ext}", i + 1);
-            if on && !run_dir.join(&file).is_file() {
-                return Err(ApiError(format!("restart: {file} is missing")));
+        // A new run removes the temporary files of an earlier one.
+        for e in fs::read_dir(run_dir).map_err(|e| io("run folder", e))?.flatten() {
+            if e.file_name().to_string_lossy().ends_with(".tmp") {
+                let _ = fs::remove_file(e.path());
             }
         }
-        entries.push(PvdEntry {
-            time,
-            file: format!("step-{}.{}", i + 1, primary(options.formats)),
-        });
     }
-    let skip = lines.len();
     let mut writer = Writer {
         run_dir,
         formats: options.formats,
@@ -498,7 +633,9 @@ pub fn run_model(
         grid,
         n_point,
         n_cell,
-        times,
+        restart_every: options.restart_every,
+        restart_minutes: options.restart_minutes,
+        last_restart: Instant::now(),
         entries,
         lines,
         emit,
@@ -506,8 +643,7 @@ pub fn run_model(
         last: (0, String::new(), 0.0),
         error: None,
     };
-    let _ = &writer.times;
-    let result = solve_from(model, options, &mut writer, skip);
+    let result = solve_from(model, options, &mut writer, resume.as_ref());
     let summary = match result {
         Ok(s) => s,
         Err(e) => {
@@ -520,18 +656,10 @@ pub fn run_model(
             return Err(ApiError(e.to_string()));
         }
     };
-    writer.write_pvd()?;
-    let text = summary_toon(model, &writer.lines, &summary);
-    fs::write(run_dir.join(SUMMARY_FILE), &text).map_err(|e| io(SUMMARY_FILE, e))?;
-    Ok(RunReport {
-        pvd: run_dir.join(PVD_FILE),
-        summary: text,
-        validated: false,
-        restart: Some(run_dir.join(RESTART_FILE)),
-    })
+    finish(model, &mut writer, run_dir, &summary)
 }
 
-/// Write the results of a finished [`Solution`] in `run_dir`.
+/// Write the results of a finished [`Solution`] in `run_dir`. Each step counts as one increment.
 pub fn write_results(
     model: &Model,
     solution: &Solution,
@@ -547,7 +675,9 @@ pub fn write_results(
         grid,
         n_point,
         n_cell,
-        times: step_times(model),
+        restart_every: 1,
+        restart_minutes: None,
+        last_restart: Instant::now(),
         entries: Vec::new(),
         lines: Vec::new(),
         emit: &mut |_| {},
@@ -557,15 +687,7 @@ pub fn write_results(
     };
     for (i, step) in solution.steps.iter().enumerate() {
         let info = &solution.summary.steps[i];
-        writer.write_step(i, step, info)?;
+        writer.write_files(i, info.increments.max(1), true, step, info)?;
     }
-    writer.write_pvd()?;
-    let text = summary_toon(model, &writer.lines, &solution.summary);
-    fs::write(run_dir.join(SUMMARY_FILE), &text).map_err(|e| io(SUMMARY_FILE, e))?;
-    Ok(RunReport {
-        pvd: run_dir.join(PVD_FILE),
-        summary: text,
-        validated: false,
-        restart: Some(run_dir.join(RESTART_FILE)),
-    })
+    finish(model, &mut writer, run_dir, &solution.summary)
 }

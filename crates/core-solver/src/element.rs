@@ -4,14 +4,20 @@
 //! Element matrices have 3 dofs per node and fixed sizes: 24 for the bricks,
 //! 30 for the `C3D10`.
 //!
-//! The element API is [`evaluate`]. It takes the nodal displacements and the
-//! state of the element, and it returns the internal force, the consistent
-//! tangent and the stress of each integration point. A [`Material`] gives the
-//! stress and the tangent for a strain. Linear elastic is the only material in M2.
-//! The state ([`ElementState`]) holds the state of each integration point and
-//! the internal dofs of the element (the 9 incompatible mode amplitudes of
-//! `C3D8I`). A Newton loop must keep this state for each element between
-//! iterations. The linear driver uses a scratch state and keeps nothing.
+//! The element API is [`evaluate`]. It is a pure function on fixed-size arrays: it
+//! takes the node positions ([`Placement`], start position plus displacement), a
+//! [`Material`] and the committed state of the element ([`ElementState`]). It writes
+//! the internal force, the consistent tangent, the stress of each integration point
+//! and the new (trial) state into an [`Evaluation`]. It does not allocate. It does
+//! not change its inputs. The kernel is generic over the material, so a backend
+//! that has one material type (for example on a GPU) needs no trait object.
+//!
+//! The element gives the material the deformation gradient `F` of each integration
+//! point. The material returns the stress, the tangent `d stress / d strain` and
+//! its new state. The state of an integration point belongs to the material
+//! (`Material::state_len` numbers; elastic has none). The element-internal state
+//! (the 9 incompatible mode amplitudes of `C3D8I`) is separate. The caller keeps a
+//! committed and a trial copy (see `state`). Elements know no material constants.
 
 use crate::dense::{a_b, add_at_b, inv3, invert, Mat};
 use crate::SolverError;
@@ -71,19 +77,60 @@ pub fn elasticity(e: f64, nu: f64) -> [[f64; 6]; 6] {
     d
 }
 
-/// State of one integration point. History variables of later materials
-/// (plastic strain, hardening) are added here in M6.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct IpState {
-    pub strain: [f64; 6],
-    pub stress: [f64; 6],
+/// Largest number of state numbers that a material keeps at one integration point.
+pub const MAX_MAT_STATE: usize = 8;
+
+/// Positions of the nodes of one element: the start position and the displacement
+/// (`3n` numbers). The current position of node `a` is start + displacement.
+#[derive(Debug, Clone, Copy)]
+pub struct Placement<'a> {
+    pub start: &'a [[f64; 3]],
+    pub disp: &'a [f64],
+}
+
+impl Placement<'_> {
+    pub fn current(&self, a: usize) -> [f64; 3] {
+        let u = &self.disp[3 * a..3 * a + 3];
+        let x = self.start[a];
+        [x[0] + u[0], x[1] + u[1], x[2] + u[2]]
+    }
+}
+
+/// Small strain `[xx, yy, zz, xy, yz, xz]` (engineering shear) from a deformation gradient.
+pub fn small_strain(f: &[[f64; 3]; 3]) -> [f64; 6] {
+    [
+        f[0][0] - 1.0,
+        f[1][1] - 1.0,
+        f[2][2] - 1.0,
+        f[0][1] + f[1][0],
+        f[1][2] + f[2][1],
+        f[0][2] + f[2][0],
+    ]
 }
 
 /// Material law at an integration point.
 pub trait Material: Sync {
-    /// Stress state and consistent tangent `d stress / d strain` for the total
-    /// `strain`, from the converged state `old`. The call must not change `old`.
-    fn update(&self, strain: &[f64; 6], old: &IpState) -> (IpState, [[f64; 6]; 6]);
+    /// Numbers of state at each integration point. Elastic has none.
+    fn state_len(&self) -> usize {
+        0
+    }
+
+    /// False when the stress depends on the history or is not linear in the strain.
+    /// A run with only linear materials takes the linear fallback.
+    fn is_linear(&self) -> bool {
+        true
+    }
+
+    /// Stress `[xx, yy, zz, xy, yz, xz]` and the consistent tangent `d stress / d strain`
+    /// for the deformation gradient `f`. `old` is the committed state (`state_len`
+    /// numbers) and the call writes the trial state in `new`. An error means that the
+    /// trial is not acceptable, and the step cuts the increment back.
+    fn update(
+        &self,
+        f: &[[f64; 3]; 3],
+        old: &[f64],
+        new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError>;
 }
 
 /// Linear isotropic elasticity.
@@ -101,25 +148,26 @@ impl Elastic {
 }
 
 impl Material for Elastic {
-    fn update(&self, strain: &[f64; 6], _old: &IpState) -> (IpState, [[f64; 6]; 6]) {
+    fn update(
+        &self,
+        f: &[[f64; 3]; 3],
+        _old: &[f64],
+        _new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        let strain = small_strain(f);
         let mut stress = [0.0; 6];
         for (s, row) in stress.iter_mut().zip(&self.d) {
-            *s = row.iter().zip(strain).map(|(d, e)| d * e).sum();
+            *s = row.iter().zip(&strain).map(|(d, e)| d * e).sum();
         }
-        (
-            IpState {
-                strain: *strain,
-                stress,
-            },
-            self.d,
-        )
+        Ok((stress, self.d))
     }
 }
 
-/// State of one element between calls of [`evaluate`].
+/// Committed state of one element: the material state at each integration point
+/// (point `i`, number `c` at `ip[i][c]`) and the internal dofs of the element.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ElementState {
-    pub ip: [IpState; MAX_POINTS],
+    pub ip: [[f64; MAX_MAT_STATE]; MAX_POINTS],
     /// Internal dofs: the amplitudes of the 9 incompatible modes of `C3D8I`.
     /// Other kinds leave them at zero.
     pub internal: [f64; 9],
@@ -138,6 +186,11 @@ pub struct Evaluation {
     pub mean_stress: [f64; 6],
     /// Stress at each integration point. Only the first `Kind::point_count` entries are valid.
     pub ip_stress: [[f64; 6]; MAX_POINTS],
+    /// Trial state: material state of each point and the internal dofs.
+    pub ip_state: [[f64; MAX_MAT_STATE]; MAX_POINTS],
+    pub internal: [f64; 9],
+    /// Sum of the absolute node forces of the points, a scale for the Newton check.
+    pub fabs: [f64; MAX_DOFS],
 }
 
 impl Default for Evaluation {
@@ -149,6 +202,9 @@ impl Default for Evaluation {
             volume: 0.0,
             mean_stress: [0.0; 6],
             ip_stress: [[0.0; 6]; MAX_POINTS],
+            ip_state: [[0.0; MAX_MAT_STATE]; MAX_POINTS],
+            internal: [0.0; 9],
+            fabs: [0.0; MAX_DOFS],
         }
     }
 }
@@ -160,6 +216,10 @@ struct Point<const M: usize> {
     w: f64,
     b: Mat<6, M>,
     g: Option<Mat<6, 9>>,
+    /// Cartesian derivatives of the shape functions (the first `M / 3` rows are used).
+    dx: [[f64; 3]; 10],
+    /// Cartesian derivatives of the three incompatible modes.
+    dm: [[f64; 3]; 3],
 }
 
 impl<const M: usize> Point<M> {
@@ -167,6 +227,8 @@ impl<const M: usize> Point<M> {
         w: 0.0,
         b: [[0.0; M]; 6],
         g: None,
+        dx: [[0.0; 3]; 10],
+        dm: [[0.0; 3]; 3],
     };
 }
 
@@ -291,10 +353,13 @@ fn tet10_points(coords: &[[f64; 3]]) -> Result<[Point<30>; MAX_POINTS], SolverEr
         let dn = tet_dn(l);
         let (jinv, det) = inv3(&jacobian(coords, &dn));
         check_det(det, Kind::C3D10)?;
+        let dx = cartesian(&dn, &jinv);
         *slot = Point {
             w: det / 24.0,
-            b: b_matrix(&cartesian(&dn, &jinv)),
+            b: b_matrix(&dx),
             g: None,
+            dx,
+            dm: [[0.0; 3]; 3],
         };
     }
     Ok(out)
@@ -310,7 +375,11 @@ fn hex8_points(kind: Kind, coords: &[[f64; 3]]) -> Result<[Point<24>; MAX_POINTS
         let dn = hex_dn(xi);
         let (jinv, det) = inv3(&jacobian(coords, &dn));
         check_det(det, kind)?;
-        let b = b_matrix(&cartesian(&dn, &jinv));
+        let dx8 = cartesian(&dn, &jinv);
+        let b = b_matrix(&dx8);
+        let mut dxs = [[0.0; 3]; 10];
+        dxs[..8].copy_from_slice(&dx8);
+        let mut dm = [[0.0; 3]; 3];
         let gm = (kind == Kind::C3D8I).then(|| {
             // Incompatible modes 1 - xi^2, 1 - eta^2, 1 - zeta^2: derivatives mapped
             // by the centre Jacobian and scaled by det0 / det. Column 3k + i is
@@ -320,6 +389,7 @@ fn hex8_points(kind: Kind, coords: &[[f64; 3]]) -> Result<[Point<24>; MAX_POINTS
                 let mut dnk = [[0.0; 3]; 1];
                 dnk[0][k] = -2.0 * xi[k];
                 let d = cartesian(&dnk, &jinv0)[0].map(|v| v * det0 / det);
+                dm[k] = d;
                 let bk: Mat<6, 3> = b_matrix(&[d]);
                 for r in 0..6 {
                     gm[r][3 * k..3 * k + 3].copy_from_slice(&bk[r]);
@@ -327,7 +397,13 @@ fn hex8_points(kind: Kind, coords: &[[f64; 3]]) -> Result<[Point<24>; MAX_POINTS
             }
             gm
         });
-        *slot = Point { w: det, b, g: gm };
+        *slot = Point {
+            w: det,
+            b,
+            g: gm,
+            dx: dxs,
+            dm,
+        };
     }
     if kind == Kind::C3D8 {
         bbar(&mut out);
@@ -368,27 +444,34 @@ fn mul_vec<const R: usize, const C: usize>(a: &Mat<R, C>, x: &[f64]) -> [f64; R]
 
 const MAX_MODE_ITERATIONS: usize = 6;
 
-/// Evaluate one element. `u` holds the `3n` nodal displacements. The call
-/// updates `state` (the points and the internal dofs) and writes `out`.
-/// With `tangent` false the matrix `out.k` is left alone.
-pub fn evaluate(
+/// Evaluate one element. `state` is the committed state. The call writes the
+/// internal force, the stress, the trial state and, with `tangent`, the matrix into
+/// `out`. With `tangent` false the matrix `out.k` is left alone.
+///
+/// The geometry of the strain-displacement matrices is the start geometry (small
+/// displacements). The current positions enter through the deformation gradient
+/// and, in M7, through the geometry of the kernel.
+pub fn evaluate<M: Material + ?Sized>(
     kind: Kind,
-    coords: &[[f64; 3]],
-    material: &dyn Material,
-    u: &[f64],
-    state: &mut ElementState,
+    place: &Placement,
+    material: &M,
+    state: &ElementState,
     out: &mut Evaluation,
     tangent: bool,
 ) -> Result<(), SolverError> {
+    let coords = place.start;
     check_nodes(kind, coords)?;
+    if place.disp.len() < 3 * coords.len() {
+        return Err(SolverError::new("too few displacements for the nodes"));
+    }
     match kind {
         Kind::C3D10 => {
             let pts = tet10_points(coords)?;
-            run::<30>(&pts[..4], material, u, state, out, tangent)
+            run::<30, M>(&pts[..4], material, place.disp, state, out, tangent)
         }
         Kind::C3D8 | Kind::C3D8I => {
             let pts = hex8_points(kind, coords)?;
-            run::<24>(&pts, material, u, state, out, tangent)
+            run::<24, M>(&pts, material, place.disp, state, out, tangent)
         }
     }
 }
@@ -399,17 +482,53 @@ struct Response {
     tangent: Mat<6, 6>,
 }
 
-fn run<const M: usize>(
-    pts: &[Point<M>],
-    material: &dyn Material,
+/// Deformation gradient of a point. The compatible part comes from the node
+/// displacements, the incompatible part from the mode amplitudes. `eps` is the strain
+/// that the element feels (B-bar changes its volume part), and the gradient is
+/// corrected to carry the same volume strain.
+fn gradient<const M: usize>(
+    p: &Point<M>,
     u: &[f64],
-    state: &mut ElementState,
+    alpha: &[f64; 9],
+    eps: &[f64; 6],
+) -> [[f64; 3]; 3] {
+    let mut h = [[0.0; 3]; 3];
+    for a in 0..M / 3 {
+        for (i, hi) in h.iter_mut().enumerate() {
+            for (j, hij) in hi.iter_mut().enumerate() {
+                *hij += u[3 * a + i] * p.dx[a][j];
+            }
+        }
+    }
+    if p.g.is_some() {
+        for k in 0..3 {
+            for (i, hi) in h.iter_mut().enumerate() {
+                for (j, hij) in hi.iter_mut().enumerate() {
+                    *hij += alpha[3 * k + i] * p.dm[k][j];
+                }
+            }
+        }
+    }
+    let shift = (eps[0] + eps[1] + eps[2] - (h[0][0] + h[1][1] + h[2][2])) / 3.0;
+    let mut f = h;
+    for (i, fi) in f.iter_mut().enumerate() {
+        fi[i] += 1.0 + shift;
+    }
+    f
+}
+
+fn run<const M: usize, Mt: Material + ?Sized>(
+    pts: &[Point<M>],
+    material: &Mt,
+    u: &[f64],
+    state: &ElementState,
     out: &mut Evaluation,
     tangent: bool,
 ) -> Result<(), SolverError> {
     let has_modes = pts[0].g.is_some();
+    let sl = material.state_len().min(MAX_MAT_STATE);
     let mut alpha = state.internal;
-    let mut new_ip = state.ip;
+    let mut new_ip = [[0.0; MAX_MAT_STATE]; MAX_POINTS];
     let mut resp = [Response {
         stress: [0.0; 6],
         tangent: [[0.0; 6]; 6],
@@ -434,15 +553,12 @@ fn run<const M: usize>(
                     *e += v;
                 }
             }
-            let (s, c) = material.update(&eps, &state.ip[i]);
-            new_ip[i] = s;
-            resp[i] = Response {
-                stress: s.stress,
-                tangent: c,
-            };
+            let f = gradient(p, u, &alpha, &eps);
+            let (stress, c) = material.update(&f, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
+            resp[i] = Response { stress, tangent: c };
             if let Some(g) = &p.g {
                 for a in 0..9 {
-                    let t: f64 = (0..6).map(|r| g[r][a] * s.stress[r]).sum();
+                    let t: f64 = (0..6).map(|r| g[r][a] * stress[r]).sum();
                     f_a[a] += p.w * t;
                     scale += (p.w * t).abs();
                 }
@@ -469,6 +585,7 @@ fn run<const M: usize>(
     // Forces and tangent from the points.
     out.n = M;
     out.fint[..M].fill(0.0);
+    out.fabs[..M].fill(0.0);
     let mut kuu = [[0.0; M]; M];
     let mut kua = [[0.0; 9]; M];
     let mut mean = [0.0; 6];
@@ -478,6 +595,7 @@ fn run<const M: usize>(
         for c in 0..M {
             let t: f64 = (0..6).map(|k| p.b[k][c] * r.stress[k]).sum();
             out.fint[c] += p.w * t;
+            out.fabs[c] += (p.w * t).abs();
         }
         if tangent || has_modes {
             let cb = a_b(&r.tangent, &p.b);
@@ -516,11 +634,11 @@ fn run<const M: usize>(
     }
     out.volume = vol;
     out.mean_stress = mean.map(|v| v / vol);
-    for (dst, ip) in out.ip_stress.iter_mut().zip(&new_ip) {
-        *dst = ip.stress;
+    for (dst, r) in out.ip_stress.iter_mut().zip(&resp) {
+        *dst = r.stress;
     }
-    state.ip = new_ip;
-    state.internal = alpha;
+    out.ip_state = new_ip;
+    out.internal = alpha;
     Ok(())
 }
 
@@ -535,10 +653,12 @@ pub fn stiffness(
     let n = 3 * kind.node_count();
     evaluate(
         kind,
-        coords,
+        &Placement {
+            start: coords,
+            disp: &u[..n],
+        },
         &Elastic { d: *d },
-        &u[..n],
-        &mut ElementState::default(),
+        &ElementState::default(),
         &mut out,
         true,
     )?;
@@ -564,10 +684,12 @@ pub fn mean_stress(
     let mut out = Evaluation::default();
     evaluate(
         kind,
-        coords,
+        &Placement {
+            start: coords,
+            disp: u,
+        },
         &Elastic { d: *d },
-        u,
-        &mut ElementState::default(),
+        &ElementState::default(),
         &mut out,
         false,
     )?;
@@ -583,13 +705,19 @@ pub fn von_mises(s: &[f64; 6]) -> f64 {
 }
 
 /// Consistent nodal forces of a uniform pressure `p` on face `face` (1 to 6).
-/// Positive pressure pushes into the body. Returns `(local node, force)` pairs.
+/// Positive pressure pushes into the body. The face is taken at the current positions
+/// (start + displacement). Returns `(local node, force)` pairs.
 pub fn pressure_load(
     kind: Kind,
-    coords: &[[f64; 3]],
+    place: &Placement,
     face: u8,
     p: f64,
 ) -> Result<Vec<(usize, [f64; 3])>, SolverError> {
+    let mut now = [[0.0; 3]; 10];
+    for (a, x) in now.iter_mut().enumerate().take(place.start.len()) {
+        *x = place.current(a);
+    }
+    let coords = &now[..place.start.len()];
     let hex_faces: [[usize; 4]; 6] = [
         [0, 1, 2, 3],
         [4, 7, 6, 5],

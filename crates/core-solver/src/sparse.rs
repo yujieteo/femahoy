@@ -5,6 +5,7 @@
 //! the conjugate gradient solver.
 
 use faer::linalg::solvers::Solve;
+use faer::sparse::linalg::solvers::Llt;
 use faer::sparse::{SparseColMatRef, SymbolicSparseColMatRef};
 use faer::{Mat, Side};
 
@@ -194,6 +195,23 @@ impl Matrix {
         }
     }
 
+    /// The values of the lower triangle, in the order of the pattern. A slot map points into them.
+    pub fn values_mut(&mut self) -> &mut [f64] {
+        &mut self.values
+    }
+
+    /// Position in `values` of the entry at row `a`, column `b`, with `a >= b`.
+    pub fn position(&self, a: u32, b: u32) -> Option<u32> {
+        let (s, e) = (
+            self.col_ptr[b as usize] as usize,
+            self.col_ptr[b as usize + 1] as usize,
+        );
+        self.row_idx[s..e]
+            .binary_search(&a)
+            .ok()
+            .map(|p| (s + p) as u32)
+    }
+
     /// The diagonal.
     pub fn diagonal(&self) -> Vec<f64> {
         // The diagonal is the first entry of each column.
@@ -219,8 +237,8 @@ impl Matrix {
         }
     }
 
-    /// Sparse Cholesky of the matrix (faer). The factor needs more memory than the matrix.
-    pub fn cholesky_solve(&self, rhs: &[f64]) -> Result<Vec<f64>, SolverError> {
+    /// Sparse Cholesky factor of the matrix (faer). It needs more memory than the matrix.
+    pub fn cholesky(&self) -> Result<Llt<u32, f64>, SolverError> {
         let symbolic = SymbolicSparseColMatRef::new_checked(
             self.n,
             self.n,
@@ -229,10 +247,12 @@ impl Matrix {
             &self.row_idx,
         );
         let a = SparseColMatRef::new(symbolic, &self.values);
-        let llt = a.sp_cholesky(Side::Lower).map_err(|_| not_spd())?;
-        let mut x = Mat::<f64>::from_fn(self.n, 1, |i, _| rhs[i]);
-        llt.solve_in_place(x.as_mut());
-        Ok((0..self.n).map(|i| x[(i, 0)]).collect())
+        a.sp_cholesky(Side::Lower).map_err(|_| not_spd())
+    }
+
+    /// Factor the matrix and solve once.
+    pub fn cholesky_solve(&self, rhs: &[f64]) -> Result<Vec<f64>, SolverError> {
+        solve_with_factor(&self.cholesky()?, rhs)
     }
 
     /// Conjugate gradients with a Jacobi preconditioner. The sums run in a
@@ -296,6 +316,80 @@ impl Matrix {
         Err(SolverError::new(format!(
             "the conjugate gradient solver did not reach the tolerance {tolerance:e} in {max_iterations} iterations"
         )))
+    }
+}
+
+fn solve_with_factor(llt: &Llt<u32, f64>, rhs: &[f64]) -> Result<Vec<f64>, SolverError> {
+    let mut x = Mat::<f64>::from_fn(rhs.len(), 1, |i, _| rhs[i]);
+    llt.solve_in_place(x.as_mut());
+    Ok((0..rhs.len()).map(|i| x[(i, 0)]).collect())
+}
+
+/// The linear solve of a step. A backend (a GPU solver, another sparse library) replaces
+/// the two types below by implementing this trait. `factor` prepares for the values
+/// that the matrix holds now, and `solve` can run many times after it, as long as the
+/// matrix is the same. The solver does not own the matrix.
+pub trait LinearSolver {
+    fn factor(&mut self, a: &Matrix) -> Result<(), SolverError>;
+
+    /// Solve `a x = rhs`. Returns `x` and the number of iterations (0 for a direct solver).
+    /// `progress` gets the iteration count and the relative residual. False stops the solve.
+    fn solve(
+        &self,
+        a: &Matrix,
+        rhs: &[f64],
+        progress: &mut dyn FnMut(usize, f64) -> bool,
+    ) -> Result<(Vec<f64>, usize), SolverError>;
+}
+
+/// Sparse Cholesky with faer.
+#[derive(Default)]
+pub struct CholeskySolver {
+    llt: Option<Llt<u32, f64>>,
+}
+
+impl LinearSolver for CholeskySolver {
+    fn factor(&mut self, a: &Matrix) -> Result<(), SolverError> {
+        self.llt = None;
+        self.llt = Some(a.cholesky()?);
+        Ok(())
+    }
+
+    fn solve(
+        &self,
+        _a: &Matrix,
+        rhs: &[f64],
+        _progress: &mut dyn FnMut(usize, f64) -> bool,
+    ) -> Result<(Vec<f64>, usize), SolverError> {
+        let llt = self
+            .llt
+            .as_ref()
+            .ok_or_else(|| SolverError::new("the matrix is not factored"))?;
+        Ok((solve_with_factor(llt, rhs)?, 0))
+    }
+}
+
+/// Conjugate gradients with a Jacobi preconditioner.
+pub struct PcgSolver {
+    pub tolerance: f64,
+    pub max_iterations: usize,
+}
+
+impl LinearSolver for PcgSolver {
+    fn factor(&mut self, a: &Matrix) -> Result<(), SolverError> {
+        if a.diagonal().iter().any(|d| *d <= 0.0) {
+            return Err(not_spd());
+        }
+        Ok(())
+    }
+
+    fn solve(
+        &self,
+        a: &Matrix,
+        rhs: &[f64],
+        progress: &mut dyn FnMut(usize, f64) -> bool,
+    ) -> Result<(Vec<f64>, usize), SolverError> {
+        a.pcg_solve(rhs, self.tolerance, self.max_iterations, progress)
     }
 }
 

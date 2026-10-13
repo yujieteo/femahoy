@@ -4,8 +4,9 @@
 mod common;
 
 use fh_core_solver::element::{
-    evaluate, Elastic, ElementState, Evaluation, IpState, Kind, Material,
+    evaluate, small_strain, Elastic, ElementState, Evaluation, Kind, Material, Placement,
 };
+use fh_core_solver::SolverError;
 use fh_core_solver::{solve, solve_options, Method, Options, Solution};
 use fh_inp::{parse, Model};
 
@@ -317,7 +318,11 @@ fn internal_force_equals_stiffness_times_displacement_for_linear_elasticity() {
         let u = displacement(n);
         let mut ev = Evaluation::default();
         let mut state = ElementState::default();
-        evaluate(kind, &coords[..n], &m, &u, &mut state, &mut ev, true).unwrap();
+        let place = Placement {
+            start: &coords[..n],
+            disp: &u,
+        };
+        evaluate(kind, &place, &m, &state, &mut ev, true).unwrap();
         for i in 0..3 * n {
             let ku: f64 = (0..3 * n).map(|j| ev.k[i][j] * u[j]).sum();
             assert!(
@@ -335,20 +340,17 @@ fn every_integration_point_has_a_stress() {
     let u = displacement(8);
     for (kind, want) in [(Kind::C3D8, 8), (Kind::C3D8I, 8)] {
         assert_eq!(kind.point_count(), want);
-        let mut state = ElementState::default();
-        evaluate(
-            kind,
-            &hex_coords()[..8],
-            &m,
-            &u,
-            &mut state,
-            &mut Evaluation::default(),
-            false,
-        )
-        .unwrap();
-        assert!(state.ip[..want]
+        let state = ElementState::default();
+        let coords = hex_coords();
+        let place = Placement {
+            start: &coords[..8],
+            disp: &u,
+        };
+        let mut ev = Evaluation::default();
+        evaluate(kind, &place, &m, &state, &mut ev, false).unwrap();
+        assert!(ev.ip_stress[..want]
             .iter()
-            .all(|p| p.stress.iter().any(|s| *s != 0.0)));
+            .all(|p| p.iter().any(|s| *s != 0.0)));
     }
     assert_eq!(Kind::C3D10.point_count(), 4);
 }
@@ -357,17 +359,23 @@ fn every_integration_point_has_a_stress() {
 struct Cubic(Elastic);
 
 impl Material for Cubic {
-    fn update(&self, strain: &[f64; 6], old: &IpState) -> (IpState, [[f64; 6]; 6]) {
-        let (mut s, mut d) = self.0.update(strain, old);
+    fn update(
+        &self,
+        f: &[[f64; 3]; 3],
+        old: &[f64],
+        new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        let strain = small_strain(f);
+        let (mut s, mut d) = self.0.update(f, old, new)?;
         let a = 2.0e6;
         let q: f64 = strain.iter().map(|e| e * e).sum();
         for i in 0..6 {
-            s.stress[i] += a * q * strain[i];
+            s[i] += a * q * strain[i];
             for j in 0..6 {
                 d[i][j] += a * (2.0 * strain[i] * strain[j] + if i == j { q } else { 0.0 });
             }
         }
-        (s, d)
+        Ok((s, d))
     }
 }
 
@@ -393,42 +401,19 @@ fn the_tangent_is_the_derivative_of_the_internal_force() {
     ] {
         let u = displacement(n);
         let mut ev = Evaluation::default();
-        evaluate(
-            kind,
-            &coords[..n],
-            &m,
-            &u,
-            &mut ElementState::default(),
-            &mut ev,
-            true,
-        )
-        .unwrap();
+        fn at<'a>(c: &'a [[f64; 3]], u: &'a [f64]) -> Placement<'a> {
+            Placement { start: c, disp: u }
+        }
+        let c = &coords[..n];
+        evaluate(kind, &at(c, &u), &m, &ElementState::default(), &mut ev, true).unwrap();
         let h = 1e-6;
         for j in 0..3 * n {
             let (mut up, mut um) = (u.clone(), u.clone());
             up[j] += h;
             um[j] -= h;
             let (mut a, mut b) = (Evaluation::default(), Evaluation::default());
-            evaluate(
-                kind,
-                &coords[..n],
-                &m,
-                &up,
-                &mut ElementState::default(),
-                &mut a,
-                false,
-            )
-            .unwrap();
-            evaluate(
-                kind,
-                &coords[..n],
-                &m,
-                &um,
-                &mut ElementState::default(),
-                &mut b,
-                false,
-            )
-            .unwrap();
+            evaluate(kind, &at(c, &up), &m, &ElementState::default(), &mut a, false).unwrap();
+            evaluate(kind, &at(c, &um), &m, &ElementState::default(), &mut b, false).unwrap();
             for i in 0..3 * n {
                 let fd = (a.fint[i] - b.fint[i]) / (2.0 * h);
                 assert!(
