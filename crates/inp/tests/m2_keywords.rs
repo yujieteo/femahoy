@@ -267,7 +267,9 @@ fn dload_errors() {
 
 #[test]
 fn dsload_reads_a_pressure_on_an_element_surface() {
-    let m = ok("*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n*STEP\n*STATIC\n*DSLOAD\nS, P, 2.5\n*END STEP\n");
+    let m = ok(
+        "*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n*STEP\n*STATIC\n*DSLOAD\nS, P, 2.5\n*END STEP\n",
+    );
     let d = &m.steps[0].dsloads;
     assert_eq!((d[0].surface.as_str(), d[0].pressure), ("S", 2.5));
 }
@@ -277,8 +279,10 @@ fn dsload_errors() {
     let step = "*STEP\n*STATIC\n*DSLOAD\n";
     let s = "*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n";
     assert!(err(&format!("{s}{step}NOPE, P, 1\n")).contains("'NOPE' is not defined"));
-    assert!(err(&format!("*SURFACE, TYPE=NODE, NAME=N\n1\n{step}N, P, 1\n"))
-        .contains("'N' is not defined"));
+    assert!(
+        err(&format!("*SURFACE, TYPE=NODE, NAME=N\n1\n{step}N, P, 1\n"))
+            .contains("'N' is not defined")
+    );
     assert!(err(&format!("{s}{step}S, P1, 1\n")).contains("unsupported load type P1"));
     assert!(err(&format!("{s}*DSLOAD\nS, P, 1\n")).contains("needs an open *STEP"));
 }

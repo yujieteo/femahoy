@@ -844,10 +844,7 @@ impl Parser {
             }
             let name = d.fields[0].as_str();
             if self.model.element_surface(name).is_none() {
-                return Err(b.error(
-                    d.line,
-                    format!("element surface '{name}' is not defined"),
-                ));
+                return Err(b.error(d.line, format!("element surface '{name}' is not defined")));
             }
             let ty = d.fields[1].as_str();
             if !ty.eq_ignore_ascii_case("P") {
