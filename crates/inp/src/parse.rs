@@ -47,7 +47,7 @@ struct PendingCoupling {
 
 fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError> {
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
-    f.parse::<u32>().map_err(|_| {
+    f.parse::<u32>().ok().filter(|&n| n > 0).ok_or_else(|| {
         b.error(
             d.line,
             format!("{what} must be a positive integer, found '{f}'"),
@@ -644,7 +644,14 @@ impl Parser {
         if first.fields.len() != 1 {
             return Err(b.error(first.line, "the first line gives only the number of terms"));
         }
-        let n = int(b, first, 0, "number of terms")? as usize;
+        // Not `int`: a count of 0 gets its own message.
+        let text = first.fields[0].as_str();
+        let n = text.parse::<usize>().map_err(|_| {
+            b.error(
+                first.line,
+                format!("number of terms must be a positive integer, found '{text}'"),
+            )
+        })?;
         if n == 0 {
             return Err(b.error(first.line, "equation needs at least 1 term"));
         }
@@ -809,6 +816,19 @@ mod tests {
                 "{k}"
             );
         }
+    }
+
+    #[test]
+    fn a_zero_label_is_an_error() {
+        assert_eq!(
+            err("*NODE\n0,0,0,0\n"),
+            "line 2, *NODE: node id must be a positive integer, found '0'"
+        );
+        let element = format!("{MESH}*ELEMENT, TYPE=C3D8\n0,1,2,3,4,5,6,7,8\n");
+        assert_eq!(
+            err(&element),
+            "line 11, *ELEMENT: element id must be a positive integer, found '0'"
+        );
     }
 
     #[test]
