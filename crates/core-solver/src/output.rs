@@ -202,6 +202,8 @@ fn atomic(
 ) -> Result<(), ApiError> {
     let tmp = dir.join(format!("{file}.tmp"));
     let mut w = BufWriter::new(fs::File::create(&tmp).map_err(|e| io(file, e))?);
+    #[cfg(feature = "restart-test-hooks")]
+    crate::restart::pause_write(&tmp);
     body(&mut w)?;
     w.flush().map_err(|e| io(file, e))?;
     drop(w);

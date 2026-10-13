@@ -23,6 +23,24 @@ pub const VERSION: u32 = 3;
 pub const NEWEST: &str = "restart.fh";
 pub const PREVIOUS: &str = "restart.fh.prev";
 
+/// Pause only test builds, after the temporary file opens and before its rename.
+#[cfg(feature = "restart-test-hooks")]
+pub(crate) fn pause_write(path: &Path) {
+    if std::env::var_os("FH_TEST_PAUSE_WRITE").as_deref() == path.file_name() {
+        let mut out = std::io::stdout().lock();
+        writeln!(
+            out,
+            "test-write {}",
+            path.file_name().unwrap().to_string_lossy()
+        )
+        .unwrap();
+        out.flush().unwrap();
+        loop {
+            std::thread::park();
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Restart {
     pub hash: u64,
@@ -99,6 +117,8 @@ impl Restart {
     pub fn write(&self, dir: &Path) -> io::Result<()> {
         let tmp = dir.join(format!("{NEWEST}.tmp"));
         let file = File::create(&tmp)?;
+        #[cfg(feature = "restart-test-hooks")]
+        pause_write(&tmp);
         let mut w = Hashing {
             inner: BufWriter::new(file),
             hash: FNV_OFFSET,

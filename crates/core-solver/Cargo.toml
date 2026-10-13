@@ -6,9 +6,16 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+restart-test-hooks = []
+
 [dependencies]
 fh-inp = { path = "../inp" }
 fh-io = { path = "../io" }
 fh-solver-api = { path = "../solver-api" }
 fh-toon = { path = "../toon" }
 faer = { version = "0.24.4", default-features = false, features = ["std", "sparse-linalg"] }
+
+# Enable the pause hook for tests, without enabling it in a normal build.
+[dev-dependencies]
+fh-core-solver = { path = ".", features = ["restart-test-hooks"] }
