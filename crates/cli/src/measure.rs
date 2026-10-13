@@ -129,6 +129,19 @@ pub fn extract(grid: &Grid, q: &Quantity) -> Result<f64, String> {
         Values::I32(v) => v.clone(),
         Values::F64(v) => v.iter().map(|x| *x as i32).collect(),
     };
+    // The data comes from a solver, so its sizes are checked before any access.
+    let entities = match q.field {
+        Field::U | Field::RF => grid.points.len(),
+        Field::S => grid.cells.len(),
+    };
+    if flags.len() != entities || entities.checked_mul(width) != Some(data.len()) {
+        return Err(format!(
+            "set `{}` has {} flags and the result field has {} values, for {entities} entities with {width} components",
+            q.set,
+            flags.len(),
+            data.len()
+        ));
+    }
     let picked: Vec<f64> = flags
         .iter()
         .enumerate()
@@ -202,5 +215,22 @@ mod tests {
         // Finite values with a sum that overflows.
         let g = grid(vec![1e308, 0.0, 0.0, 1e308, 0.0, 0.0], vec![1, 1]);
         assert!(extract(&g, &ux(Op::Sum)).is_err());
+    }
+
+    #[test]
+    fn a_field_or_a_set_with_the_wrong_length_is_an_error_not_a_panic() {
+        let u = vec![1.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        // A set with more flags than points, and one with fewer.
+        for flags in [vec![1, 1, 1], vec![1]] {
+            let mut g = grid(u.clone(), vec![1, 1]);
+            g.point_data[1] = fh_io::vtu::Field::i32("NSET_N", flags.clone());
+            let r = std::panic::catch_unwind(|| extract(&g, &ux(Op::Max)));
+            assert!(matches!(r, Ok(Err(_))), "{flags:?}: {r:?}");
+        }
+        // U with 6 components for 2 points: 6 values, not 12.
+        let mut g = grid(u, vec![1, 1]);
+        g.point_data[0].components = 6;
+        let r = std::panic::catch_unwind(|| extract(&g, &ux(Op::Max)));
+        assert!(matches!(r, Ok(Err(_))), "{r:?}");
     }
 }
