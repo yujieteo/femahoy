@@ -1,6 +1,7 @@
 # Subprocess solver protocol v2
 
-The runner starts `exe <input.inp> <run-dir> [--restart <file>]` with the run folder as the working directory.
+The runner starts `exe <input.inp> <run-dir> [--restart]` with the run folder as the working directory.
+For a restart run the runner adds `--restart` as the third argument. The solver then reads its restart file in the run folder.
 The runner supports protocol v2 only.
 
 ## Run folder
@@ -19,6 +20,13 @@ The runner supports protocol v2 only.
    - `restart <file>` names a restart file, relative to the run folder.
 3. Any other line is a log line.
 
+The core solver `fh-solve` also writes these log lines (DESIGN.md section 9.3):
+
+- `step N max_u=... max_mises=... max_rf=... free_dofs=... method=... iterations=...` at the end of each step.
+- `stats ...` and `timing assemble=... factor=... solve=...` at the end of the run.
+
+`fh-solve` also takes `--formats text,vtu,vtk`, `--restart-every N` and `--restart-minutes T`. The runner does not pass these options.
+
 ## Cancel
 
 The runner sends the line `cancel` on stdin. End of stdin also means cancel.
@@ -29,7 +37,7 @@ If the solver is still alive after 5 seconds, the runner kills the whole process
 
 On success the solver writes these files in the run folder, and exits with code 0:
 
-- `results.pvd` and each VTU file that it lists.
+- `results.pvd` and each result file that it lists.
 - `summary.toon`, a TOON document with the first line `schema: fh.run` and a `status:` line (schema in the TOON schema document, sections 3.5 and 3.8).
 
 Each PVD path must be relative, must not contain `..`, and must stay inside the run folder.

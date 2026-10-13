@@ -1,7 +1,7 @@
 # Milestones
 
 This table lists the milestones from `DESIGN.md` section 13.
-M0 and M1 are done. M2 and later are not built yet.
+M0 and M1 are done. M2 is in review (PR 10). M3 and later are not built yet.
 The decision IDs (D-xx) are in `DESIGN.md` section 17.
 
 | Milestone | Content | Status |

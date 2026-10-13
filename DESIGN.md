@@ -179,7 +179,11 @@ All of these are required. They arrive one per release after the first user test
 | `C3D10` | Default tet10. |
 | `C3D10M` | Modified tet10 for contact surfaces. Corner-node forces stay correct under pressure. |
 
-Element API: an element call returns the internal force, the consistent tangent, the stress at each integration point, and the new element state (`ElementState`: strain and stress at each integration point, plus the internal dofs of `C3D8I`). The state of one element is a fixed-size value, so the element code does not allocate and the nonlinear milestones add no new interface.
+Element API: `element::evaluate` is a pure function on fixed-size arrays. It takes the node positions (`Placement`: start position plus displacement), a `Material` and the committed state of the element. It writes the internal force, the consistent tangent, the stress at each integration point and the trial state into an `Evaluation`. It does not allocate.
+
+- The element gives each integration point its deformation gradient F. The material returns the stress, the tangent and its new state. Elements know no material constants.
+- The material owns the state of each integration point (`Material::state_len` numbers, zero for elastic). The internal dofs of `C3D8I` are element state.
+- `StateStore` keeps a committed copy and a trial copy of all state, in one flat array for each copy (struct-of-arrays layout).
 
 For imported input, the `TYPE=` on `*ELEMENT` sets the element. For models that femahoy agents create, use `C3D8I` and `C3D10` unless the task needs the others.
 
@@ -203,16 +207,36 @@ Starting list:
 - `docs/compatibility.md` lists every difference. A test covers each difference.
 - Tests use our own `.inp` files. No Abaqus manual files go in the repo (section 10.1).
 
+### 7.5 Steps, increments and later analysis types
+
+The step code (`core-solver/src/step.rs`) has one increment loop for all analysis types (D-10).
+
+- A step is a list of increments. The load factor runs from 0 to 1. Loads and prescribed values ramp from their values at the start of the step to the values of the step.
+- Each increment builds its constraint transform from the prescribed values at its load factor. A transform with the same map keeps the matrix and the factor. A transform with the same structure keeps the pattern and the solver, and builds the slot map again. Any other transform gets a new pattern.
+- **Linear fallback:** when all materials are linear and the model has no contribution, a step is one increment. The solver assembles and factors once for each constraint map. No Newton code runs.
+- **Newton path:** all other models. `*STATIC` gives the first, minimum and maximum increment. Each Newton iteration builds the residual and the tangent in one sweep. A converged increment commits the trial state. A failed increment drops the trial state, and the solver tries a smaller increment (cutback). An increment fails when Newton does not converge, or when a material or a contribution rejects the trial.
+- **Sweep:** one call of a pure kernel for each element and each contribution group. Threads compute chunks of 256 entries. One thread adds the chunks in entry order, so the result is bit-identical for any thread count.
+- A converged increment writes its result files and, when it is due, the restart file (section 9.3).
+
+How the later milestones plug in:
+
+| Milestone | Interface that exists in M2 | What the milestone adds | What stays |
+|---|---|---|---|
+| M5 Nonlinear solver | The Newton path, the cutback and the state store. Tests use a test material with state. | `C3D10M`, the nonlinear fixtures, and a test that a linear case gives the same result in both paths. | The increment loop and the restart file. |
+| M6 Plasticity | `Material` with `state_len() > 0` and `is_linear() == false`. `update` gets F and the committed state. It returns the stress, the tangent and the trial state. An error cuts the increment back. | The J2 return map in a new `Material`. | The element code. Elements pass F and do not know the material law. |
+| M6 Contact | `Contribution`: groups of nodes, a state for each group, and `evaluate`, which returns the force and the tangent of a group at the current positions. The groups are extra entries after the elements, so the node graph, the pattern and the slot map include them. The restart file keeps their state. | The contact search, the augmented Lagrange update and the change of the groups. A change of the groups at an increment builds the node graph and the pattern again, as a change of the constraint structure does. In M2 the groups are fixed for a run. | The step loop and the assembly. |
+| M7 Large displacement | `Placement` holds the start position and the displacement. The element computes F from them. Pressure loads use the current positions. | The geometric stiffness and the finite-strain stress measure in the element kernel, and the material update for large strain. | The material interface and the Newton loop. |
+
 ---
 
 ## 8. Results and postprocessing
 
-- **Results files:** the solver writes three formats for each step. All are on by default. `fh-solve --formats text,vtu,vtk` selects a subset.
+- **Results files:** the solver writes three formats for each converged increment. The files of the last increment of step N are `step-N.*`, and the files of the other increments are `step-N-inc-k.*`. All formats are on by default. `fh-solve --formats text,vtu,vtk` selects a subset.
   - **Plain text** (`step-N.txt`): first line `fh-results 1`, a header (units note, step, step name, time, stress order), then three tables: one row for each node (`U1 U2 U3 RF1 RF2 RF3`, and `UR1 UR2 UR3` when the model has rotations), one row for each element (`S11 S22 S33 S12 S23 S13 MISES`, volume average), and one row for each integration point (`element_id ip S11 ... MISES`). Reals use the shortest text that reads back to the same value. The model has no unit system, so the units line says that all values are in the units of the input file.
   - **VTU** (`step-N.vtu`): binary data appended raw. Sets are integer arrays. femahoy writes and reads these files in Rust, with no C library. There is no compression, because that needs a new dependency and costs time on a slow CPU.
   - **Legacy VTK** (`step-N.vtk`): ASCII `UNSTRUCTURED_GRID`, version 3.0. It has the same mesh and fields as the VTU file.
   - A PVD collection file lists the first grid format that is on (VTU, else VTK, else text). The text file is for people and scripts, and ParaView cannot read it.
-  - Every writer takes one array at a time from a buffered file and makes no copy of a field. The solver result of the step stays in memory while the files are written. The integration point stress (48 bytes for each point) is the largest array and is kept only when the text format is on. Switch the text format off for models of millions of elements (about 1.5 GB of text for 1M `C3D8` elements, see section 11.2).
+  - Every writer takes one array at a time from a buffered file and makes no copy of a field. The solver result of the step stays in memory while the files are written. The integration point stress (48 bytes for each point) is the largest array and is kept only when the text format is on. Switch the text format off for models of millions of elements (about 1.5 GB of text for 1M `C3D8` elements).
 - ParaView opens the PVD file directly.
 - The wasm viewer and the submodel interpolation read the same files.
 - **TOON** is used only for summaries and queries that agents ask for (for example, "maximum Mises stress in set X, step 2"). Full field data never goes into TOON.
@@ -243,16 +267,19 @@ The agents themselves run under the harness's own permission system.
 
 ### 9.3 Subprocess protocol, version 2
 
-Command line: `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vtk]`. The environment variable `FH_THREADS` sets the number of element threads (default: all cores; the results are bit-identical for any count).
+Command line: `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vtk] [--restart-every N] [--restart-minutes T]`. The environment variable `FH_THREADS` sets the number of threads for the element work and the PCG solve (default: all cores). The results are bit-identical for any count.
 
 - **stdout** is line based. The first line is `fh-solver-protocol 2`. Then these event lines:
   - `estimate bytes=N`: the memory estimate of section 11.2, before the work starts.
   - `progress step=i/n phase=<name> fraction=<0..1>`: about 20 lines for each phase.
-  - `restart restart.fh`: after each finished step. The marker file lists the steps that are done and the hash of the input.
+  - `restart restart.fh`: after each write of the restart file. The solver writes it at the end of each step, after every N converged increments (`--restart-every`, default 1), and when T minutes have passed since the last write (`--restart-minutes`). The file holds the last converged increment, its state and the hash of the input.
+  - `step N max_u=... max_mises=... max_rf=... free_dofs=... method=... iterations=...`: at the end of each step.
+  - `stats dofs=... nnz=... pattern_builds=... estimate_bytes=... assemblies=... factorizations=... orphans=...` and `timing assemble=... factor=... solve=...` (seconds): at the end of the run.
+  - The runner keeps any other line as a log line.
 - **stdin**: the line `cancel`, or the end of stdin, stops the run. The exit code is 130. The runner keeps the pipe open while the solver runs.
-- **Restart**: `--restart` reads `restart.fh` in the run folder and does not solve the finished steps again. It refuses an input file that changed.
-- **Run folder**: `step-N.*` files, the PVD collection, `restart.fh`, and `summary.toon`.
-- **Summary**: `summary.toon` follows the `fh.run` schema, version 1.0.0, with the fields `status`, `nodes`, `elements`, `dofs`, `nnz`, `estimate_bytes`, `pattern_builds`, `orphans` and one row for each step (`free_dofs`, `method`, `iterations`, `residual`, `max_u`, `max_mises`, `max_rf`).
+- **Restart**: `--restart` reads `restart.fh` in the run folder. It deletes the result files after the restart point, and continues from the last converged increment. It refuses an input file that changed.
+- **Run folder**: `step-N.*` for the last increment of step N, `step-N-inc-k.*` for the other increments, the PVD collection, `restart.fh`, and `summary.toon`.
+- **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.8). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics. A dof with no stiffness gives a warning with the code `SOL101`. The solver fixes that dof at zero.
 - **Limits**: the runner stops the whole process group at the time limit or at the memory limit. It reads the memory use of the group with an operating system probe (Linux, macOS and Windows). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
 
 
@@ -343,41 +370,53 @@ Rules:
 
 Requirements:
 
-1. A model of 1M `C3D8` elements (about 3.1M dofs) solves inside 16 GB. Measured peak: 3.4 GB (below).
-2. The build uses the baseline x86-64 target (`-C target-cpu=nehalem` is the test setting: SSE4.2, no AVX). `faer` and its dense kernels pick AVX2 and AVX-512 code at run time with CPU feature detection, so a CPU without AVX uses the SSE code. The femahoy crates contain no AVX code of their own (checked in the disassembly, see the hand-back of PR 10). No run on a CPU without AVX has been done yet. Do this on real hardware before the first user test.
+1. A model of 1M `C3D8` elements (about 3.1M dofs) solves inside 16 GB. Measured peak memory footprint: 6.1 GiB (below).
+2. The build uses the baseline x86-64 target (`-C target-cpu=nehalem` is the test setting: SSE4.2, no AVX). `faer` and its dense kernels pick AVX2 and AVX-512 code at run time with CPU feature detection, so a CPU without AVX uses the SSE code. The femahoy crates contain no SIMD code of their own. The check (PR 10): a search of the crates and the CI files finds no `std::arch`, `core::arch`, `target_feature`, `asm!` or `target-cpu`, and the repo has no `.cargo/config`. No x86-64 build with `-C target-cpu=nehalem` and no run on a CPU without AVX has been done yet. Do both on real hardware before the first user test.
 3. If the matrix does not fit, the iterative solver is used. Its memory is about the size of the matrix. The out-of-core scheme is not needed so far, and is not built.
 4. The default memory limit of a run is 85 percent of the RAM of the machine.
 
-**Assembly:** the sparse pattern is built once from the node adjacency of the elements (no triplets of the whole model). Values are added in place. The pattern stays across steps and Newton iterations, and is rebuilt only when the constraint structure changes. Element work runs in chunks of 256 elements on all threads. The main thread adds the chunks in element order, so the matrix is bit-identical for any thread count.
+**Assembly:** the sparse pattern is built once from the node adjacency of the elements and the contribution groups (no triplets of the whole model). A slot map holds, for each element, the position in the matrix values of each entry of its lower triangle. Values are added in place through the slot map, with no search. The pattern stays across steps and Newton iterations, and is rebuilt only when the constraint structure changes (section 7.5). Element work runs in chunks of 256 entries on all threads. The main thread adds the chunks in entry order, so the matrix is bit-identical for any thread count.
 
-**Switch rule (`Method::Auto`):** use sparse Cholesky when the reduced system has at most 60 000 free dofs, else PCG with a Jacobi preconditioner and sums in a fixed order (relative residual 1e-10). Reason: Cholesky memory grows as n^1.35 (about 400 bytes times n^1.35) and its time grows faster; PCG memory is linear.
+**Switch rule (`Method::Auto`):** use sparse Cholesky when the reduced system has at most 60 000 free dofs, else PCG with a Jacobi preconditioner (relative residual 1e-10). Reason: Cholesky memory grows as n^1.35 (about 400 bytes times n^1.35) and its time grows faster. PCG memory is linear.
+
+**PCG on threads:** the PCG solve runs on `FH_THREADS` threads. The rows are cut into fixed blocks of 1024 rows, and each thread owns a run of whole blocks. Each row of the matrix product has one owner and adds its terms in column order. Each dot product is a sum for each block, and the threads add the block sums in block order. Thus the result is bit-identical for any thread count. The matrix keeps only its lower triangle. For the product, the PCG solver keeps a row copy of the strict lower triangle (12 bytes for each entry).
 
 **Memory estimate** (bytes, printed as `estimate bytes=` before the work starts), with N nodes, E elements, n dofs, nnz stored matrix entries, T threads:
 
     model    = 40 N + 130 E
     mesh     = 45 E + 30 (N + E) + graph + 8 N
     matrix   = 12 nnz + 4 n
-    vectors  = 24 n + 48 n + (72 n if PCG else 24 n)
+    slots    = sum over elements of (4 m (m + 1) / 2 + 8), m = element dofs
+    state    = 4 * (bytes of one copy of the state)
+    vectors  = 24 n + 48 n + (72 n + 12 (nnz - n) + 12 n + 4 if PCG, else 24 n)
     factor   = 400 n^1.35                      (Cholesky only)
     results  = 72 N + 56 E + 120 N + 70 E + (384 E if text format)
-    chunks   = T * 256 * size_of(Evaluation)
-    estimate = 1.35 * (model + mesh + matrix + vectors + factor + results + chunks)
+    chunks   = min(T * 256, E) * size_of(Evaluation)
+    estimate = 1.35 * (model + mesh + matrix + slots + state + vectors + factor + results + chunks)
 
-The factor 1.35 covers allocator slack and the input text. The measured peak was 1.21 to 1.26 times the sum.
+The factor 1.35 covers allocator slack and the input text. The measured peak memory footprint of the PCG runs below is 1.03 to 1.10 times the sum.
 
-**Measurements** (generated `C3D8` box, one tip load, release build, macOS aarch64, 10 cores; peak is the resident set size):
+**Measurements** (release build, macOS aarch64, Apple M5 with 10 cores and 16 GB, all 3 result formats). The peak is the peak memory footprint from `/usr/bin/time -l`. The resident set size leaves out compressed pages, so it can be lower than the footprint. The machine ran other work at the same time, so the times change from run to run (the 100k solve on 10 threads took 1.9 to 3.9 s in 3 runs). The times below come from the run with the lowest load.
+
+| Model | Elements | Free dofs | Method | Threads | Peak | Assemble | Factor | Solve | Wall time |
+|---|---|---|---|---|---|---|---|---|---|
+| Cantilever and Lamé case meshes (8 meshes) | 4 to 512 | 48 to 2 176 | Cholesky | 1 or 10 | 1.7 to 12 MiB | at most 3.1 ms | at most 3.0 ms | at most 0.1 ms | 8 to 21 ms |
+| `C3D8` box 100x40x25, one tip load | 100 000 | 319 800 | PCG, 656 iterations | 1 | 578 MiB | 0.58 s | 0.02 s | 8.9 s | 10.5 s |
+| same | 100 000 | 319 800 | PCG, 656 iterations | 10 | 599 MiB | 0.18 s | 0.02 s | 2.0 s | 3.2 s |
+| `C3D8` box 100x100x100, one tip load | 1 000 000 | 3 060 300 | PCG | 1 | 6 047 MiB | 6.2 s | 0.66 s | 129 s | 146 s |
+| same | 1 000 000 | 3 060 300 | PCG | 10 | 6 065 MiB | 2.2 s | 0.38 s | 59 s | 72 s |
+
+For PCG, "Factor" is the row copy and the preconditioner. The PCG solve is bound by memory bandwidth, so 10 threads give 4.4 times the speed at 100k elements and 2.2 times at 1M elements. The results of 1 thread and 10 threads are bit-identical (all result files of the 100k run compared).
+
+For the 1M-element model the estimate is 7.4 GiB against a measured peak of 6.1 GiB. All files of the run (3 formats, PVD, restart file and summary) take 2.28 GB. A 2010 machine has slower cores, less memory bandwidth and a slower disk, so expect longer times. The memory numbers do not depend on the CPU.
+
+Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip load, 10 cores, peak is the resident set size):
 
 | Elements | Free dofs | Method | Peak | Wall time |
 |---|---|---|---|---|
 | 8 000 | 26 460 | Cholesky | 349 MiB | 1.0 s |
 | 27 000 | 86 490 | Cholesky | 1 754 MiB | 11.5 s |
 | 27 000 | 86 490 | PCG | 106 MiB | 0.7 s |
-| 64 000 | 201 720 | PCG | 226 MiB | 1.9 s |
-| 216 000 | about 0.67M | PCG | 720 MiB | 8.5 s |
-| 1 000 000 | 3 060 300 | PCG, 727 iterations | 3 254 MiB (VTU only) | 59 s |
-| 1 000 000 | 3 060 300 | PCG, all 3 formats | 3 470 MiB | 64 s |
-
-For the 1M-element model the estimate is 4.16 GB (3.96 GiB) against a measured peak of 3.39 GiB. The files of one step are 1.53 GB (text), 376 MB (VTK) and 224 MB (VTU). These numbers come from a fast machine with an SSD. A 2010 machine has slower cores and disk, so expect longer times. The memory numbers do not depend on the CPU.
 
 ---
 
@@ -411,7 +450,7 @@ Distribution: a single `fh` binary (Homebrew and a direct download). The static 
 
 Later, with no milestone number yet: a GPU backend (Metal first, D-08), `fh mesh`, and a mesher written in Rust (D-02).
 
-**Not built yet:** everything from M2 on, the GPU backend, `fh mesh` and the Rust mesher. The decision log (section 17) states the build status of each decision.
+**Status:** M0 and M1 are done. M2 is in review (PR 10). **Not built yet:** everything from M3 on, the GPU backend, `fh mesh` and the Rust mesher. The decision log (section 17) states the build status of each decision.
 
 The managed LLM tier is a separate track. It starts after the first user test.
 
@@ -490,7 +529,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** These formats need no large library. HDF5 and Exodus need C libraries that are hard to build on all platforms.
 - **Rejected:** HDF5, Exodus.
 - **Reverse if:** a model is too big for these formats, or a customer needs one of the rejected formats.
-- **Built:** not yet. M2 builds the three formats.
+- **Built:** M2 (PR 10). `fh-solve --formats` selects a subset.
 
 ### D-05 Model input stays Abaqus-style `.inp`, TOML holds only case metadata
 - **Decided by:** the captain.
@@ -506,7 +545,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** This is the machine of the expected user.
 - **Rejected:** code that needs AVX, solvers that need more than 16 GB or fast disk swap.
 - **Reverse if:** the captain changes the target machine.
-- **Built:** not yet checked. No memory test exists. M2 adds one.
+- **Built:** M2 (PR 10): the memory estimate, the solver switch rule and the parallel PCG. The 1M-element run is measured in section 11.2. No run on a CPU without AVX has been done yet.
 
 ### D-07 Code builds and passes on aarch64
 - **Decided by:** the captain.
@@ -514,7 +553,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** The captain tests on that machine.
 - **Rejected:** x86-only intrinsics, flags that only work on x86-64.
 - **Reverse if:** the captain changes the test machine.
-- **Built:** a rule for all crates. CI does not check aarch64 yet.
+- **Built:** a rule for all crates. The M2 gate passes on an Apple M5 (aarch64). CI does not check aarch64 yet.
 
 ### D-08 GPU later, with neutral interfaces
 - **Decided by:** the captain.
@@ -522,7 +561,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** The test machine has a Metal GPU.
 - **Rejected:** CUDA-only design.
 - **Reverse if:** no GPU backend is ever needed.
-- **Built:** not yet. No GPU code exists.
+- **Built:** the interfaces only (M2): the `LinearSolver` and `Assemble` traits name no device, and the state store uses a struct-of-arrays layout. No GPU code exists.
 
 ### D-09 Restart is safe against partial files
 - **Decided by:** the captain.
@@ -530,7 +569,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Long runs on a slow disk can die at any time.
 - **Rejected:** write in place, trust any file that exists.
 - **Reverse if:** a better atomic method exists on all target platforms.
-- **Built:** not yet. M2 builds restart.
+- **Built:** M2 (PR 10). Every result file and the restart file are written to a temporary name and renamed. The restart file has a version and the hash of the input. A test kills the solver at 3 random restart points and checks that the resumed files are equal to the files of a run with no kill.
 
 ### D-10 Element and step design stays open to later analysis types
 - **Decided by:** the captain.
@@ -538,4 +577,4 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A change of these interfaces later costs more than a careful design now.
 - **Rejected:** element code that holds material laws, a design for linear analysis only.
 - **Reverse if:** a later milestone shows that the interfaces cannot carry one of these analysis types.
-- **Built:** not yet. The `Material` trait and the step design start in M2.
+- **Built:** M2 (PR 10): the `Material` trait, the `Contribution` trait, the state store, and one increment loop with the linear fallback and the Newton path (section 7.5).
