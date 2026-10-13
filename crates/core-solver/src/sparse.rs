@@ -241,6 +241,41 @@ impl Matrix {
         }
     }
 
+    /// The connected parts of the matrix graph: the part of each row, and the part count.
+    pub fn parts(&self) -> (Vec<u32>, usize) {
+        // Each set points to its smallest row.
+        fn root(up: &mut [u32], mut i: u32) -> u32 {
+            while up[i as usize] != i {
+                let g = up[up[i as usize] as usize];
+                up[i as usize] = g;
+                i = g;
+            }
+            i
+        }
+        let mut up: Vec<u32> = (0..self.n as u32).collect();
+        for j in 0..self.n {
+            for p in self.col_ptr[j] as usize + 1..self.col_ptr[j + 1] as usize {
+                let (a, b) = (root(&mut up, j as u32), root(&mut up, self.row_idx[p]));
+                up[a.max(b) as usize] = a.min(b);
+            }
+        }
+        for i in 0..self.n {
+            up[i] = root(&mut up, i as u32);
+        }
+        // The root of a row is not after the row, so it has its part first.
+        let mut count = 0;
+        for i in 0..self.n {
+            let r = up[i] as usize;
+            if r == i {
+                up[i] = count;
+                count += 1;
+            } else {
+                up[i] = up[r];
+            }
+        }
+        (up, count as usize)
+    }
+
     fn symbolic(&self) -> SymbolicSparseColMatRef<'_, u32> {
         SymbolicSparseColMatRef::new_checked(self.n, self.n, &self.col_ptr, None, &self.row_idx)
     }
@@ -333,7 +368,7 @@ impl LinearSolver for CholeskySolver {
     }
 }
 
-fn not_spd() -> SolverError {
+pub(crate) fn not_spd() -> SolverError {
     SolverError::new(
         "stiffness matrix is not positive definite: check the boundary conditions for rigid body motion",
     )
@@ -359,6 +394,20 @@ mod tests {
         let (g, _) = chain(4);
         assert_eq!(g.neighbours(0), &[0, 1]);
         assert_eq!(g.neighbours(2), &[1, 2, 3]);
+    }
+
+    #[test]
+    fn parts_are_the_connected_parts_of_the_pattern() {
+        let (g, t) = chain(3);
+        let m = Matrix::pattern(&g, &|n, c| 3 * n + c, &t).unwrap();
+        assert_eq!(m.parts(), (vec![0; 9], 1));
+        // Two elements without a common node.
+        let g = NodeGraph::new(4, &[0, 1, 2, 3], &[0, 2, 4]);
+        let t = Elimination::new(12).finish();
+        let m = Matrix::pattern(&g, &|n, c| 3 * n + c, &t).unwrap();
+        let (part, count) = m.parts();
+        assert_eq!(count, 2);
+        assert_eq!(part, [[0; 6], [1; 6]].concat());
     }
 
     #[test]

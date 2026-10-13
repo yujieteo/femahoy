@@ -792,3 +792,41 @@ fn a_huge_thread_count_gives_the_result_of_1_thread() {
     };
     assert!(estimate_bytes(&sizes) > 0);
 }
+
+#[test]
+fn both_solvers_refuse_a_body_without_support() {
+    let free = |load: &str| cube("", &format!("*STEP\n*STATIC\n{load}*END STEP\n"));
+    // A second cube 5 to the right, with no support. The first cube has its support.
+    let second: String = CUBE
+        .lines()
+        .skip(1)
+        .map(|l| {
+            let v: Vec<f64> = l.split(',').map(|x| x.parse().unwrap()).collect();
+            format!("{},{},{},{}\n", v[0] + 10.0, v[1] + 5.0, v[2], v[3])
+        })
+        .collect();
+    let two = parse(&format!(
+        "{CUBE}{second}*ELEMENT, TYPE=C3D8I\n1,1,2,3,4,5,6,7,8\n2,11,12,13,14,15,16,17,18\n\
+*ELSET, ELSET=E\n1,2\n*MATERIAL, NAME=M\n*ELASTIC\n1000, 0.3\n\
+*SOLID SECTION, ELSET=E, MATERIAL=M\n*BOUNDARY\n{FIX}*STEP\n*STATIC\n*CLOAD\n7,1,1\n*END STEP\n"
+    ))
+    .unwrap_or_else(|e| panic!("{e}"));
+    let cases = [
+        ("no load", free("")),
+        ("a load in equilibrium", free("*CLOAD\n2,1,1\n1,1,-1\n")),
+        ("a second body without support", two),
+    ];
+    let mut wrong = Vec::new();
+    for (name, model) in &cases {
+        for method in [Method::Cholesky, Method::Pcg] {
+            match solve_options(model, &options(method, 1)) {
+                Ok(_) => wrong.push(format!("{name}, {method:?}: the solve passed")),
+                Err(e) if !e.to_string().contains("positive definite") => {
+                    wrong.push(format!("{name}, {method:?}: {e}"));
+                }
+                Err(_) => {}
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}

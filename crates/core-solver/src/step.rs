@@ -162,6 +162,79 @@ struct Acc<'a> {
 /// Entries (elements or groups) per thread in one chunk.
 const CHUNK: usize = 256;
 
+/// A rigid motion `y` with `|K y|` below this part of `|diag(K) y|` is a rigid body mode.
+const RIGID: f64 = 1e-10;
+
+/// PCG does not see a rigid body motion: with no load it returns zero, and with a load in
+/// equilibrium it converges. The direct solver refuses both. Thus before PCG, each
+/// connected part of the matrix gets the 6 rigid motions about its centre. A motion that
+/// the matrix maps to almost zero is an error.
+fn check_support(mesh: &Mesh, t: &Transform, a: &Matrix) -> Result<(), SolverError> {
+    let n = t.n_free;
+    let (part, n_parts) = a.parts();
+    let node: Vec<u32> = (0..n)
+        .map(|r| (mesh.base.partition_point(|b| *b <= t.full_dof(r)) - 1) as u32)
+        .collect();
+    let mut centre = vec![[0.0; 3]; n_parts];
+    let mut count = vec![0.0; n_parts];
+    for r in 0..n {
+        let p = part[r] as usize;
+        for (c, x) in centre[p].iter_mut().zip(mesh.xyz(node[r] as usize)) {
+            *c += x;
+        }
+        count[p] += 1.0;
+    }
+    for (c, k) in centre.iter_mut().zip(&count) {
+        *c = c.map(|x| x / k);
+    }
+    let diag = a.diagonal();
+    let (mut y, mut q) = (vec![0.0; n], vec![0.0; n]);
+    for mode in 0..6 {
+        for (r, y) in y.iter_mut().enumerate() {
+            let i = node[r] as usize;
+            let (x, c) = (mesh.xyz(i), centre[part[r] as usize]);
+            *y = rigid(
+                mode,
+                [x[0] - c[0], x[1] - c[1], x[2] - c[2]],
+                t.full_dof(r) - mesh.base[i],
+            );
+        }
+        a.mul(&y, &mut q);
+        // The largest |K y| and |diag(K) y| of each part.
+        let mut size = vec![(0.0_f64, 0.0_f64, 0); n_parts];
+        for r in 0..n {
+            let s = &mut size[part[r] as usize];
+            s.0 = s.0.max(q[r].abs());
+            if diag[r] * y[r].abs() > s.1 {
+                (s.1, s.2) = (diag[r] * y[r].abs(), node[r]);
+            }
+        }
+        if let Some(s) = size.iter().find(|s| s.1 > 0.0 && s.0 <= RIGID * s.1) {
+            return Err(SolverError::new(format!(
+                "stiffness matrix is not positive definite: the part with node {} has a rigid body motion. Check the boundary conditions",
+                mesh.model.nodes[s.2 as usize].id
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Component `k` of the rigid motion `mode` at the offset `d` from the centre: a unit
+/// translation (modes 0 to 2) or a unit rotation (modes 3 to 5). Components 3 to 5 are
+/// rotations.
+fn rigid(mode: usize, d: [f64; 3], k: usize) -> f64 {
+    let (p, q) = ((mode + 1) % 3, (mode + 2) % 3);
+    match (mode < 3, k < 3) {
+        (true, true) => f64::from(u8::from(k == mode)),
+        (true, false) => 0.0,
+        // (e x d)_k for the axis e of the rotation.
+        (false, true) if k == p => -d[q],
+        (false, true) if k == q => d[p],
+        (false, true) => 0.0,
+        (false, false) => f64::from(u8::from(k == mode)),
+    }
+}
+
 /// Run `work` for the entries `0..n`. Threads compute chunks in parallel,
 /// and `consume` sees the results in entry order on this thread.
 fn for_elements<S: Sync>(
@@ -864,6 +937,9 @@ impl Run<'_> {
     /// Factor the matrix of the cache.
     fn factor(&mut self, c: &mut Cache) -> Result<(), SolverError> {
         let clock = Instant::now();
+        if c.method == Method::Pcg {
+            check_support(self.mesh, &c.t, &c.matrix)?;
+        }
         let out = c.solver.factor(&c.matrix);
         self.stats.factor += clock.elapsed().as_secs_f64();
         out?;
