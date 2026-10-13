@@ -5,37 +5,19 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
+use fh_validation::{Case, Units};
+
+use crate::rules;
+
 const USAGE: &str = "usage: fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2] [--size H] \
-[--scale S] [--set NAME=VALUE]... [--units SI-mm|SI-m] [--timeout SECONDS] [--gmsh PATH]\n\
+[--scale S] [--set NAME=VALUE]... (--case DIR | --units SI-mm|SI-m) [--timeout SECONDS] [--gmsh PATH]\n\
+The units are required (D-18). The mesh is C3D10 unless the part is extruded (D-19).\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
 
 /// Tested gmsh release line, and the oldest release that `fh mesh` accepts.
 const TESTED: (u32, u32) = (4, 15);
 const OLDEST: (u32, u32) = (4, 8);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Units {
-    Mm,
-    M,
-}
-
-impl Units {
-    fn name(self) -> &'static str {
-        match self {
-            Units::Mm => "SI-mm",
-            Units::M => "SI-m",
-        }
-    }
-
-    /// The value of the gmsh option `Geometry.OCCTargetUnit`.
-    fn gmsh_target(self) -> &'static str {
-        match self {
-            Units::Mm => "MM",
-            Units::M => "M",
-        }
-    }
-}
 
 struct Options {
     input: PathBuf,
@@ -44,7 +26,8 @@ struct Options {
     size: Option<f64>,
     scale: Option<f64>,
     numbers: Vec<(String, f64)>,
-    units: Units,
+    case: Option<PathBuf>,
+    units: Option<Units>,
     timeout: Duration,
     gmsh: Option<PathBuf>,
 }
@@ -70,7 +53,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         size: None,
         scale: None,
         numbers: Vec::new(),
-        units: Units::Mm,
+        case: None,
+        units: None,
         timeout: Duration::from_secs(300),
         gmsh: None,
     };
@@ -107,11 +91,12 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             }
             "--units" => {
                 o.units = match it.next().map(String::as_str) {
-                    Some("SI-mm") => Units::Mm,
-                    Some("SI-m") => Units::M,
+                    Some("SI-mm") => Some(Units::SiMm),
+                    Some("SI-m") => Some(Units::SiM),
                     _ => return Err("--units needs SI-mm or SI-m".into()),
                 }
             }
+            "--case" => o.case = Some(it.next().ok_or("--case needs a directory")?.into()),
             "--timeout" => {
                 let seconds = number("--timeout", it.next())?;
                 o.timeout = Duration::try_from_secs_f64(seconds)
@@ -208,55 +193,34 @@ because gmsh would run a shell command or another file"
     Ok(())
 }
 
-/// The length unit that a STEP file declares. `Err` holds a refusal code and text.
-fn step_unit(text: &str) -> Result<&'static str, String> {
-    let upper = text.to_ascii_uppercase();
-    let mut found: Vec<&'static str> = Vec::new();
-    for record in upper.split(';').filter(|r| r.contains("LENGTH_UNIT()")) {
-        let unit = if record.contains("CONVERSION_BASED_UNIT") {
-            if record.contains("'INCH'") || record.contains("'IN'") {
-                "inch"
-            } else {
-                "other"
-            }
-        } else if record.contains(".METRE.") {
-            if record.contains(".MILLI.") {
-                "mm"
-            } else if record.contains(".CENTI.") {
-                "cm"
-            } else if record.contains("$,.METRE.") {
-                "m"
-            } else {
-                "other"
-            }
-        } else {
-            "other"
-        };
-        if !found.contains(&unit) {
-            found.push(unit);
-        }
-    }
-    match found.as_slice() {
-        [] => Err("unit.step.missing: the STEP file has no length unit record".into()),
-        [one] => Ok(one),
-        _ => Err(format!(
-            "unit.step.mixed: the STEP file has more than one length unit ({})",
-            found.join(", ")
+/// The units of the run. D-18: the case or `--units` declares them, and there is no default.
+/// `Err` holds a refusal code and text.
+fn declared_units(o: &Options) -> Result<Units, String> {
+    let from_case = match &o.case {
+        Some(dir) => Some(Case::load(dir).map_err(|e| e.to_string())?.units),
+        None => None,
+    };
+    match (from_case, o.units) {
+        (Some(c), Some(u)) if c != u => Err(format!(
+            "unit.case.conflict: the case declares {}, but --units says {}",
+            c.name(),
+            u.name()
         )),
+        (Some(u), _) | (None, Some(u)) => Ok(u),
+        (None, None) => Err(
+            "unit.case.missing: the run has no units. Give --case DIR or --units SI-mm|SI-m".into(),
+        ),
     }
 }
 
+/// Refuse a STEP file whose length unit is missing, mixed, or not the declared unit.
 fn check_step(text: &str, units: Units) -> Result<(), String> {
-    let unit = step_unit(text)?;
-    let wanted = match units {
-        Units::Mm => "mm",
-        Units::M => "m",
-    };
-    if unit == wanted {
+    let unit = fh_io::step_length_unit(text).map_err(|e| format!("{}: {e}", e.code()))?;
+    if unit.gmsh_name() == Some(units.gmsh_length()) {
         Ok(())
     } else {
         Err(format!(
-            "unit.step.mismatch: the STEP file uses {unit}, but the case units are {}",
+            "unit.step.mismatch: the STEP file uses {unit}, but the units are {}",
             units.name()
         ))
     }
@@ -372,6 +336,7 @@ fn run_dir() -> Result<PathBuf, String> {
 
 /// What a run makes, or a failure text.
 fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
+    let units = declared_units(o)?;
     let input = std::path::absolute(&o.input).map_err(|e| e.to_string())?;
     let output = std::path::absolute(&o.output).map_err(|e| e.to_string())?;
     let extension = input
@@ -385,12 +350,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
             input.clone()
         }
         Some("step" | "stp") => {
-            check_step(&text, o.units)?;
+            check_step(&text, units)?;
             // Pin the target unit in every run. The gmsh default is a process state.
             let wrapper = dir.join("input.geo");
             let body = format!(
                 "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n",
-                o.units.gmsh_target(),
+                units.gmsh_length(),
                 quote_ok(&input)?
             );
             std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
@@ -458,11 +423,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
             output.display()
         ));
     }
+    rules::hex_needs_extrusion(&model)?;
 
     let mut report = format!(
         "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t{}\nnodes\t{}\nelements\t{}\n",
         output.display(),
-        o.units.name(),
+        units.name(),
         o.order,
         model.nodes.len(),
         model.elements.len()
@@ -523,14 +489,17 @@ mod tests {
     }
 
     #[test]
-    fn step_units_are_read() {
+    fn step_units_are_checked_against_the_declared_units() {
         let mm = step("LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.)");
-        let m = step("LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.)");
         let inch = step("CONVERSION_BASED_UNIT('INCH',#9)LENGTH_UNIT()NAMED_UNIT(#8)");
-        assert_eq!(step_unit(&mm), Ok("mm"));
-        assert_eq!(step_unit(&m), Ok("m"));
-        assert_eq!(step_unit(&inch), Ok("inch"));
-        assert!(step_unit("DATA;ENDSEC;")
+        assert_eq!(check_step(&mm, Units::SiMm), Ok(()));
+        assert!(check_step(&mm, Units::SiM)
+            .unwrap_err()
+            .starts_with("unit.step.mismatch"));
+        assert!(check_step(&inch, Units::SiMm)
+            .unwrap_err()
+            .starts_with("unit.step.mismatch"));
+        assert!(check_step("DATA;ENDSEC;", Units::SiMm)
             .unwrap_err()
             .starts_with("unit.step.missing"));
     }

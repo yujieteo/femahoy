@@ -4,6 +4,7 @@ mod check;
 mod info;
 mod measure;
 mod mesh;
+mod rules;
 mod validate;
 
 use std::process::ExitCode;

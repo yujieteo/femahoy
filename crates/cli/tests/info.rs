@@ -183,3 +183,31 @@ fn gmsh_recipe_gives_a_c3d10_bar_that_passes_the_gate() {
     );
     assert!(stdout.contains("volume: 2.000000e4"), "{stdout}");
 }
+
+/// A one-hex `.msh` file. `top` is the x coordinate of the top face corners 2 and 3.
+fn hex_msh(top: f64) -> String {
+    let xy = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
+    let mut nodes = String::new();
+    for (i, z) in [0.0, 1.0].into_iter().enumerate() {
+        for (x, y) in xy {
+            let x = if i == 1 && x == 1.0 { top } else { x };
+            nodes.push_str(&format!("{x} {y} {z}\n"));
+        }
+    }
+    format!(
+        "$MeshFormat\n4.1 0 8\n$EndMeshFormat\n$Nodes\n1 8 1 8\n3 1 0 8\n1\n2\n3\n4\n5\n6\n7\n8\n{nodes}$EndNodes\n$Elements\n1 1 1 1\n3 1 5 1\n1 1 2 3 4 5 6 7 8\n$EndElements\n"
+    )
+}
+
+#[test]
+fn a_hex_mesh_is_accepted_only_when_it_is_an_extrusion() {
+    let dir = scratch("hex");
+    let file = dir.join("hex.msh");
+    std::fs::write(&file, hex_msh(1.0)).unwrap();
+    let out = fh(&["info", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(out.stderr));
+    std::fs::write(&file, hex_msh(1.5)).unwrap();
+    let out = fh(&["info", file.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(out.stderr).contains("mesh.hex.not_extruded"));
+}

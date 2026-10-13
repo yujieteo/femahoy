@@ -17,7 +17,18 @@ fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// Run `fh mesh`. The units are required (D-18), so this adds `--units SI-mm`
+/// unless the arguments declare units.
 fn fh(args: &[&str], gmsh: Option<&Path>) -> Output {
+    let declared = args.iter().any(|a| matches!(*a, "--units" | "--case"));
+    let mut all = args.to_vec();
+    if !declared {
+        all.extend(["--units", "SI-mm"]);
+    }
+    fh_raw(&all, gmsh)
+}
+
+fn fh_raw(args: &[&str], gmsh: Option<&Path>) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
     cmd.arg("mesh").args(args);
     match gmsh {
@@ -167,6 +178,157 @@ fn step_unit_that_differs_from_the_case_units_is_refused() {
     let out = fh(&[step.to_str().unwrap(), "--units", "SI-m"], gmsh);
     assert!(
         stderr(&out).contains("cannot start gmsh"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+const METRE_STEP: &str = "DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\nENDSEC;\n";
+
+/// A case folder that declares `units`. It is a copy of the patch test case.
+fn case_dir(name: &str, units: &str) -> PathBuf {
+    let dir = scratch(name);
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases/patch-test");
+    for file in ["derivation.md", "case.toml"] {
+        std::fs::copy(src.join(file), dir.join(file)).unwrap();
+    }
+    let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
+    let mesh = src.join("../../../fixtures/inp/patch-test.inp");
+    let toml = toml
+        .replace("units = \"SI-mm\"", &format!("units = \"{units}\""))
+        .replace(
+            "../../../fixtures/inp/patch-test.inp",
+            mesh.to_str().unwrap(),
+        );
+    std::fs::write(dir.join("case.toml"), toml).unwrap();
+    dir
+}
+
+#[test]
+fn a_run_with_no_units_is_refused() {
+    let dir = scratch("nounits");
+    let geo = dir.join("a.geo");
+    std::fs::write(&geo, BEAM).unwrap();
+    let out = fh_raw(
+        &[geo.to_str().unwrap()],
+        Some(Path::new("/nonexistent/gmsh")),
+    );
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        stderr(&out).contains("unit.case.missing"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn the_case_units_are_used_and_checked_against_the_step_file() {
+    let dir = scratch("case");
+    let step = dir.join("a.step");
+    std::fs::write(&step, METRE_STEP).unwrap();
+    let gmsh = Some(Path::new("/nonexistent/gmsh"));
+    let mm = case_dir("case-mm", "SI-mm");
+    let out = fh_raw(
+        &[step.to_str().unwrap(), "--case", mm.to_str().unwrap()],
+        gmsh,
+    );
+    assert!(
+        stderr(&out).contains("unit.step.mismatch"),
+        "{}",
+        stderr(&out)
+    );
+    let m = case_dir("case-m", "SI-m");
+    let out = fh_raw(
+        &[step.to_str().unwrap(), "--case", m.to_str().unwrap()],
+        gmsh,
+    );
+    assert!(
+        stderr(&out).contains("cannot start gmsh"),
+        "{}",
+        stderr(&out)
+    );
+    // `--units` that differs from the case is a conflict, even for a .geo file.
+    let out = fh_raw(
+        &[
+            step.to_str().unwrap(),
+            "--case",
+            m.to_str().unwrap(),
+            "--units",
+            "SI-mm",
+        ],
+        gmsh,
+    );
+    assert!(
+        stderr(&out).contains("unit.case.conflict"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+/// A box that gmsh fills with hexes: a 2D grid, extruded along z, or a recombined 3D grid.
+fn hex_geo(extruded: bool, taper: f64) -> String {
+    let mut geo = String::from("SetFactory(\"OpenCASCADE\");\n");
+    if extruded {
+        geo.push_str(
+            "Rectangle(1) = {0, 0, 0, 4, 1};\nTransfinite Curve {1, 3} = 5;\n\
+Transfinite Curve {2, 4} = 2;\nTransfinite Surface {1};\nRecombine Surface {1};\n\
+Extrude {0, 0, 1} { Surface{1}; Layers{2}; Recombine; }\n",
+        );
+    } else {
+        // The top face is wider than the bottom face, so the lateral edges are not parallel.
+        geo.push_str(&format!(
+            "Point(1) = {{0,0,0}};\nPoint(2) = {{1,0,0}};\nPoint(3) = {{1,1,0}};\nPoint(4) = {{0,1,0}};\n\
+Point(5) = {{0,0,1}};\nPoint(6) = {{{},0,1}};\nPoint(7) = {{{},1,1}};\nPoint(8) = {{0,1,1}};\n\
+Line(1)={{1,2}};Line(2)={{2,3}};Line(3)={{3,4}};Line(4)={{4,1}};\n\
+Line(5)={{5,6}};Line(6)={{6,7}};Line(7)={{7,8}};Line(8)={{8,5}};\n\
+Line(9)={{1,5}};Line(10)={{2,6}};Line(11)={{3,7}};Line(12)={{4,8}};\n\
+Curve Loop(1)={{1,2,3,4}};Curve Loop(2)={{5,6,7,8}};Curve Loop(3)={{1,10,-5,-9}};\n\
+Curve Loop(4)={{2,11,-6,-10}};Curve Loop(5)={{3,12,-7,-11}};Curve Loop(6)={{4,9,-8,-12}};\n\
+Plane Surface(1)={{1}};Plane Surface(2)={{2}};Plane Surface(3)={{3}};\n\
+Plane Surface(4)={{4}};Plane Surface(5)={{5}};Plane Surface(6)={{6}};\n\
+Surface Loop(1)={{1,2,3,4,5,6}};Volume(1)={{1}};\n\
+Transfinite Curve {{1,2,3,4,5,6,7,8,9,10,11,12}} = 2;\n\
+Transfinite Surface {{1,2,3,4,5,6}};Recombine Surface {{1,2,3,4,5,6}};\n\
+Transfinite Volume {{1}};\n",
+            1.0 + taper,
+            1.0 + taper
+        ));
+    }
+    geo.push_str("Physical Volume(\"BEAM\") = {1};\n");
+    geo
+}
+
+fn hex_run(name: &str, geo: &str) -> Option<(Output, String)> {
+    let gmsh = real_gmsh()?;
+    let dir = scratch(name);
+    let path = dir.join("hex.geo");
+    std::fs::write(&path, geo).unwrap();
+    // Order 1 makes hex8. The default order 2 would make hex20, which the reader rejects.
+    let out = fh(&[path.to_str().unwrap(), "--order", "1"], Some(&gmsh));
+    let msh = std::fs::read_to_string(dir.join("hex.msh")).unwrap_or_default();
+    Some((out, msh))
+}
+
+#[test]
+fn an_extruded_hex_mesh_is_accepted() {
+    let Some((out, _)) = hex_run("hex-ok", &hex_geo(true, 0.0)) else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    assert!(stdout.contains("type\tC3D8I\t"), "{stdout}");
+}
+
+#[test]
+fn a_hex_mesh_that_is_not_an_extrusion_is_refused() {
+    let Some((out, _)) = hex_run("hex-bad", &hex_geo(false, 0.4)) else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    assert_eq!(out.status.code(), Some(1), "stdout: {:?}", out.stdout);
+    assert!(
+        stderr(&out).contains("mesh.hex.not_extruded"),
         "{}",
         stderr(&out)
     );
