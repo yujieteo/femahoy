@@ -318,17 +318,22 @@ impl SubprocessSolver {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(open("stderr.txt")?);
+        let log = open("stdout.txt")?;
         sys::prepare(&mut cmd, limited.then_some(self.memory_limit));
-        let mut child = cmd
+        let child = cmd
             .spawn()
             .map_err(|e| ApiError(format!("cannot start {}: {e}", self.exe.display())))?;
-        let group = sys::attach(&child, limited.then_some(self.memory_limit));
-        let mut stdin = child.stdin.take();
-        let stdout = child
+        // From here each return and each panic drops `tree`, and the drop kills the solver.
+        let mut tree = Tree {
+            group: sys::attach(&child, limited.then_some(self.memory_limit)),
+            child,
+        };
+        let mut stdin = tree.child.stdin.take();
+        let stdout = tree
+            .child
             .stdout
             .take()
             .ok_or_else(|| ApiError("no stdout pipe".into()))?;
-        let log = open("stdout.txt")?;
         let (tx, rx) = mpsc::channel::<String>();
         let reader = std::thread::spawn(move || {
             let mut log = log;
@@ -350,7 +355,7 @@ impl SubprocessSolver {
             while let Ok(line) = rx.recv_timeout(POLL) {
                 if !header_seen {
                     if line != PROTOCOL_HEADER {
-                        return stop(&mut child, &group, ApiError(format!(
+                        return stop(&mut tree, ApiError(format!(
                             "solver does not speak protocol v2: first stdout line is not \"{PROTOCOL_HEADER}\""
                         )));
                     }
@@ -360,7 +365,7 @@ impl SubprocessSolver {
                 let event = Event::parse(&line);
                 if let Event::Estimate { bytes } = event {
                     if limited && bytes > self.memory_limit {
-                        return stop(&mut child, &group, ApiError(format!(
+                        return stop(&mut tree, ApiError(format!(
                             "solver expects to need {bytes} bytes, more than the memory limit of {} bytes",
                             self.memory_limit
                         )));
@@ -371,10 +376,10 @@ impl SubprocessSolver {
                 }
                 on_event(&event);
             }
-            match child.try_wait() {
+            match tree.child.try_wait() {
                 Ok(Some(s)) => break s,
                 Ok(None) => {}
-                Err(e) => return stop(&mut child, &group, ApiError(format!("wait failed: {e}"))),
+                Err(e) => return stop(&mut tree, ApiError(format!("wait failed: {e}"))),
             }
             if cancel.is_cancelled() && cancel_sent.is_none() {
                 if let Some(mut pipe) = stdin.take() {
@@ -384,12 +389,11 @@ impl SubprocessSolver {
                 cancel_sent = Some(Instant::now());
             }
             if cancel_sent.is_some_and(|t| t.elapsed() > self.cancel_grace) {
-                return stop(&mut child, &group, ApiError::cancelled());
+                return stop(&mut tree, ApiError::cancelled());
             }
             if start.elapsed() > self.timeout {
                 return stop(
-                    &mut child,
-                    &group,
+                    &mut tree,
                     ApiError(format!(
                         "solver stopped after the time limit of {} s",
                         self.timeout.as_secs_f64()
@@ -398,11 +402,10 @@ impl SubprocessSolver {
             }
             if limited && last_probe.elapsed() >= PROBE_EVERY {
                 last_probe = Instant::now();
-                match (self.probe)(group.pid()) {
+                match (self.probe)(tree.group.pid()) {
                     Ok(b) if b > self.memory_limit => {
                         return stop(
-                            &mut child,
-                            &group,
+                            &mut tree,
                             ApiError(format!(
                             "solver stopped after it used more than the memory limit of {} bytes",
                             self.memory_limit
@@ -412,10 +415,10 @@ impl SubprocessSolver {
                     Ok(_) => {}
                     Err(e) => {
                         // The solver can end between the wait and the probe.
-                        if let Ok(Some(s)) = child.try_wait() {
+                        if let Ok(Some(s)) = tree.child.try_wait() {
                             break s;
                         }
-                        return stop(&mut child, &group, ApiError(format!(
+                        return stop(&mut tree, ApiError(format!(
                             "the memory probe failed ({e}), so the runner cannot enforce the memory limit"
                         )));
                     }
@@ -424,7 +427,7 @@ impl SubprocessSolver {
         };
         // The solver has ended. Remove the processes that it left behind, then
         // read the last events. A stray process can hold the pipe, so do not wait for it.
-        group.kill();
+        tree.group.kill();
         drop(stdin);
         while let Ok(line) = rx.recv_timeout(Duration::from_millis(200)) {
             if !header_seen {
@@ -471,15 +474,29 @@ impl SubprocessSolver {
     }
 }
 
+/// The process tree of a running solver. A drop kills it, so that an early return or a
+/// panic in an event callback cannot leave the solver running without its limits.
+struct Tree {
+    child: std::process::Child,
+    group: sys::Group,
+}
+
+impl Drop for Tree {
+    fn drop(&mut self) {
+        // After a normal end the runner has already killed the group.
+        if !matches!(self.child.try_wait(), Ok(Some(_))) {
+            self.group.kill();
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
 /// Kill the whole tree of the solver and return `reason`.
-fn stop(
-    child: &mut std::process::Child,
-    group: &sys::Group,
-    reason: ApiError,
-) -> Result<RunReport, ApiError> {
-    group.kill();
-    let _ = child.kill();
-    let _ = child.wait();
+fn stop(tree: &mut Tree, reason: ApiError) -> Result<RunReport, ApiError> {
+    tree.group.kill();
+    let _ = tree.child.kill();
+    let _ = tree.child.wait();
     Err(reason)
 }
 

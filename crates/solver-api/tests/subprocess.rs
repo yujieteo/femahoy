@@ -215,6 +215,54 @@ fn time_limit_kills_the_whole_process_tree() {
     assert!(!alive(pid.trim()), "grandchild {pid} is still alive");
 }
 
+/// Kill the process group of `pid`, so that a failed test leaves no solver behind.
+fn kill_group(pid: &str) {
+    let _ = std::process::Command::new("/bin/kill")
+        .args(["-KILL", "--", &format!("-{pid}")])
+        .stderr(std::process::Stdio::null())
+        .status();
+}
+
+#[test]
+fn a_log_file_that_cannot_open_leaves_no_solver() {
+    // stdout.txt is a folder, so the runner cannot open its log.
+    let dir = scratch("log-error");
+    let s = solver(&dir, "echo $$ > ../child.pid\nsleep 30");
+    let run = dir.join("run");
+    fs::create_dir_all(run.join("stdout.txt")).unwrap();
+    fs::write(run.join(fh_solver_api::RUN_MARKER), "femahoy run folder\n").unwrap();
+    let e = s
+        .resume_with(&dir.join("a.inp"), &run, &CancelToken::new(), &mut |_| {})
+        .unwrap_err();
+    assert!(e.to_string().contains("stdout.txt"), "{e}");
+    std::thread::sleep(Duration::from_millis(300));
+    if let Ok(pid) = fs::read_to_string(dir.join("child.pid")) {
+        let running = alive(pid.trim());
+        kill_group(pid.trim());
+        assert!(!running, "solver {pid} runs on after the error");
+    }
+}
+
+#[test]
+fn a_panic_in_the_event_callback_leaves_no_solver() {
+    let dir = scratch("panic");
+    let s = solver(
+        &dir,
+        "echo \"fh-solver-protocol 2\"\necho $$ > ../child.pid\necho \"log x\"\nsleep 30",
+    );
+    let run = dir.join("run");
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        s.run_with(&dir.join("a.inp"), &run, &CancelToken::new(), &mut |_| {
+            panic!("callback")
+        })
+    }));
+    assert!(r.is_err());
+    let pid = fs::read_to_string(dir.join("child.pid")).unwrap();
+    let running = alive(pid.trim());
+    kill_group(pid.trim());
+    assert!(!running, "solver {pid} runs on after the panic");
+}
+
 #[test]
 fn stale_files_do_not_pass_a_new_run() {
     let dir = scratch("stale");
