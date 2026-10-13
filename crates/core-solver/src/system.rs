@@ -124,7 +124,23 @@ impl MaterialFactory {
                 .elastic
                 .as_ref()
                 .ok_or_else(|| SolverError::new(format!("material {} has no *ELASTIC", m.name)))?;
-            Ok(Box::new(Elastic::new(e.youngs_modulus, e.poissons_ratio)))
+            // A model from code does not go through the checks of the parser.
+            let (ym, nu) = (e.youngs_modulus, e.poissons_ratio);
+            if !(ym > 0.0 && ym.is_finite() && nu > -1.0 && nu < 0.5) {
+                return Err(SolverError::new(format!(
+                    "material {}: *ELASTIC needs a finite positive Young's modulus and a \
+                     Poisson's ratio in (-1, 0.5), found {ym} and {nu}",
+                    m.name
+                )));
+            }
+            let elastic = Elastic::new(ym, nu);
+            if elastic.d.iter().flatten().any(|v| !v.is_finite()) {
+                return Err(SolverError::new(format!(
+                    "material {}: the elasticity matrix for {ym} and {nu} is not finite",
+                    m.name
+                )));
+            }
+            Ok(Box::new(elastic))
         })
     }
 }
@@ -146,7 +162,8 @@ pub struct Options {
     /// Relative residual `|f - K u| / |f|` that the conjugate gradient solver must reach.
     pub tolerance: f64,
     pub max_iterations: usize,
-    /// Worker threads for the element work. 0 means all cores of the machine.
+    /// Worker threads for the element work. 0 means all cores of the machine. The solver
+    /// uses at most [`MAX_THREADS`].
     pub threads: usize,
     /// Write a restart file after every N increments. The end of a step always writes one.
     pub restart_every: usize,
@@ -396,7 +413,8 @@ pub fn solve_from(
     let threads = match options.threads {
         0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
         n => n,
-    };
+    }
+    .min(MAX_THREADS);
     let factory = options
         .materials
         .clone()
@@ -440,6 +458,11 @@ pub fn solve_from(
     observer.estimate(estimate);
     crate::step::run(&mesh, &graph, options, threads, estimate, observer, resume)
 }
+
+/// The largest thread count. The result does not depend on the thread count, and more
+/// threads give no gain on the target machine. The bound keeps the chunk sizes of the
+/// element work from an overflow.
+pub const MAX_THREADS: usize = 1024;
 
 /// Sizes that decide the memory of a run.
 #[derive(Debug, Clone, Copy)]
@@ -502,8 +525,8 @@ pub fn estimate_bytes(s: &Sizes) -> u64 {
     let results =
         72 * nodes + 56 * els + 120 * nodes + 70 * els + if s.ip_stress { 8 * 48 * els } else { 0 };
     // The chunk buffers of the threads: at most one evaluation for each element.
-    let chunks =
-        (s.threads as u64 * 256).min(els.max(1)) * std::mem::size_of::<Evaluation>() as u64;
+    let chunks = (s.threads as u64).saturating_mul(256).min(els.max(1))
+        * std::mem::size_of::<Evaluation>() as u64;
     // Allocator slack, the input text, and parts the terms miss. The measured peak is 1.21 to
     // 1.26 times the sum (iterative path, 1M elements: 1.26). The factor 1.35 keeps the
     // estimate above the peak (DESIGN.md section 11).

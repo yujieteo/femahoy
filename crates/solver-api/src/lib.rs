@@ -44,12 +44,13 @@
 //! Results from a solver that did not pass the validation suite are marked
 //! unvalidated.
 
+mod pvd;
 mod sys;
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -99,6 +100,37 @@ fn fail<T>(message: impl Into<String>) -> Result<T, ApiError> {
     Err(ApiError(message.into()))
 }
 
+/// A result file of the solver as text. A file larger than `MAX_RESULT_FILE` is an error.
+fn read_result(path: &Path, name: &str) -> Result<String, ApiError> {
+    let err = |e: std::io::Error| ApiError(format!("{name}: {e}"));
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .map_err(err)?
+        .take(MAX_RESULT_FILE + 1)
+        .read_to_end(&mut bytes)
+        .map_err(err)?;
+    if bytes.len() as u64 > MAX_RESULT_FILE {
+        return fail(format!("{name} is larger than {MAX_RESULT_FILE} bytes"));
+    }
+    String::from_utf8(bytes).map_err(|_| ApiError(format!("{name} is not UTF-8 text")))
+}
+
+/// The last `STDERR_TAIL` bytes of the solver's stderr. A failing solver writes the cause last.
+fn stderr_tail(path: &Path) -> String {
+    let Ok(mut file) = fs::File::open(path) else {
+        return String::new();
+    };
+    let len = file.metadata().map_or(0, |m| m.len());
+    let mut bytes = Vec::new();
+    if file
+        .seek(SeekFrom::Start(len.saturating_sub(STDERR_TAIL)))
+        .is_ok()
+    {
+        let _ = file.take(STDERR_TAIL).read_to_end(&mut bytes);
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 /// What a solver run produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunReport {
@@ -145,12 +177,17 @@ impl Event {
                 let parts = step.as_deref().and_then(|s| s.split_once('/'));
                 match (parts, phase, fraction.and_then(|f| f.parse::<f64>().ok())) {
                     (Some((i, n)), Some(phase), Some(fraction)) => match (i.parse(), n.parse()) {
-                        (Ok(step), Ok(steps)) => Event::Progress {
-                            step,
-                            steps,
-                            phase,
-                            fraction,
-                        },
+                        // Steps count from 1. The fraction is from 0 to 1. NaN is not in it.
+                        (Ok(step), Ok(steps))
+                            if (1..=steps).contains(&step) && (0.0..=1.0).contains(&fraction) =>
+                        {
+                            Event::Progress {
+                                step,
+                                steps,
+                                phase,
+                                fraction,
+                            }
+                        }
                         _ => log(),
                     },
                     _ => log(),
@@ -246,6 +283,15 @@ pub struct SubprocessSolver {
 
 const POLL: Duration = Duration::from_millis(10);
 const PROBE_EVERY: Duration = Duration::from_millis(100);
+/// The longest stdout line that the runner reads, and the number of lines that can wait for
+/// the run loop. Together they limit the runner memory for solver output to about 16 MiB.
+/// The memory probe does not count the runner. Provisional values.
+const MAX_LINE: usize = 64 << 10;
+const BACKLOG: usize = 256;
+/// The largest summary or PVD file that the runner reads, and the end of `stderr.txt` that
+/// an error shows. A solver can write files of any size. Provisional values.
+const MAX_RESULT_FILE: u64 = 16 << 20;
+const STDERR_TAIL: u64 = 64 << 10;
 
 impl SubprocessSolver {
     /// A new subprocess solver. It is unvalidated until the suite passes. The
@@ -302,13 +348,28 @@ impl SubprocessSolver {
         if cancel.is_cancelled() {
             return Err(ApiError::cancelled());
         }
-        let run_dir = prepare_run_dir(run_dir, restart)?;
+        // Check the input before the folder changes: a new run clears the folder.
         let inp = fs::canonicalize(inp).map_err(|e| ApiError(format!("input file: {e}")))?;
+        // The solver starts in the run folder. A relative path with a folder must resolve from
+        // the folder of the caller. A bare name stays a name for the PATH search.
+        let cannot_start = |e: &dyn std::fmt::Display| {
+            ApiError(format!("cannot start {}: {e}", self.exe.display()))
+        };
+        let exe = if self.exe.is_relative() && self.exe.components().count() > 1 {
+            std::path::absolute(&self.exe).map_err(|e| cannot_start(&e))?
+        } else {
+            self.exe.clone()
+        };
+        // A path that names no file cannot start. Check it before the folder is cleared.
+        if exe.components().count() > 1 && !exe.is_file() {
+            return Err(cannot_start(&"no such file"));
+        }
+        let run_dir = prepare_run_dir(run_dir, restart, &inp)?;
         let open = |name: &str| {
             fs::File::create(run_dir.join(name)).map_err(|e| ApiError(format!("{name}: {e}")))
         };
         let limited = self.memory_limit != u64::MAX;
-        let mut cmd = Command::new(&self.exe);
+        let mut cmd = Command::new(&exe);
         cmd.arg(&inp).arg(&run_dir);
         if restart {
             cmd.arg("--restart");
@@ -317,23 +378,50 @@ impl SubprocessSolver {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(open("stderr.txt")?);
+        let log = open("stdout.txt")?;
         sys::prepare(&mut cmd, limited.then_some(self.memory_limit));
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| ApiError(format!("cannot start {}: {e}", self.exe.display())))?;
-        let group = sys::attach(&child, limited.then_some(self.memory_limit));
-        let mut stdin = child.stdin.take();
-        let stdout = child
+        let child = cmd.spawn().map_err(|e| cannot_start(&e))?;
+        // From here each return and each panic drops `tree`, and the drop kills the solver.
+        let mut tree = Tree {
+            group: sys::attach(&child, limited.then_some(self.memory_limit)),
+            child,
+        };
+        let mut stdin = tree.child.stdin.take();
+        let stdout = tree
+            .child
             .stdout
             .take()
             .ok_or_else(|| ApiError("no stdout pipe".into()))?;
-        let log = open("stdout.txt")?;
-        let (tx, rx) = mpsc::channel::<String>();
+        // A full channel stops the reader, and then the pipe stops the solver.
+        let (tx, rx) = mpsc::sync_channel::<Result<String, ApiError>>(BACKLOG);
         let reader = std::thread::spawn(move || {
             let mut log = log;
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let mut out = BufReader::new(stdout);
+            loop {
+                let mut buf = Vec::new();
+                match (&mut out)
+                    .take(MAX_LINE as u64 + 1)
+                    .read_until(b'\n', &mut buf)
+                {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                    if buf.last() == Some(&b'\r') {
+                        buf.pop();
+                    }
+                } else if buf.len() > MAX_LINE {
+                    let _ = tx.send(Err(ApiError(format!(
+                        "the solver wrote a stdout line longer than {MAX_LINE} bytes"
+                    ))));
+                    break;
+                }
+                // A line that is not UTF-8 is not an event. It stays as a log line.
+                let line = String::from_utf8(buf)
+                    .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
                 let _ = writeln!(log, "{line}");
-                if tx.send(line).is_err() {
+                if tx.send(Ok(line)).is_err() {
                     break;
                 }
             }
@@ -345,11 +433,18 @@ impl SubprocessSolver {
         let mut cancel_sent: Option<Instant> = None;
         let mut last_probe = Instant::now();
         let status = loop {
-            // Events first, so that the header check comes before everything.
-            while let Ok(line) = rx.recv_timeout(POLL) {
+            // Events first, so that the header check comes before everything. Take events
+            // for one poll period at most: a solver that writes without a pause, or a slow
+            // callback, must not hold back the checks below.
+            let batch = Instant::now();
+            while let Ok(line) = rx.recv_timeout(POLL.saturating_sub(batch.elapsed())) {
+                let line = match line {
+                    Ok(line) => line,
+                    Err(e) => return stop(&mut tree, e),
+                };
                 if !header_seen {
                     if line != PROTOCOL_HEADER {
-                        return stop(&mut child, &group, ApiError(format!(
+                        return stop(&mut tree, ApiError(format!(
                             "solver does not speak protocol v2: first stdout line is not \"{PROTOCOL_HEADER}\""
                         )));
                     }
@@ -359,7 +454,7 @@ impl SubprocessSolver {
                 let event = Event::parse(&line);
                 if let Event::Estimate { bytes } = event {
                     if limited && bytes > self.memory_limit {
-                        return stop(&mut child, &group, ApiError(format!(
+                        return stop(&mut tree, ApiError(format!(
                             "solver expects to need {bytes} bytes, more than the memory limit of {} bytes",
                             self.memory_limit
                         )));
@@ -369,11 +464,9 @@ impl SubprocessSolver {
                     restart_file = Some(f.clone());
                 }
                 on_event(&event);
-            }
-            match child.try_wait() {
-                Ok(Some(s)) => break s,
-                Ok(None) => {}
-                Err(e) => return stop(&mut child, &group, ApiError(format!("wait failed: {e}"))),
+                if batch.elapsed() >= POLL {
+                    break;
+                }
             }
             if cancel.is_cancelled() && cancel_sent.is_none() {
                 if let Some(mut pipe) = stdin.take() {
@@ -383,12 +476,11 @@ impl SubprocessSolver {
                 cancel_sent = Some(Instant::now());
             }
             if cancel_sent.is_some_and(|t| t.elapsed() > self.cancel_grace) {
-                return stop(&mut child, &group, ApiError::cancelled());
+                return stop(&mut tree, ApiError::cancelled());
             }
             if start.elapsed() > self.timeout {
                 return stop(
-                    &mut child,
-                    &group,
+                    &mut tree,
                     ApiError(format!(
                         "solver stopped after the time limit of {} s",
                         self.timeout.as_secs_f64()
@@ -397,11 +489,10 @@ impl SubprocessSolver {
             }
             if limited && last_probe.elapsed() >= PROBE_EVERY {
                 last_probe = Instant::now();
-                match (self.probe)(group.pid()) {
+                match (self.probe)(tree.group.pid()) {
                     Ok(b) if b > self.memory_limit => {
                         return stop(
-                            &mut child,
-                            &group,
+                            &mut tree,
                             ApiError(format!(
                             "solver stopped after it used more than the memory limit of {} bytes",
                             self.memory_limit
@@ -410,24 +501,37 @@ impl SubprocessSolver {
                     }
                     Ok(_) => {}
                     Err(e) => {
-                        // The solver can end between the wait and the probe.
-                        if let Ok(Some(s)) = child.try_wait() {
+                        // The solver can end before the probe.
+                        if let Ok(Some(s)) = tree.child.try_wait() {
                             break s;
                         }
-                        return stop(&mut child, &group, ApiError(format!(
+                        return stop(&mut tree, ApiError(format!(
                             "the memory probe failed ({e}), so the runner cannot enforce the memory limit"
                         )));
                     }
                 }
             }
+            // The end of the solver comes after the checks, so a late end does not hide a
+            // cancel or the time limit.
+            match tree.child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {}
+                Err(e) => return stop(&mut tree, ApiError(format!("wait failed: {e}"))),
+            }
         };
         // The solver has ended. Remove the processes that it left behind, then
         // read the last events. A stray process can hold the pipe, so do not wait for it.
-        group.kill();
+        tree.group.kill();
         drop(stdin);
         while let Ok(line) = rx.recv_timeout(Duration::from_millis(200)) {
+            let line = line?;
             if !header_seen {
-                header_seen = line == PROTOCOL_HEADER;
+                // The first line decides, as in the loop above. After a wrong first line
+                // the other lines are not events, and the checks below give the error.
+                if line != PROTOCOL_HEADER {
+                    break;
+                }
+                header_seen = true;
                 continue;
             }
             let event = Event::parse(&line);
@@ -435,16 +539,28 @@ impl SubprocessSolver {
                 restart_file = Some(f.clone());
             }
             on_event(&event);
+            // The backlog is short, but a process outside the tree can keep the pipe and
+            // write without end. The time limit and a cancel also stop this read.
+            if cancel.is_cancelled() {
+                break;
+            }
+            if start.elapsed() > self.timeout {
+                return fail(format!(
+                    "solver stopped after the time limit of {} s",
+                    self.timeout.as_secs_f64()
+                ));
+            }
         }
         drop(reader);
-        let read = |name: &str| fs::read_to_string(run_dir.join(name)).unwrap_or_default();
+        // A cancel stops the run, also when the solver exits with code 0, or when the cancel
+        // comes as the solver ends.
+        if cancel_sent.is_some() || cancel.is_cancelled() {
+            return Err(ApiError::cancelled());
+        }
         if !status.success() {
-            if cancel_sent.is_some() {
-                return Err(ApiError::cancelled());
-            }
             return fail(format!(
                 "solver failed ({status}): {}",
-                read("stderr.txt").trim()
+                stderr_tail(&run_dir.join("stderr.txt")).trim()
             ));
         }
         if !header_seen {
@@ -452,8 +568,7 @@ impl SubprocessSolver {
                 "solver does not speak protocol v2: first stdout line is not \"{PROTOCOL_HEADER}\""
             ));
         }
-        let summary = fs::read_to_string(run_dir.join(SUMMARY_FILE))
-            .map_err(|e| ApiError(format!("{SUMMARY_FILE}: {e}")))?;
+        let summary = read_result(&run_dir.join(SUMMARY_FILE), SUMMARY_FILE)?;
         check_summary(&summary)?;
         let pvd = run_dir.join(PVD_FILE);
         check_pvd(&run_dir, &pvd)?;
@@ -470,29 +585,56 @@ impl SubprocessSolver {
     }
 }
 
+/// The process tree of a running solver. A drop kills it, so that an early return or a
+/// panic in an event callback cannot leave the solver running without its limits.
+struct Tree {
+    child: std::process::Child,
+    group: sys::Group,
+}
+
+impl Drop for Tree {
+    fn drop(&mut self) {
+        // After a normal end the runner has already killed the group.
+        if !matches!(self.child.try_wait(), Ok(Some(_))) {
+            self.group.kill();
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+}
+
 /// Kill the whole tree of the solver and return `reason`.
-fn stop(
-    child: &mut std::process::Child,
-    group: &sys::Group,
-    reason: ApiError,
-) -> Result<RunReport, ApiError> {
-    group.kill();
-    let _ = child.kill();
-    let _ = child.wait();
+fn stop(tree: &mut Tree, reason: ApiError) -> Result<RunReport, ApiError> {
+    tree.group.kill();
+    let _ = tree.child.kill();
+    let _ = tree.child.wait();
     Err(reason)
 }
 
 /// Make the run folder ready. A folder with files in it must be a run folder of
-/// this runner (it has the marker file), or the call fails. A fresh run clears it.
-fn prepare_run_dir(run_dir: &Path, restart: bool) -> Result<PathBuf, ApiError> {
+/// this runner (it has the marker file), or the call fails. A fresh run clears it,
+/// so the input `inp` (a real path) must be outside it.
+fn prepare_run_dir(run_dir: &Path, restart: bool, inp: &Path) -> Result<PathBuf, ApiError> {
     let err = |e: std::io::Error| ApiError(format!("run folder: {e}"));
     fs::create_dir_all(run_dir).map_err(err)?;
     let dir = fs::canonicalize(run_dir).map_err(err)?;
+    if !restart && inp.starts_with(&dir) {
+        return fail(format!(
+            "input file {} is inside the run folder, which a new run clears",
+            inp.display()
+        ));
+    }
     let marked = dir.join(RUN_MARKER).is_file();
     let empty = fs::read_dir(&dir).map_err(err)?.next().is_none();
     if restart {
         if !marked {
             return fail("run folder has no earlier run to restart");
+        }
+        // The summary marks a complete run. Only the restart can write a new one, so an old
+        // summary cannot pass as the result of the restart. The other files stay for the solver.
+        match fs::remove_file(dir.join(SUMMARY_FILE)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(err(e)),
+            _ => {}
         }
         return Ok(dir);
     }
@@ -539,18 +681,15 @@ fn check_summary(text: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn check_pvd(run_dir: &Path, pvd: &Path) -> Result<(), ApiError> {
-    let text = fs::read_to_string(pvd).map_err(|e| ApiError(format!("{PVD_FILE}: {e}")))?;
-    let listed: Vec<&str> = text
-        .split("file=\"")
-        .skip(1)
-        .filter_map(|r| r.split('"').next())
-        .collect();
+fn check_pvd(run_dir: &Path, path: &Path) -> Result<(), ApiError> {
+    let text = read_result(path, PVD_FILE)?;
+    let listed = pvd::data_set_files(&text)
+        .map_err(|e| ApiError(format!("{PVD_FILE} is not a PVD collection: {e}")))?;
     if listed.is_empty() {
         return fail(format!("{PVD_FILE} lists no VTU file"));
     }
     for f in listed {
-        if !inside(run_dir, f)?.is_file() {
+        if !inside(run_dir, &f)?.is_file() {
             return fail(format!("{PVD_FILE} lists {f}, but the file is missing"));
         }
     }

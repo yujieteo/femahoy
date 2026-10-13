@@ -83,7 +83,7 @@ impl PcgSolver {
         let rows = blocks.start * BLOCK..(blocks.end * BLOCK).min(n);
         let len = rows.len();
         let mut x = vec![0.0; len];
-        let mut r = rhs[rows.clone()].to_vec();
+        let mut r: Vec<f64> = rhs[rows.clone()].iter().map(|b| b / shared.size).collect();
         let mut z: Vec<f64> = r
             .iter()
             .zip(&self.inv_diag[rows.clone()])
@@ -164,6 +164,8 @@ struct Shared {
     part: [Vec<AtomicU64>; 3],
     barrier: Barrier,
     stop: AtomicBool,
+    /// The power of 2 that divides the right-hand side.
+    size: f64,
     b_norm: f64,
     rz0: f64,
 }
@@ -184,6 +186,17 @@ fn block_sum(n: usize, f: impl Fn(usize) -> f64) -> f64 {
     (0..n.div_ceil(BLOCK))
         .map(|b| (b * BLOCK..((b + 1) * BLOCK).min(n)).map(&f).sum::<f64>())
         .sum()
+}
+
+/// A power of 2 near `m`, which is positive and finite. A division by it changes no bits.
+fn power_of_2(m: f64) -> f64 {
+    const EXPONENT: u64 = 0x7ff0_0000_0000_0000;
+    const SHIFT: f64 = 18_446_744_073_709_551_616.0; // 2^64
+    if m >= f64::MIN_POSITIVE {
+        f64::from_bits(m.to_bits() & EXPONENT)
+    } else {
+        f64::from_bits((m * SHIFT).to_bits() & EXPONENT) / SHIFT
+    }
 }
 
 /// The first block of each thread: about the same number of matrix entries for each.
@@ -256,21 +269,30 @@ impl LinearSolver for PcgSolver {
         if self.inv_diag.len() != n || self.ptr.len() != n + 1 {
             return Err(SolverError::new("the matrix is not factored"));
         }
-        let b_norm = block_sum(n, |i| rhs[i] * rhs[i]).sqrt();
-        if b_norm == 0.0 {
+        if rhs.iter().any(|b| !b.is_finite()) {
+            return Err(SolverError::new("the right-hand side is not finite"));
+        }
+        // The squares of a very small or a very large load underflow or overflow. Thus the
+        // team solves for the load over a power of 2 near its largest entry.
+        let size = rhs.iter().fold(0.0_f64, |m, b| m.max(b.abs()));
+        if size == 0.0 {
             return Ok((vec![0.0; n], 0));
         }
-        let rz0 = block_sum(n, |i| rhs[i] * rhs[i] * self.inv_diag[i]);
+        let size = power_of_2(size);
+        let b = |i: usize| rhs[i] / size;
+        let b_norm = block_sum(n, |i| b(i) * b(i)).sqrt();
+        let rz0 = block_sum(n, |i| b(i) * b(i) * self.inv_diag[i]);
         let first = split(self, a, self.threads.min(n.div_ceil(BLOCK)));
         let team = first.len() - 1;
         let n_blocks = n.div_ceil(BLOCK);
         let shared = Shared {
             p: (0..n)
-                .map(|i| AtomicU64::new((rhs[i] * self.inv_diag[i]).to_bits()))
+                .map(|i| AtomicU64::new((b(i) * self.inv_diag[i]).to_bits()))
                 .collect(),
             part: std::array::from_fn(|_| (0..n_blocks).map(|_| AtomicU64::new(0)).collect()),
             barrier: Barrier::new(team),
             stop: AtomicBool::new(false),
+            size,
             b_norm,
             rz0,
         };
@@ -294,7 +316,7 @@ impl LinearSolver for PcgSolver {
         let mut iterations = 0;
         for part in parts {
             let (xt, it) = part?;
-            x.extend_from_slice(&xt);
+            x.extend(xt.iter().map(|v| v * size));
             iterations = it;
         }
         Ok((x, iterations))

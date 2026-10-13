@@ -194,10 +194,24 @@ fn field_array(f: &Field) -> Array<'_> {
     }
 }
 
+/// Each point index of each cell must name a point of the grid.
+pub(crate) fn check_cells(grid: &Grid) -> Result<(), VtuError> {
+    for (i, cell) in grid.cells.iter().enumerate() {
+        if let Some(p) = cell.iter().find(|p| **p as usize >= grid.points.len()) {
+            return err(format!(
+                "cell {i} has the point {p}, but the grid has {} points",
+                grid.points.len()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn check(grid: &Grid) -> Result<(), VtuError> {
     if grid.cells.len() != grid.cell_types.len() {
         return err("cells and cell_types differ in length");
     }
+    check_cells(grid)?;
     for (kind, list) in [("point", &grid.point_data), ("cell", &grid.cell_data)] {
         let n = if kind == "point" {
             grid.points.len()
@@ -205,7 +219,7 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
             grid.cells.len()
         };
         for f in list {
-            if f.components == 0 || f.values.len() != n * f.components {
+            if f.components == 0 || n.checked_mul(f.components) != Some(f.values.len()) {
                 return err(format!("{kind} field {} has the wrong length", f.name));
             }
         }
@@ -330,15 +344,33 @@ struct Header {
     offset: usize,
 }
 
+/// The appended data ends with this text, right after the last block.
+const FOOTER: &[u8] = b"\n</AppendedData>";
+
+/// The end of the block of one array in the appended data.
+fn block_end(data: &[u8], h: &Header) -> Result<usize, VtuError> {
+    let outside = || VtuError(format!("array {} lies outside the file", h.name));
+    let start = h.offset.checked_add(4).ok_or_else(outside)?;
+    let head = data.get(h.offset..start).ok_or_else(outside)?;
+    let len = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
+    start
+        .checked_add(len)
+        .filter(|end| *end <= data.len())
+        .ok_or_else(|| VtuError(format!("array {} is cut short", h.name)))
+}
+
 /// Read the block of one array from the appended data.
 fn block(data: &[u8], h: &Header) -> Result<Vec<u8>, VtuError> {
-    let head = data
-        .get(h.offset..h.offset + 4)
-        .ok_or_else(|| VtuError(format!("array {} lies outside the file", h.name)))?;
-    let len = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
-    data.get(h.offset + 4..h.offset + 4 + len)
-        .map(<[u8]>::to_vec)
-        .ok_or_else(|| VtuError(format!("array {} is cut short", h.name)))
+    Ok(data[h.offset + 4..block_end(data, h)?].to_vec())
+}
+
+/// A block that ends in part of a value is damaged.
+fn whole(h: &Header, raw: &[u8], width: usize) -> Result<(), VtuError> {
+    if raw.len().is_multiple_of(width) {
+        Ok(())
+    } else {
+        err(format!("array {} ends in an incomplete value", h.name))
+    }
 }
 
 fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, VtuError> {
@@ -348,6 +380,7 @@ fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, VtuError> {
         "UInt8" => 1,
         t => return err(format!("array {}: unsupported type {t}", h.name)),
     };
+    whole(h, raw, width)?;
     Ok(raw
         .chunks_exact(width)
         .map(|c| match width {
@@ -404,14 +437,29 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
                 section: section.clone(),
                 name: unescape(&get("Name").unwrap_or_default()),
                 type_name: get("type").unwrap_or_default(),
-                components: get("NumberOfComponents")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(1),
+                components: match get("NumberOfComponents") {
+                    None => 1,
+                    Some(v) => v.parse().ok().filter(|c| *c > 0).ok_or_else(|| {
+                        VtuError(format!("DataArray has a bad NumberOfComponents {v}"))
+                    })?,
+                },
                 offset: get("offset")
                     .and_then(|v| v.parse().ok())
                     .ok_or_else(|| VtuError("DataArray has no offset".into()))?,
             });
         }
+    }
+    // The footer comes right after the last block. Thus a block that runs into the footer,
+    // a payload that is cut short, and a file without its closing tags are errors.
+    let mut end = 0;
+    for h in &headers {
+        end = end.max(block_end(data, h)?);
+    }
+    let rest = data[end..]
+        .strip_prefix(FOOTER)
+        .ok_or_else(|| VtuError("the appended data does not end after its last array".into()))?;
+    if rest.trim_ascii() != b"</VTKFile>" {
+        return err("the file does not end with </VTKFile>");
     }
     let find = |sec: &str, name: &str| {
         headers
@@ -425,8 +473,8 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
         return err("points must be Float64");
     }
     let raw = block(data, p)?;
-    let flat = floats(&raw);
-    if flat.len() != 3 * n_points {
+    let flat = floats(p, &raw)?;
+    if n_points.checked_mul(3) != Some(flat.len()) {
         return err("point count does not match the Piece tag");
     }
     grid.points = flat.as_chunks::<3>().0.to_vec();
@@ -451,17 +499,45 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
         let ids = conn
             .get(from..end)
             .ok_or_else(|| VtuError("cell offsets are not valid".into()))?;
-        grid.cells.push(ids.iter().map(|&i| i as u32).collect());
+        let point = |&i: &i64| {
+            u32::try_from(i)
+                .ok()
+                .filter(|p| (*p as usize) < n_points)
+                .ok_or_else(|| {
+                    VtuError(format!("a cell has the point {i}, not a point of the grid"))
+                })
+        };
+        grid.cells
+            .push(ids.iter().map(point).collect::<Result<_, _>>()?);
         from = end;
     }
-    grid.cell_types = types.iter().map(|&t| t as u8).collect();
+    if from != conn.len() {
+        return err("the last cell offset does not end the connectivity");
+    }
+    grid.cell_types = types
+        .iter()
+        .map(|&t| u8::try_from(t).map_err(|_| VtuError(format!("cell type {t} is not valid"))))
+        .collect::<Result<_, _>>()?;
     for h in headers.iter().filter(|h| h.section.ends_with("Data")) {
         let raw = block(data, h)?;
         let values = match h.type_name.as_str() {
-            "Float64" => Values::F64(floats(&raw)),
+            "Float64" => Values::F64(floats(h, &raw)?),
             "Int32" => Values::I32(ints(h, &raw)?.into_iter().map(|v| v as i32).collect()),
             t => return err(format!("array {}: unsupported type {t}", h.name)),
         };
+        let n = if h.section == "PointData" {
+            n_points
+        } else {
+            n_cells
+        };
+        if n.checked_mul(h.components) != Some(values.len()) {
+            return err(format!(
+                "array {} has {} values, not {n} x {}",
+                h.name,
+                values.len(),
+                h.components
+            ));
+        }
         let field = Field {
             name: h.name.clone(),
             components: h.components,
@@ -476,12 +552,14 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     Ok(grid)
 }
 
-fn floats(raw: &[u8]) -> Vec<f64> {
-    raw.as_chunks::<8>()
+fn floats(h: &Header, raw: &[u8]) -> Result<Vec<f64>, VtuError> {
+    whole(h, raw, 8)?;
+    Ok(raw
+        .as_chunks::<8>()
         .0
         .iter()
         .map(|c| f64::from_le_bytes(*c))
-        .collect()
+        .collect())
 }
 
 /// One entry of a PVD collection: the time value and the file name.

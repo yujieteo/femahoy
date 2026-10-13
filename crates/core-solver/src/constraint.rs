@@ -35,7 +35,13 @@ pub struct Transform {
     free_dof: Vec<u32>,
 }
 
+/// A coefficient smaller than this part of the sum of its parts is a rounding rest, zero.
 const DROP: f64 = 1e-13;
+
+/// A NaN or an infinite value would change or remove a constraint without an error.
+fn not_finite() -> SolverError {
+    SolverError::new("a constraint has a coefficient or a value that is not finite")
+}
 
 impl Elimination {
     pub fn new(n: usize) -> Self {
@@ -55,24 +61,55 @@ impl Elimination {
         rhs: f64,
         prefer: Option<usize>,
     ) -> Result<(), SolverError> {
-        let mut acc: BTreeMap<usize, f64> = BTreeMap::new();
-        let mut rhs_now = rhs;
-        let mut scale = 1.0 + rhs.abs();
+        if !rhs.is_finite() || row.iter().any(|(_, c)| !c.is_finite()) {
+            return Err(not_finite());
+        }
+        // Scale the equation so that its largest coefficient is 1. A nonzero factor does not
+        // change the meaning of an equation, so the tests below must not depend on it.
+        let norm = row.iter().fold(0.0_f64, |m, (_, c)| m.max(c.abs()));
+        let norm = if norm > 0.0 { norm } else { 1.0 };
+        // For each dof: the coefficient, and the sum of the sizes of its parts.
+        let mut acc: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
+        let mut rhs_now = rhs / norm;
+        // The size of the values that make `rhs_now`, for the conflict test.
+        let mut scale = rhs_now.abs();
         for &(j, c) in row {
             debug_assert!(j < self.n);
+            let c = c / norm;
             match self.slaves.get(&j) {
                 Some(s) => {
                     for (&m, &t) in &s.terms {
-                        *acc.entry(m).or_insert(0.0) += c * t;
+                        let e = acc.entry(m).or_insert((0.0, 0.0));
+                        e.0 += c * t;
+                        e.1 += (c * t).abs();
                     }
                     rhs_now -= c * s.offset;
                     scale += (c * s.offset).abs();
                 }
-                None => *acc.entry(j).or_insert(0.0) += c,
+                None => {
+                    let e = acc.entry(j).or_insert((0.0, 0.0));
+                    e.0 += c;
+                    e.1 += c.abs();
+                }
             }
         }
+        // The substitution of earlier slaves can overflow.
+        if !rhs_now.is_finite()
+            || acc
+                .values()
+                .any(|(c, parts)| !c.is_finite() || !parts.is_finite())
+        {
+            return Err(not_finite());
+        }
+        // Remove only the rests of cancellations. A small coefficient that is not a rest stays,
+        // because its dof can be large. A test against the largest coefficient would remove it,
+        // and it would keep the rest of a redundant equation when that rest is the only term.
+        let mut acc: BTreeMap<usize, f64> = acc
+            .into_iter()
+            .filter(|(_, (c, parts))| c.abs() > DROP * parts)
+            .map(|(k, (c, _))| (k, c))
+            .collect();
         let max = acc.values().fold(0.0_f64, |m, c| m.max(c.abs()));
-        acc.retain(|_, c| c.abs() > DROP * max);
         if acc.is_empty() {
             if rhs_now.abs() > 1e-9 * scale {
                 return Err(SolverError::new(format!(
@@ -94,6 +131,9 @@ impl Elimination {
             terms: acc.into_iter().map(|(k, c)| (k, -c / a)).collect(),
             offset: rhs_now / a,
         };
+        if !def.offset.is_finite() || def.terms.values().any(|c| !c.is_finite()) {
+            return Err(not_finite());
+        }
         // Replace the new slave in the definitions that use it.
         if let Some(users) = self.users.remove(&pivot) {
             for s in users {
@@ -105,6 +145,9 @@ impl Elimination {
                 for (&m, &c) in &def.terms {
                     *slave.terms.entry(m).or_insert(0.0) += t * c;
                     self.users.entry(m).or_default().insert(s);
+                }
+                if !slave.offset.is_finite() || slave.terms.values().any(|c| !c.is_finite()) {
+                    return Err(not_finite());
                 }
             }
         }
@@ -214,6 +257,19 @@ impl Transform {
         }
         out
     }
+
+    /// `|T|ᵀ * f`: the reduction of a vector of sizes. Signed coefficients would let the
+    /// sizes cancel, like the forces in `reduce`.
+    pub fn reduce_abs(&self, full: &[f64]) -> Vec<f64> {
+        let mut out = vec![0.0; self.n_free];
+        for (d, f) in full.iter().enumerate() {
+            let (c, k) = self.row(d);
+            for (&r, k) in c.iter().zip(k) {
+                out[r as usize] += k.abs() * f;
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -258,6 +314,55 @@ mod tests {
         e.add(&[(0, 2.0)], 2.0, Some(0)).unwrap();
         let err = e.add(&[(0, 1.0)], 3.0, Some(0)).unwrap_err();
         assert!(err.to_string().contains("conflicting constraints"));
+    }
+
+    #[test]
+    fn a_small_coefficient_that_is_not_a_rounding_rest_stays() {
+        // u0 = 1e-14 u1, so u1 = 1e14 gives u0 = 1.
+        let mut e = Elimination::new(2);
+        e.add(&[(0, 1.0), (1, -1e-14)], 0.0, Some(0)).unwrap();
+        assert_eq!(e.finish().expand(&[1e14]), vec![1.0, 1e14]);
+    }
+
+    #[test]
+    fn the_rounding_rest_of_a_redundant_equation_is_zero() {
+        // u1 = 0.1 u0 and u2 = 0.2 u0 make u1 + u2 - 0.3 u0 = 0 redundant. The sum leaves
+        // 5.6e-17 u0, which must not become a constraint u0 = 0.
+        let mut e = Elimination::new(3);
+        e.add(&[(1, 1.0), (0, -0.1)], 0.0, Some(1)).unwrap();
+        e.add(&[(2, 1.0), (0, -0.2)], 0.0, Some(2)).unwrap();
+        e.add(&[(1, 1.0), (2, 1.0), (0, -0.3)], 0.0, None).unwrap();
+        let t = e.finish();
+        assert_eq!(t.n_free, 1);
+        assert_eq!(t.expand(&[1.0]), vec![1.0, 0.1, 0.2]);
+    }
+
+    #[test]
+    fn a_conflict_does_not_depend_on_the_scale_of_the_equation() {
+        for k in [1.0, 1e-12, 1e12] {
+            // x = 1, then k x = 2 k is a conflict, and k x = k is redundant.
+            let mut e = Elimination::new(1);
+            e.add(&[(0, 1.0)], 1.0, None).unwrap();
+            assert!(e.add(&[(0, k)], 2.0 * k, None).is_err(), "k = {k}");
+            e.add(&[(0, k)], k, None).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_value_that_is_not_finite_is_an_error() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut e = Elimination::new(2);
+            assert!(e.add(&[(0, bad), (1, -1.0)], 0.0, None).is_err());
+            assert!(e.add(&[(0, 1.0)], bad, None).is_err());
+        }
+        // Finite input can overflow in the substitution: u0 = u1 = 1.5e308, then u0 + u1 = u2.
+        let mut e = Elimination::new(3);
+        e.add(&[(0, 1.0)], 1.5e308, None).unwrap();
+        e.add(&[(1, 1.0)], 1.5e308, None).unwrap();
+        let err = e
+            .add(&[(0, 1.0), (1, 1.0), (2, -1.0)], 0.0, None)
+            .unwrap_err();
+        assert!(err.to_string().contains("not finite"), "{err}");
     }
 
     #[test]

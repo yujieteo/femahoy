@@ -20,6 +20,16 @@ pub fn address_space_limit(resident_limit: u64, threads: usize) -> u64 {
         .saturating_add((threads as u64).saturating_mul(64 << 20))
 }
 
+/// Soft and hard `RLIMIT_AS` for the child. A process without privilege cannot raise
+/// its hard limit, so the request stops at the hard limit that the runner inherited.
+#[cfg_attr(
+    not(all(target_os = "linux", target_pointer_width = "64")),
+    allow(dead_code)
+)]
+fn address_limits(requested: u64, inherited_hard: u64) -> [u64; 2] {
+    [requested.min(inherited_hard); 2]
+}
+
 /// Thread count of the solver: `FH_THREADS` when set and above 0, else the CPU count.
 #[cfg_attr(
     not(all(target_os = "linux", target_pointer_width = "64")),
@@ -32,6 +42,17 @@ fn solver_threads() -> usize {
         .filter(|&n| n > 0)
         .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()))
         .unwrap_or(1)
+}
+
+/// Resident memory in bytes from the text of `/proc/<pid>/status`. `VmRSS` is in kB for
+/// every page size. A process without memory (a kernel thread or a zombie) has no line.
+#[cfg(any(target_os = "linux", test))]
+fn vm_rss_bytes(status: &str) -> u64 {
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix("VmRSS:"))
+        .and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+        .map_or(0, |kib| kib.saturating_mul(1024))
 }
 
 /// Handle for the process tree of a child.
@@ -54,6 +75,7 @@ mod os {
     }
     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     extern "C" {
+        fn getrlimit(resource: i32, limit: *mut [u64; 2]) -> i32;
         fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
     }
 
@@ -63,8 +85,14 @@ mod os {
         if let Some(bytes) = hard_limit {
             // RLIMIT_AS is 9 on Linux. Address space is not resident memory:
             // malloc arenas and thread stacks reserve address space per thread.
+            // RLIM_INFINITY is all ones, so an unknown limit does not clamp.
+            let mut inherited = [u64::MAX; 2];
+            // SAFETY: `inherited` is valid for the write of two numbers.
+            if unsafe { getrlimit(9, &mut inherited) } != 0 {
+                inherited = [u64::MAX; 2];
+            }
+            let limit = address_limits(address_space_limit(bytes, solver_threads()), inherited[1]);
             // SAFETY: `setrlimit` is async-signal-safe.
-            let limit = [address_space_limit(bytes, solver_threads()); 2];
             unsafe {
                 cmd.pre_exec(move || {
                     if setrlimit(9, &limit) == 0 {
@@ -92,7 +120,6 @@ mod os {
 
     #[cfg(target_os = "linux")]
     pub fn probe(pgid: u32) -> Result<u64, String> {
-        let page = 4096;
         let mut total = 0_u64;
         let dir = std::fs::read_dir("/proc").map_err(|e| format!("/proc: {e}"))?;
         for entry in dir.flatten() {
@@ -104,13 +131,16 @@ mod os {
             let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
                 continue;
             };
-            // Fields after the name in parentheses: state ppid pgrp ... rss at 21.
+            // Fields after the name in parentheses: state ppid pgrp ...
             let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r) else {
                 continue;
             };
             let f: Vec<&str> = rest.split_whitespace().collect();
             if f.get(2).and_then(|v| v.parse::<u32>().ok()) == Some(pgid) {
-                total += f.get(21).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) * page;
+                // Not the rss of `stat`: it counts pages, and the page size is not
+                // always 4 KiB (for example 16 KiB or 64 KiB on arm64).
+                let status = std::fs::read_to_string(entry.path().join("status"));
+                total += vm_rss_bytes(&status.unwrap_or_default());
             }
         }
         Ok(total)
@@ -176,51 +206,62 @@ mod os {
     }
 }
 
+/// The Windows structures of the calls. Tests compile them on every system, so that a
+/// test can check their sizes.
+#[cfg(any(windows, test))]
+#[allow(dead_code)]
+mod win {
+    /// `JOBOBJECT_BASIC_LIMIT_INFORMATION`.
+    #[repr(C)]
+    pub struct BasicLimit {
+        pub per_process_time: i64,
+        pub per_job_time: i64,
+        pub flags: u32,
+        pub min_ws: usize,
+        pub max_ws: usize,
+        pub active_limit: u32,
+        pub affinity: usize,
+        pub priority: u32,
+        pub scheduling: u32,
+    }
+
+    /// `JOBOBJECT_EXTENDED_LIMIT_INFORMATION`.
+    #[repr(C)]
+    pub struct ExtendedLimit {
+        pub basic: BasicLimit,
+        pub io: [u64; 6],
+        pub process_memory: usize,
+        pub job_memory: usize,
+        pub peak_process: usize,
+        pub peak_job: usize,
+    }
+
+    /// `PROCESS_MEMORY_COUNTERS`.
+    #[repr(C)]
+    pub struct MemoryCounters {
+        pub cb: u32,
+        pub page_faults: u32,
+        pub peak_working_set: usize,
+        pub working_set: usize,
+        pub rest: [usize; 6],
+    }
+
+    /// `MEMORYSTATUSEX`: 2 DWORD and 7 DWORDLONG fields.
+    #[repr(C)]
+    pub struct MemoryStatus {
+        pub length: u32,
+        pub load: u32,
+        pub total_phys: u64,
+        pub rest: [u64; 6],
+    }
+}
+
 #[cfg(windows)]
 mod os {
+    use super::win::*;
     use super::*;
     use std::ffi::c_void;
     use std::os::windows::io::AsRawHandle;
-
-    #[repr(C)]
-    struct BasicLimit {
-        per_process_time: i64,
-        per_job_time: i64,
-        flags: u32,
-        min_ws: usize,
-        max_ws: usize,
-        active_limit: u32,
-        affinity: usize,
-        priority: u32,
-        scheduling: u32,
-    }
-
-    #[repr(C)]
-    struct ExtendedLimit {
-        basic: BasicLimit,
-        io: [u64; 6],
-        process_memory: usize,
-        job_memory: usize,
-        peak_process: usize,
-        peak_job: usize,
-    }
-
-    #[repr(C)]
-    struct MemoryCounters {
-        cb: u32,
-        page_faults: u32,
-        peak_working_set: usize,
-        working_set: usize,
-        rest: [usize; 6],
-    }
-
-    #[repr(C)]
-    struct MemoryStatus {
-        length: u32,
-        load: u32,
-        total_phys: u64,
-        rest: [u64; 5],
-    }
 
     extern "system" {
         fn CreateJobObjectW(attrs: *mut c_void, name: *const u16) -> isize;
@@ -361,6 +402,44 @@ pub fn total_memory() -> Option<u64> {
 }
 
 #[cfg(test)]
+mod probe_tests {
+    use super::vm_rss_bytes;
+
+    #[test]
+    fn the_resident_size_comes_from_vm_rss_in_kib() {
+        let status = "Name:\tfh-solve\nVmPeak:\t  9999 kB\nVmRSS:\t    2048 kB\nRssAnon:\t1 kB\n";
+        assert_eq!(vm_rss_bytes(status), 2048 * 1024);
+        assert_eq!(vm_rss_bytes("Name:\tkthreadd\nState:\tS (sleeping)\n"), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_probe_counts_this_process() {
+        extern "C" {
+            fn getpgrp() -> i32;
+        }
+        let own = vm_rss_bytes(&std::fs::read_to_string("/proc/self/status").unwrap());
+        let group = super::os::probe(unsafe { getpgrp() } as u32).unwrap();
+        // The memory can change between the two reads.
+        assert!(own > 0 && group >= own / 2, "group {group}, own {own}");
+    }
+}
+
+#[cfg(all(test, target_pointer_width = "64"))]
+mod win_tests {
+    use super::win::*;
+    use std::mem::size_of;
+
+    #[test]
+    fn the_windows_structures_have_the_sizes_of_the_api() {
+        assert_eq!(size_of::<BasicLimit>(), 64);
+        assert_eq!(size_of::<ExtendedLimit>(), 144);
+        assert_eq!(size_of::<MemoryCounters>(), 72);
+        assert_eq!(size_of::<MemoryStatus>(), 64);
+    }
+}
+
+#[cfg(test)]
 mod limit_tests {
     use super::address_space_limit;
 
@@ -372,5 +451,55 @@ mod limit_tests {
             (1 << 30) + (256 << 20) + (64 * (64 << 20))
         );
         assert_eq!(address_space_limit(u64::MAX, 8), u64::MAX);
+    }
+
+    #[test]
+    fn the_limit_never_asks_for_more_than_the_inherited_hard_limit() {
+        use super::address_limits;
+        let gib = 1u64 << 30;
+        // A child cannot raise its hard limit, so a request above it must not fail the spawn.
+        assert_eq!(address_limits(2 * gib, gib), [gib; 2]);
+        assert_eq!(address_limits(gib, 2 * gib), [gib; 2]);
+        // RLIM_INFINITY is all ones on Linux.
+        assert_eq!(address_limits(gib, u64::MAX), [gib; 2]);
+    }
+
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+    #[test]
+    fn a_child_starts_under_a_lower_inherited_hard_limit() {
+        use std::os::unix::process::CommandExt;
+        use std::process::Command;
+        const NAME: &str = "sys::limit_tests::a_child_starts_under_a_lower_inherited_hard_limit";
+        const INNER: &str = "FH_TEST_INHERITED_HARD_LIMIT";
+        extern "C" {
+            fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
+        }
+        let gib = 1u64 << 30;
+        if std::env::var_os(INNER).is_some() {
+            // This copy of the test has a hard limit of 4 GiB. The request with its
+            // allowance is above it.
+            let mut cmd = Command::new("true");
+            super::prepare(&mut cmd, Some(4 * gib));
+            let status = cmd.status().expect("the child starts");
+            assert!(status.success());
+            return;
+        }
+        let limit = [4 * gib; 2];
+        let mut cmd = Command::new(std::env::current_exe().unwrap());
+        cmd.args(["--exact", NAME, "--test-threads", "1"])
+            .env(INNER, "1");
+        // SAFETY: `setrlimit` is async-signal-safe.
+        unsafe {
+            cmd.pre_exec(move || {
+                if setrlimit(9, &limit) == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
+        let out = cmd.output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && text.contains("1 passed"), "{text}");
     }
 }

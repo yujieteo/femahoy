@@ -39,17 +39,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             return Ok(ExitCode::from(1));
         }
     };
-    let mut bad = false;
-    for case in &cases {
-        for problem in spec_problems(case) {
-            eprintln!(
-                "fh validate: {}: {problem}",
-                case.dir.join("case.toml").display()
-            );
-            bad = true;
-        }
-    }
-    if bad {
+    if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
     let solver = Subprocess::locate();
@@ -58,6 +48,21 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         .map(|c| (c, String::new(), run_case_with(c, &solver)))
         .collect();
     Ok(print_reports(&reports, reports.len()))
+}
+
+/// Print each problem of the fixtures of the cases. True when there is none.
+fn fixtures_ok(cases: &[Case]) -> bool {
+    let mut ok = true;
+    for case in cases {
+        for problem in spec_problems(case) {
+            eprintln!(
+                "fh validate: {}: {problem}",
+                case.dir.join("case.toml").display()
+            );
+            ok = false;
+        }
+    }
+    ok
 }
 
 /// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure.
@@ -121,6 +126,10 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
             return Ok(ExitCode::from(1));
         }
     };
+    // The same fixture checks as a validation run.
+    if !fixtures_ok(&cases) {
+        return Ok(ExitCode::from(1));
+    }
     let solver = Subprocess::locate();
     let mut reports: Vec<(&Case, String, Report)> = Vec::new();
     let mut skipped = Vec::new();
@@ -145,6 +154,8 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
 /// parse, an element type that the case does not list, and a set or step that the mesh lacks.
 fn spec_problems(case: &Case) -> Vec<String> {
     let mut out = Vec::new();
+    // The element types of the meshes. `None` when a mesh does not parse.
+    let mut seen: Option<std::collections::HashSet<String>> = Some(Default::default());
     for mesh in &case.meshes {
         let name = mesh.display();
         let model = match std::fs::read_to_string(mesh)
@@ -154,9 +165,13 @@ fn spec_problems(case: &Case) -> Vec<String> {
             Ok(m) => m,
             Err(e) => {
                 out.push(format!("mesh {name}: {e}"));
+                seen = None;
                 continue;
             }
         };
+        if let Some(seen) = &mut seen {
+            seen.extend(model.elements.iter().map(|e| e.element_type.clone()));
+        }
         for el in &model.elements {
             if !case.element_types.contains(&el.element_type) {
                 out.push(format!(
@@ -188,6 +203,14 @@ fn spec_problems(case: &Case) -> Vec<String> {
                     q.step, r.name
                 ));
             }
+        }
+    }
+    // The case runs once for each listed type, thus each type needs a mesh.
+    for kind in &case.element_types {
+        if seen.as_ref().is_some_and(|s| !s.contains(kind)) {
+            out.push(format!(
+                "`element_types` lists {kind}, but no mesh has that element type"
+            ));
         }
     }
     out

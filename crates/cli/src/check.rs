@@ -33,8 +33,10 @@ pub fn fixture_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 /// True for a file inside `validation/cases`. The solver needs a section there.
+/// The test uses the real location of the file, thus a relative path gives the same result.
 fn is_case_mesh(path: &Path) -> bool {
-    let names: Vec<_> = path.components().map(|c| c.as_os_str()).collect();
+    let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let names: Vec<_> = real.components().map(|c| c.as_os_str()).collect();
     names
         .windows(2)
         .any(|w| w[0] == "validation" && w[1] == "cases")

@@ -3,8 +3,10 @@
 //! and they fix no design decision.
 
 use fh_core_solver::element::{
-    elasticity, mean_stress, pressure_load, stiffness, volume, Kind, Placement,
+    elasticity, evaluate, mean_stress, pressure_load, stiffness, volume, Elastic, ElementState,
+    Evaluation, Gradient, Kind, Material, Placement,
 };
+use fh_core_solver::SolverError;
 
 static ZERO: [f64; 30] = [0.0; 30];
 
@@ -237,6 +239,301 @@ fn tet_pressure_pushes_into_the_body() {
             assert!(
                 (t[k] - 3.0 * area * n[k]).abs() < 1e-13,
                 "face {face} {t:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_curved_tet_face_gets_the_exact_nodal_forces() {
+    // Map the unit tet with x -> x + x² in each direction. The quadratic element holds
+    // this map exactly. On face 1 (z = 0) the area vector is (0, 0, (1 + 2r)(1 + 2s)).
+    let c: Vec<[f64; 3]> = tet([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        .into_iter()
+        .map(|p| p.map(|x| x + x * x))
+        .collect();
+    let p = 2.0;
+    let loads = pressure_load(Kind::C3D10, &place(&c), 1, p).unwrap();
+    // The exact force of each face node, from a collapsed Gauss product rule. The rule is
+    // exact for this integrand (degree 5 or less in each direction).
+    let h = 0.6_f64.sqrt() / 2.0;
+    let gauss = [
+        (0.5 - h, 5.0 / 18.0),
+        (0.5, 8.0 / 18.0),
+        (0.5 + h, 5.0 / 18.0),
+    ];
+    let mut want = [0.0; 6];
+    for (a, wa) in gauss {
+        for (b, wb) in gauss {
+            let (r, s) = (a, (1.0 - a) * b);
+            let l = [1.0 - r - s, r, s];
+            let n = [
+                l[0] * (2.0 * l[0] - 1.0),
+                l[1] * (2.0 * l[1] - 1.0),
+                l[2] * (2.0 * l[2] - 1.0),
+                4.0 * l[0] * l[1],
+                4.0 * l[1] * l[2],
+                4.0 * l[2] * l[0],
+            ];
+            let w = wa * wb * (1.0 - a) * p * (1.0 + 2.0 * r) * (1.0 + 2.0 * s);
+            for (f, ni) in want.iter_mut().zip(n) {
+                *f += w * ni;
+            }
+        }
+    }
+    // The closed form for corner node 0 is -2/45 for each unit of pressure.
+    assert!((want[0] + p * 2.0 / 45.0).abs() < 1e-14, "{}", want[0]);
+    let mut bad = Vec::new();
+    for (node, w) in [0, 1, 2, 4, 5, 6].into_iter().zip(want) {
+        let got = total(
+            &loads
+                .iter()
+                .filter(|(n, _)| *n == node)
+                .copied()
+                .collect::<Vec<_>>(),
+        );
+        if (got[2] - w).abs() > 1e-13 || got[0].abs() > 1e-13 || got[1].abs() > 1e-13 {
+            bad.push(format!("node {node}: {got:?}, exact z {w}"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+#[test]
+fn a_tiny_strain_keeps_its_stress_and_its_force() {
+    // A normal strain far below the machine epsilon with an exact stress of 1.
+    let c = unit_hex();
+    let u = field(&c, |x| [1e-17 * x[0], 0.0, 0.0]);
+    let s = mean_stress(Kind::C3D8, &c, &elasticity(1e17, 0.0), &u).unwrap();
+    let mut bad = Vec::new();
+    if (s[0] - 1.0).abs() > 1e-12 {
+        bad.push(format!("stress {s:?}, exact xx 1"));
+    }
+    // For an ordinary modulus and a tiny field, the internal force is K u.
+    let d = elasticity(1000.0, 0.3);
+    for kind in KINDS {
+        let c = geometry(kind);
+        let u = field(&c, |x| {
+            [x[0] * x[1], x[1] * x[2] - x[0], x[2] * x[0] + x[1]].map(|v| 1e-14 * v)
+        });
+        let ku = mat_vec(&stiffness(kind, &c, &d).unwrap(), &u);
+        let mut out = Evaluation::default();
+        let place = Placement {
+            start: &c,
+            disp: &u,
+        };
+        evaluate(
+            kind,
+            &place,
+            &Elastic { d },
+            &ElementState::default(),
+            &mut out,
+            false,
+        )
+        .unwrap();
+        let size = ku.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
+        let err = ku
+            .iter()
+            .zip(&out.fint)
+            .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()));
+        if err > 1e-10 * size {
+            bad.push(format!("{kind:?}: |f - K u| = {err:e}, |K u| = {size:e}"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+#[test]
+fn a_bad_pressure_input_is_an_error_not_a_panic() {
+    let c = unit_hex();
+    let t = tet([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+    let (zeros, eleven) = ([0.0; 30], [[0.0; 3]; 11]);
+    let at = |start, disp| Placement { start, disp };
+    let cases = [
+        ("face 0", Kind::C3D8, at(&c, &zeros[..24]), 0),
+        ("face 0", Kind::C3D10, at(&t, &zeros), 0),
+        ("no displacements", Kind::C3D8, at(&c, &[]), 1),
+        (
+            "too few displacements",
+            Kind::C3D10,
+            at(&t, &zeros[..29]),
+            1,
+        ),
+        ("2 nodes", Kind::C3D8, at(&c[..2], &zeros[..6]), 1),
+        ("11 nodes", Kind::C3D10, at(&eleven, &zeros), 1),
+    ];
+    let mut bad = Vec::new();
+    for (what, kind, place, face) in cases {
+        match std::panic::catch_unwind(|| pressure_load(kind, &place, face, 1.0)) {
+            Ok(Ok(_)) => bad.push(format!("{what}: accepted")),
+            Ok(Err(_)) => {}
+            Err(_) => bad.push(format!("{what}: panic")),
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+#[test]
+fn a_curved_tet_has_its_exact_volume() {
+    // Map the unit tet with x -> x + x² in each direction. The determinant is
+    // (1 + 2r)(1 + 2s)(1 + 2t), and its integral over the unit tet is 19/36.
+    let c: Vec<[f64; 3]> = tet([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        .into_iter()
+        .map(|p| p.map(|x| x + x * x))
+        .collect();
+    let v = volume(Kind::C3D10, &c).unwrap();
+    assert!(
+        (v - 19.0 / 36.0).abs() < 1e-14,
+        "volume {v}, exact {}",
+        19.0 / 36.0
+    );
+}
+
+/// A material that keeps 9 state numbers. The element keeps at most 8.
+struct NineStates;
+
+impl Material for NineStates {
+    fn state_len(&self) -> usize {
+        9
+    }
+
+    fn update(
+        &self,
+        _g: &Gradient,
+        old: &[f64],
+        new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        new[8] = old[8];
+        Ok(([0.0; 6], elasticity(1.0, 0.3)))
+    }
+}
+
+#[test]
+fn a_material_with_too_many_state_numbers_is_an_error() {
+    let c = unit_hex();
+    let run = || {
+        let mut out = Evaluation::default();
+        let state = ElementState::default();
+        evaluate(Kind::C3D8, &place(&c), &NineStates, &state, &mut out, false)
+    };
+    match std::panic::catch_unwind(run) {
+        Ok(Err(e)) => assert!(e.to_string().contains("state"), "{e}"),
+        Ok(Ok(())) => panic!("accepted"),
+        Err(_) => panic!("the evaluation panicked"),
+    }
+}
+
+/// A material whose stress is not finite.
+struct NotFinite;
+
+impl Material for NotFinite {
+    fn update(
+        &self,
+        _g: &Gradient,
+        _old: &[f64],
+        _new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        Ok(([f64::NAN; 6], elasticity(1.0, 0.3)))
+    }
+}
+
+#[test]
+fn a_result_that_is_not_finite_is_an_error() {
+    let d = elasticity(1.0, 0.3);
+    let mut bad = Vec::new();
+    // Finite coordinates whose Jacobian determinant overflows.
+    let big: Vec<_> = unit_hex().iter().map(|p| p.map(|x| x * 1e110)).collect();
+    if let Ok(v) = volume(Kind::C3D8, &big) {
+        bad.push(format!("volume of a huge element: {v}"));
+    }
+    if stiffness(Kind::C3D8, &big, &d).is_ok() {
+        bad.push("stiffness of a huge element".into());
+    }
+    // A finite element and a finite material whose stiffness overflows.
+    let small: Vec<_> = unit_hex().iter().map(|p| p.map(|x| x * 1e-100)).collect();
+    if stiffness(Kind::C3D8, &small, &elasticity(1e300, 0.3)).is_ok() {
+        bad.push("stiffness that overflows".into());
+    }
+    for kind in KINDS {
+        let c = geometry(kind);
+        let mut nan_c = c.clone();
+        nan_c[1][2] = f64::NAN;
+        if volume(kind, &nan_c).is_ok() {
+            bad.push(format!("{kind:?}: volume with a NaN coordinate"));
+        }
+        for v in [f64::NAN, f64::INFINITY] {
+            let mut u = vec![0.0; 3 * c.len()];
+            u[4] = v;
+            let place = Placement {
+                start: &c,
+                disp: &u,
+            };
+            let mut out = Evaluation::default();
+            let state = ElementState::default();
+            if evaluate(kind, &place, &Elastic { d }, &state, &mut out, true).is_ok() {
+                bad.push(format!("{kind:?}: displacement {v}"));
+            }
+        }
+        let mut out = Evaluation::default();
+        let state = ElementState::default();
+        if evaluate(kind, &place(&c), &NotFinite, &state, &mut out, true).is_ok() {
+            bad.push(format!("{kind:?}: a material stress that is not finite"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+/// A material that gets stiffer with the strain: stress = strain³ + 1e-12 strain,
+/// with its exact tangent. Newton on the mode amplitudes converges slowly near 0.
+struct Cubic;
+
+impl Material for Cubic {
+    fn is_linear(&self) -> bool {
+        false
+    }
+
+    fn update(
+        &self,
+        g: &Gradient,
+        _old: &[f64],
+        _new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        let e = g.small_strain();
+        let mut d = [[0.0; 6]; 6];
+        for (i, row) in d.iter_mut().enumerate() {
+            row[i] = 3.0 * e[i] * e[i] + 1e-12;
+        }
+        Ok((e.map(|x| x * x * x + 1e-12 * x), d))
+    }
+}
+
+#[test]
+fn incompatible_modes_that_do_not_converge_are_an_error() {
+    let c = unit_hex();
+    let state = ElementState {
+        internal: [1.0; 9],
+        ..Default::default()
+    };
+    let mut out = Evaluation::default();
+    match evaluate(Kind::C3D8I, &place(&c), &Cubic, &state, &mut out, true) {
+        Err(e) => assert!(e.to_string().contains("incompatible modes"), "{e}"),
+        Ok(()) => {
+            // A converged result is a fixed point: a second call does not move the modes.
+            let again = ElementState {
+                internal: out.internal,
+                ..state
+            };
+            let mut next = Evaluation::default();
+            evaluate(Kind::C3D8I, &place(&c), &Cubic, &again, &mut next, false).unwrap();
+            let moved = out
+                .internal
+                .iter()
+                .zip(&next.internal)
+                .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()));
+            assert!(
+                moved <= 1e-9,
+                "accepted modes {:?} that move by {moved:e}",
+                out.internal
             );
         }
     }

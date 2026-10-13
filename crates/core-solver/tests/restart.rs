@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use common::{assert_same, block_input, snapshot};
-use fh_core_solver::element::{small_strain, Material};
+use fh_core_solver::element::{Gradient, Material};
 use fh_core_solver::restart::{read_latest, Restart};
 use fh_core_solver::{
     input_hash, run_model, Formats, Input, MaterialFactory, Options, SolverError,
@@ -30,12 +30,12 @@ impl Material for Bilinear {
     }
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
         const C: [f64; 6] = [1.0, 1.0, 1.0, 0.5, 0.5, 0.5];
-        let eps = small_strain(f);
+        let eps = g.small_strain();
         let e = (0..6).map(|i| C[i] * eps[i] * eps[i]).sum::<f64>().sqrt();
         let (ey, k) = (0.01, 0.1);
         let kappa = old[0].max(e);
@@ -232,6 +232,28 @@ fn a_changed_input_file_is_rejected() {
     let changed = text.replace("1000, 0", "1001, 0");
     let e = run(&changed, &d, &options(), true, &|| false).unwrap_err();
     assert!(e.contains("not the one of the earlier run"), "{e}");
+}
+
+#[test]
+fn a_restart_refuses_a_damaged_or_missing_result_of_a_committed_increment() {
+    // The file, and true to remove it, false to damage it.
+    for (file, remove) in [
+        ("step-1-inc-1.vtu", false),
+        ("step-1.vtu", true),
+        ("step-1-inc-4.txt", true),
+    ] {
+        let d = dir("damaged");
+        run(&bar_input(), &d, &options(), false, &|| false).unwrap();
+        if remove {
+            fs::remove_file(d.join(file)).unwrap();
+        } else {
+            fs::write(d.join(file), "broken").unwrap();
+        }
+        match run(&bar_input(), &d, &options(), true, &|| false) {
+            Ok(()) => panic!("{file}: the restart passed"),
+            Err(e) => assert!(e.contains(file), "{file}: {e}"),
+        }
+    }
 }
 
 #[test]

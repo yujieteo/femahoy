@@ -14,7 +14,8 @@ use std::time::Instant;
 use fh_inp::Model;
 use fh_io::vtk::write_vtk_to;
 use fh_io::vtu::{
-    write_pvd_units, write_vtu_to, Field, Grid, PvdEntry, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA,
+    read_vtu, write_pvd_units, write_vtu_to, Field, Grid, PvdEntry, VTK_HEXAHEDRON,
+    VTK_QUADRATIC_TETRA,
 };
 use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
 use fh_toon as toon;
@@ -325,6 +326,40 @@ fn clean_run_folder(dir: &Path, r: &Restart) -> Result<(), ApiError> {
         };
         if stale {
             fs::remove_file(e.path()).map_err(|e| io(&name, e))?;
+        }
+    }
+    Ok(())
+}
+
+/// Check the result files of the increments that a restart keeps. Each file of each format
+/// that is on must exist, and a VTU file must read. A damaged or lost file would leave a PVD
+/// collection that points to bad data.
+fn check_kept_results(dir: &Path, entries: &[PvdEntry], f: Formats) -> Result<(), ApiError> {
+    for e in entries {
+        let stem = e.file.rsplit_once('.').map_or(e.file.as_str(), |x| x.0);
+        for (on, ext) in [(f.vtu, "vtu"), (f.vtk, "vtk"), (f.text, "txt")] {
+            if !on {
+                continue;
+            }
+            let file = format!("{stem}.{ext}");
+            let path = dir.join(&file);
+            let problem = if ext == "vtu" {
+                match fs::read(&path) {
+                    Ok(b) => read_vtu(&b).err().map(|e| e.to_string()),
+                    Err(e) => Some(e.to_string()),
+                }
+            } else {
+                match fs::metadata(&path) {
+                    Ok(m) if m.is_file() && m.len() > 0 => None,
+                    Ok(_) => Some("the file is empty".into()),
+                    Err(e) => Some(e.to_string()),
+                }
+            };
+            if let Some(why) = problem {
+                return Err(ApiError(format!(
+                    "restart: the result file {file} of a kept increment is missing or damaged ({why}). Run again without restart"
+                )));
+            }
         }
     }
     Ok(())
@@ -681,6 +716,7 @@ pub fn run_model(
         }
         clean_run_folder(run_dir, &r)?;
         let (e, l, part) = parse_history(&r.history)?;
+        check_kept_results(run_dir, &e, options.formats)?;
         entries = e;
         incs = l;
         resume = Some(Resume {

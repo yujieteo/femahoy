@@ -85,14 +85,25 @@ impl<'a> Mesh<'a> {
                 "the model has {n_dofs} dofs, more than the 32-bit index allows"
             )));
         }
-        // Material of each element, from the sections.
+        // Material of each element, from the sections. An element takes one section only.
         let mut material: HashMap<u32, &str> = HashMap::new();
-        for s in &model.sections {
+        let mut section_of: HashMap<u32, usize> = HashMap::new();
+        for (i, s) in model.sections.iter().enumerate() {
             let set = model
                 .elset(&s.elset)
                 .ok_or_else(|| SolverError::new(format!("element set {} not found", s.elset)))?;
             for id in &set.ids {
-                material.insert(*id, &s.material);
+                match section_of.insert(*id, i) {
+                    Some(j) if j != i => {
+                        return Err(SolverError::new(format!(
+                            "element {id} is in 2 *SOLID SECTION element sets ({} and {})",
+                            model.sections[j].elset, s.elset
+                        )));
+                    }
+                    _ => {
+                        material.insert(*id, &s.material);
+                    }
+                }
             }
         }
         let mut mat_index: HashMap<&str, u16> = HashMap::new();
@@ -346,6 +357,11 @@ impl<'a> Mesh<'a> {
                 }
             }
             MpcKind::Link => {
+                if r.iter().any(|x| !x.is_finite()) {
+                    return Err(SolverError::new(
+                        "*MPC LINK: the distance between the nodes is not finite",
+                    ));
+                }
                 let len = norm(r);
                 if len == 0.0 {
                     return Err(SolverError::new("*MPC LINK joins two nodes at one point"));
@@ -405,6 +421,7 @@ impl<'a> Mesh<'a> {
         let in_range = |d: u8| (c.first_dof..=c.last_dof).contains(&d);
         match c.kind {
             CouplingKind::Kinematic => {
+                let mut rows = 0;
                 for &s in &slaves {
                     let r = sub(self.xyz(s), self.xyz(rn));
                     for k in 0..3 {
@@ -417,7 +434,26 @@ impl<'a> Mesh<'a> {
                         ];
                         row.extend(self.rot_terms(rn, r, k));
                         el.add(&row, 0.0, Some(self.dof(s, k as u8 + 1)))?;
+                        rows += 1;
                     }
+                    // A slave with rotation dofs turns with the reference.
+                    if self.node_dofs(s) < 6 {
+                        continue;
+                    }
+                    for d in (4..=6).filter(|d| in_range(*d)) {
+                        el.add(
+                            &[(self.dof(s, d), 1.0), (self.dof(rn, d), -1.0)],
+                            0.0,
+                            Some(self.dof(s, d)),
+                        )?;
+                        rows += 1;
+                    }
+                }
+                if rows == 0 {
+                    return Err(SolverError::new(format!(
+                        "coupling {}: no slave node has a dof in the range {} to {}",
+                        c.name, c.first_dof, c.last_dof
+                    )));
                 }
             }
             CouplingKind::Distributing => self.distributing(el, c, rn, &slaves)?,
@@ -672,6 +708,13 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
+/// The length of `a`, scaled by its largest component so that the squares do not
+/// overflow or underflow.
 fn norm(a: [f64; 3]) -> f64 {
-    dot(a, a).sqrt()
+    let m = a.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+    if m == 0.0 || !m.is_finite() {
+        return m;
+    }
+    let s = a.map(|x| x / m);
+    m * dot(s, s).sqrt()
 }

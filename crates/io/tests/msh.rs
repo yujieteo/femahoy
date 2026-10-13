@@ -73,3 +73,39 @@ fn errors_name_the_line() {
     assert!(err(&junk).starts_with("line 20: "));
     assert!(err("").starts_with("line 1: "));
 }
+
+#[test]
+fn a_coordinate_that_is_not_finite_is_an_error() {
+    let mut bad = Vec::new();
+    for xyz in ["NaN 0 0", "0 inf 0", "0 0 -inf", "1e999 0 0"] {
+        let text = HEX.replace("0 0 0\n2 1 0 3", &format!("{xyz}\n2 1 0 3"));
+        assert_ne!(text, HEX);
+        match read_msh(&text) {
+            Ok(m) => bad.push(format!("{xyz}: accepted as {:?}", m.nodes[0].xyz)),
+            Err(e) if !e.to_string().starts_with("line 20: ") => {
+                bad.push(format!("{xyz}: {e}"));
+            }
+            Err(_) => {}
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+#[test]
+fn a_tag_of_zero_is_an_error() {
+    // Node and element tags become the labels of the model, and a label starts at 1.
+    let mut bad = Vec::new();
+    for (from, to, line) in [
+        ("0 1 0 1\n1\n0 0 0", "0 1 0 1\n0\n0 0 0", "line 19: "),
+        ("3 1 2 3 4 5 6 7 8", "0 1 2 3 4 5 6 7 8", "line 45: "),
+    ] {
+        let text = HEX.replace(from, to);
+        assert_ne!(text, HEX);
+        match read_msh(&text) {
+            Ok(_) => bad.push(format!("{to:?}: accepted")),
+            Err(e) if !e.to_string().starts_with(line) => bad.push(format!("{to:?}: {e}")),
+            Err(_) => {}
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}

@@ -45,6 +45,29 @@ fn node_surface_takes_nodes_and_sets() {
 }
 
 #[test]
+fn a_surface_line_with_more_than_1_field_is_an_error() {
+    for data in ["1,2\n", "1,\n2\n", "TOP,1.0\n"] {
+        let e = err(&format!(
+            "*NSET, NSET=TOP\n5\n*SURFACE, TYPE=NODE, NAME=S\n{data}"
+        ));
+        assert!(
+            e.starts_with("line 22, *SURFACE") && e.contains("1 node"),
+            "{e}"
+        );
+    }
+}
+
+#[test]
+fn a_duplicate_surface_name_is_an_error() {
+    // The solver takes the first surface of a name, so it would not see the second.
+    let e = err("*SURFACE, TYPE=NODE, NAME=S\n1\n*SURFACE, TYPE=NODE, NAME=s\n2\n");
+    assert!(
+        e.starts_with("line 21, *SURFACE") && e.contains("'S'"),
+        "{e}"
+    );
+}
+
+#[test]
 fn kinematic_coupling() {
     let m = ok("*SURFACE, TYPE=NODE, NAME=S\n1\n2\n\
 *COUPLING, CONSTRAINT NAME=C1, REF NODE=9, SURFACE=S\n*KINEMATIC\n1, 3\n");
@@ -105,6 +128,67 @@ fn equation_errors() {
 }
 
 #[test]
+fn an_empty_equation_field_is_an_error_and_does_not_move_the_terms() {
+    // Without the empty field, the terms move: node 2 goes away and node 1 gets fixed.
+    let e = err("*EQUATION\n2\n1,1,,2,1,1,-1\n");
+    assert!(e.contains("needs 2 terms"), "{e}");
+    let e = err("*EQUATION\n2\n1,1,,2,1,-1\n");
+    assert!(
+        e.contains("line 21, *EQUATION") && e.contains("found ''"),
+        "{e}"
+    );
+}
+
+#[test]
+fn the_count_line_of_an_equation_has_only_the_count() {
+    let e = err("*EQUATION\n1,99\n1,1,1\n");
+    assert!(
+        e.contains("line 20, *EQUATION") && e.contains("number of terms"),
+        "{e}"
+    );
+}
+
+/// Model data in each place after the first `*STEP` starts.
+const MODEL_DATA: [&str; 5] = [
+    "*EQUATION\n1\n1,1,1\n",
+    "*MPC\nTIE,1,2\n",
+    "*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n",
+    "*SOLID SECTION, ELSET=ALL, MATERIAL=M\n",
+    "*SURFACE, TYPE=NODE, NAME=T\n2\n",
+];
+
+#[test]
+fn model_data_inside_or_after_a_step_is_an_error() {
+    only_before_the_first_step(&MODEL_DATA);
+}
+
+#[test]
+fn mesh_and_material_data_inside_or_after_a_step_is_an_error() {
+    only_before_the_first_step(&[
+        "*NODE\n10,0,0,0\n",
+        "*ELEMENT, TYPE=C3D8\n2,1,2,3,4,5,6,7,8\n",
+        "*NSET, NSET=N\n1\n",
+        "*ELSET, ELSET=E\n1\n",
+        "*MATERIAL, NAME=Q\n*ELASTIC\n1000,0.3\n",
+    ]);
+}
+
+/// Each `data` passes before the first step and fails inside and after it.
+fn only_before_the_first_step(model_data: &[&str]) {
+    let surface = "*SURFACE, TYPE=NODE, NAME=S\n1\n";
+    for data in model_data {
+        ok(&format!("{surface}{data}*STEP\n*STATIC\n*END STEP\n"));
+        for text in [
+            format!("{surface}*STEP\n*STATIC\n{data}*END STEP\n"),
+            format!("{surface}*STEP\n*STATIC\n*END STEP\n{data}"),
+        ] {
+            let e = err(&text);
+            assert!(e.contains("before the first *STEP"), "{text}\n{e}");
+        }
+    }
+}
+
+#[test]
 fn mpc_types() {
     let m = ok("*MPC\nTIE, 1, 2\nLINK, 3, 4\nBEAM, 5, 6\nPIN, 7, 8\n");
     let kinds: Vec<_> = m.mpcs.iter().map(|x| x.kind).collect();
@@ -115,6 +199,14 @@ fn mpc_types() {
     assert_eq!(m.mpcs[1].nodes, vec![3, 4]);
     assert!(err("*MPC\nSLIDER, 1, 2\n").contains("unsupported MPC type SLIDER"));
     assert!(err("*MPC\nTIE, 1\n").contains("needs 2 nodes"));
+}
+
+#[test]
+fn mpc_and_pressure_types_ignore_case() {
+    let m = ok("*MPC\ntie, 1, 2\nPin, 3, 4\n*STEP\n*STATIC\n*DLOAD\nall, p3, 2.5\n*END STEP\n");
+    let kinds: Vec<_> = m.mpcs.iter().map(|x| x.kind).collect();
+    assert_eq!(kinds, [MpcKind::Tie, MpcKind::Pin]);
+    assert_eq!(m.steps[0].dloads[0].face, 3);
 }
 
 #[test]

@@ -253,7 +253,7 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 fn validate_checks_each_quantity_against_the_meshes() {
     // The shipped cases pass (sets, steps and element types exist in every mesh).
     assert_eq!(fh(&["validate", "--root", &root()]).status.code(), Some(0));
-    let cases: [(&str, &str, &str, &str); 3] = [
+    let cases: [(&str, &str, &str, &str); 4] = [
         (
             "cantilever/case.toml",
             "set = \"tip\"",
@@ -271,6 +271,12 @@ fn validate_checks_each_quantity_against_the_meshes() {
             "[\"C3D8I\"]",
             "[\"C3D8\"]",
             "has element type C3D8I",
+        ),
+        (
+            "cantilever/case.toml",
+            "[\"C3D8I\"]",
+            "[\"C3D8I\", \"C3D10\"]",
+            "lists C3D10, but no mesh has that element type",
         ),
     ];
     for (i, (file, from, to, needle)) in cases.iter().enumerate() {
@@ -336,4 +342,53 @@ fn check_fails_when_a_fixture_directory_is_unreadable() {
     }
     assert_eq!(code, Some(2), "{err}");
     assert!(err.contains("hidden"), "{err}");
+}
+
+#[test]
+fn check_finds_a_case_mesh_from_a_relative_path() {
+    let dir = std::env::temp_dir().join(format!("fh-cli-relsec-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let case = dir.join("validation/cases/x");
+    std::fs::create_dir_all(&case).unwrap();
+    let mesh = "*node\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n*element, type=C3D8\n1,1,2,3,4,5,6,7,8\n";
+    std::fs::write(case.join("mesh.inp"), mesh).unwrap();
+    let absolute = case.join("mesh.inp");
+    let mut bad = Vec::new();
+    for path in [
+        absolute.to_str().unwrap(),
+        "mesh.inp",
+        "./mesh.inp",
+        "../x/mesh.inp",
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+            .args(["check", path])
+            .current_dir(&case)
+            .output()
+            .expect("run fh");
+        let err = text(out.stderr);
+        if out.status.code() != Some(1) || !err.contains("no *SOLID SECTION") {
+            bad.push(format!("{path}: {:?} {err}", out.status.code()));
+        } else if !err.contains(&format!("fail\t{path}\t")) {
+            bad.push(format!("{path}: the message changes the path: {err}"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn convergence_checks_the_fixture_as_validate_does() {
+    let dir = copy_root("conv-spec");
+    let case = dir.join("validation/cases/cantilever");
+    let path = case.join("case.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[\"C3D8I\"]"));
+    std::fs::write(&path, text.replace("[\"C3D8I\"]", "[\"C3D8\"]")).unwrap();
+    for target in [case.clone(), dir.join("validation/cases")] {
+        let out = fh(&["validate", "--convergence", target.to_str().unwrap()]);
+        let err = text_of(out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{}: {err}", target.display());
+        assert!(err.contains("has element type C3D8I"), "{err}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
 }

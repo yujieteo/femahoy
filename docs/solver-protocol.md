@@ -2,6 +2,7 @@
 
 The runner starts `exe <input.inp> <run-dir> [--restart]` with the run folder as the working directory.
 For a restart run the runner adds `--restart` as the third argument. The solver then reads its restart file in the run folder.
+A relative `exe` path with a folder resolves from the runner's working directory, not from the run folder.
 The runner supports protocol v2 only.
 
 ## Run folder
@@ -18,7 +19,8 @@ The runner supports protocol v2 only.
    - `progress step=<i>/<n> phase=<name> fraction=<0..1>`
    - `estimate bytes=<n>` is the peak memory that the solver expects. The runner stops the solver if the value is above the memory limit.
    - `restart <file>` names a restart file, relative to the run folder.
-3. Any other line is a log line.
+   A `progress` line with a bad step or a fraction outside 0 to 1 is a log line.
+3. Any other line is a log line. A line longer than 64 KiB is an error and the runner stops the solver.
 
 The core solver `fh-solve` also writes these log lines (DESIGN.md section 9.3):
 
@@ -30,7 +32,7 @@ The core solver `fh-solve` also writes these log lines (DESIGN.md section 9.3):
 ## Cancel
 
 The runner sends the line `cancel` on stdin. End of stdin also means cancel.
-The solver must stop, and exit with a non-zero code.
+The solver must stop, and exit with a non-zero code. A cancelled run is always an error, also if the solver exits with code 0.
 If the solver is still alive after 5 seconds, the runner kills the whole process group.
 
 ## Result files

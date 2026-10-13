@@ -6,7 +6,7 @@
 
 use std::io::Write;
 
-use crate::vtu::{Field, Grid, Values, VtuError};
+use crate::vtu::{check_cells, Field, Grid, Values, VtuError};
 
 fn bad<T>(msg: String) -> Result<T, VtuError> {
     Err(VtuError::new(msg))
@@ -25,6 +25,7 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
     if grid.cell_types.len() != grid.cells.len() {
         return bad("cell_types and cells differ in length".into());
     }
+    check_cells(grid)?;
     for (what, fields, n) in [
         ("point", &grid.point_data, grid.points.len()),
         ("cell", &grid.cell_data, grid.cells.len()),
@@ -34,51 +35,67 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
                 Values::F64(v) => v.len(),
                 Values::I32(v) => v.len(),
             };
-            if f.components == 0 || len != n * f.components {
+            if f.components == 0 || n.checked_mul(f.components) != Some(len) {
                 return bad(format!(
                     "{what} field {} has {len} values, expected {n} x {}",
                     f.name, f.components
                 ));
-            }
-            if f.name.contains(char::is_whitespace) {
-                return bad(format!("field name `{}` has a space", f.name));
             }
         }
     }
     Ok(())
 }
 
-fn field(w: &mut impl Write, f: &Field) -> std::io::Result<()> {
-    match &f.values {
-        Values::I32(v) => {
-            writeln!(w, "SCALARS {} int 1\nLOOKUP_TABLE default", f.name)?;
-            for x in v {
-                writeln!(w, "{x}")?;
-            }
-        }
-        Values::F64(v) => {
-            match f.components {
-                1 => writeln!(w, "SCALARS {} double 1\nLOOKUP_TABLE default", f.name)?,
-                3 => writeln!(w, "VECTORS {} double", f.name)?,
-                c => writeln!(
-                    w,
-                    "FIELD FieldData 1\n{} {c} {} double",
-                    f.name,
-                    v.len() / c
-                )?,
-            }
-            for row in v.chunks(f.components) {
-                for (i, x) in row.iter().enumerate() {
-                    if i > 0 {
-                        w.write_all(b" ")?;
-                    }
-                    real(w, *x)?;
-                }
-                w.write_all(b"\n")?;
-            }
+/// A field name for the legacy format, where a space ends a name. A space, a `%`, a control
+/// character and a byte outside ASCII become `%XX`, the hexadecimal code of the byte. The VTK
+/// legacy reader decodes this form, so the name stays the same.
+fn encode(name: &str) -> String {
+    let mut s = String::with_capacity(name.len());
+    for b in name.bytes() {
+        if b.is_ascii_graphic() && b != b'%' {
+            s.push(char::from(b));
+        } else {
+            s.push_str(&format!("%{b:02X}"));
         }
     }
+    s
+}
+
+/// One line for each point or cell, with its `c` values.
+fn rows<T: Copy, W: Write>(
+    w: &mut W,
+    v: &[T],
+    c: usize,
+    mut one: impl FnMut(&mut W, T) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    for row in v.chunks(c) {
+        for (i, x) in row.iter().enumerate() {
+            if i > 0 {
+                w.write_all(b" ")?;
+            }
+            one(w, *x)?;
+        }
+        w.write_all(b"\n")?;
+    }
     Ok(())
+}
+
+fn field(w: &mut impl Write, f: &Field) -> std::io::Result<()> {
+    let name = encode(&f.name);
+    let (kind, len) = match &f.values {
+        Values::I32(v) => ("int", v.len()),
+        Values::F64(v) => ("double", v.len()),
+    };
+    // A FIELD array keeps any component count.
+    match (f.components, kind) {
+        (1, _) => writeln!(w, "SCALARS {name} {kind} 1\nLOOKUP_TABLE default")?,
+        (3, "double") => writeln!(w, "VECTORS {name} double")?,
+        (c, _) => writeln!(w, "FIELD FieldData 1\n{name} {c} {} {kind}", len / c)?,
+    }
+    match &f.values {
+        Values::I32(v) => rows(w, v, f.components, |w, x| write!(w, "{x}")),
+        Values::F64(v) => rows(w, v, f.components, real),
+    }
 }
 
 /// Write `grid` as a legacy VTK file. `title` is the second line of the file (at most 255

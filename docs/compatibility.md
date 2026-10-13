@@ -13,7 +13,8 @@ This file lists how femahoy differs from Abaqus input conventions.
 
 | Keyword | Difference | Test |
 |---|---|---|
-| `*SURFACE` | Only `TYPE=NODE`. The data lines are node numbers or node set names. | `crates/inp/tests/m2_keywords.rs` `node_surface_takes_nodes_and_sets` |
+| `*SURFACE` | Only `TYPE=NODE`. Each data line is 1 node number or 1 node set name, without a weight. | `crates/inp/tests/m2_keywords.rs` `node_surface_takes_nodes_and_sets`, `a_surface_line_with_more_than_1_field_is_an_error` |
+| `*KINEMATIC` | A coupling is an error when no slave node has a dof in its range. For example, the range 4 to 6 on slave nodes without rotation dofs. | `crates/core-solver/tests/review.rs` `a_kinematic_coupling_turns_the_slave_rotations_with_the_reference` |
 | `*DISTRIBUTING` | All slave nodes have the same weight. The data line gives only the first and last dof. | `crates/inp/tests/m2_keywords.rs` `coupling_without_data_uses_all_dofs` |
 | `*EQUATION` | The sum of the terms is always zero. Terms use node numbers, not node set names. | `crates/inp/tests/m2_keywords.rs` `equation_reads_terms_over_lines` |
 | `*MPC` | Only the types `TIE`, `PIN`, `LINK` and `BEAM`, each with 2 nodes. | `crates/inp/tests/m2_keywords.rs` `mpc_types` |

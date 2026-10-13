@@ -3,11 +3,14 @@
 
 mod common;
 
+use fh_core_solver::contribution::{Contribution, ContributionFactory};
 use fh_core_solver::element::{
-    evaluate, small_strain, Elastic, ElementState, Evaluation, Kind, Material, Placement,
+    evaluate, Elastic, ElementState, Evaluation, Gradient, Kind, Material, Placement,
 };
 use fh_core_solver::SolverError;
-use fh_core_solver::{solve, solve_options, Method, Options, Solution};
+use fh_core_solver::{
+    estimate_bytes, solve, solve_options, MaterialFactory, Method, Options, Sizes, Solution,
+};
 use fh_inp::{parse, Model};
 
 const CUBE: &str =
@@ -147,6 +150,37 @@ fn a_load_on_a_node_without_element_is_an_error() {
     );
     let e = solve(&model).unwrap_err().to_string();
     assert!(e.contains("node 99") && e.contains("no element"), "{e}");
+}
+
+/// The equation u9 = u10 moves the load at node 9 to dof 1 of node 10. No element reaches
+/// either node, so nothing carries the load.
+#[test]
+fn a_load_that_an_equation_moves_to_a_node_without_element_is_an_error() {
+    let model = cube(
+        "9,2,0,0\n10,3,0,0\n",
+        &format!(
+            "*EQUATION\n2\n9,1,1.,10,1,-1.\n\
+*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n9,1,5\n*END STEP\n"
+        ),
+    );
+    let e = solve(&model).unwrap_err().to_string();
+    assert!(e.contains("node 10") && e.contains("no element"), "{e}");
+}
+
+/// The equation u9 = u2 moves the load at node 9 to the cube, which carries it.
+#[test]
+fn a_load_that_an_equation_moves_to_the_mesh_is_carried() {
+    let model = cube(
+        "9,2,0,0\n",
+        &format!(
+            "*EQUATION\n2\n9,1,1.,2,1,-1.\n\
+*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n9,1,5\n*END STEP\n"
+        ),
+    );
+    let sol = solve(&model).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(sol.summary.orphans, vec![(9, 2), (9, 3)]);
+    let (u9, u2) = (u(&model, &sol, 0, 9), u(&model, &sol, 0, 2));
+    assert!(u2[0] > 0.0 && u9[0] == u2[0], "{u9:?} {u2:?}");
 }
 
 #[test]
@@ -361,12 +395,12 @@ struct Cubic(Elastic);
 impl Material for Cubic {
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let strain = small_strain(f);
-        let (mut s, mut d) = self.0.update(f, old, new)?;
+        let strain = g.small_strain();
+        let (mut s, mut d) = self.0.update(g, old, new)?;
         let a = 2.0e6;
         let q: f64 = strain.iter().map(|e| e * e).sum();
         for i in 0..6 {
@@ -495,4 +529,339 @@ fn pvd_times_add_up_and_units_are_named() {
         pvd.contains("timestep=\"2\"") && pvd.contains("timestep=\"3\""),
         "{pvd}"
     );
+}
+
+#[test]
+fn an_equation_coefficient_or_a_boundary_value_that_is_not_finite_is_an_error() {
+    // The parser refuses these values, but a program can build the model directly.
+    let text = format!(
+        "*EQUATION\n2\n2,1,1,3,1,-1\n*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n2,1,25\n*END STEP\n"
+    );
+    for bad in [f64::NAN, f64::INFINITY] {
+        let mut model = cube("", &text);
+        model.equations[0].terms[0].coefficient = bad;
+        let e = solve(&model).unwrap_err().to_string();
+        assert!(e.contains("not finite"), "{e}");
+        let mut model = cube("", &text);
+        model.steps[0].boundaries[0].value = bad;
+        let e = solve(&model).unwrap_err().to_string();
+        assert!(e.contains("not finite"), "{e}");
+    }
+}
+
+#[test]
+fn conflicting_constraints_fail_at_each_scale_of_the_equation() {
+    // u(2,1) = 1 and u(3,1) = 2 contradict k u(2,1) - k u(3,1) = 0 for each k.
+    for k in ["1", "1e-12", "1e12"] {
+        let model = cube(
+            "",
+            &format!(
+                "*EQUATION\n2\n2,1,{k},3,1,-{k}\n\
+*STEP\n*STATIC\n*BOUNDARY\n{FIX}2,1,1,1\n3,1,1,2\n*END STEP\n"
+            ),
+        );
+        let e = solve(&model).unwrap_err().to_string();
+        assert!(e.contains("conflicting constraints"), "k = {k}: {e}");
+    }
+}
+
+#[test]
+fn a_result_that_is_not_finite_is_an_error_also_without_free_dofs() {
+    // Each dof has a prescribed value, so no system is solved. The values are finite, but
+    // the stress overflows.
+    let model = cube(
+        "",
+        &format!(
+            "*STEP\n*STATIC\n*BOUNDARY\n{FIX}2,1,3,1e306\n3,1,3,1e306\n6,1,3,1e306\n7,1,3,1e306\n*END STEP\n"
+        ),
+    );
+    match solve(&model) {
+        Ok(s) => panic!(
+            "solved with {} free dofs: stress {:?}",
+            s.summary.steps[0].free_dofs, s.steps[0].element_stress[0]
+        ),
+        Err(e) => assert!(e.to_string().contains("not finite"), "{e}"),
+    }
+}
+
+/// A linear spring in x from node 2 to the ground. It makes the solver use Newton.
+struct Spring;
+
+impl Contribution for Spring {
+    fn name(&self) -> &str {
+        "spring"
+    }
+
+    fn groups(&self) -> Vec<Vec<u32>> {
+        vec![vec![2]]
+    }
+
+    fn evaluate(
+        &self,
+        _group: usize,
+        place: &Placement,
+        _old: &[f64],
+        out: &mut Evaluation,
+        tangent: bool,
+    ) -> Result<(), SolverError> {
+        out.fint[0] = place.disp[0];
+        out.fabs[0] = place.disp[0].abs();
+        if tangent {
+            out.k[0][0] = 1.0;
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn newton_does_not_accept_zero_displacement_under_a_large_force() {
+    // The squares of 1e200 overflow. An infinite residual then passed the test inf <= inf.
+    let model = cube(
+        "",
+        &format!("*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n2,1,1e200\n*END STEP\n"),
+    );
+    let options = Options {
+        contributions: Some(ContributionFactory::new(|_| {
+            Ok(vec![Box::new(Spring) as Box<dyn Contribution>])
+        })),
+        ..Options::default()
+    };
+    let sol = solve_options(&model, &options).unwrap();
+    let x = u(&model, &sol, 0, 2)[0];
+    assert!(x > 1e190 && x.is_finite(), "u2x = {x}");
+}
+
+/// Forces with a preload on the x dofs of nodes 1 and 2: f1 = 1 + sqrt(2) u1 and
+/// f2 = pi + e u2, with the exact tangent.
+struct Preload;
+
+impl Contribution for Preload {
+    fn name(&self) -> &str {
+        "preload"
+    }
+
+    fn groups(&self) -> Vec<Vec<u32>> {
+        vec![vec![1, 2]]
+    }
+
+    fn evaluate(
+        &self,
+        _group: usize,
+        place: &Placement,
+        _old: &[f64],
+        out: &mut Evaluation,
+        tangent: bool,
+    ) -> Result<(), SolverError> {
+        let (k1, k2) = (std::f64::consts::SQRT_2, std::f64::consts::E);
+        out.fint[0] = 1.0 + k1 * place.disp[0];
+        out.fint[3] = std::f64::consts::PI + k2 * place.disp[3];
+        out.fabs[0] = out.fint[0].abs();
+        out.fabs[3] = out.fint[3].abs();
+        if tangent {
+            out.k[0][0] = k1;
+            out.k[3][3] = k2;
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn newton_converges_when_a_signed_constraint_cancels_the_force_scale() {
+    // u1 + u2 = 0 and no load: f1 = f2 at equilibrium. The signed sum of the force sizes
+    // then cancels like the residual, and the scale was as small as the residual.
+    let model = parse(
+        "*NODE\n1,0,0,0\n2,1,0,0\n*EQUATION\n2\n1,1,1,2,1,1\n\
+*STEP\n*STATIC\n*BOUNDARY\n1,2,3\n2,2,3\n*END STEP\n",
+    )
+    .unwrap();
+    let options = Options {
+        contributions: Some(ContributionFactory::new(|_| {
+            Ok(vec![Box::new(Preload) as Box<dyn Contribution>])
+        })),
+        ..Options::default()
+    };
+    let sol = solve_options(&model, &options).unwrap_or_else(|e| panic!("{e}"));
+    let (consts_pi, k1, k2) = (
+        std::f64::consts::PI,
+        std::f64::consts::SQRT_2,
+        std::f64::consts::E,
+    );
+    let exact = (consts_pi - 1.0) / (k1 + k2);
+    let d = &sol.steps[0].displacement;
+    assert!(
+        (d[0][0] - exact).abs() < 1e-8 * exact,
+        "u1 = {}, exact {exact}",
+        d[0][0]
+    );
+    assert!((d[1][0] + d[0][0]).abs() < 1e-12, "u2 = {}", d[1][0]);
+}
+
+#[test]
+fn both_solvers_carry_a_load_so_small_that_its_square_is_0() {
+    let model = cube(
+        "",
+        &format!("*BOUNDARY\n{FIX}*STEP\n*STATIC\n*CLOAD\n7,1,1e-170\n*END STEP\n"),
+    );
+    let unit = cube(
+        "",
+        &format!("*BOUNDARY\n{FIX}*STEP\n*STATIC\n*CLOAD\n7,1,1\n*END STEP\n"),
+    );
+    let reference = u(&unit, &solve(&unit).unwrap(), 0, 7)[0];
+    assert!(reference > 0.0);
+    for method in [Method::Cholesky, Method::Pcg] {
+        let sol = solve_options(&model, &options(method, 1)).unwrap_or_else(|e| panic!("{e}"));
+        let x = u(&model, &sol, 0, 7)[0];
+        assert!(
+            (x / 1e-170 - reference).abs() < 1e-6 * reference,
+            "{method:?}: {x:e}, reference {reference:e} for a unit load"
+        );
+    }
+}
+
+#[test]
+fn a_very_long_or_a_very_short_link_keeps_its_equation() {
+    // The squared length overflows or underflows. The LINK lies along x, then along y.
+    for (node, c) in [("9,1e200,0,0\n", 0), ("9,1,1e-200,0\n", 1)] {
+        let model = cube(
+            node,
+            &format!(
+                "*MPC\nLINK,2,9\n*BOUNDARY\n{FIX}*STEP\n*STATIC\n*BOUNDARY\n9,1,3,0.1\n*END STEP\n"
+            ),
+        );
+        let sol = solve(&model).unwrap_or_else(|e| panic!("{node}: {e}"));
+        let u2 = u(&model, &sol, 0, 2);
+        assert!((u2[c] - 0.1).abs() < 1e-12, "{node}: u2 = {u2:?}");
+    }
+    // Finite coordinates, but the distance between them is not finite.
+    let model = cube(
+        "9,1.5e308,0,0\n10,-1.5e308,0,0\n",
+        &format!("*MPC\nLINK,9,10\n*BOUNDARY\n{FIX}*STEP\n*STATIC\n*END STEP\n"),
+    );
+    let e = solve(&model).unwrap_err().to_string();
+    assert!(e.contains("not finite"), "{e}");
+}
+
+#[test]
+fn a_kinematic_coupling_turns_the_slave_rotations_with_the_reference() {
+    // *MPC BEAM gives nodes 2 and 3 rotation dofs.
+    let coupling = |slaves: &str| {
+        cube(
+            "9,2,0.5,0.5\n",
+            &format!(
+                "*MPC\nBEAM,2,3\n*SURFACE, TYPE=NODE, NAME=S\n{slaves}\
+*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n4,6\n\
+*BOUNDARY\n{FIX}*STEP\n*STATIC\n*BOUNDARY\n9,4,6,0.1\n*END STEP\n"
+            ),
+        )
+    };
+    let model = coupling("2\n3\n");
+    let sol = solve(&model).unwrap_or_else(|e| panic!("{e}"));
+    for id in [2, 3, 9] {
+        let i = model.nodes.iter().position(|n| n.id == id).unwrap();
+        let r = sol.steps[0].rotation[i];
+        assert!(
+            r.iter().all(|v| (v - 0.1).abs() < 1e-12),
+            "node {id}: {r:?}"
+        );
+    }
+    // Nodes 6 and 7 have no rotation dofs, so the range 4 to 6 constrains nothing.
+    let e = solve(&coupling("6\n7\n")).unwrap_err().to_string();
+    assert!(e.contains("coupling C") && e.contains("4 to 6"), "{e}");
+}
+
+#[test]
+fn a_huge_thread_count_gives_the_result_of_1_thread() {
+    let model = block();
+    for method in [Method::Cholesky, Method::Pcg] {
+        let one = solve_options(&model, &options(method, 1)).unwrap();
+        for threads in [1 << 56, usize::MAX] {
+            let many = solve_options(&model, &options(method, threads))
+                .unwrap_or_else(|e| panic!("{method:?}, {threads} threads: {e}"));
+            assert_eq!(one.steps, many.steps, "{method:?}, {threads} threads");
+        }
+    }
+    let sizes = Sizes {
+        nodes: 8,
+        elements: 1,
+        dofs: 24,
+        nnz: 300,
+        graph_bytes: 0,
+        threads: usize::MAX,
+        iterative: false,
+        ip_stress: false,
+        state_bytes: 0,
+        slot_bytes: 0,
+    };
+    assert!(estimate_bytes(&sizes) > 0);
+}
+
+#[test]
+fn both_solvers_refuse_a_body_without_support() {
+    let free = |load: &str| cube("", &format!("*STEP\n*STATIC\n{load}*END STEP\n"));
+    // A second cube 5 to the right, with no support. The first cube has its support.
+    let second: String = CUBE
+        .lines()
+        .skip(1)
+        .map(|l| {
+            let v: Vec<f64> = l.split(',').map(|x| x.parse().unwrap()).collect();
+            format!("{},{},{},{}\n", v[0] + 10.0, v[1] + 5.0, v[2], v[3])
+        })
+        .collect();
+    let two = parse(&format!(
+        "{CUBE}{second}*ELEMENT, TYPE=C3D8I\n1,1,2,3,4,5,6,7,8\n2,11,12,13,14,15,16,17,18\n\
+*ELSET, ELSET=E\n1,2\n*MATERIAL, NAME=M\n*ELASTIC\n1000, 0.3\n\
+*SOLID SECTION, ELSET=E, MATERIAL=M\n*BOUNDARY\n{FIX}*STEP\n*STATIC\n*CLOAD\n7,1,1\n*END STEP\n"
+    ))
+    .unwrap_or_else(|e| panic!("{e}"));
+    let cases = [
+        ("no load", free("")),
+        ("a load in equilibrium", free("*CLOAD\n2,1,1\n1,1,-1\n")),
+        ("a second body without support", two),
+    ];
+    let mut wrong = Vec::new();
+    for (name, model) in &cases {
+        for method in [Method::Cholesky, Method::Pcg] {
+            match solve_options(model, &options(method, 1)) {
+                Ok(_) => wrong.push(format!("{name}, {method:?}: the solve passed")),
+                Err(e) if !e.to_string().contains("positive definite") => {
+                    wrong.push(format!("{name}, {method:?}: {e}"));
+                }
+                Err(_) => {}
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+#[test]
+fn the_default_material_refuses_elastic_constants_out_of_range() {
+    let material = |e: f64, nu: f64| fh_inp::Material {
+        name: "M".into(),
+        elastic: Some(fh_inp::Elastic {
+            youngs_modulus: e,
+            poissons_ratio: nu,
+        }),
+    };
+    let factory = MaterialFactory::elastic();
+    let mut bad = Vec::new();
+    for (e, nu) in [
+        (1000.0, -1.0),
+        (1000.0, -1.5),
+        (1000.0, 0.5),
+        (1000.0, f64::NAN),
+        (0.0, 0.3),
+        (-1.0, 0.3),
+        (f64::INFINITY, 0.3),
+        (f64::NAN, 0.3),
+        // Each constant is in range, but the elasticity matrix is not finite.
+        (1e308, 0.4999999999999999),
+    ] {
+        if factory.build(&material(e, nu)).is_ok() {
+            bad.push(format!("E={e:e} nu={nu}"));
+        }
+    }
+    assert!(bad.is_empty(), "accepted: {bad:?}");
+    for (e, nu) in [(1000.0, 0.3), (1000.0, -0.999), (1000.0, 0.499)] {
+        assert!(factory.build(&material(e, nu)).is_ok(), "E={e} nu={nu}");
+    }
 }

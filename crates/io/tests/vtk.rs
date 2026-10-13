@@ -1,7 +1,7 @@
 //! Legacy VTK (ASCII unstructured grid) writer.
 
 use fh_io::vtk::write_vtk_to;
-use fh_io::vtu::{Field, Grid, VTK_HEXAHEDRON};
+use fh_io::vtu::{Field, Grid, Values, VTK_HEXAHEDRON};
 
 fn cube() -> Grid {
     let mut points = Vec::new();
@@ -86,4 +86,45 @@ fn a_field_of_the_wrong_length_is_refused() {
     g.point_data[1] = Field::f64("U", 3, vec![0.0; 6]);
     let mut out = Vec::new();
     assert!(write_vtk_to(&g, "t", &mut out).is_err());
+}
+
+#[test]
+fn a_field_name_with_a_space_or_a_percent_sign_is_encoded() {
+    let mut g = cube();
+    g.point_data.push(Field::i32("NSET_FIXED FACE", vec![1; 8]));
+    g.cell_data.push(Field::f64("100% load\ttab", 1, vec![0.0]));
+    let t = text(&g);
+    assert!(t.contains("SCALARS NSET_FIXED%20FACE int 1\n"), "{t}");
+    assert!(t.contains("SCALARS 100%25%20load%09tab double 1\n"), "{t}");
+}
+
+#[test]
+fn a_huge_component_count_is_an_error_not_a_panic() {
+    let mut g = cube();
+    g.point_data.push(Field::f64("big", usize::MAX, vec![]));
+    let mut out = Vec::new();
+    assert!(write_vtk_to(&g, "t", &mut out).is_err());
+}
+
+#[test]
+fn a_cell_with_a_point_that_does_not_exist_is_refused() {
+    let mut g = cube();
+    g.cells[0][0] = 999;
+    let mut out = Vec::new();
+    assert!(write_vtk_to(&g, "t", &mut out).is_err());
+}
+
+#[test]
+fn an_integer_field_keeps_its_component_count() {
+    let mut g = cube();
+    g.point_data.push(Field {
+        name: "pairs".into(),
+        components: 2,
+        values: Values::I32((0..16).collect()),
+    });
+    let t = text(&g);
+    assert!(
+        t.contains("FIELD FieldData 1\npairs 2 8 int\n0 1\n2 3\n"),
+        "{t}"
+    );
 }

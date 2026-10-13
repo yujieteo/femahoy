@@ -19,7 +19,8 @@ pub fn richardson(values: &[f64], ratio: f64) -> Result<(f64, f64, f64), String>
     if d12 == 0.0 && d23 == 0.0 {
         return Err("equal mesh values have no finite observed order".into());
     }
-    if d12 * d23 <= 0.0 {
+    // Compare the signs. A product of two small differences can underflow to 0.
+    if d12 == 0.0 || d23 == 0.0 || (d12 > 0.0) != (d23 > 0.0) {
         return Err("values are not monotone, so the mesh is not in the asymptotic range".into());
     }
     let order = (d12 / d23).ln() / ratio.ln();

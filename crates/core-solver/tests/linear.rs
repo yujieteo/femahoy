@@ -185,6 +185,22 @@ fn element_without_section_is_reported() {
 }
 
 #[test]
+fn element_in_two_sections_is_reported() {
+    // The second section gives element 1 another material. The solver must not take one.
+    let model = cube(
+        "C3D8",
+        "*ELSET, ELSET=F\n1\n*MATERIAL, NAME=SOFT\n*ELASTIC\n1, 0.3\n\
+*SOLID SECTION, ELSET=F, MATERIAL=SOFT\n*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n\
+2,3,3\n3,3,3\n*CLOAD\n7,1,1\n*END STEP\n",
+    );
+    let err = solve(&model).map(|_| ()).unwrap_err().to_string();
+    assert!(
+        err.contains("element 1 is in 2 *SOLID SECTION element sets (E and F)"),
+        "{err}"
+    );
+}
+
+#[test]
 fn conflicting_constraints_are_reported() {
     let model = cube(
         "C3D8",

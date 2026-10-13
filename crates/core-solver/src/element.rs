@@ -96,16 +96,37 @@ impl Placement<'_> {
     }
 }
 
-/// Small strain `[xx, yy, zz, xy, yz, xz]` (engineering shear) from a deformation gradient.
-pub fn small_strain(f: &[[f64; 3]; 3]) -> [f64; 6] {
-    [
-        f[0][0] - 1.0,
-        f[1][1] - 1.0,
-        f[2][2] - 1.0,
-        f[0][1] + f[1][0],
-        f[1][2] + f[2][1],
-        f[0][2] + f[2][0],
-    ]
+/// The deformation gradient `F = I + h` of an integration point. It keeps the
+/// displacement gradient `h`, because `I + h` rounds away a normal strain smaller
+/// than the machine epsilon. Compute a strain from `h`, not from `f() - I`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Gradient {
+    /// The displacement gradient, `h[i][j] = d u_i / d X_j`.
+    pub h: [[f64; 3]; 3],
+}
+
+impl Gradient {
+    /// The deformation gradient `F = I + h`.
+    pub fn f(&self) -> [[f64; 3]; 3] {
+        let mut f = self.h;
+        for (i, fi) in f.iter_mut().enumerate() {
+            fi[i] += 1.0;
+        }
+        f
+    }
+
+    /// Small strain `[xx, yy, zz, xy, yz, xz]` (engineering shear).
+    pub fn small_strain(&self) -> [f64; 6] {
+        let h = &self.h;
+        [
+            h[0][0],
+            h[1][1],
+            h[2][2],
+            h[0][1] + h[1][0],
+            h[1][2] + h[2][1],
+            h[0][2] + h[2][0],
+        ]
+    }
 }
 
 /// Material law at an integration point. It is separate from the element and owns the
@@ -124,12 +145,12 @@ pub trait Material: Sync {
     }
 
     /// Stress `[xx, yy, zz, xy, yz, xz]` and the consistent tangent `d stress / d strain`
-    /// for the deformation gradient `f`. `old` is the committed state (`state_len`
+    /// for the deformation gradient `g`. `old` is the committed state (`state_len`
     /// numbers) and the call writes the trial state in `new`. An error means that the
     /// trial is not acceptable, and the step cuts the increment back.
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError>;
@@ -152,11 +173,11 @@ impl Elastic {
 impl Material for Elastic {
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         _old: &[f64],
         _new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let strain = small_strain(f);
+        let strain = g.small_strain();
         let mut stress = [0.0; 6];
         for (s, row) in stress.iter_mut().zip(&self.d) {
             *s = row.iter().zip(&strain).map(|(d, e)| d * e).sum();
@@ -336,26 +357,49 @@ fn b_matrix<const M: usize>(dx: &[[f64; 3]]) -> Mat<6, M> {
     b
 }
 
-fn check_det(det: f64, kind: Kind) -> Result<(), SolverError> {
-    if det > 0.0 {
-        Ok(())
-    } else {
+fn check_det(det: f64, jinv: &Mat<3, 3>, kind: Kind) -> Result<(), SolverError> {
+    if det.is_nan() || det <= 0.0 {
         Err(SolverError::new(format!(
             "{kind:?} element has a non-positive Jacobian ({det:e})"
         )))
+    } else if !det.is_finite() || jinv.iter().flatten().any(|v| !v.is_finite()) {
+        Err(SolverError::new(format!(
+            "{kind:?} element has a Jacobian or an inverse Jacobian that is not finite ({det:e})"
+        )))
+    } else {
+        Ok(())
     }
 }
 
 fn check_nodes(kind: Kind, coords: &[[f64; 3]]) -> Result<(), SolverError> {
-    if coords.len() == kind.node_count() {
-        Ok(())
-    } else {
+    if coords.len() != kind.node_count() {
         Err(SolverError::new(format!(
             "{kind:?} needs {} nodes, found {}",
             kind.node_count(),
             coords.len()
         )))
+    } else if coords.iter().flatten().any(|v| !v.is_finite()) {
+        Err(SolverError::new(format!(
+            "{kind:?} element has a node coordinate that is not finite"
+        )))
+    } else {
+        Ok(())
     }
+}
+
+/// The node count, and finite start positions and displacements.
+fn check_place(kind: Kind, place: &Placement) -> Result<(), SolverError> {
+    check_nodes(kind, place.start)?;
+    let n = 3 * place.start.len();
+    if place.disp.len() < n {
+        return Err(SolverError::new("too few displacements for the nodes"));
+    }
+    if place.disp[..n].iter().any(|v| !v.is_finite()) {
+        return Err(SolverError::new(format!(
+            "{kind:?} element has a displacement that is not finite"
+        )));
+    }
+    Ok(())
 }
 
 fn tet10_points(coords: &[[f64; 3]]) -> Result<[Point<30>; MAX_POINTS], SolverError> {
@@ -366,7 +410,7 @@ fn tet10_points(coords: &[[f64; 3]]) -> Result<[Point<30>; MAX_POINTS], SolverEr
         l[p] = b;
         let dn = tet_dn(l);
         let (jinv, det) = inv3(&jacobian(coords, &dn));
-        check_det(det, Kind::C3D10)?;
+        check_det(det, &jinv, Kind::C3D10)?;
         let dx = cartesian(&dn, &jinv);
         *slot = Point {
             w: det / 24.0,
@@ -383,12 +427,12 @@ fn hex8_points(kind: Kind, coords: &[[f64; 3]]) -> Result<[Point<24>; MAX_POINTS
     let g = 1.0 / 3.0_f64.sqrt();
     let mut out = [Point::<24>::ZERO; MAX_POINTS];
     let (jinv0, det0) = inv3(&jacobian(coords, &hex_dn([0.0; 3])));
-    check_det(det0, kind)?;
+    check_det(det0, &jinv0, kind)?;
     for (slot, s) in out.iter_mut().zip(HEX_XI) {
         let xi = [s[0] * g, s[1] * g, s[2] * g];
         let dn = hex_dn(xi);
         let (jinv, det) = inv3(&jacobian(coords, &dn));
-        check_det(det, kind)?;
+        check_det(det, &jinv, kind)?;
         let dx8 = cartesian(&dn, &jinv);
         let b = b_matrix(&dx8);
         let mut dxs = [[0.0; 3]; 10];
@@ -474,10 +518,7 @@ pub fn evaluate<M: Material + ?Sized>(
     tangent: bool,
 ) -> Result<(), SolverError> {
     let coords = place.start;
-    check_nodes(kind, coords)?;
-    if place.disp.len() < 3 * coords.len() {
-        return Err(SolverError::new("too few displacements for the nodes"));
-    }
+    check_place(kind, place)?;
     match kind {
         Kind::C3D10 => {
             let pts = tet10_points(coords)?;
@@ -500,12 +541,7 @@ struct Response {
 /// displacements, the incompatible part from the mode amplitudes. `eps` is the strain
 /// that the element feels (B-bar changes its volume part), and the gradient is
 /// corrected to carry the same volume strain.
-fn gradient<const M: usize>(
-    p: &Point<M>,
-    u: &[f64],
-    alpha: &[f64; 9],
-    eps: &[f64; 6],
-) -> [[f64; 3]; 3] {
+fn gradient<const M: usize>(p: &Point<M>, u: &[f64], alpha: &[f64; 9], eps: &[f64; 6]) -> Gradient {
     let mut h = [[0.0; 3]; 3];
     for a in 0..M / 3 {
         for (i, hi) in h.iter_mut().enumerate() {
@@ -524,11 +560,10 @@ fn gradient<const M: usize>(
         }
     }
     let shift = (eps[0] + eps[1] + eps[2] - (h[0][0] + h[1][1] + h[2][2])) / 3.0;
-    let mut f = h;
-    for (i, fi) in f.iter_mut().enumerate() {
-        fi[i] += 1.0 + shift;
+    for (i, hi) in h.iter_mut().enumerate() {
+        hi[i] += shift;
     }
-    f
+    Gradient { h }
 }
 
 fn run<const M: usize, Mt: Material + ?Sized>(
@@ -540,7 +575,12 @@ fn run<const M: usize, Mt: Material + ?Sized>(
     tangent: bool,
 ) -> Result<(), SolverError> {
     let has_modes = pts[0].g.is_some();
-    let sl = material.state_len().min(MAX_MAT_STATE);
+    let sl = material.state_len();
+    if sl > MAX_MAT_STATE {
+        return Err(SolverError::new(format!(
+            "the material keeps {sl} state numbers, the limit is {MAX_MAT_STATE}"
+        )));
+    }
     let mut alpha = state.internal;
     let mut new_ip = [[0.0; MAX_MAT_STATE]; MAX_POINTS];
     let mut resp = [Response {
@@ -561,20 +601,35 @@ fn run<const M: usize, Mt: Material + ?Sized>(
         let mut kaa = [[0.0; 9]; 9];
         for (i, p) in pts.iter().enumerate() {
             let mut eps = eps_u[i];
-            if let Some(g) = &p.g {
-                let ga = mul_vec(g, &alpha);
-                for (e, v) in eps.iter_mut().zip(ga) {
-                    *e += v;
-                }
+            let ga = p.g.as_ref().map_or([0.0; 6], |g| mul_vec(g, &alpha));
+            for (e, v) in eps.iter_mut().zip(ga) {
+                *e += v;
             }
-            let f = gradient(p, u, &alpha, &eps);
-            let (stress, c) = material.update(&f, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
+            let g = gradient(p, u, &alpha, &eps);
+            let (stress, c) = material.update(&g, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
+            if stress
+                .iter()
+                .chain(c.iter().flatten())
+                .any(|v| !v.is_finite())
+            {
+                return Err(SolverError::new(
+                    "the material gave a stress or a tangent that is not finite",
+                ));
+            }
             resp[i] = Response { stress, tangent: c };
             if let Some(g) = &p.g {
+                // The size of the stress before the compatible strain and the mode strain
+                // cancel. The rounding of the mode force is relative to this size.
+                let mut size = stress.map(f64::abs);
+                for (s, row) in size.iter_mut().zip(&c) {
+                    for (k, ck) in row.iter().enumerate() {
+                        *s += ck.abs() * (eps_u[i][k].abs() + ga[k].abs());
+                    }
+                }
                 for a in 0..9 {
                     let t: f64 = (0..6).map(|r| g[r][a] * stress[r]).sum();
                     f_a[a] += p.w * t;
-                    scale += (p.w * t).abs();
+                    scale += (0..6).map(|r| (p.w * g[r][a] * size[r]).abs()).sum::<f64>();
                 }
                 let cg = a_b(&c, g);
                 add_at_b(&mut kaa, p.w, g, &cg);
@@ -583,11 +638,23 @@ fn run<const M: usize, Mt: Material + ?Sized>(
         if !has_modes {
             break;
         }
+        if !(scale.is_finite() && f_a.iter().all(|v| v.is_finite())) {
+            return Err(SolverError::new(
+                "the stress of the incompatible modes is not finite",
+            ));
+        }
         let max = f_a.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
         kaa_inv =
             invert(&kaa).ok_or_else(|| SolverError::new("incompatible mode matrix is singular"))?;
-        if max <= 1e-12 * scale || iterations == MAX_MODE_ITERATIONS {
+        if max <= 1e-12 * scale {
             break;
+        }
+        // The step cuts the increment back on this error.
+        if iterations == MAX_MODE_ITERATIONS {
+            return Err(SolverError::new(format!(
+                "incompatible modes did not converge in {MAX_MODE_ITERATIONS} iterations \
+                 (mode force {max:e}, scale {scale:e})"
+            )));
         }
         // Newton step on the mode amplitudes: kaa * d_alpha = f_a.
         let da = mul_vec(&kaa_inv, &f_a);
@@ -641,6 +708,13 @@ fn run<const M: usize, Mt: Material + ?Sized>(
             }
         }
     }
+    // Finite inputs can give a force or a stiffness that overflows.
+    let k_bad = tangent && kuu.iter().flatten().any(|v| !v.is_finite());
+    if k_bad || out.fint[..M].iter().any(|v| !v.is_finite()) || !vol.is_finite() {
+        return Err(SolverError::new(
+            "the element force or stiffness is not finite",
+        ));
+    }
     if tangent {
         for (dst, src) in out.k.iter_mut().zip(&kuu) {
             dst[..M].copy_from_slice(src);
@@ -683,7 +757,29 @@ pub fn stiffness(
 pub fn volume(kind: Kind, coords: &[[f64; 3]]) -> Result<f64, SolverError> {
     check_nodes(kind, coords)?;
     Ok(match kind {
-        Kind::C3D10 => tet10_points(coords)?.iter().map(|p| p.w).sum(),
+        Kind::C3D10 => {
+            // The points of the stiffness check the element. The determinant of a curved
+            // C3D10 has degree 3, and the stiffness rule is exact only to degree 2. This
+            // 5-point rule is exact to degree 3: the centre with weight -4/5 and 4 points
+            // with weight 9/20, each times the reference volume 1/6.
+            tet10_points(coords)?;
+            let (a, b) = (0.5, 1.0 / 6.0);
+            let mut v = 0.0;
+            for (l, w) in [
+                ([0.25; 4], -0.8),
+                ([a, b, b, b], 0.45),
+                ([b, a, b, b], 0.45),
+                ([b, b, a, b], 0.45),
+                ([b, b, b, a], 0.45),
+            ] {
+                let (jinv, det) = inv3(&jacobian(coords, &tet_dn(l)));
+                check_det(det, &jinv, Kind::C3D10)?;
+                v += w * det / 6.0;
+            }
+            v
+        }
+        // The determinant of a hex8 has degree 2 in each direction. The 2-point rule is
+        // exact to degree 3.
         _ => hex8_points(kind, coords)?.iter().map(|p| p.w).sum(),
     })
 }
@@ -727,6 +823,9 @@ pub fn pressure_load(
     face: u8,
     p: f64,
 ) -> Result<Vec<(usize, [f64; 3])>, SolverError> {
+    check_place(kind, place)?;
+    let bad = || SolverError::new(format!("{kind:?} has no face {face}"));
+    let f = usize::from(face).checked_sub(1).ok_or_else(bad)?;
     let mut now = [[0.0; 3]; 10];
     for (a, x) in now.iter_mut().enumerate().take(place.start.len()) {
         *x = place.current(a);
@@ -747,8 +846,6 @@ pub fn pressure_load(
         [1, 3, 2, 8, 9, 5],
         [2, 3, 0, 9, 7, 6],
     ];
-    let f = usize::from(face) - 1;
-    let bad = || SolverError::new(format!("{kind:?} has no face {face}"));
     let mut out: Vec<(usize, [f64; 3])> = Vec::new();
     match kind {
         Kind::C3D8 | Kind::C3D8I => {
@@ -775,11 +872,18 @@ pub fn pressure_load(
         }
         Kind::C3D10 => {
             let nodes = tet_faces.get(f).ok_or_else(bad)?;
-            // 3-point rule on the triangle, quadratic shape functions.
-            for (l1, l2) in [
-                (1.0 / 6.0, 1.0 / 6.0),
-                (2.0 / 3.0, 1.0 / 6.0),
-                (1.0 / 6.0, 2.0 / 3.0),
+            // A quadratic shape function times the quadratic area vector of a curved face
+            // has degree 4. The symmetric 6-point rule on the triangle is exact to degree 4.
+            // Each weight includes the reference area 1/2.
+            let (a, wa) = (0.445_948_490_915_964_9, 0.111_690_794_839_005_7);
+            let (b, wb) = (0.091_576_213_509_770_74, 0.054_975_871_827_660_93);
+            for (l1, l2, w) in [
+                (a, a, wa),
+                (1.0 - 2.0 * a, a, wa),
+                (a, 1.0 - 2.0 * a, wa),
+                (b, b, wb),
+                (1.0 - 2.0 * b, b, wb),
+                (b, 1.0 - 2.0 * b, wb),
             ] {
                 let l = [1.0 - l1 - l2, l1, l2];
                 let n = [
@@ -811,7 +915,7 @@ pub fn pressure_load(
                 }
                 let nrm = cross(ta, tb);
                 for (i, &ln) in nodes.iter().enumerate() {
-                    out.push((ln, nrm.map(|c| p * n[i] * c / 6.0)));
+                    out.push((ln, nrm.map(|c| p * n[i] * c * w)));
                 }
             }
         }

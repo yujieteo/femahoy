@@ -14,6 +14,16 @@ pub(crate) struct DataLine {
     /// Line number of the first physical line.
     pub line: usize,
     pub fields: Vec<String>,
+    /// The physical line of each field. A record continues on the next line after a
+    /// line that ends in a comma.
+    pub field_lines: Vec<usize>,
+}
+
+impl DataLine {
+    /// The physical line of field `i`. The first line of the record for a missing field.
+    pub fn line_of(&self, i: usize) -> usize {
+        self.field_lines.get(i).copied().unwrap_or(self.line)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -80,9 +90,11 @@ pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
         i += 1;
         // A line that ends in a comma continues on the next line.
         let mut joined = trimmed.to_owned();
+        let mut parts = vec![(no, trimmed)];
         while joined.ends_with(',') && i < lines.len() && !lines[i].1.trim_start().starts_with('*')
         {
             joined.push_str(lines[i].1.trim());
+            parts.push((lines[i].0, lines[i].1.trim()));
             i += 1;
         }
         if let Some(rest) = joined.strip_prefix('*') {
@@ -125,7 +137,19 @@ pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
             if fields.last().is_some_and(String::is_empty) && joined.ends_with(',') {
                 fields.pop();
             }
-            block.data.push(DataLine { line: no, fields });
+            // The empty field after the comma at the end of a part joins the first field of
+            // the next part.
+            let mut field_lines = Vec::with_capacity(fields.len());
+            for (k, (line, part)) in parts.iter().enumerate() {
+                let count = part.split(',').count() - usize::from(k + 1 < parts.len());
+                field_lines.extend(std::iter::repeat_n(*line, count));
+            }
+            field_lines.truncate(fields.len());
+            block.data.push(DataLine {
+                line: no,
+                fields,
+                field_lines,
+            });
         }
     }
     Ok(blocks)

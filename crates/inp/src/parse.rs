@@ -30,6 +30,8 @@ struct Parser {
     element_ids: HashSet<u32>,
     open_step: Option<Step>,
     step_line: usize,
+    /// A `*STEP` came. Model data must come before it.
+    step_seen: bool,
     /// Index into `model.materials` of the material that is open.
     material: Option<usize>,
     /// A `*COUPLING` that still waits for `*KINEMATIC` or `*DISTRIBUTING`.
@@ -45,18 +47,28 @@ struct PendingCoupling {
 
 fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError> {
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
-    f.parse::<u32>().map_err(|_| {
+    f.parse::<u32>().ok().filter(|&n| n > 0).ok_or_else(|| {
         b.error(
-            d.line,
+            d.line_of(i),
             format!("{what} must be a positive integer, found '{f}'"),
         )
     })
 }
 
+/// A finite number. The Rust parser also accepts NaN, infinity and numbers that overflow to
+/// infinity, and these would change or remove a constraint without an error.
+fn finite(f: &str) -> Option<f64> {
+    f.parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
 fn real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<f64, ParseError> {
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
-    f.parse::<f64>()
-        .map_err(|_| b.error(d.line, format!("{what} must be a number, found '{f}'")))
+    finite(f).ok_or_else(|| {
+        b.error(
+            d.line_of(i),
+            format!("{what} must be a finite number, found '{f}'"),
+        )
+    })
 }
 
 fn opt_real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<Option<f64>, ParseError> {
@@ -72,7 +84,7 @@ fn dof(b: &Block, d: &DataLine, i: usize) -> Result<u8, ParseError> {
         Ok(n as u8)
     } else {
         Err(b.error(
-            d.line,
+            d.line_of(i),
             format!("degree of freedom must be 1 to 6, found {n}"),
         ))
     }
@@ -121,14 +133,21 @@ impl Parser {
 
     fn node(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NSET"])?;
+        self.model_data(b)?;
         let mut ids = Vec::new();
         for d in &b.data {
             if d.fields.len() < 3 {
                 return Err(b.error(d.line, "node line needs an id and at least 2 coordinates"));
             }
+            if d.fields.len() > 4 {
+                return Err(b.error(
+                    d.line,
+                    "node line has more than 3 coordinates (a line that ends in a comma joins the next line)",
+                ));
+            }
             let id = int(b, d, 0, "node id")?;
             let mut xyz = [0.0; 3];
-            for (k, c) in xyz.iter_mut().enumerate().take(d.fields.len().min(4) - 1) {
+            for (k, c) in xyz.iter_mut().enumerate().take(d.fields.len() - 1) {
                 *c = real(b, d, k + 1, "coordinate")?;
             }
             if !self.node_ids.insert(id) {
@@ -145,6 +164,7 @@ impl Parser {
 
     fn element(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "ELSET"])?;
+        self.model_data(b)?;
         let ty = b
             .value("TYPE")?
             .ok_or_else(|| b.error(b.line, "parameter TYPE is required"))?;
@@ -166,7 +186,7 @@ impl Parser {
             for k in 1..=count {
                 let n = int(b, d, k, "node id")?;
                 if !self.node_ids.contains(&n) {
-                    return Err(b.error(d.line, format!("node {n} is not defined")));
+                    return Err(b.error(d.line_of(k), format!("node {n} is not defined")));
                 }
                 nodes.push(n);
             }
@@ -188,6 +208,7 @@ impl Parser {
 
     fn nset(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NSET", "GENERATE"])?;
+        self.model_data(b)?;
         let name = b
             .value("NSET")?
             .ok_or_else(|| b.error(b.line, "parameter NSET is required"))?;
@@ -198,6 +219,7 @@ impl Parser {
 
     fn elset(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["ELSET", "GENERATE"])?;
+        self.model_data(b)?;
         let name = b
             .value("ELSET")?
             .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
@@ -291,6 +313,7 @@ impl Parser {
 
     fn material(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME"])?;
+        self.model_data(b)?;
         let name = b
             .value("NAME")?
             .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
@@ -328,8 +351,9 @@ impl Parser {
         if elastic.youngs_modulus <= 0.0 {
             return Err(b.error(d.line, "Young's modulus must be positive"));
         }
-        if !(-1.0..0.5).contains(&elastic.poissons_ratio) {
-            return Err(b.error(d.line, "Poisson's ratio must be in [-1, 0.5)"));
+        // At -1 the shear modulus has no value: it divides by 1 + nu.
+        if !(elastic.poissons_ratio > -1.0 && elastic.poissons_ratio < 0.5) {
+            return Err(b.error(d.line, "Poisson's ratio must be in (-1, 0.5)"));
         }
         let mat = &mut self.model.materials[idx];
         if mat.elastic.is_some() {
@@ -353,6 +377,7 @@ impl Parser {
             return Err(b.error(d.line, "keyword takes no data lines"));
         }
         self.step_line = b.line;
+        self.step_seen = true;
         self.open_step = Some(Step {
             name: b.value("NAME")?.map(str::to_owned),
             nlgeom,
@@ -463,8 +488,9 @@ impl Parser {
         }
     }
 
+    /// Model data applies to all steps, so it must come before the first step starts.
     fn model_data(&self, b: &Block) -> Result<(), ParseError> {
-        if self.open_step.is_some() {
+        if self.step_seen {
             return Err(b.error(b.line, "keyword must come before the first *STEP"));
         }
         Ok(())
@@ -472,6 +498,7 @@ impl Parser {
 
     fn solid_section(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["ELSET", "MATERIAL"])?;
+        self.model_data(b)?;
         let elset = b
             .value("ELSET")?
             .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
@@ -496,6 +523,7 @@ impl Parser {
 
     fn surface(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "NAME"])?;
+        self.model_data(b)?;
         match b.value("TYPE")? {
             Some("NODE") => {}
             Some(t) => return Err(b.error(b.line, format!("unsupported TYPE {t}"))),
@@ -504,8 +532,18 @@ impl Parser {
         let name = b
             .value("NAME")?
             .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
+        // A coupling finds its surface by name, so a second surface of a name is lost.
+        if self.model.surfaces.iter().any(|s| s.name == name) {
+            return Err(b.error(b.line, format!("surface '{name}' is already defined")));
+        }
         let mut ids = Vec::new();
         for d in &b.data {
+            if d.fields.len() != 1 {
+                return Err(b.error(
+                    d.line,
+                    "line needs 1 node number or 1 node set name, without a weight",
+                ));
+            }
             match self.target(b, d)? {
                 Target::Node(id) => ids.push(id),
                 Target::Set(s) => ids.extend(self.model.nset(&s).map_or(&[][..], |n| &n.ids)),
@@ -603,18 +641,25 @@ impl Parser {
             .data
             .first()
             .ok_or_else(|| b.error(b.line, "keyword needs data lines"))?;
-        let n = int(b, first, 0, "number of terms")? as usize;
+        if first.fields.len() != 1 {
+            return Err(b.error(first.line, "the first line gives only the number of terms"));
+        }
+        // Not `int`: a count of 0 gets its own message.
+        let text = first.fields[0].as_str();
+        let n = text.parse::<usize>().map_err(|_| {
+            b.error(
+                first.line,
+                format!("number of terms must be a positive integer, found '{text}'"),
+            )
+        })?;
         if n == 0 {
             return Err(b.error(first.line, "equation needs at least 1 term"));
         }
+        // Keep the empty fields: without them the next terms move to the wrong place.
+        // The value check then refuses each empty field.
         let fields: Vec<(usize, &String)> = b.data[1..]
             .iter()
-            .flat_map(|d| {
-                d.fields
-                    .iter()
-                    .filter(|f| !f.is_empty())
-                    .map(|f| (d.line, f))
-            })
+            .flat_map(|d| d.fields.iter().enumerate().map(|(j, f)| (d.line_of(j), f)))
             .collect();
         if fields.len() != 3 * n {
             return Err(b.error(
@@ -624,10 +669,9 @@ impl Parser {
         }
         let mut terms = Vec::with_capacity(n);
         for t in fields.chunks(3) {
-            let line = t[0].0;
             let node = t[0].1.parse::<u32>().map_err(|_| {
                 b.error(
-                    line,
+                    t[0].0,
                     format!("node id must be a positive integer, found '{}'", t[0].1),
                 )
             })?;
@@ -638,18 +682,18 @@ impl Parser {
                 .filter(|d| (1..=6).contains(d))
                 .ok_or_else(|| {
                     b.error(
-                        line,
+                        t[1].0,
                         format!("degree of freedom must be 1 to 6, found '{}'", t[1].1),
                     )
                 })?;
-            let coefficient = t[2].1.parse::<f64>().map_err(|_| {
+            let coefficient = finite(t[2].1).ok_or_else(|| {
                 b.error(
-                    line,
-                    format!("coefficient must be a number, found '{}'", t[2].1),
+                    t[2].0,
+                    format!("coefficient must be a finite number, found '{}'", t[2].1),
                 )
             })?;
             terms.push(EquationTerm {
-                node: self.known_node(b, line, node)?,
+                node: self.known_node(b, t[0].0, node)?,
                 dof,
                 coefficient,
             });
@@ -662,7 +706,7 @@ impl Parser {
         b.allow(&[])?;
         self.model_data(b)?;
         for d in &b.data {
-            let kind = match d.fields[0].as_str() {
+            let kind = match d.fields[0].to_uppercase().as_str() {
                 "TIE" => MpcKind::Tie,
                 "PIN" => MpcKind::Pin,
                 "LINK" => MpcKind::Link,
@@ -675,7 +719,7 @@ impl Parser {
             let mut nodes = Vec::new();
             for k in 1..3 {
                 let id = int(b, d, k, "node id")?;
-                nodes.push(self.known_node(b, d.line, id)?);
+                nodes.push(self.known_node(b, d.line_of(k), id)?);
             }
             self.model.mpcs.push(Mpc { kind, nodes });
         }
@@ -694,7 +738,7 @@ impl Parser {
             }
             let ty = d.fields[1].as_str();
             let face = ty
-                .strip_prefix('P')
+                .strip_prefix(['P', 'p'])
                 .and_then(|n| n.parse::<u8>().ok())
                 .ok_or_else(|| b.error(d.line, format!("unsupported load type {ty}")))?;
             if !(1..=6).contains(&face) {
@@ -727,6 +771,9 @@ impl Parser {
 
     fn end_step(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
+        if let Some(d) = b.data.first() {
+            return Err(b.error(d.line, "keyword takes no data lines"));
+        }
         let step = self
             .open_step
             .take()
@@ -774,6 +821,62 @@ mod tests {
     }
 
     #[test]
+    fn an_error_on_a_continuation_line_names_that_line() {
+        let mut bad = Vec::new();
+        for (text, want) in [
+            // Line 13 is the second physical line of the record.
+            (
+                "*EQUATION\n2\n1,1,1,\n2,7,-1\n",
+                "line 13, *EQUATION: degree of freedom",
+            ),
+            (
+                "*EQUATION\n2\n1,1,1,\n2,1,x\n",
+                "line 13, *EQUATION: coefficient",
+            ),
+            (
+                "*EQUATION\n2\n1,1,1,\n99,1,-1\n",
+                "line 13, *EQUATION: node 99",
+            ),
+            (
+                "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,\n5,6,7,99\n",
+                "line 12, *ELEMENT: node 99",
+            ),
+            (
+                "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,\n5,6,7,x\n",
+                "line 12, *ELEMENT: node id",
+            ),
+            ("*NODE\n9,0,\n0,x\n", "line 12, *NODE: "),
+        ] {
+            let e = err(&format!("{MESH}{text}"));
+            if !e.starts_with(want) {
+                bad.push(format!("{text:?}: {e}"));
+            }
+        }
+        assert!(bad.is_empty(), "{bad:#?}");
+    }
+
+    #[test]
+    fn a_data_line_after_end_step_is_an_error() {
+        assert_eq!(
+            err("*STEP\n*STATIC\n*END STEP\n99,unsupported\n"),
+            "line 4, *END STEP: keyword takes no data lines"
+        );
+    }
+
+    #[test]
+    fn a_zero_label_is_an_error() {
+        assert_eq!(
+            err("*NODE\n0,0,0,0\n"),
+            "line 2, *NODE: node id must be a positive integer, found '0'"
+        );
+        let element = format!("{MESH}*ELEMENT, TYPE=C3D8\n0,1,2,3,4,5,6,7,8\n");
+        assert_eq!(
+            err(&element),
+            "line 11, *ELEMENT: element id must be a positive integer, found '0'"
+        );
+    }
+
+    #[test]
     fn element_errors_name_the_line() {
         let short = format!("{MESH}*ELEMENT, TYPE=C3D8\n1,1,2,3\n");
         assert!(err(&short).starts_with("line 11, *ELEMENT: C3D8 needs an id and 8 nodes"));
@@ -787,7 +890,7 @@ mod tests {
     fn bad_number_names_line() {
         assert_eq!(
             err("*NODE\n1,0,x,0\n"),
-            "line 2, *NODE: coordinate must be a number, found 'x'"
+            "line 2, *NODE: coordinate must be a finite number, found 'x'"
         );
     }
 
@@ -797,6 +900,18 @@ mod tests {
             err("*NODE\n1,0,0,0\n1,1,0,0\n"),
             "line 3, *NODE: node 1 is defined twice"
         );
+    }
+
+    #[test]
+    fn a_node_line_with_more_than_3_coordinates_fails() {
+        // A trailing comma joins the next line, so node 2 would go into node 1.
+        for text in ["*NODE\n1,0,0,\n2,1,0\n", "*NODE\n1,0,0,0,5\n"] {
+            let e = err(text);
+            assert!(
+                e.starts_with("line 2, *NODE: node line has more than 3 coordinates"),
+                "{e}"
+            );
+        }
     }
 
     #[test]
@@ -887,6 +1002,7 @@ mod tests {
     #[test]
     fn elastic_range_checks() {
         assert!(err("*MATERIAL, NAME=M\n*ELASTIC\n100, 0.5\n").contains("Poisson's ratio"));
+        assert!(err("*MATERIAL, NAME=M\n*ELASTIC\n100, -1\n").contains("Poisson's ratio"));
         assert!(err("*MATERIAL, NAME=M\n*ELASTIC\n-1, 0.3\n").contains("Young's modulus"));
     }
 }

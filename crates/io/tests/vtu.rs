@@ -62,6 +62,98 @@ fn truncated_file_is_an_error() {
 }
 
 #[test]
+fn a_payload_cut_short_before_the_footer_is_an_error() {
+    let bytes = write_vtu(&sample()).unwrap();
+    let footer = b"\n</AppendedData>\n</VTKFile>\n";
+    assert!(bytes.ends_with(footer));
+    let end = bytes.len() - footer.len();
+    for cut in [1, 8] {
+        let short = [&bytes[..end - cut], &bytes[end..]].concat();
+        assert!(read_vtu(&short).is_err(), "{cut} bytes cut");
+    }
+    assert!(read_vtu(&bytes[..end]).is_err(), "no closing tags");
+}
+
+/// The bytes of `sample()` as VTU, with `from` replaced by `to` once in the XML part.
+fn with_xml(from: &str, to: &str) -> Vec<u8> {
+    let bytes = write_vtu(&sample()).unwrap();
+    let mark = b"<AppendedData";
+    let at = bytes.windows(mark.len()).position(|w| w == mark).unwrap();
+    let xml = String::from_utf8(bytes[..at].to_vec()).unwrap();
+    assert!(xml.contains(from), "{from}");
+    [xml.replacen(from, to, 1).as_bytes(), &bytes[at..]].concat()
+}
+
+#[test]
+fn a_huge_offset_or_count_is_an_error_not_a_panic() {
+    let max = usize::MAX.to_string();
+    for (from, to) in [
+        ("offset=\"0\"", format!("offset=\"{max}\"")),
+        ("NumberOfPoints=\"8\"", format!("NumberOfPoints=\"{max}\"")),
+        ("NumberOfCells=\"1\"", format!("NumberOfCells=\"{max}\"")),
+    ] {
+        assert!(read_vtu(&with_xml(from, &to)).is_err(), "{to}");
+    }
+    let mut g = sample();
+    g.point_data.push(Field::f64("big", usize::MAX, vec![]));
+    assert!(write_vtu(&g).is_err());
+}
+
+/// The position of the length header of the block of array `name` in VTU bytes.
+fn block_at(bytes: &[u8], name: &str) -> usize {
+    let mark = b"<AppendedData encoding=\"raw\">\n_";
+    let start = bytes.windows(mark.len()).position(|w| w == mark).unwrap() + mark.len();
+    let xml = String::from_utf8_lossy(&bytes[..start]);
+    let key = format!("Name=\"{name}\"");
+    let tag = xml.split('<').find(|t| t.contains(&key)).unwrap();
+    let offset = tag
+        .split("offset=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    start + offset.parse::<usize>().unwrap()
+}
+
+#[test]
+fn a_field_with_the_wrong_number_of_values_is_an_error() {
+    // U has 24 values, 192 bytes. 193 bytes leave an incomplete value.
+    for len in [8_u32, 193] {
+        let mut b = write_vtu(&sample()).unwrap();
+        let at = block_at(&b, "U");
+        b[at..at + 4].copy_from_slice(&len.to_le_bytes());
+        assert!(read_vtu(&b).is_err(), "U with {len} bytes");
+    }
+    for bad in ["0", "x"] {
+        let b = with_xml(
+            "Name=\"U\" NumberOfComponents=\"3\"",
+            &format!("Name=\"U\" NumberOfComponents=\"{bad}\""),
+        );
+        assert!(read_vtu(&b).is_err(), "{bad} components");
+    }
+}
+
+#[test]
+fn a_cell_with_a_point_that_does_not_exist_is_an_error() {
+    // The first point index: -1 and 8 are not points of the 8-point grid.
+    for id in [-1_i64, 8] {
+        let mut b = write_vtu(&sample()).unwrap();
+        let at = block_at(&b, "connectivity") + 4;
+        b[at..at + 8].copy_from_slice(&id.to_le_bytes());
+        assert!(read_vtu(&b).is_err(), "point {id}");
+    }
+    // The last offset must use all of the connectivity.
+    let mut b = write_vtu(&sample()).unwrap();
+    let at = block_at(&b, "offsets") + 4;
+    b[at..at + 8].copy_from_slice(&7_i64.to_le_bytes());
+    assert!(read_vtu(&b).is_err(), "offset 7");
+    let mut g = sample();
+    g.cells[0][0] = 999;
+    assert!(write_vtu(&g).is_err());
+}
+
+#[test]
 fn field_names_with_special_characters_survive() {
     let mut g = sample();
     g.point_data.push(Field::f64("a<b&\"c\"", 1, vec![0.0; 8]));
