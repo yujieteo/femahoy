@@ -16,6 +16,7 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 |---|---|---|
 | `schema` | 1 | The schema version. It is `2`. Any other value is an error. |
 | `id` | 1 | Case name (string). |
+| `units` | 1 | The unit system of every number in the case: `"SI-mm"` (mm, N, MPa, tonne, s) or `"SI-m"` (m, N, Pa, kg, s). No default. A missing or other value is an error (D-12). |
 | `class` | 1 | `"L"`, `"N"` or `"R"`. |
 | `justification` | 1 | Why the class and the tolerance are right (string). |
 | `derivation` | 1 | A file in the folder that shows how the reference values were derived. |
@@ -47,6 +48,7 @@ Each `[ref]` entry has a `[quantity.<name>]` table with the same name. A case ne
 ```toml
 schema = 2
 id = "patch-test"
+units = "SI-mm"
 class = "N"
 justification = "Linear field, so no discretisation error."
 derivation = "derivation.md"

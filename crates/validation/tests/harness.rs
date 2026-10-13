@@ -33,7 +33,7 @@ const QUANTITY: &str =
 fn body(meshes: usize, extra: &str) -> String {
     let list = vec!["\"m.inp\""; meshes].join(", ");
     format!(
-        "schema = 2\nid = \"t\"\njustification = \"why\"\nderivation = \"d.md\"\nmesh = [{list}]\nelement_types = [\"C3D8\"]\n{extra}\n[ref]\nq = 1.0\n{QUANTITY}"
+        "schema = 2\nid = \"t\"\nunits = \"SI-mm\"\njustification = \"why\"\nderivation = \"d.md\"\nmesh = [{list}]\nelement_types = [\"C3D8\"]\n{extra}\n[ref]\nq = 1.0\n{QUANTITY}"
     )
 }
 
@@ -233,21 +233,21 @@ fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
         (
             body(1, "class = \"L\"\nratio = 2\nreference_error = 0\norder_min = 1\norder_max = 3"),
             "at least 3",
-            Some(5),
+            Some(6),
         ),
-        (body(2, n), "exactly 1", Some(5)),
-        (body(1, "class = \"Z\""), "unknown class", Some(7)),
+        (body(2, n), "exactly 1", Some(6)),
+        (body(1, "class = \"Z\""), "unknown class", Some(8)),
         (body(1, "class = \"N\""), "rel_tol", None),
         (
             "schema = 2\nid = \"t\"\nclass = \"N\"\n[ref]\nq = 1\n".to_string(),
             "justification",
             None,
         ),
-        (body(1, &format!("{n}\nbogus = 1")), "unknown key", Some(10)),
+        (body(1, &format!("{n}\nbogus = 1")), "unknown key", Some(11)),
         (
             body(1, &format!("{n}\nratio = 2")),
             "`ratio` does not belong to class N",
-            Some(10),
+            Some(11),
         ),
         (
             body(
@@ -255,23 +255,23 @@ fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
                 "class = \"L\"\nratio = 2\nreference_error = 0\norder_min = 1\norder_max = 3\nrel_tol = 1",
             ),
             "`rel_tol` does not belong to class L",
-            Some(12),
+            Some(13),
         ),
-        (body(1, n).replace("m.inp", "nope.inp"), "nope.inp", Some(5)),
+        (body(1, n).replace("m.inp", "nope.inp"), "nope.inp", Some(6)),
         (
             body(1, "class = \"N\"\nrel_tol = \"x\"\nabs_tol = 0"),
             "rel_tol",
-            Some(8),
+            Some(9),
         ),
         (
             format!("{}\nno equals sign", body(1, n)),
-            "case.toml:20",
-            Some(20),
+            "case.toml:21",
+            Some(21),
         ),
         (
             body(1, n).replace("q = 1.0", "q = \"a\""),
             "reference `q`",
-            Some(11),
+            Some(12),
         ),
         (body(1, n).replace("[ref]\nq = 1.0\n", ""), "[ref]", None),
         (body(1, n).replace("schema = 2\n", ""), "schema", None),
@@ -291,49 +291,49 @@ fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
                 body(1, n)
             ),
             "quantity `w` has no reference",
-            Some(20),
+            Some(21),
         ),
         (
             body(1, n).replace("field = \"U\"", "field = \"T\""),
             "unknown field `T`",
-            Some(15),
+            Some(16),
         ),
         (
             body(1, n).replace("component = 1", "component = 4"),
             "component 4 is not valid for field U",
-            Some(16),
+            Some(17),
         ),
         (
             body(1, n)
                 .replace("field = \"U\"", "field = \"S\"")
                 .replace("component = 1", "component = 3"),
             "component 3 is not valid for field S",
-            Some(16),
+            Some(17),
         ),
         (
             body(1, n).replace("\"mean\"", "\"median\""),
             "unknown op `median`",
-            Some(18),
+            Some(19),
         ),
         (
             body(1, n).replace("set = \"s\"\n", ""),
             "missing key `set`",
-            Some(13),
+            Some(14),
         ),
         (
             body(1, n).replace("set = \"s\"", "set = \"\""),
             "`set` must be a non-empty string",
-            Some(14),
+            Some(15),
         ),
         (
             body(1, n).replace("step = \"st\"", "step = \"\""),
             "`step` must be a non-empty string",
-            Some(17),
+            Some(18),
         ),
         (
             body(1, n).replace("op = \"mean\"", "op = \"mean\"\nbogus = 1"),
             "unknown key `bogus` in `quantity.q`",
-            Some(19),
+            Some(20),
         ),
         (
             body(1, n).replace("element_types = [\"C3D8\"]\n", ""),
@@ -343,22 +343,22 @@ fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
         (
             body(1, n).replace("[\"C3D8\"]", "[]"),
             "`element_types` must be a non-empty array",
-            Some(6),
+            Some(7),
         ),
         (
             body(1, n).replace("\"C3D8\"", "\"S4R\""),
             "unknown element type `S4R`",
-            Some(6),
+            Some(7),
         ),
         (
             body(3, "class = \"L\"\nratio = 2\nreference_error = 0\norder_min = 3\norder_max = 1"),
             "order_min must be below order_max",
-            Some(10),
+            Some(11),
         ),
         (
             body(3, "class = \"L\"\nratio = 2\nreference_error = 0\norder_min = 0\norder_max = 1"),
             "order_min must be above 0",
-            Some(10),
+            Some(11),
         ),
         (
             body(3, "class = \"L\"\nratio = 2\nreference_error = 0"),
@@ -384,37 +384,37 @@ fn schema_preserves_string_errors_and_class_error_order() {
             "set = \"s\"",
             "set = 1",
             "`set` must be a non-empty string",
-            Some(14),
+            Some(15),
         ),
         (
             "field = \"U\"",
             "field = \"\"",
             "`field` must be a non-empty string",
-            Some(15),
+            Some(16),
         ),
         (
             "op = \"mean\"",
             "op = false",
             "`op` must be a non-empty string",
-            Some(18),
+            Some(19),
         ),
         (
             "class = \"N\"",
             "class = \"\"",
             "`class` must be a non-empty string",
-            Some(7),
+            Some(8),
         ),
         (
             "class = \"N\"",
             "class = \"Z\"",
             "unknown class `Z`, expected L, N or R",
-            Some(7),
+            Some(8),
         ),
         (
             "class = \"N\"",
             "class = \"L\"",
             "`rel_tol` does not belong to class L",
-            Some(8),
+            Some(9),
         ),
     ];
     for (index, (old, new, message, line)) in cases.iter().enumerate() {
@@ -534,7 +534,7 @@ fn schema_rejects_infinite_tolerance() {
     )
     .unwrap_err();
     assert!(error.message.contains("rel_tol"));
-    assert_eq!(error.line, Some(8));
+    assert_eq!(error.line, Some(9));
 }
 
 #[test]
@@ -636,4 +636,21 @@ fn schema_rejects_non_finite_numbers_and_invalid_parameters() {
             }
         }
     }
+}
+
+#[test]
+fn units_are_read_and_a_missing_or_unknown_value_is_refused() {
+    let n = "class = \"N\"\nrel_tol = 1\nabs_tol = 0";
+    let case = write_case(&tmp("units-ok"), &body(1, n)).unwrap();
+    assert_eq!(case.units, fh_validation::Units::SiMm);
+    let metre = body(1, n).replace("units = \"SI-mm\"", "units = \"SI-m\"");
+    let case = write_case(&tmp("units-m"), &metre).unwrap();
+    assert_eq!(case.units.gmsh_length(), "M");
+    let missing = body(1, n).replace("units = \"SI-mm\"\n", "");
+    let error = write_case(&tmp("units-missing"), &missing).unwrap_err();
+    assert!(error.message.contains("missing key `units`"), "{error}");
+    let unknown = body(1, n).replace("SI-mm", "inch");
+    let error = write_case(&tmp("units-unknown"), &unknown).unwrap_err();
+    assert!(error.message.contains("unknown units `inch`"), "{error}");
+    assert_eq!(error.line, Some(3));
 }

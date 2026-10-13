@@ -76,6 +76,42 @@ pub struct Reference {
 /// The element types a case may name.
 pub const ELEMENT_TYPES: [&str; 4] = ["C3D8", "C3D8I", "C3D10", "C3D10M"];
 
+/// The unit system of a case (decision D-12, see DESIGN.md). The case declares it. `fh` never
+/// takes a unit from a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Units {
+    /// Length mm, force N, stress MPa, mass tonne, time s.
+    SiMm,
+    /// Length m, force N, stress Pa, mass kg, time s.
+    SiM,
+}
+
+impl Units {
+    /// The text in the case file.
+    pub fn name(self) -> &'static str {
+        match self {
+            Units::SiMm => "SI-mm",
+            Units::SiM => "SI-m",
+        }
+    }
+
+    /// The length unit as gmsh names it (`Geometry.OCCTargetUnit`).
+    pub fn gmsh_length(self) -> &'static str {
+        match self {
+            Units::SiMm => "MM",
+            Units::SiM => "M",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Units> {
+        match text {
+            "SI-mm" => Some(Units::SiMm),
+            "SI-m" => Some(Units::SiM),
+            _ => None,
+        }
+    }
+}
+
 /// The version of the fixture schema that this reader accepts.
 pub const SCHEMA_VERSION: i64 = 2;
 
@@ -84,6 +120,8 @@ pub struct Case {
     pub id: String,
     pub dir: PathBuf,
     pub class: Class,
+    /// The declared unit system. Every number in the case is in this system.
+    pub units: Units,
     pub justification: String,
     pub derivation: PathBuf,
     /// The element types of the meshes. The case runs once for each type (the meshes hold one).
@@ -294,8 +332,9 @@ impl FixtureReader<'_> {
     }
 
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 17] = [
+        const KEYS: [&str; 18] = [
             "schema",
+            "units",
             "quantity",
             "element_types",
             "order_min",
@@ -359,6 +398,13 @@ impl FixtureReader<'_> {
         }
         let id = self.string(table, "id")?;
         let justification = self.string(table, "justification")?;
+        let units_name = self.string(table, "units")?;
+        let units = Units::parse(&units_name).ok_or_else(|| {
+            self.err(
+                table.get("units"),
+                format!("unknown units `{units_name}`, expected SI-mm or SI-m"),
+            )
+        })?;
         let derivation = dir.join(self.string(table, "derivation")?);
         if !derivation.is_file() {
             let item = table.get("derivation");
@@ -499,6 +545,7 @@ impl FixtureReader<'_> {
             id,
             dir: dir.to_owned(),
             class,
+            units,
             justification,
             derivation,
             element_types,
