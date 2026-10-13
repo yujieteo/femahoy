@@ -122,6 +122,7 @@ impl SlotMap {
 
 /// Adds element matrices to the values of the matrix. The sum for one entry runs in the
 /// order of the elements, so the result does not depend on the number of threads.
+/// Decision D-08, see DESIGN.md.
 pub trait Assemble: Sync {
     /// Add the matrices of the elements `first..first + evals.len()`. `evals[k].k` holds the
     /// matrix of element `first + k`, and `evals[k].n` its size.

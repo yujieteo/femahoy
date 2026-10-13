@@ -108,7 +108,9 @@ pub fn small_strain(f: &[[f64; 3]; 3]) -> [f64; 6] {
     ]
 }
 
-/// Material law at an integration point.
+/// Material law at an integration point. It is separate from the element and owns the
+/// state of the point, so plasticity (M5, M6) and large displacement (M7) use this interface.
+/// Decision D-10, see DESIGN.md.
 pub trait Material: Sync {
     /// Numbers of state at each integration point. Elastic has none.
     fn state_len(&self) -> usize {

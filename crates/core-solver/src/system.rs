@@ -51,6 +51,7 @@ pub enum Method {
 }
 
 /// The result file formats of a run. All three are on by default.
+/// Decision D-04, see DESIGN.md.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Formats {
     /// `step-N.txt`: tables of node results, element results and integration point stress.
@@ -190,6 +191,7 @@ impl Default for Options {
 }
 
 /// Switch rule of `Method::Auto`. See DESIGN.md for the measurements.
+/// Decision D-06, see DESIGN.md: a direct factor above this size does not fit the target machine.
 pub const DIRECT_MAX_DOFS: usize = 60_000;
 
 /// A solve fails if the relative residual of the reduced system is above this.
@@ -460,7 +462,8 @@ pub struct Sizes {
     pub slot_bytes: usize,
 }
 
-/// Estimate of the peak memory of a run in bytes, without the Cholesky factor.
+/// Estimate of the peak memory of a run in bytes.
+/// Decision D-06, see DESIGN.md: the runner compares it with the memory limit.
 /// The formula is in DESIGN.md. The input model is part of it.
 pub fn estimate_bytes(s: &Sizes) -> u64 {
     let (nodes, els, n, nnz) = (

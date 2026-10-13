@@ -4,7 +4,8 @@
 //! of [`BLOCK`] rows, and a thread owns a run of whole blocks. Each row sum of the matrix
 //! product has one owner and runs in column order. Each dot product is a sum for each
 //! block, and every thread adds the block sums in block order. Thus a run with 1 thread
-//! and a run with 10 threads give the same bits. Decision D-08, see DESIGN.md.
+//! and a run with 10 threads give the same bits. The target machine has 4 to 6 cores, and
+//! the large models use this solver. Decision D-06, see DESIGN.md.
 //!
 //! The matrix keeps only its lower triangle in column form. A column of it is also a row of
 //! the upper triangle. For the strict lower part of each row, the solver keeps a row copy

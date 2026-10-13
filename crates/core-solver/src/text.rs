@@ -3,7 +3,7 @@
 //! The file has a version line, a short header, and three tables with one row for each node,
 //! each element and each integration point. The writer takes rows one at a time from a
 //! buffered file, so it makes no copy of a result array. Reals use the shortest text that
-//! reads back to the same value.
+//! reads back to the same value. Decision D-04, see DESIGN.md.
 
 use std::io::{self, Write};
 

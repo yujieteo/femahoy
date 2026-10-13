@@ -4,7 +4,9 @@
 //! increment commits the trial copy. A cutback drops it. The store is flat and
 //! uses one slab of numbers for each element. Inside a slab the layout is
 //! component-major: number `c` of point `i` of an element with `np` points is at
-//! `c * np + i`. This is the struct-of-arrays layout that a GPU backend wants.
+//! `c * np + i`. This is the struct-of-arrays layout that a GPU backend wants
+//! (Decision D-08, see DESIGN.md). The committed and trial copies carry the state of
+//! plasticity and contact (Decision D-10, see DESIGN.md).
 //! A material without state takes zero bytes. The internal dofs of the elements
 //! (`C3D8I` mode amplitudes) are kept only when the store is made with `internal`.
 
