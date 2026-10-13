@@ -2,33 +2,62 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::error::code;
 use crate::lexer::{lex, Block, DataLine};
 use crate::model::*;
 use crate::ParseError;
 
-/// Parse `.inp` text into a model.
+/// Parse `.inp` text into a model. The error is the first one that `parse_all` finds.
 pub fn parse(text: &str) -> Result<Model, ParseError> {
+    parse_all(text).map_err(|mut errors| errors.swap_remove(0))
+}
+
+/// Parse `.inp` text from the file `file`. Every error names the file.
+pub fn parse_file(file: &str, text: &str) -> Result<Model, Vec<ParseError>> {
+    parse_all(text).map_err(|errors| errors.into_iter().map(|e| e.with_file(file)).collect())
+}
+
+/// Parse `.inp` text and collect the errors of all keyword blocks, in line order. Errors
+/// about a block that never ends come last.
+/// A bad block adds to the list and parsing goes on with the next block. The
+/// list is never empty.
+pub fn parse_all(text: &str) -> Result<Model, Vec<ParseError>> {
     let mut p = Parser::default();
-    for block in lex(text)? {
-        p.block(&block)?;
+    let (blocks, mut errors) = lex(text);
+    for block in &blocks {
+        if let Err(e) = p.block(block) {
+            errors.push(e);
+            // A failed *END STEP still ends the step, so no second error follows.
+            if block.keyword == "END STEP" {
+                p.open_step = None;
+            }
+            p.static_failed |= block.keyword == "STATIC";
+        }
     }
+    errors.sort_by_key(|e| e.line);
+    // Errors of an unfinished block come last: only the end of the text shows them.
     if p.open_step.is_some() {
-        return Err(ParseError::new(
+        errors.push(ParseError::new(
+            code::INCOMPLETE,
             p.step_line,
             Some("STEP"),
             "step has no *END STEP",
         ));
     }
-    p.close_coupling()?;
+    if let Err(e) = p.close_coupling() {
+        errors.push(e);
+    }
     if let Some(open) = &p.part {
-        return Err(ParseError::new(
+        errors.push(ParseError::new(
+            code::INCOMPLETE,
             open.line,
             Some("PART"),
             "part has no *END PART",
         ));
     }
     if let Some(line) = p.assembly {
-        return Err(ParseError::new(
+        errors.push(ParseError::new(
+            code::INCOMPLETE,
             line,
             Some("ASSEMBLY"),
             "assembly has no *END ASSEMBLY",
@@ -36,14 +65,19 @@ pub fn parse(text: &str) -> Result<Model, ParseError> {
     }
     for (line, material) in &p.section_materials {
         if p.model.material(material).is_none() {
-            return Err(ParseError::new(
+            errors.push(ParseError::new(
+                code::UNDEFINED,
                 *line,
                 Some("INSTANCE"),
                 format!("material '{material}' is not defined"),
             ));
         }
     }
-    Ok(p.model)
+    if errors.is_empty() {
+        Ok(p.model)
+    } else {
+        Err(errors)
+    }
 }
 
 #[derive(Default)]
@@ -55,6 +89,8 @@ struct Parser {
     step_line: usize,
     /// A `*STEP` came. Model data must come before it.
     step_seen: bool,
+    /// A `*STATIC` had an error, so a missing procedure is not a second error.
+    static_failed: bool,
     /// Index into `model.materials` of the material that is open.
     material: Option<usize>,
     /// A `*COUPLING` that still waits for `*KINEMATIC` or `*DISTRIBUTING`.
@@ -91,6 +127,7 @@ fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError>
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
     f.parse::<u32>().ok().filter(|&n| n > 0).ok_or_else(|| {
         b.error(
+            code::INVALID_VALUE,
             d.line_of(i),
             format!("{what} must be a positive integer, found '{f}'"),
         )
@@ -107,6 +144,7 @@ fn real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<f64, ParseError
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
     finite(f).ok_or_else(|| {
         b.error(
+            code::INVALID_VALUE,
             d.line_of(i),
             format!("{what} must be a finite number, found '{f}'"),
         )
@@ -126,6 +164,7 @@ fn dof(b: &Block, d: &DataLine, i: usize) -> Result<u8, ParseError> {
         Ok(n as u8)
     } else {
         Err(b.error(
+            code::INVALID_VALUE,
             d.line_of(i),
             format!("degree of freedom must be 1 to 6, found {n}"),
         ))
@@ -174,7 +213,7 @@ impl Parser {
             "EQUATION" => self.equation(b),
             "MPC" => self.mpc(b),
             "END STEP" => self.end_step(b),
-            _ => Err(b.error(b.line, "unsupported keyword")),
+            _ => Err(b.error(code::UNSUPPORTED_KEYWORD, b.line, "unsupported keyword")),
         }
     }
 
@@ -209,24 +248,34 @@ impl Parser {
         } else {
             "*ASSEMBLY"
         };
-        Some(Err(
-            b.error(b.line, format!("keyword is not allowed in {place}"))
-        ))
+        Some(Err(b.error(
+            code::OUT_OF_PLACE,
+            b.line,
+            format!("keyword is not allowed in {place}"),
+        )))
     }
 
     fn part(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME"])?;
         if self.open_step.is_some() || self.part.is_some() || self.assembly.is_some() {
-            return Err(b.error(b.line, "keyword is not allowed here"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword is not allowed here"));
         }
-        let name = b
-            .value("NAME")?
-            .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
+        let name = b.value("NAME")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter NAME is required",
+            )
+        })?;
         if self.parts.contains_key(name) {
-            return Err(b.error(b.line, format!("part {name} is defined twice")));
+            return Err(b.error(
+                code::DUPLICATE,
+                b.line,
+                format!("part {name} is defined twice"),
+            ));
         }
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         let outer = (
             std::mem::take(&mut self.model),
@@ -246,7 +295,7 @@ impl Parser {
         let open = self
             .part
             .take()
-            .ok_or_else(|| b.error(b.line, "no open *PART"))?;
+            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "no open *PART"))?;
         let (model, node_ids, element_ids) = open.outer;
         let part = std::mem::replace(&mut self.model, model);
         self.node_ids = node_ids;
@@ -258,13 +307,17 @@ impl Parser {
     fn assembly(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME"])?;
         if self.open_step.is_some() || self.part.is_some() || self.assembly.is_some() {
-            return Err(b.error(b.line, "keyword is not allowed here"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword is not allowed here"));
         }
         if !self.model.instances.is_empty() {
-            return Err(b.error(b.line, "the model has one *ASSEMBLY at most"));
+            return Err(b.error(
+                code::DUPLICATE,
+                b.line,
+                "the model has one *ASSEMBLY at most",
+            ));
         }
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         self.assembly = Some(b.line);
         Ok(())
@@ -273,12 +326,12 @@ impl Parser {
     fn end_assembly(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         if self.instance_open {
-            return Err(b.error(b.line, "instance has no *END INSTANCE"));
+            return Err(b.error(code::BAD_DATA_LINE, b.line, "instance has no *END INSTANCE"));
         }
         self.assembly
             .take()
             .map(|_| ())
-            .ok_or_else(|| b.error(b.line, "no open *ASSEMBLY"))
+            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "no open *ASSEMBLY"))
     }
 
     /// Copy a part into the model. Global ids follow the highest id in use.
@@ -286,26 +339,52 @@ impl Parser {
     fn instance(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME", "PART"])?;
         if self.assembly.is_none() || self.instance_open {
-            return Err(b.error(b.line, "keyword needs an open *ASSEMBLY"));
+            return Err(b.error(
+                code::OUT_OF_PLACE,
+                b.line,
+                "keyword needs an open *ASSEMBLY",
+            ));
         }
-        let name = b
-            .value("NAME")?
-            .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
-        let part_name = b
-            .value("PART")?
-            .ok_or_else(|| b.error(b.line, "parameter PART is required"))?;
+        let name = b.value("NAME")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter NAME is required",
+            )
+        })?;
+        let part_name = b.value("PART")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter PART is required",
+            )
+        })?;
         let part = self
             .parts
             .get(part_name)
-            .ok_or_else(|| b.error(b.line, format!("part '{part_name}' is not defined")))?
+            .ok_or_else(|| {
+                b.error(
+                    code::UNDEFINED,
+                    b.line,
+                    format!("part '{part_name}' is not defined"),
+                )
+            })?
             .clone();
         if self.model.instances.iter().any(|i| i.name == name) {
-            return Err(b.error(b.line, format!("instance {name} is defined twice")));
+            return Err(b.error(
+                code::DUPLICATE,
+                b.line,
+                format!("instance {name} is defined twice"),
+            ));
         }
         let mut shift = [0.0; 3];
         if let Some(d) = b.data.first() {
             if b.data.len() > 1 || d.fields.len() > 3 {
-                return Err(b.error(d.line, "only a translation of up to 3 values is supported"));
+                return Err(b.error(
+                    code::UNSUPPORTED_VALUE,
+                    d.line,
+                    "only a translation of up to 3 values is supported",
+                ));
             }
             for (k, c) in shift.iter_mut().enumerate().take(d.fields.len()) {
                 *c = real(b, d, k, "translation")?;
@@ -368,7 +447,7 @@ impl Parser {
     fn end_instance(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         if !std::mem::take(&mut self.instance_open) {
-            return Err(b.error(b.line, "no open *INSTANCE"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "no open *INSTANCE"));
         }
         Ok(())
     }
@@ -382,7 +461,13 @@ impl Parser {
             .instances
             .iter()
             .position(|i| i.name == name)
-            .ok_or_else(|| b.error(b.line, format!("instance '{name}' is not defined")))?;
+            .ok_or_else(|| {
+                b.error(
+                    code::UNDEFINED,
+                    b.line,
+                    format!("instance '{name}' is not defined"),
+                )
+            })?;
         let (kind, map) = if nodes {
             ("node", &self.instance_ids[index].0)
         } else {
@@ -401,7 +486,11 @@ impl Parser {
                     1
                 };
                 if step == 0 || end < start {
-                    return Err(b.error(d.line, "GENERATE needs first <= last and increment > 0"));
+                    return Err(b.error(
+                        code::INVALID_VALUE,
+                        d.line,
+                        "GENERATE needs first <= last and increment > 0",
+                    ));
                 }
                 labels.extend((start..=end).step_by(step as usize));
             } else {
@@ -412,6 +501,7 @@ impl Parser {
             for label in labels {
                 let id = map.get(&label).ok_or_else(|| {
                     b.error(
+                        code::UNDEFINED,
                         d.line,
                         format!("{kind} {label} is not defined in instance {name}"),
                     )
@@ -428,10 +518,14 @@ impl Parser {
         let mut ids = Vec::new();
         for d in &b.data {
             if d.fields.len() < 3 {
-                return Err(b.error(d.line, "node line needs an id and at least 2 coordinates"));
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    d.line,
+                    "node line needs an id and at least 2 coordinates",
+                ));
             }
             if d.fields.len() > 4 {
-                return Err(b.error(
+                return Err(b.error(code::BAD_DATA_LINE,
                     d.line,
                     "node line has more than 3 coordinates (a line that ends in a comma joins the next line)",
                 ));
@@ -442,7 +536,11 @@ impl Parser {
                 *c = real(b, d, k + 1, "coordinate")?;
             }
             if !self.node_ids.insert(id) {
-                return Err(b.error(d.line, format!("node {id} is defined twice")));
+                return Err(b.error(
+                    code::DUPLICATE,
+                    d.line,
+                    format!("node {id} is defined twice"),
+                ));
             }
             self.model.nodes.push(Node { id, xyz });
             ids.push(id);
@@ -456,15 +554,25 @@ impl Parser {
     fn element(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "ELSET"])?;
         self.model_data(b)?;
-        let ty = b
-            .value("TYPE")?
-            .ok_or_else(|| b.error(b.line, "parameter TYPE is required"))?;
-        let count = element_nodes(ty)
-            .ok_or_else(|| b.error(b.line, format!("unsupported element type {ty}")))?;
+        let ty = b.value("TYPE")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter TYPE is required",
+            )
+        })?;
+        let count = element_nodes(ty).ok_or_else(|| {
+            b.error(
+                code::UNSUPPORTED_VALUE,
+                b.line,
+                format!("unsupported element type {ty}"),
+            )
+        })?;
         let mut ids = Vec::new();
         for d in &b.data {
             if d.fields.len() != count + 1 {
                 return Err(b.error(
+                    code::BAD_DATA_LINE,
                     d.line,
                     format!(
                         "{ty} needs an id and {count} nodes, found {} fields",
@@ -477,12 +585,20 @@ impl Parser {
             for k in 1..=count {
                 let n = int(b, d, k, "node id")?;
                 if !self.node_ids.contains(&n) {
-                    return Err(b.error(d.line_of(k), format!("node {n} is not defined")));
+                    return Err(b.error(
+                        code::UNDEFINED,
+                        d.line_of(k),
+                        format!("node {n} is not defined"),
+                    ));
                 }
                 nodes.push(n);
             }
             if !self.element_ids.insert(id) {
-                return Err(b.error(d.line, format!("element {id} is defined twice")));
+                return Err(b.error(
+                    code::DUPLICATE,
+                    d.line,
+                    format!("element {id} is defined twice"),
+                ));
             }
             self.model.elements.push(Element {
                 id,
@@ -500,9 +616,13 @@ impl Parser {
     fn nset(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NSET", "GENERATE", "INSTANCE"])?;
         self.model_data(b)?;
-        let name = b
-            .value("NSET")?
-            .ok_or_else(|| b.error(b.line, "parameter NSET is required"))?;
+        let name = b.value("NSET")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter NSET is required",
+            )
+        })?;
         let ids = self.members(b, true)?;
         self.add_nset(name, ids);
         Ok(())
@@ -511,9 +631,13 @@ impl Parser {
     fn elset(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["ELSET", "GENERATE", "INSTANCE"])?;
         self.model_data(b)?;
-        let name = b
-            .value("ELSET")?
-            .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
+        let name = b.value("ELSET")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter ELSET is required",
+            )
+        })?;
         let ids = self.members(b, false)?;
         self.add_elset(name, ids);
         Ok(())
@@ -524,7 +648,11 @@ impl Parser {
             return self.set_members(b, nodes);
         }
         if self.assembly.is_none() {
-            return Err(b.error(b.line, "parameter INSTANCE needs an open *ASSEMBLY"));
+            return Err(b.error(
+                code::OUT_OF_PLACE,
+                b.line,
+                "parameter INSTANCE needs an open *ASSEMBLY",
+            ));
         }
         self.instance_members(b, nodes)
     }
@@ -549,11 +677,19 @@ impl Parser {
                     1
                 };
                 if step == 0 || end < start {
-                    return Err(b.error(d.line, "GENERATE needs first <= last and increment > 0"));
+                    return Err(b.error(
+                        code::INVALID_VALUE,
+                        d.line,
+                        "GENERATE needs first <= last and increment > 0",
+                    ));
                 }
                 for id in (start..=end).step_by(step as usize) {
                     if !known.contains(&id) {
-                        return Err(b.error(d.line, format!("{kind} {id} is not defined")));
+                        return Err(b.error(
+                            code::UNDEFINED,
+                            d.line,
+                            format!("{kind} {id} is not defined"),
+                        ));
                     }
                     out.push(id);
                 }
@@ -562,7 +698,11 @@ impl Parser {
             for f in d.fields.iter().filter(|f| !f.is_empty()) {
                 if let Ok(id) = f.parse::<u32>() {
                     if !known.contains(&id) {
-                        return Err(b.error(d.line, format!("{kind} {id} is not defined")));
+                        return Err(b.error(
+                            code::UNDEFINED,
+                            d.line,
+                            format!("{kind} {id} is not defined"),
+                        ));
                     }
                     out.push(id);
                     continue;
@@ -584,7 +724,11 @@ impl Parser {
                 match members {
                     Some(ids) => out.extend(ids),
                     None => {
-                        return Err(b.error(d.line, format!("{kind} set {upper} is not defined")))
+                        return Err(b.error(
+                            code::UNDEFINED,
+                            d.line,
+                            format!("{kind} set {upper} is not defined"),
+                        ))
                     }
                 }
             }
@@ -615,14 +759,22 @@ impl Parser {
     fn material(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME"])?;
         self.model_data(b)?;
-        let name = b
-            .value("NAME")?
-            .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
+        let name = b.value("NAME")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter NAME is required",
+            )
+        })?;
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         if self.model.material(name).is_some() {
-            return Err(b.error(b.line, format!("material {name} is defined twice")));
+            return Err(b.error(
+                code::DUPLICATE,
+                b.line,
+                format!("material {name} is defined twice"),
+            ));
         }
         self.model.materials.push(Material {
             name: name.to_owned(),
@@ -636,29 +788,49 @@ impl Parser {
         b.allow(&["TYPE"])?;
         if let Some(t) = b.value("TYPE")? {
             if t != "ISOTROPIC" {
-                return Err(b.error(b.line, format!("unsupported TYPE {t}")));
+                return Err(b.error(
+                    code::UNSUPPORTED_VALUE,
+                    b.line,
+                    format!("unsupported TYPE {t}"),
+                ));
             }
         }
-        let idx = self
-            .material
-            .ok_or_else(|| b.error(b.line, "keyword needs an open *MATERIAL"))?;
+        let idx = self.material.ok_or_else(|| {
+            b.error(
+                code::OUT_OF_PLACE,
+                b.line,
+                "keyword needs an open *MATERIAL",
+            )
+        })?;
         let [d] = b.data.as_slice() else {
-            return Err(b.error(b.line, "keyword needs exactly 1 data line"));
+            return Err(b.error(
+                code::BAD_DATA_LINE,
+                b.line,
+                "keyword needs exactly 1 data line",
+            ));
         };
         let elastic = Elastic {
             youngs_modulus: real(b, d, 0, "Young's modulus")?,
             poissons_ratio: real(b, d, 1, "Poisson's ratio")?,
         };
         if elastic.youngs_modulus <= 0.0 {
-            return Err(b.error(d.line, "Young's modulus must be positive"));
+            return Err(b.error(
+                code::INVALID_VALUE,
+                d.line,
+                "Young's modulus must be positive",
+            ));
         }
         // At -1 the shear modulus has no value: it divides by 1 + nu.
         if !(elastic.poissons_ratio > -1.0 && elastic.poissons_ratio < 0.5) {
-            return Err(b.error(d.line, "Poisson's ratio must be in (-1, 0.5)"));
+            return Err(b.error(
+                code::INVALID_VALUE,
+                d.line,
+                "Poisson's ratio must be in (-1, 0.5)",
+            ));
         }
         let mat = &mut self.model.materials[idx];
         if mat.elastic.is_some() {
-            return Err(b.error(b.line, "material already has *ELASTIC"));
+            return Err(b.error(code::DUPLICATE, b.line, "material already has *ELASTIC"));
         }
         mat.elastic = Some(elastic);
         Ok(())
@@ -667,15 +839,21 @@ impl Parser {
     fn step(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME", "NLGEOM"])?;
         if self.open_step.is_some() {
-            return Err(b.error(b.line, "step inside a step"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "step inside a step"));
         }
         let nlgeom = match b.value("NLGEOM")? {
             None | Some("NO") => false,
             Some("YES") => true,
-            Some(v) => return Err(b.error(b.line, format!("NLGEOM must be YES or NO, found {v}"))),
+            Some(v) => {
+                return Err(b.error(
+                    code::INVALID_VALUE,
+                    b.line,
+                    format!("NLGEOM must be YES or NO, found {v}"),
+                ))
+            }
         };
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         self.step_line = b.line;
         self.step_seen = true;
@@ -692,14 +870,18 @@ impl Parser {
         let step = self
             .open_step
             .as_mut()
-            .ok_or_else(|| b.error(b.line, "keyword needs an open *STEP"))?;
+            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"))?;
         if step.static_procedure.is_some() {
-            return Err(b.error(b.line, "step already has *STATIC"));
+            return Err(b.error(code::DUPLICATE, b.line, "step already has *STATIC"));
         }
         let mut s = Static::default();
         if let Some(d) = b.data.first() {
             if b.data.len() > 1 || d.fields.len() > 4 {
-                return Err(b.error(d.line, "keyword takes 1 data line with at most 4 values"));
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    d.line,
+                    "keyword takes 1 data line with at most 4 values",
+                ));
             }
             s.initial_increment = opt_real(b, d, 0, "initial increment")?;
             s.time_period = opt_real(b, d, 1, "time period")?;
@@ -714,7 +896,7 @@ impl Parser {
         let f = d.fields.first().map(String::as_str).unwrap_or("");
         if let Ok(id) = f.parse::<u32>() {
             if !self.node_ids.contains(&id) {
-                return Err(b.error(d.line, format!("node {id} is not defined")));
+                return Err(b.error(code::UNDEFINED, d.line, format!("node {id} is not defined")));
             }
             return Ok(Target::Node(id));
         }
@@ -723,7 +905,11 @@ impl Parser {
             return Ok(Target::Node(id));
         }
         if name.is_empty() || self.model.nset(&name).is_none() {
-            return Err(b.error(d.line, format!("node set '{name}' is not defined")));
+            return Err(b.error(
+                code::UNDEFINED,
+                d.line,
+                format!("node set '{name}' is not defined"),
+            ));
         }
         Ok(Target::Set(name))
     }
@@ -742,6 +928,7 @@ impl Parser {
         for d in &b.data {
             if d.fields.len() < 2 || d.fields.len() > 4 {
                 return Err(b.error(
+                    code::INVALID_VALUE,
                     d.line,
                     "line needs node, first dof, and optional last dof and value",
                 ));
@@ -753,7 +940,7 @@ impl Parser {
                 first_dof
             };
             if last_dof < first_dof {
-                return Err(b.error(d.line, "last dof is below first dof"));
+                return Err(b.error(code::INVALID_VALUE, d.line, "last dof is below first dof"));
             }
             let value = opt_real(b, d, 3, "value")?.unwrap_or(0.0);
             out.push(Boundary {
@@ -773,12 +960,16 @@ impl Parser {
     fn cload(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         if self.open_step.is_none() {
-            return Err(b.error(b.line, "keyword needs an open *STEP"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"));
         }
         let mut out = Vec::new();
         for d in &b.data {
             if d.fields.len() != 3 {
-                return Err(b.error(d.line, "line needs node, dof and magnitude"));
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    d.line,
+                    "line needs node, dof and magnitude",
+                ));
             }
             out.push(Cload {
                 target: self.target(b, d)?,
@@ -796,14 +987,18 @@ impl Parser {
         if self.node_ids.contains(&id) {
             Ok(id)
         } else {
-            Err(b.error(line, format!("node {id} is not defined")))
+            Err(b.error(code::UNDEFINED, line, format!("node {id} is not defined")))
         }
     }
 
     /// Model data applies to all steps, so it must come before the first step starts.
     fn model_data(&self, b: &Block) -> Result<(), ParseError> {
         if self.step_seen {
-            return Err(b.error(b.line, "keyword must come before the first *STEP"));
+            return Err(b.error(
+                code::OUT_OF_PLACE,
+                b.line,
+                "keyword must come before the first *STEP",
+            ));
         }
         Ok(())
     }
@@ -811,20 +1006,36 @@ impl Parser {
     fn solid_section(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["ELSET", "MATERIAL"])?;
         self.model_data(b)?;
-        let elset = b
-            .value("ELSET")?
-            .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
-        let material = b
-            .value("MATERIAL")?
-            .ok_or_else(|| b.error(b.line, "parameter MATERIAL is required"))?;
+        let elset = b.value("ELSET")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter ELSET is required",
+            )
+        })?;
+        let material = b.value("MATERIAL")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter MATERIAL is required",
+            )
+        })?;
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         if self.model.elset(elset).is_none() {
-            return Err(b.error(b.line, format!("element set '{elset}' is not defined")));
+            return Err(b.error(
+                code::UNDEFINED,
+                b.line,
+                format!("element set '{elset}' is not defined"),
+            ));
         }
         if self.part.is_none() && self.model.material(material).is_none() {
-            return Err(b.error(b.line, format!("material '{material}' is not defined")));
+            return Err(b.error(
+                code::UNDEFINED,
+                b.line,
+                format!("material '{material}' is not defined"),
+            ));
         }
         self.model.sections.push(SolidSection {
             elset: elset.to_owned(),
@@ -839,17 +1050,37 @@ impl Parser {
         let element = match b.value("TYPE")? {
             Some("NODE") => false,
             Some("ELEMENT") => true,
-            Some(t) => return Err(b.error(b.line, format!("unsupported TYPE {t}"))),
-            None => return Err(b.error(b.line, "parameter TYPE is required")),
+            Some(t) => {
+                return Err(b.error(
+                    code::UNSUPPORTED_VALUE,
+                    b.line,
+                    format!("unsupported TYPE {t}"),
+                ))
+            }
+            None => {
+                return Err(b.error(
+                    code::MISSING_PARAMETER,
+                    b.line,
+                    "parameter TYPE is required",
+                ))
+            }
         };
-        let name = b
-            .value("NAME")?
-            .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
+        let name = b.value("NAME")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter NAME is required",
+            )
+        })?;
         // A coupling finds its surface by name, so a second surface of a name is lost.
         if self.model.surfaces.iter().any(|s| s.name == name)
             || self.model.element_surface(name).is_some()
         {
-            return Err(b.error(b.line, format!("surface '{name}' is already defined")));
+            return Err(b.error(
+                code::DUPLICATE,
+                b.line,
+                format!("surface '{name}' is already defined"),
+            ));
         }
         if element {
             return self.element_surface(b, name);
@@ -858,6 +1089,7 @@ impl Parser {
         for d in &b.data {
             if d.fields.len() != 1 {
                 return Err(b.error(
+                    code::BAD_DATA_LINE,
                     d.line,
                     "line needs 1 node number or 1 node set name, without a weight",
                 ));
@@ -885,17 +1117,27 @@ impl Parser {
         let mut faces = Vec::new();
         for d in &b.data {
             if d.fields.len() != 2 {
-                return Err(b.error(d.line, "line needs element and face"));
+                return Err(b.error(code::BAD_DATA_LINE, d.line, "line needs element and face"));
             }
             let ty = d.fields[1].to_uppercase();
             let face = ty
                 .strip_prefix('S')
                 .and_then(|n| n.parse::<u8>().ok())
-                .ok_or_else(|| b.error(d.line, format!("unsupported face {ty}")))?;
+                .ok_or_else(|| {
+                    b.error(
+                        code::UNSUPPORTED_VALUE,
+                        d.line,
+                        format!("unsupported face {ty}"),
+                    )
+                })?;
             let f = d.fields[0].as_str();
             let ids = if let Ok(id) = f.parse::<u32>() {
                 if !self.element_ids.contains(&id) {
-                    return Err(b.error(d.line, format!("element {id} is not defined")));
+                    return Err(b.error(
+                        code::UNDEFINED,
+                        d.line,
+                        format!("element {id} is not defined"),
+                    ));
                 }
                 vec![id]
             } else {
@@ -903,7 +1145,11 @@ impl Parser {
                 match self.model.elset(&set) {
                     Some(s) => s.ids.clone(),
                     None => {
-                        return Err(b.error(d.line, format!("element set '{set}' is not defined")))
+                        return Err(b.error(
+                            code::UNDEFINED,
+                            d.line,
+                            format!("element set '{set}' is not defined"),
+                        ))
                     }
                 }
             };
@@ -914,6 +1160,7 @@ impl Parser {
                 };
                 if !(1..=max).contains(&face) {
                     return Err(b.error(
+                        code::INVALID_VALUE,
                         d.line,
                         format!("face must be 1 to {max} for element {id}, found {face}"),
                     ));
@@ -931,17 +1178,30 @@ impl Parser {
     fn coupling(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["CONSTRAINT NAME", "REF NODE", "SURFACE"])?;
         self.model_data(b)?;
-        let name = b
-            .value("CONSTRAINT NAME")?
-            .ok_or_else(|| b.error(b.line, "parameter CONSTRAINT NAME is required"))?;
-        let surface = b
-            .value("SURFACE")?
-            .ok_or_else(|| b.error(b.line, "parameter SURFACE is required"))?;
-        let ref_text = b
-            .value("REF NODE")?
-            .ok_or_else(|| b.error(b.line, "parameter REF NODE is required"))?;
+        let name = b.value("CONSTRAINT NAME")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter CONSTRAINT NAME is required",
+            )
+        })?;
+        let surface = b.value("SURFACE")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter SURFACE is required",
+            )
+        })?;
+        let ref_text = b.value("REF NODE")?.ok_or_else(|| {
+            b.error(
+                code::MISSING_PARAMETER,
+                b.line,
+                "parameter REF NODE is required",
+            )
+        })?;
         let ref_id = ref_text.parse::<u32>().map_err(|_| {
             b.error(
+                code::INVALID_VALUE,
                 b.line,
                 format!("REF NODE must be a node id, found '{ref_text}'"),
             )
@@ -950,10 +1210,14 @@ impl Parser {
         if !self.model.surfaces.iter().any(|s| s.name == surface)
             && self.model.element_surface(surface).is_none()
         {
-            return Err(b.error(b.line, format!("surface '{surface}' is not defined")));
+            return Err(b.error(
+                code::UNDEFINED,
+                b.line,
+                format!("surface '{surface}' is not defined"),
+            ));
         }
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         self.open_coupling = Some(PendingCoupling {
             line: b.line,
@@ -966,14 +1230,21 @@ impl Parser {
 
     fn coupling_kind(&mut self, b: &Block, kind: CouplingKind) -> Result<(), ParseError> {
         b.allow(&[])?;
-        let c = self
-            .open_coupling
-            .take()
-            .ok_or_else(|| b.error(b.line, "keyword needs an open *COUPLING"))?;
+        let c = self.open_coupling.take().ok_or_else(|| {
+            b.error(
+                code::OUT_OF_PLACE,
+                b.line,
+                "keyword needs an open *COUPLING",
+            )
+        })?;
         let (mut first_dof, mut last_dof) = (1, 6);
         if let Some(d) = b.data.first() {
             if b.data.len() > 1 || d.fields.len() > 2 {
-                return Err(b.error(d.line, "keyword takes 1 data line: first dof, last dof"));
+                return Err(b.error(
+                    code::INVALID_VALUE,
+                    d.line,
+                    "keyword takes 1 data line: first dof, last dof",
+                ));
             }
             first_dof = dof(b, d, 0)?;
             last_dof = if d.fields.len() > 1 {
@@ -982,7 +1253,7 @@ impl Parser {
                 first_dof
             };
             if last_dof < first_dof {
-                return Err(b.error(d.line, "last dof is below first dof"));
+                return Err(b.error(code::INVALID_VALUE, d.line, "last dof is below first dof"));
             }
         }
         self.model.couplings.push(Coupling {
@@ -1001,6 +1272,7 @@ impl Parser {
         match self.open_coupling.take() {
             None => Ok(()),
             Some(c) => Err(ParseError::new(
+                code::INCOMPLETE,
                 c.line,
                 Some("COUPLING"),
                 "needs *KINEMATIC or *DISTRIBUTING",
@@ -1014,20 +1286,29 @@ impl Parser {
         let first = b
             .data
             .first()
-            .ok_or_else(|| b.error(b.line, "keyword needs data lines"))?;
+            .ok_or_else(|| b.error(code::BAD_DATA_LINE, b.line, "keyword needs data lines"))?;
         if first.fields.len() != 1 {
-            return Err(b.error(first.line, "the first line gives only the number of terms"));
+            return Err(b.error(
+                code::BAD_DATA_LINE,
+                first.line,
+                "the first line gives only the number of terms",
+            ));
         }
         // Not `int`: a count of 0 gets its own message.
         let text = first.fields[0].as_str();
         let n = text.parse::<usize>().map_err(|_| {
             b.error(
+                code::INVALID_VALUE,
                 first.line,
                 format!("number of terms must be a positive integer, found '{text}'"),
             )
         })?;
         if n == 0 {
-            return Err(b.error(first.line, "equation needs at least 1 term"));
+            return Err(b.error(
+                code::BAD_DATA_LINE,
+                first.line,
+                "equation needs at least 1 term",
+            ));
         }
         // Keep the empty fields: without them the next terms move to the wrong place.
         // The value check then refuses each empty field.
@@ -1037,6 +1318,7 @@ impl Parser {
             .collect();
         if fields.len() != 3 * n {
             return Err(b.error(
+                code::BAD_DATA_LINE,
                 first.line,
                 format!("equation needs {n} terms of node, dof, coefficient"),
             ));
@@ -1045,6 +1327,7 @@ impl Parser {
         for t in fields.chunks(3) {
             let node = t[0].1.parse::<u32>().map_err(|_| {
                 b.error(
+                    code::INVALID_VALUE,
                     t[0].0,
                     format!("node id must be a positive integer, found '{}'", t[0].1),
                 )
@@ -1056,12 +1339,14 @@ impl Parser {
                 .filter(|d| (1..=6).contains(d))
                 .ok_or_else(|| {
                     b.error(
+                        code::INVALID_VALUE,
                         t[1].0,
                         format!("degree of freedom must be 1 to 6, found '{}'", t[1].1),
                     )
                 })?;
             let coefficient = finite(t[2].1).ok_or_else(|| {
                 b.error(
+                    code::INVALID_VALUE,
                     t[2].0,
                     format!("coefficient must be a finite number, found '{}'", t[2].1),
                 )
@@ -1085,10 +1370,20 @@ impl Parser {
                 "PIN" => MpcKind::Pin,
                 "LINK" => MpcKind::Link,
                 "BEAM" => MpcKind::Beam,
-                t => return Err(b.error(d.line, format!("unsupported MPC type {t}"))),
+                t => {
+                    return Err(b.error(
+                        code::UNSUPPORTED_VALUE,
+                        d.line,
+                        format!("unsupported MPC type {t}"),
+                    ))
+                }
             };
             if d.fields.len() != 3 {
-                return Err(b.error(d.line, format!("{} needs 2 nodes", d.fields[0])));
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    d.line,
+                    format!("{} needs 2 nodes", d.fields[0]),
+                ));
             }
             let mut nodes = Vec::new();
             for k in 1..3 {
@@ -1103,31 +1398,53 @@ impl Parser {
     fn dload(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         if self.open_step.is_none() {
-            return Err(b.error(b.line, "keyword needs an open *STEP"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"));
         }
         let mut out = Vec::new();
         for d in &b.data {
             if d.fields.len() != 3 {
-                return Err(b.error(d.line, "line needs element, load type and magnitude"));
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    d.line,
+                    "line needs element, load type and magnitude",
+                ));
             }
             let ty = d.fields[1].as_str();
             let face = ty
                 .strip_prefix(['P', 'p'])
                 .and_then(|n| n.parse::<u8>().ok())
-                .ok_or_else(|| b.error(d.line, format!("unsupported load type {ty}")))?;
+                .ok_or_else(|| {
+                    b.error(
+                        code::UNSUPPORTED_VALUE,
+                        d.line,
+                        format!("unsupported load type {ty}"),
+                    )
+                })?;
             if !(1..=6).contains(&face) {
-                return Err(b.error(d.line, format!("face must be 1 to 6, found {face}")));
+                return Err(b.error(
+                    code::INVALID_VALUE,
+                    d.line,
+                    format!("face must be 1 to 6, found {face}"),
+                ));
             }
             let f = d.fields[0].as_str();
             let target = if let Ok(id) = f.parse::<u32>() {
                 if !self.element_ids.contains(&id) {
-                    return Err(b.error(d.line, format!("element {id} is not defined")));
+                    return Err(b.error(
+                        code::UNDEFINED,
+                        d.line,
+                        format!("element {id} is not defined"),
+                    ));
                 }
                 ElementTarget::Element(id)
             } else {
                 let name = f.to_uppercase();
                 if self.model.elset(&name).is_none() {
-                    return Err(b.error(d.line, format!("element set '{name}' is not defined")));
+                    return Err(b.error(
+                        code::UNDEFINED,
+                        d.line,
+                        format!("element set '{name}' is not defined"),
+                    ));
                 }
                 ElementTarget::Set(name)
             };
@@ -1146,20 +1463,32 @@ impl Parser {
     fn dsload(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         if self.open_step.is_none() {
-            return Err(b.error(b.line, "keyword needs an open *STEP"));
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"));
         }
         let mut out = Vec::new();
         for d in &b.data {
             if d.fields.len() != 3 {
-                return Err(b.error(d.line, "line needs surface, load type and magnitude"));
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    d.line,
+                    "line needs surface, load type and magnitude",
+                ));
             }
             let name = d.fields[0].as_str();
             if self.model.element_surface(name).is_none() {
-                return Err(b.error(d.line, format!("element surface '{name}' is not defined")));
+                return Err(b.error(
+                    code::UNDEFINED,
+                    d.line,
+                    format!("element surface '{name}' is not defined"),
+                ));
             }
             let ty = d.fields[1].as_str();
             if !ty.eq_ignore_ascii_case("P") {
-                return Err(b.error(d.line, format!("unsupported load type {ty}")));
+                return Err(b.error(
+                    code::UNSUPPORTED_VALUE,
+                    d.line,
+                    format!("unsupported load type {ty}"),
+                ));
             }
             out.push(Dsload {
                 surface: name.to_owned(),
@@ -1175,14 +1504,18 @@ impl Parser {
     fn end_step(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         if let Some(d) = b.data.first() {
-            return Err(b.error(d.line, "keyword takes no data lines"));
+            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         let step = self
             .open_step
             .take()
-            .ok_or_else(|| b.error(b.line, "no open *STEP"))?;
-        if step.static_procedure.is_none() {
-            return Err(b.error(self.step_line, "step has no procedure (*STATIC)"));
+            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "no open *STEP"))?;
+        if step.static_procedure.is_none() && !std::mem::take(&mut self.static_failed) {
+            return Err(b.error(
+                code::INCOMPLETE,
+                self.step_line,
+                "step has no procedure (*STATIC)",
+            ));
         }
         self.model.steps.push(step);
         Ok(())
@@ -1204,7 +1537,7 @@ mod tests {
     fn unsupported_keyword_names_line_and_keyword() {
         assert_eq!(
             err("*NODE\n1,0,0,0\n*PLASTIC\n"),
-            "line 3, *PLASTIC: unsupported keyword"
+            "line 3, *PLASTIC: unsupported keyword (INP002)"
         );
     }
 
@@ -1257,7 +1590,7 @@ mod tests {
     fn a_data_line_after_end_step_is_an_error() {
         assert_eq!(
             err("*STEP\n*STATIC\n*END STEP\n99,unsupported\n"),
-            "line 4, *END STEP: keyword takes no data lines"
+            "line 4, *END STEP: keyword takes no data lines (INP007)"
         );
     }
 
@@ -1265,12 +1598,12 @@ mod tests {
     fn a_zero_label_is_an_error() {
         assert_eq!(
             err("*NODE\n0,0,0,0\n"),
-            "line 2, *NODE: node id must be a positive integer, found '0'"
+            "line 2, *NODE: node id must be a positive integer, found '0' (INP006)"
         );
         let element = format!("{MESH}*ELEMENT, TYPE=C3D8\n0,1,2,3,4,5,6,7,8\n");
         assert_eq!(
             err(&element),
-            "line 11, *ELEMENT: element id must be a positive integer, found '0'"
+            "line 11, *ELEMENT: element id must be a positive integer, found '0' (INP006)"
         );
     }
 
@@ -1286,7 +1619,7 @@ mod tests {
         }
         assert_eq!(
             err(&format!("{prefix}1,1,2,3,99\n")),
-            "line 11, *ELEMENT: node 99 is not defined"
+            "line 11, *ELEMENT: node 99 is not defined (INP009)"
         );
     }
 
@@ -1295,16 +1628,22 @@ mod tests {
         let short = format!("{MESH}*ELEMENT, TYPE=C3D8\n1,1,2,3\n");
         assert!(err(&short).starts_with("line 11, *ELEMENT: C3D8 needs an id and 8 nodes"));
         let missing = format!("{MESH}*ELEMENT, TYPE=C3D8\n1,1,2,3,4,5,6,7,99\n");
-        assert_eq!(err(&missing), "line 11, *ELEMENT: node 99 is not defined");
+        assert_eq!(
+            err(&missing),
+            "line 11, *ELEMENT: node 99 is not defined (INP009)"
+        );
         let ty = format!("{MESH}*ELEMENT, TYPE=S4R\n");
-        assert_eq!(err(&ty), "line 10, *ELEMENT: unsupported element type S4R");
+        assert_eq!(
+            err(&ty),
+            "line 10, *ELEMENT: unsupported element type S4R (INP005)"
+        );
     }
 
     #[test]
     fn bad_number_names_line() {
         assert_eq!(
             err("*NODE\n1,0,x,0\n"),
-            "line 2, *NODE: coordinate must be a finite number, found 'x'"
+            "line 2, *NODE: coordinate must be a finite number, found 'x' (INP006)"
         );
     }
 
@@ -1312,7 +1651,7 @@ mod tests {
     fn duplicate_node_fails() {
         assert_eq!(
             err("*NODE\n1,0,0,0\n1,1,0,0\n"),
-            "line 3, *NODE: node 1 is defined twice"
+            "line 3, *NODE: node 1 is defined twice (INP008)"
         );
     }
 
@@ -1332,7 +1671,7 @@ mod tests {
     fn unknown_parameter_fails() {
         assert_eq!(
             err("*NODE, FOO=1\n"),
-            "line 1, *NODE: unsupported parameter FOO"
+            "line 1, *NODE: unsupported parameter FOO (INP003)"
         );
     }
 
@@ -1340,26 +1679,32 @@ mod tests {
     fn elastic_outside_material_fails() {
         assert_eq!(
             err("*ELASTIC\n1, 0.3\n"),
-            "line 1, *ELASTIC: keyword needs an open *MATERIAL"
+            "line 1, *ELASTIC: keyword needs an open *MATERIAL (INP010)"
         );
         assert!(err("*MATERIAL, NAME=A\n*NODE\n*ELASTIC\n1,0.3\n").contains("line 3, *ELASTIC"));
     }
 
     #[test]
     fn step_rules() {
-        assert_eq!(err("*STEP\n"), "line 1, *STEP: step has no *END STEP");
+        assert_eq!(
+            err("*STEP\n"),
+            "line 1, *STEP: step has no *END STEP (INP011)"
+        );
         assert_eq!(
             err("*STEP\n*END STEP\n"),
-            "line 1, *END STEP: step has no procedure (*STATIC)"
+            "line 1, *END STEP: step has no procedure (*STATIC) (INP011)"
         );
         assert_eq!(
             err("*STATIC\n"),
-            "line 1, *STATIC: keyword needs an open *STEP"
+            "line 1, *STATIC: keyword needs an open *STEP (INP010)"
         );
-        assert_eq!(err("*STEP\n*STEP\n"), "line 2, *STEP: step inside a step");
+        assert_eq!(
+            err("*STEP\n*STEP\n"),
+            "line 2, *STEP: step inside a step (INP010)"
+        );
         assert_eq!(
             err("*CLOAD\n"),
-            "line 1, *CLOAD: keyword needs an open *STEP"
+            "line 1, *CLOAD: keyword needs an open *STEP (INP010)"
         );
     }
 

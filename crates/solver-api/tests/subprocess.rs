@@ -540,7 +540,7 @@ fn a_pvd_that_is_not_a_collection_is_rejected() {
             .to_string(),
     ] {
         let e = run("pvd-bad", &with_pvd(&pvd)).unwrap_err();
-        assert!(e.contains("results.pvd is not a PVD collection"), "{pvd}: {e}");
+        assert!(e.contains("results.pvd: not a PVD collection"), "{pvd}: {e}");
     }
 }
 
@@ -678,7 +678,7 @@ fn a_large_summary_or_pvd_file_is_refused() {
             Ok(_) => panic!("a {name} of 32 MiB passed"),
             Err(e) => e,
         };
-        assert!(e.contains(&format!("{name} is larger than")), "{e}");
+        assert!(e.starts_with(&format!("{name}: larger than")), "{e}");
     }
 }
 
@@ -728,7 +728,10 @@ impl Solver for Fake {
         false
     }
     fn solve(&self, _: &fh_inp::Model, _: &Path) -> Result<RunReport, fh_solver_api::ApiError> {
-        Err(fh_solver_api::ApiError("no".into()))
+        Err(fh_solver_api::ApiError::new(
+            fh_solver_api::code::SOLVER_FAILED,
+            "no",
+        ))
     }
 }
 

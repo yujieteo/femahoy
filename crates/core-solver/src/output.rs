@@ -101,8 +101,9 @@ fn base_grid(model: &Model) -> Result<Grid, ApiError> {
         ..Grid::default()
     };
     for el in &model.elements {
-        let kind = Kind::parse(&el.element_type)
-            .ok_or_else(|| ApiError(format!("element {}: unsupported type", el.id)))?;
+        let kind = Kind::parse(&el.element_type).ok_or_else(|| {
+            ApiError::solver_output(format!("element {}: unsupported type", el.id))
+        })?;
         grid.cell_types.push(match kind {
             Kind::C3D10 => VTK_QUADRATIC_TETRA,
             _ => VTK_HEXAHEDRON,
@@ -114,7 +115,7 @@ fn base_grid(model: &Model) -> Result<Grid, ApiError> {
                 index
                     .get(n)
                     .copied()
-                    .ok_or_else(|| ApiError(format!("node {n} not found")))
+                    .ok_or_else(|| ApiError::solver_output(format!("node {n} not found")))
             })
             .collect::<Result<_, _>>()?;
         grid.cells.push(cell);
@@ -123,7 +124,7 @@ fn base_grid(model: &Model) -> Result<Grid, ApiError> {
         v.iter()
             .map(|&i| {
                 i32::try_from(i).map_err(|_| {
-                    ApiError(format!(
+                    ApiError::solver_output(format!(
                         "{what} {i} is above {}: the 32-bit {what} array of the VTU file cannot hold it",
                         i32::MAX
                     ))
@@ -191,7 +192,7 @@ fn primary(f: Formats) -> &'static str {
 }
 
 fn io(what: &str, e: std::io::Error) -> ApiError {
-    ApiError(format!("{what}: {e}"))
+    ApiError::solver_output(format!("{what}: {e}"))
 }
 
 /// Write a file under a temporary name and rename it. A stop never leaves half a file.
@@ -254,7 +255,7 @@ type History = (Vec<PvdEntry>, Vec<IncLine>, Option<StepInfo>);
 
 /// The inverse of [`history_text`].
 fn parse_history(text: &str) -> Result<History, ApiError> {
-    let bad = || ApiError(format!("{RESTART_FILE}: bad history line"));
+    let bad = || ApiError::solver_output(format!("{RESTART_FILE}: bad history line"));
     let (mut entries, mut incs, mut part) = (Vec::new(), Vec::new(), None);
     for l in text.lines() {
         if let Some(r) = l.strip_prefix("entry ") {
@@ -358,7 +359,7 @@ fn check_kept_results(dir: &Path, entries: &[PvdEntry], f: Formats) -> Result<()
                 }
             };
             if let Some(why) = problem {
-                return Err(ApiError(format!(
+                return Err(ApiError::solver_output(format!(
                     "restart: the result file {file} of a kept increment is missing or damaged ({why}). Run again without restart"
                 )));
             }
@@ -435,14 +436,15 @@ impl Writer<'_> {
         if self.formats.vtu {
             let file = format!("{stem}.vtu");
             written = atomic(self.run_dir, &file, |w| {
-                write_vtu_to(&self.grid, w).map_err(|e| ApiError(e.to_string()))
+                write_vtu_to(&self.grid, w).map_err(|e| ApiError::solver_output(e.to_string()))
             });
         }
         if written.is_ok() && self.formats.vtk {
             let file = format!("{stem}.vtk");
             let title = format!("fh step {} time {}", step + 1, result.time);
             written = atomic(self.run_dir, &file, |w| {
-                write_vtk_to(&self.grid, &title, w).map_err(|e| ApiError(e.to_string()))
+                write_vtk_to(&self.grid, &title, w)
+                    .map_err(|e| ApiError::solver_output(e.to_string()))
             });
         }
         // The base grid stays for the next increment.
@@ -651,7 +653,7 @@ fn summary_toon(
         next: Vec::new(),
     };
     run.render(&toon::Opts::default())
-        .map_err(|e| ApiError(e.to_string()))
+        .map_err(|e| ApiError::solver_output(e.to_string()))
 }
 
 fn finish(
@@ -710,9 +712,9 @@ pub fn run_model(
     let (n_point, n_cell) = (grid.point_data.len(), grid.cell_data.len());
     let (mut entries, mut incs, mut resume) = (Vec::new(), Vec::new(), None);
     if restart {
-        let r = read_latest(run_dir, hash).map_err(ApiError)?;
+        let r = read_latest(run_dir, hash).map_err(ApiError::solver_output)?;
         if r.step >= model.steps.len() {
-            return Err(ApiError(format!(
+            return Err(ApiError::solver_output(format!(
                 "{RESTART_FILE}: more steps than the input file has"
             )));
         }
@@ -772,7 +774,7 @@ pub fn run_model(
             if e.to_string() == CANCELLED {
                 return Err(ApiError::cancelled());
             }
-            return Err(ApiError(e.to_string()));
+            return Err(ApiError::solver_output(e.to_string()));
         }
     };
     let wall = clock.elapsed().as_secs_f64();

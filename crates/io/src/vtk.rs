@@ -6,10 +6,11 @@
 
 use std::io::Write;
 
+use crate::code;
 use crate::vtu::{check_cells, Field, Grid, Values, VtuError};
 
 fn bad<T>(msg: String) -> Result<T, VtuError> {
-    Err(VtuError::new(msg))
+    Err(VtuError::new(code::VTU_INVALID_GRID, msg))
 }
 
 /// Write `f64` so that it reads back exactly. Very small and very large values use an exponent.
@@ -103,7 +104,7 @@ fn field(w: &mut impl Write, f: &Field) -> std::io::Result<()> {
 pub fn write_vtk_to<W: Write>(grid: &Grid, title: &str, w: &mut W) -> Result<(), VtuError> {
     check(grid)?;
     let title: String = title.chars().filter(|c| *c != '\n').take(255).collect();
-    let io = |e: std::io::Error| VtuError::new(e.to_string());
+    let io = |e: std::io::Error| VtuError::new(code::VTU_WRITE_FAILED, e.to_string());
     (|| -> std::io::Result<()> {
         write!(
             w,

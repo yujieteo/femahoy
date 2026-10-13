@@ -160,8 +160,9 @@ fn spec_problems(case: &Case) -> Vec<String> {
         let name = mesh.display();
         let model = match std::fs::read_to_string(mesh)
             .map_err(|e| e.to_string())
-            .and_then(|t| fh_inp::parse(&t).map_err(|e| e.to_string()))
-        {
+            .and_then(|t| {
+                fh_inp::parse_file(&name.to_string(), &t).map_err(|e| fh_inp::join_errors(&e))
+            }) {
             Ok(m) => m,
             Err(e) => {
                 out.push(format!("mesh {name}: {e}"));

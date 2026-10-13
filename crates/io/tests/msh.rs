@@ -48,26 +48,29 @@ fn errors_name_the_line() {
     let old = HEX.replace("4.1 0 8", "2.2 0 8");
     assert_eq!(
         err(&old),
-        "line 2: unsupported MSH version 2.2, expected 4.1"
+        "line 2: unsupported MSH version 2.2, expected 4.1 (MSH002)"
     );
     let bin = HEX.replace("4.1 0 8", "4.1 1 8");
     assert_eq!(
         err(&bin),
-        "line 2: binary MSH is not supported, write ASCII"
+        "line 2: binary MSH is not supported, write ASCII (MSH002)"
     );
     let tet4 = TET10
         .replace("3 1 11 1", "3 1 4 1")
         .replace(" 5 6 7 8 9 10\n$EndElements", "\n$EndElements");
     assert_eq!(
         err(&tet4),
-        "line 42: element type 4 is not accepted, use 5 or 11"
+        "line 42: element type 4 is not accepted, use 5 or 11 (MSH002)"
     );
     let bad_node = HEX.replace("3 1 2 3 4 5 6 7 8", "3 1 2 3 4 5 6 7 99");
-    assert_eq!(err(&bad_node), "line 45: element 3 uses unknown node 99");
+    assert_eq!(
+        err(&bad_node),
+        "line 45: element 3 uses unknown node 99 (MSH004)"
+    );
     let short = HEX.replace("3 1 2 3 4 5 6 7 8", "3 1 2 3 4 5 6 7");
     assert_eq!(
         err(&short),
-        "line 45: element type 5 needs 8 nodes, found 7"
+        "line 45: element type 5 needs 8 nodes, found 7 (MSH001)"
     );
     let junk = HEX.replace("0 0 0\n2 1 0 3", "0 0 x\n2 1 0 3");
     assert!(err(&junk).starts_with("line 20: "));

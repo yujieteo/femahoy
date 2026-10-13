@@ -25,7 +25,8 @@ fn run(
     cancel: Arc<AtomicBool>,
 ) -> Result<(), String> {
     let text = std::fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;
-    let model = fh_inp::parse(&text).map_err(|e| e.to_string())?;
+    let model = fh_inp::parse_file(&inp.display().to_string(), &text)
+        .map_err(|e| fh_inp::join_errors(&e))?;
     if let Some(n) = std::env::var("FH_THREADS")
         .ok()
         .and_then(|v| v.parse().ok())

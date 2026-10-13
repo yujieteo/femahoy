@@ -1,6 +1,7 @@
 //! gmsh `.msh` import, VTU, PVD and legacy VTK write and read, STEP unit scan and mesh checks.
 
 mod check;
+pub mod code;
 mod msh;
 mod step;
 pub mod vtk;

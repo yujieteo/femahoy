@@ -42,7 +42,8 @@ fn step(file: &Path, text: &str, case: Option<&Case>) -> ExitCode {
 }
 
 fn msh(file: &Path, text: &str, units: Option<Units>) -> Result<ExitCode, String> {
-    let model = fh_io::read_msh(text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let model =
+        fh_io::read_msh(text).map_err(|e| e.with_file(file.display().to_string()).to_string())?;
     let s = fh_io::mesh_stats(&model)?;
     if s.types.is_empty() {
         return Ok(refuse(
