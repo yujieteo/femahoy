@@ -18,6 +18,7 @@ pub enum Delim {
 }
 
 /// Output options: `--rows`, `--precision` and `--delim`.
+/// Decision D-03, see DESIGN.md: `precision` defaults to 4 significant figures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Opts {
     pub rows: usize,

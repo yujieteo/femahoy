@@ -6,6 +6,7 @@
 //! A later `toon-format` release may change the output. The exact version pin
 //! and the snapshot tests guard against this. TOON is for agent reading only:
 //! VTU files hold the full-precision data (rule R3).
+//! Decision D-03, see DESIGN.md.
 //!
 //! The schema is experimental until a command uses it.
 
