@@ -205,7 +205,7 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
             grid.cells.len()
         };
         for f in list {
-            if f.components == 0 || f.values.len() != n * f.components {
+            if f.components == 0 || n.checked_mul(f.components) != Some(f.values.len()) {
                 return err(format!("{kind} field {} has the wrong length", f.name));
             }
         }
@@ -447,7 +447,7 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     }
     let raw = block(data, p)?;
     let flat = floats(&raw);
-    if flat.len() != 3 * n_points {
+    if n_points.checked_mul(3) != Some(flat.len()) {
         return err("point count does not match the Piece tag");
     }
     grid.points = flat.as_chunks::<3>().0.to_vec();

@@ -74,6 +74,31 @@ fn a_payload_cut_short_before_the_footer_is_an_error() {
     assert!(read_vtu(&bytes[..end]).is_err(), "no closing tags");
 }
 
+/// The bytes of `sample()` as VTU, with `from` replaced by `to` once in the XML part.
+fn with_xml(from: &str, to: &str) -> Vec<u8> {
+    let bytes = write_vtu(&sample()).unwrap();
+    let mark = b"<AppendedData";
+    let at = bytes.windows(mark.len()).position(|w| w == mark).unwrap();
+    let xml = String::from_utf8(bytes[..at].to_vec()).unwrap();
+    assert!(xml.contains(from), "{from}");
+    [xml.replacen(from, to, 1).as_bytes(), &bytes[at..]].concat()
+}
+
+#[test]
+fn a_huge_offset_or_count_is_an_error_not_a_panic() {
+    let max = usize::MAX.to_string();
+    for (from, to) in [
+        ("offset=\"0\"", format!("offset=\"{max}\"")),
+        ("NumberOfPoints=\"8\"", format!("NumberOfPoints=\"{max}\"")),
+        ("NumberOfCells=\"1\"", format!("NumberOfCells=\"{max}\"")),
+    ] {
+        assert!(read_vtu(&with_xml(from, &to)).is_err(), "{to}");
+    }
+    let mut g = sample();
+    g.point_data.push(Field::f64("big", usize::MAX, vec![]));
+    assert!(write_vtu(&g).is_err());
+}
+
 #[test]
 fn field_names_with_special_characters_survive() {
     let mut g = sample();

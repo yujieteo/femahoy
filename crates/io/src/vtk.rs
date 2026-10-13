@@ -34,7 +34,7 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
                 Values::F64(v) => v.len(),
                 Values::I32(v) => v.len(),
             };
-            if f.components == 0 || len != n * f.components {
+            if f.components == 0 || n.checked_mul(f.components) != Some(len) {
                 return bad(format!(
                     "{what} field {} has {len} values, expected {n} x {}",
                     f.name, f.components

@@ -97,3 +97,11 @@ fn a_field_name_with_a_space_or_a_percent_sign_is_encoded() {
     assert!(t.contains("SCALARS NSET_FIXED%20FACE int 1\n"), "{t}");
     assert!(t.contains("SCALARS 100%25%20load%09tab double 1\n"), "{t}");
 }
+
+#[test]
+fn a_huge_component_count_is_an_error_not_a_panic() {
+    let mut g = cube();
+    g.point_data.push(Field::f64("big", usize::MAX, vec![]));
+    let mut out = Vec::new();
+    assert!(write_vtk_to(&g, "t", &mut out).is_err());
+}
