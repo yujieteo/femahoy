@@ -26,6 +26,29 @@ pub fn fixture_files(root: &Path) -> Vec<PathBuf> {
     files
 }
 
+/// True for a file inside `validation/cases`. The solver needs a section there.
+fn is_case_mesh(path: &Path) -> bool {
+    let names: Vec<_> = path.components().map(|c| c.as_os_str()).collect();
+    names
+        .windows(2)
+        .any(|w| w[0] == "validation" && w[1] == "cases")
+}
+
+/// The first element without a `*SOLID SECTION`, as an error text.
+fn section_problem(model: &fh_inp::Model) -> Option<String> {
+    let covered: std::collections::HashSet<u32> = model
+        .sections
+        .iter()
+        .filter_map(|s| model.elset(&s.elset))
+        .flat_map(|set| set.ids.iter().copied())
+        .collect();
+    model
+        .elements
+        .iter()
+        .find(|e| !covered.contains(&e.id))
+        .map(|e| format!("element {} has no *SOLID SECTION", e.id))
+}
+
 pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let mut root = PathBuf::from(".");
     let mut files: Vec<PathBuf> = Vec::new();
@@ -48,7 +71,11 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         let shown = file.display();
         let result = std::fs::read_to_string(file)
             .map_err(|e| e.to_string())
-            .and_then(|text| fh_inp::parse(&text).map_err(|e| e.to_string()));
+            .and_then(|text| fh_inp::parse(&text).map_err(|e| e.to_string()))
+            .and_then(|m| match is_case_mesh(file) {
+                true => section_problem(&m).map_or(Ok(m), Err),
+                false => Ok(m),
+            });
         match result {
             Ok(m) => println!(
                 "ok\t{shown}\t{} nodes, {} elements, {} steps",

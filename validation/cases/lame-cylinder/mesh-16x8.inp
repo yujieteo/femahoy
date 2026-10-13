@@ -621,6 +621,7 @@
 *material, name=steel
 *elastic
 210000.0, 0.3
+*solid section, elset=ring, material=steel
 *step, name=pressure
 *static
 1.0, 1.0, 1e-4, 1.0

@@ -2,9 +2,23 @@ use std::process::{Command, Output};
 
 const PLANNED: [&str; 6] = ["results", "plot", "serve", "init", "team", "skills"];
 
+fn solver_path() -> std::path::PathBuf {
+    let fh = std::path::Path::new(env!("CARGO_BIN_EXE_fh"));
+    fh.with_file_name(format!("fh-solve{}", std::env::consts::EXE_SUFFIX))
+}
+
 fn fh(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_fh"))
         .args(args)
+        .env("FH_SOLVE", solver_path())
+        .output()
+        .expect("run fh")
+}
+
+fn fh_with_solver(args: &[&str], solver: &str) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(args)
+        .env("FH_SOLVE", solver)
         .output()
         .expect("run fh")
 }
@@ -99,21 +113,43 @@ fn check_with_a_missing_file_exits_1() {
 }
 
 #[test]
-fn validate_reports_no_solver_for_every_case() {
+fn validate_runs_every_case_through_the_solver() {
     let out = fh(&["validate", "--root", &root()]);
-    assert_eq!(out.status.code(), Some(0));
     let stdout = text(out.stdout);
-    assert!(stdout.starts_with("no solver"), "{stdout}");
+    assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in ["cantilever", "lame-cylinder", "patch-test"] {
         assert!(
             stdout.contains(&format!("{id}\t")),
             "{id} missing in {stdout}"
         );
     }
-    assert!(
-        stdout.contains("3 cases: 0 pass, 0 fail, 3 no solver"),
-        "{stdout}"
-    );
+    assert!(stdout.contains("3 cases: 3 pass, 0 fail"), "{stdout}");
+    assert!(!stdout.contains("no solver"), "{stdout}");
+    // One row per quantity: computed, reference, tolerance, margin.
+    assert!(stdout.contains("tip_deflection_z"), "{stdout}");
+    assert!(stdout.contains("margin"), "{stdout}");
+}
+
+#[test]
+fn validate_exits_1_when_a_reference_is_wrong() {
+    let dir = copy_root("badref");
+    let path = dir.join("validation/cases/patch-test/case.toml");
+    let text_in = std::fs::read_to_string(&path).unwrap();
+    let broken = text_in.replacen("u9_x = 0.000325", "u9_x = 0.5", 1);
+    assert_ne!(broken, text_in);
+    std::fs::write(&path, broken).unwrap();
+    let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(out.stdout));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn validate_exits_1_when_the_solver_is_missing() {
+    let out = fh_with_solver(&["validate", "--root", &root()], "/nonexistent/fh-solve");
+    assert_eq!(out.status.code(), Some(1));
+    let stdout = text(out.stdout);
+    assert!(stdout.contains("cannot run"), "{stdout}");
+    assert!(!stdout.contains("0 fail, 0 cannot"), "{stdout}");
 }
 
 #[test]
@@ -133,40 +169,41 @@ fn validate_rejects_an_unknown_option_with_exit_2() {
 }
 
 #[test]
-fn convergence_on_a_class_l_case_reports_no_solver() {
+fn convergence_on_a_class_l_case_runs_the_solver() {
     let case = format!("{}/validation/cases/cantilever", root());
     let out = fh(&["validate", "--convergence", &case]);
-    assert_eq!(out.status.code(), Some(0));
     let stdout = text(out.stdout);
-    assert!(stdout.starts_with("no solver"), "{stdout}");
-    assert!(
-        stdout.contains("cantilever\tL\t4 meshes\tno solver"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("1 cases: 0 pass, 0 fail, 1 no solver"),
-        "{stdout}"
-    );
+    assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
+    assert!(stdout.contains("cantilever\tL\t4 meshes\tpass"), "{stdout}");
+    assert!(stdout.contains("order="), "{stdout}");
+    assert!(stdout.contains("1 cases: 1 pass, 0 fail"), "{stdout}");
 }
 
 #[test]
 fn convergence_on_the_case_folder_skips_class_n() {
     let dir = format!("{}/validation/cases", root());
     let out = fh(&["validate", "--convergence", &dir]);
-    assert_eq!(out.status.code(), Some(0));
     let stdout = text(out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
     assert!(
-        stdout.contains("lame-cylinder\tL\t4 meshes\tno solver"),
+        stdout.contains("lame-cylinder\tL\t4 meshes\tpass"),
         "{stdout}"
     );
     assert!(
         stdout.contains("patch-test\tN\tskipped, one mesh"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("3 cases: 0 pass, 0 fail, 2 no solver"),
-        "{stdout}"
+    assert!(stdout.contains("3 cases: 2 pass, 0 fail"), "{stdout}");
+}
+
+#[test]
+fn convergence_exits_1_when_the_solver_is_missing() {
+    let case = format!("{}/validation/cases/cantilever", root());
+    let out = fh_with_solver(
+        &["validate", "--convergence", &case],
+        "/nonexistent/fh-solve",
     );
+    assert_eq!(out.status.code(), Some(1));
 }
 
 #[test]
@@ -252,4 +289,26 @@ fn validate_checks_each_quantity_against_the_meshes() {
 
 fn text_of(bytes: Vec<u8>) -> String {
     String::from_utf8(bytes).unwrap()
+}
+
+#[test]
+fn check_fails_when_a_case_mesh_has_no_section() {
+    let dir = std::env::temp_dir().join(format!("fh-cli-nosec-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let case = dir.join("validation/cases/x");
+    std::fs::create_dir_all(&case).unwrap();
+    let mesh = "*node\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n*element, type=C3D8\n1,1,2,3,4,5,6,7,8\n";
+    std::fs::write(case.join("mesh.inp"), mesh).unwrap();
+    let out = fh(&["check", "--root", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = text(out.stderr);
+    assert!(err.contains("no *SOLID SECTION"), "{err}");
+    // The same file outside a case folder is only parsed.
+    let loose = dir.join("loose.inp");
+    std::fs::write(&loose, mesh).unwrap();
+    assert_eq!(
+        fh(&["check", loose.to_str().unwrap()]).status.code(),
+        Some(0)
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }

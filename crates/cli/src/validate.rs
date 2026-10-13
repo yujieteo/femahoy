@@ -4,10 +4,14 @@
 //! case folder inside PATH. A class N case has one mesh, so it is skipped in a folder of cases
 //! and it is an error when named directly.
 //!
-//! M1 has no solver, so each case reports `no solver` and the exit code is 0.
-//! A bad fixture, or a case that fails, gives exit code 1.
+//! Each case runs through `fh-solve` (`$FH_SOLVE`, or the binary next to `fh`). A table shows
+//! every quantity with its computed value, reference, tolerance and margin.
+//! A bad fixture, a case that fails, or a case that cannot run gives exit code 1.
 
-use fh_validation::{load_all, run_case, run_convergence, Case, Class, Field, Outcome};
+use crate::measure::Subprocess;
+use fh_validation::{
+    load_all, run_case_with, run_convergence_with, Case, Class, Field, Outcome, Report,
+};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -48,38 +52,57 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     if bad {
         return Ok(ExitCode::from(1));
     }
-    let (mut pass, mut fail, mut no_solver) = (0, 0, 0);
+    let solver = Subprocess::locate();
+    let reports: Vec<(&Case, String, Report)> = cases
+        .iter()
+        .map(|c| (c, String::new(), run_case_with(c, &solver)))
+        .collect();
+    Ok(print_reports(&reports, reports.len()))
+}
+
+/// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure.
+fn print_reports(reports: &[(&Case, String, Report)], total: usize) -> ExitCode {
+    let (mut pass, mut fail) = (0, 0);
     let mut lines = String::new();
-    for case in &cases {
-        let status = match run_case(case) {
+    let mut tables = String::new();
+    for (case, prefix, report) in reports {
+        let status = match &report.outcome {
             Outcome::Pass => {
                 pass += 1;
                 "pass".to_owned()
             }
             Outcome::Fail(why) => {
                 fail += 1;
-                format!("fail: {why}")
+                if why.contains("cannot run") {
+                    format!("cannot run: {why}")
+                } else {
+                    format!("fail: {why}")
+                }
             }
             Outcome::NoSolver => {
-                no_solver += 1;
-                "no solver".to_owned()
+                fail += 1;
+                "cannot run: no solver".to_owned()
             }
         };
-        lines.push_str(&format!("{}\t{}\t{status}\n", case.id, case.class.letter()));
+        lines.push_str(&format!(
+            "{}\t{}\t{prefix}{status}\n",
+            case.id,
+            case.class.letter()
+        ));
+        for r in &report.rows {
+            tables.push_str(&format!(
+                "  {}\t{}\tcomputed={:.10e}\treference={:.10e}\ttolerance={:.3e}\tmargin={:.3e}\t{}\n",
+                case.id, r.name, r.computed, r.reference, r.tolerance, r.margin, r.note
+            ));
+        }
     }
-    if pass + fail == 0 {
-        println!("no solver");
-    }
-    print!("{lines}");
-    println!(
-        "{} cases: {pass} pass, {fail} fail, {no_solver} no solver",
-        cases.len()
-    );
-    Ok(if fail == 0 {
+    print!("{lines}{tables}");
+    println!("{total} cases: {pass} pass, {fail} fail");
+    if fail == 0 {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
-    })
+    }
 }
 
 /// `--convergence PATH`: PATH is a case folder, or a folder of case folders.
@@ -98,44 +121,24 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
             return Ok(ExitCode::from(1));
         }
     };
-    let (mut pass, mut fail, mut no_solver) = (0, 0, 0);
-    let mut lines = String::new();
+    let solver = Subprocess::locate();
+    let mut reports: Vec<(&Case, String, Report)> = Vec::new();
+    let mut skipped = Vec::new();
     for case in &cases {
-        let status = if matches!(case.class, Class::N { .. }) && !single {
-            "skipped, one mesh".to_owned()
+        if matches!(case.class, Class::N { .. }) && !single {
+            skipped.push(case);
         } else {
-            let result = match run_convergence(case) {
-                Outcome::Pass => {
-                    pass += 1;
-                    "pass".to_owned()
-                }
-                Outcome::Fail(why) => {
-                    fail += 1;
-                    eprintln!("fh validate: {why}");
-                    format!("fail: {why}")
-                }
-                Outcome::NoSolver => {
-                    no_solver += 1;
-                    "no solver".to_owned()
-                }
-            };
-            format!("{} meshes\t{result}", case.meshes.len())
-        };
-        lines.push_str(&format!("{}\t{}\t{status}\n", case.id, case.class.letter()));
+            let report = run_convergence_with(case, &solver);
+            if let Outcome::Fail(why) = &report.outcome {
+                eprintln!("fh validate: {why}");
+            }
+            reports.push((case, format!("{} meshes\t", case.meshes.len()), report));
+        }
     }
-    if pass + fail == 0 && no_solver > 0 {
-        println!("no solver");
+    for case in &skipped {
+        println!("{}\t{}\tskipped, one mesh", case.id, case.class.letter());
     }
-    print!("{lines}");
-    println!(
-        "{} cases: {pass} pass, {fail} fail, {no_solver} no solver",
-        cases.len()
-    );
-    Ok(if fail == 0 {
-        ExitCode::SUCCESS
-    } else {
-        ExitCode::from(1)
-    })
+    Ok(print_reports(&reports, reports.len() + skipped.len()))
 }
 
 /// The problems between the quantities of a case and its mesh files: a mesh that does not

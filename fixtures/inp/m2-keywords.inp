@@ -1,0 +1,202 @@
+** femahoy M2 keyword fixture: every keyword of the linear static subset in one model.
+** A bar of 3 unit cubes along x: C3D8I (x 0..1), C3D8 (x 1..2) and 6 C3D10 (x 2..3).
+** The end x = 3 is clamped through a kinematic coupling. Step 1 pulls the end x = 0 with
+** -10 through a distributing coupling. Step 2 removes that load and pulls with a pressure
+** of -10 on the same face. Poisson's ratio is 0, so the exact solution is uniform tension
+** sxx = 10, u_x = -10 (3 - x) / E per segment, u_y = u_z = 0, and every constraint holds.
+** E = 1000 for C3D8I and C3D10, 2000 for C3D8: u_x(0) = -0.025, u_x(1) = -0.015, u_x(2) = -0.01.
+*NODE
+1, 0, 0, 0
+2, 0, 1, 0
+3, 0, 1, 1
+4, 0, 0, 1
+5, 1, 0, 0
+6, 1, 1, 0
+7, 1, 1, 1
+8, 1, 0, 1
+9, 2, 0, 0
+10, 2, 1, 0
+11, 2, 1, 1
+12, 2, 0, 1
+13, 2, 0, 0
+14, 2, 1, 0
+15, 2, 1, 1
+16, 2, 0, 1
+17, 3, 0, 0
+18, 3, 1, 0
+19, 3, 1, 1
+20, 3, 0, 1
+21, 2.5, 0, 0
+22, 3, 0.5, 0
+23, 2.5, 0.5, 0
+24, 2.5, 0.5, 0.5
+25, 3, 0.5, 0.5
+26, 3, 1, 0.5
+27, 2.5, 0, 0.5
+28, 3, 0, 0.5
+29, 3, 0.5, 1
+30, 2.5, 1, 0
+31, 2, 0.5, 0
+32, 2.5, 1, 0.5
+33, 2, 1, 0.5
+34, 2, 0.5, 0.5
+35, 2.5, 1, 1
+36, 2, 0, 0.5
+37, 2.5, 0, 1
+38, 2.5, 0.5, 1
+39, 2, 0.5, 1
+*NODE
+100, 3.5, 0.5, 0.5
+101, -0.5, 0.5, 0.5
+*ELEMENT, TYPE=C3D8I, ELSET=EA
+1, 1, 5, 6, 2, 4, 8, 7, 3
+*ELEMENT, TYPE=C3D8, ELSET=EB
+2, 5, 9, 10, 6, 8, 12, 11, 7
+*ELEMENT, TYPE=C3D10, ELSET=EC_LIST
+3, 13, 17, 18, 19, 21, 22, 23, 24,
+  25, 26
+4, 13, 20, 17, 19, 27, 28, 21, 24,
+  29, 25
+5, 13, 18, 14, 19, 23, 30, 31, 24,
+  26, 32
+6, 13, 14, 15, 19, 31, 33, 34, 24,
+  32, 35
+7, 13, 16, 20, 19, 36, 37, 27, 24,
+  38, 29
+8, 13, 15, 16, 19, 34, 39, 36, 24,
+  35, 38
+*ELSET, ELSET=EC, GENERATE
+3, 8, 1
+*NSET, NSET=START, GENERATE
+1, 4, 1
+*NSET, NSET=END
+17, 18, 19, 20, 22, 25, 26, 28, 29
+*MATERIAL, NAME=SOFT
+*ELASTIC
+1000., 0.
+*MATERIAL, NAME=STIFF
+*ELASTIC
+2000., 0.
+*SOLID SECTION, ELSET=EA, MATERIAL=SOFT
+*SOLID SECTION, ELSET=EB, MATERIAL=STIFF
+*SOLID SECTION, ELSET=EC, MATERIAL=SOFT
+** The corners of the tets at x = 2 follow the corners of the C3D8 element.
+*MPC
+TIE, 9, 13
+TIE, 10, 14
+PIN, 11, 15
+PIN, 12, 16
+** The midside nodes of the tets at x = 2 follow the bilinear face of the C3D8 element.
+*EQUATION
+3
+31, 1, 1.
+9, 1, -0.5
+10, 1, -0.5
+*EQUATION
+3
+31, 2, 1.
+9, 2, -0.5
+10, 2, -0.5
+*EQUATION
+3
+31, 3, 1.
+9, 3, -0.5
+10, 3, -0.5
+*EQUATION
+3
+33, 1, 1.
+10, 1, -0.5
+11, 1, -0.5
+*EQUATION
+3
+33, 2, 1.
+10, 2, -0.5
+11, 2, -0.5
+*EQUATION
+3
+33, 3, 1.
+10, 3, -0.5
+11, 3, -0.5
+*EQUATION
+5
+34, 1, 1.
+9, 1, -0.25
+10, 1, -0.25
+11, 1, -0.25
+12, 1, -0.25
+*EQUATION
+5
+34, 2, 1.
+9, 2, -0.25
+10, 2, -0.25
+11, 2, -0.25
+12, 2, -0.25
+*EQUATION
+5
+34, 3, 1.
+9, 3, -0.25
+10, 3, -0.25
+11, 3, -0.25
+12, 3, -0.25
+*EQUATION
+3
+36, 1, 1.
+9, 1, -0.5
+12, 1, -0.5
+*EQUATION
+3
+36, 2, 1.
+9, 2, -0.5
+12, 2, -0.5
+*EQUATION
+3
+36, 3, 1.
+9, 3, -0.5
+12, 3, -0.5
+*EQUATION
+3
+39, 1, 1.
+11, 1, -0.5
+12, 1, -0.5
+*EQUATION
+3
+39, 2, 1.
+11, 2, -0.5
+12, 2, -0.5
+*EQUATION
+3
+39, 3, 1.
+11, 3, -0.5
+12, 3, -0.5
+** Rigid links that the uniform tension does not load: nodes at one x move together.
+*MPC
+BEAM, 5, 6
+BEAM, 5, 8
+LINK, 9, 11
+*SURFACE, TYPE=NODE, NAME=START_FACE
+START
+*SURFACE, TYPE=NODE, NAME=END_FACE
+END
+*COUPLING, CONSTRAINT NAME=CLAMP, REF NODE=100, SURFACE=END_FACE
+*KINEMATIC
+*COUPLING, CONSTRAINT NAME=PULL, REF NODE=101, SURFACE=START_FACE
+*DISTRIBUTING
+1, 3
+*BOUNDARY
+100, 1, 6
+*STEP, NAME=PULL-BY-COUPLING
+*STATIC
+1., 1.
+*CLOAD
+101, 1, -10.
+*END STEP
+*STEP, NAME=PULL-BY-PRESSURE
+*STATIC
+1., 1.
+*BOUNDARY
+100, 1, 1, 0.
+*CLOAD
+101, 1, 0.
+*DLOAD
+EA, P6, -10.
+*END STEP

@@ -19,6 +19,7 @@ pub fn parse(text: &str) -> Result<Model, ParseError> {
             "step has no *END STEP",
         ));
     }
+    p.close_coupling()?;
     Ok(p.model)
 }
 
@@ -31,6 +32,15 @@ struct Parser {
     step_line: usize,
     /// Index into `model.materials` of the material that is open.
     material: Option<usize>,
+    /// A `*COUPLING` that still waits for `*KINEMATIC` or `*DISTRIBUTING`.
+    open_coupling: Option<PendingCoupling>,
+}
+
+struct PendingCoupling {
+    line: usize,
+    name: String,
+    ref_node: u32,
+    surface: String,
 }
 
 fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError> {
@@ -82,6 +92,9 @@ impl Parser {
         if b.keyword != "ELASTIC" && b.keyword != "MATERIAL" {
             self.material = None;
         }
+        if b.keyword != "KINEMATIC" && b.keyword != "DISTRIBUTING" {
+            self.close_coupling()?;
+        }
         match b.keyword.as_str() {
             "NODE" => self.node(b),
             "ELEMENT" => self.element(b),
@@ -93,6 +106,14 @@ impl Parser {
             "STATIC" => self.static_proc(b),
             "BOUNDARY" => self.boundary(b),
             "CLOAD" => self.cload(b),
+            "DLOAD" => self.dload(b),
+            "SOLID SECTION" => self.solid_section(b),
+            "SURFACE" => self.surface(b),
+            "COUPLING" => self.coupling(b),
+            "KINEMATIC" => self.coupling_kind(b, CouplingKind::Kinematic),
+            "DISTRIBUTING" => self.coupling_kind(b, CouplingKind::Distributing),
+            "EQUATION" => self.equation(b),
+            "MPC" => self.mpc(b),
             "END STEP" => self.end_step(b),
             _ => Err(b.error(b.line, "unsupported keyword")),
         }
@@ -434,6 +455,276 @@ impl Parser {
         Ok(())
     }
 
+    fn known_node(&self, b: &Block, line: usize, id: u32) -> Result<u32, ParseError> {
+        if self.node_ids.contains(&id) {
+            Ok(id)
+        } else {
+            Err(b.error(line, format!("node {id} is not defined")))
+        }
+    }
+
+    fn model_data(&self, b: &Block) -> Result<(), ParseError> {
+        if self.open_step.is_some() {
+            return Err(b.error(b.line, "keyword must come before the first *STEP"));
+        }
+        Ok(())
+    }
+
+    fn solid_section(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&["ELSET", "MATERIAL"])?;
+        let elset = b
+            .value("ELSET")?
+            .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
+        let material = b
+            .value("MATERIAL")?
+            .ok_or_else(|| b.error(b.line, "parameter MATERIAL is required"))?;
+        if let Some(d) = b.data.first() {
+            return Err(b.error(d.line, "keyword takes no data lines"));
+        }
+        if self.model.elset(elset).is_none() {
+            return Err(b.error(b.line, format!("element set '{elset}' is not defined")));
+        }
+        if self.model.material(material).is_none() {
+            return Err(b.error(b.line, format!("material '{material}' is not defined")));
+        }
+        self.model.sections.push(SolidSection {
+            elset: elset.to_owned(),
+            material: material.to_owned(),
+        });
+        Ok(())
+    }
+
+    fn surface(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&["TYPE", "NAME"])?;
+        match b.value("TYPE")? {
+            Some("NODE") => {}
+            Some(t) => return Err(b.error(b.line, format!("unsupported TYPE {t}"))),
+            None => return Err(b.error(b.line, "parameter TYPE is required")),
+        }
+        let name = b
+            .value("NAME")?
+            .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
+        let mut ids = Vec::new();
+        for d in &b.data {
+            match self.target(b, d)? {
+                Target::Node(id) => ids.push(id),
+                Target::Set(s) => ids.extend(self.model.nset(&s).map_or(&[][..], |n| &n.ids)),
+            }
+        }
+        self.model.surfaces.push(NodeSurface {
+            name: name.to_owned(),
+            ids,
+        });
+        Ok(())
+    }
+
+    fn coupling(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&["CONSTRAINT NAME", "REF NODE", "SURFACE"])?;
+        self.model_data(b)?;
+        let name = b
+            .value("CONSTRAINT NAME")?
+            .ok_or_else(|| b.error(b.line, "parameter CONSTRAINT NAME is required"))?;
+        let surface = b
+            .value("SURFACE")?
+            .ok_or_else(|| b.error(b.line, "parameter SURFACE is required"))?;
+        let ref_text = b
+            .value("REF NODE")?
+            .ok_or_else(|| b.error(b.line, "parameter REF NODE is required"))?;
+        let ref_id = ref_text.parse::<u32>().map_err(|_| {
+            b.error(
+                b.line,
+                format!("REF NODE must be a node id, found '{ref_text}'"),
+            )
+        })?;
+        let ref_node = self.known_node(b, b.line, ref_id)?;
+        if !self.model.surfaces.iter().any(|s| s.name == surface) {
+            return Err(b.error(b.line, format!("surface '{surface}' is not defined")));
+        }
+        if let Some(d) = b.data.first() {
+            return Err(b.error(d.line, "keyword takes no data lines"));
+        }
+        self.open_coupling = Some(PendingCoupling {
+            line: b.line,
+            name: name.to_owned(),
+            ref_node,
+            surface: surface.to_owned(),
+        });
+        Ok(())
+    }
+
+    fn coupling_kind(&mut self, b: &Block, kind: CouplingKind) -> Result<(), ParseError> {
+        b.allow(&[])?;
+        let c = self
+            .open_coupling
+            .take()
+            .ok_or_else(|| b.error(b.line, "keyword needs an open *COUPLING"))?;
+        let (mut first_dof, mut last_dof) = (1, 6);
+        if let Some(d) = b.data.first() {
+            if b.data.len() > 1 || d.fields.len() > 2 {
+                return Err(b.error(d.line, "keyword takes 1 data line: first dof, last dof"));
+            }
+            first_dof = dof(b, d, 0)?;
+            last_dof = if d.fields.len() > 1 {
+                dof(b, d, 1)?
+            } else {
+                first_dof
+            };
+            if last_dof < first_dof {
+                return Err(b.error(d.line, "last dof is below first dof"));
+            }
+        }
+        self.model.couplings.push(Coupling {
+            name: c.name,
+            ref_node: c.ref_node,
+            surface: c.surface,
+            kind,
+            first_dof,
+            last_dof,
+        });
+        Ok(())
+    }
+
+    /// Fail when a `*COUPLING` is open and the next keyword is not its kind.
+    fn close_coupling(&mut self) -> Result<(), ParseError> {
+        match self.open_coupling.take() {
+            None => Ok(()),
+            Some(c) => Err(ParseError::new(
+                c.line,
+                Some("COUPLING"),
+                "needs *KINEMATIC or *DISTRIBUTING",
+            )),
+        }
+    }
+
+    fn equation(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&[])?;
+        self.model_data(b)?;
+        let first = b
+            .data
+            .first()
+            .ok_or_else(|| b.error(b.line, "keyword needs data lines"))?;
+        let n = int(b, first, 0, "number of terms")? as usize;
+        if n == 0 {
+            return Err(b.error(first.line, "equation needs at least 1 term"));
+        }
+        let fields: Vec<(usize, &String)> = b.data[1..]
+            .iter()
+            .flat_map(|d| {
+                d.fields
+                    .iter()
+                    .filter(|f| !f.is_empty())
+                    .map(|f| (d.line, f))
+            })
+            .collect();
+        if fields.len() != 3 * n {
+            return Err(b.error(
+                first.line,
+                format!("equation needs {n} terms of node, dof, coefficient"),
+            ));
+        }
+        let mut terms = Vec::with_capacity(n);
+        for t in fields.chunks(3) {
+            let line = t[0].0;
+            let node = t[0].1.parse::<u32>().map_err(|_| {
+                b.error(
+                    line,
+                    format!("node id must be a positive integer, found '{}'", t[0].1),
+                )
+            })?;
+            let dof = t[1]
+                .1
+                .parse::<u8>()
+                .ok()
+                .filter(|d| (1..=6).contains(d))
+                .ok_or_else(|| {
+                    b.error(
+                        line,
+                        format!("degree of freedom must be 1 to 6, found '{}'", t[1].1),
+                    )
+                })?;
+            let coefficient = t[2].1.parse::<f64>().map_err(|_| {
+                b.error(
+                    line,
+                    format!("coefficient must be a number, found '{}'", t[2].1),
+                )
+            })?;
+            terms.push(EquationTerm {
+                node: self.known_node(b, line, node)?,
+                dof,
+                coefficient,
+            });
+        }
+        self.model.equations.push(Equation { terms });
+        Ok(())
+    }
+
+    fn mpc(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&[])?;
+        self.model_data(b)?;
+        for d in &b.data {
+            let kind = match d.fields[0].as_str() {
+                "TIE" => MpcKind::Tie,
+                "PIN" => MpcKind::Pin,
+                "LINK" => MpcKind::Link,
+                "BEAM" => MpcKind::Beam,
+                t => return Err(b.error(d.line, format!("unsupported MPC type {t}"))),
+            };
+            if d.fields.len() != 3 {
+                return Err(b.error(d.line, format!("{} needs 2 nodes", d.fields[0])));
+            }
+            let mut nodes = Vec::new();
+            for k in 1..3 {
+                let id = int(b, d, k, "node id")?;
+                nodes.push(self.known_node(b, d.line, id)?);
+            }
+            self.model.mpcs.push(Mpc { kind, nodes });
+        }
+        Ok(())
+    }
+
+    fn dload(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&[])?;
+        if self.open_step.is_none() {
+            return Err(b.error(b.line, "keyword needs an open *STEP"));
+        }
+        let mut out = Vec::new();
+        for d in &b.data {
+            if d.fields.len() != 3 {
+                return Err(b.error(d.line, "line needs element, load type and magnitude"));
+            }
+            let ty = d.fields[1].as_str();
+            let face = ty
+                .strip_prefix('P')
+                .and_then(|n| n.parse::<u8>().ok())
+                .ok_or_else(|| b.error(d.line, format!("unsupported load type {ty}")))?;
+            if !(1..=6).contains(&face) {
+                return Err(b.error(d.line, format!("face must be 1 to 6, found {face}")));
+            }
+            let f = d.fields[0].as_str();
+            let target = if let Ok(id) = f.parse::<u32>() {
+                if !self.element_ids.contains(&id) {
+                    return Err(b.error(d.line, format!("element {id} is not defined")));
+                }
+                ElementTarget::Element(id)
+            } else {
+                let name = f.to_uppercase();
+                if self.model.elset(&name).is_none() {
+                    return Err(b.error(d.line, format!("element set '{name}' is not defined")));
+                }
+                ElementTarget::Set(name)
+            };
+            out.push(Dload {
+                target,
+                face,
+                pressure: real(b, d, 2, "magnitude")?,
+            });
+        }
+        if let Some(step) = self.open_step.as_mut() {
+            step.dloads.extend(out);
+        }
+        Ok(())
+    }
+
     fn end_step(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
         let step = self
@@ -462,8 +753,8 @@ mod tests {
     #[test]
     fn unsupported_keyword_names_line_and_keyword() {
         assert_eq!(
-            err("*NODE\n1,0,0,0\n*SURFACE, NAME=S\n"),
-            "line 3, *SURFACE: unsupported keyword"
+            err("*NODE\n1,0,0,0\n*PLASTIC\n"),
+            "line 3, *PLASTIC: unsupported keyword"
         );
     }
 
