@@ -343,6 +343,66 @@ fn a_tiny_strain_keeps_its_stress_and_its_force() {
     assert!(bad.is_empty(), "{bad:#?}");
 }
 
+/// A material whose stress is not finite.
+struct NotFinite;
+
+impl Material for NotFinite {
+    fn update(
+        &self,
+        _g: &Gradient,
+        _old: &[f64],
+        _new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        Ok(([f64::NAN; 6], elasticity(1.0, 0.3)))
+    }
+}
+
+#[test]
+fn a_result_that_is_not_finite_is_an_error() {
+    let d = elasticity(1.0, 0.3);
+    let mut bad = Vec::new();
+    // Finite coordinates whose Jacobian determinant overflows.
+    let big: Vec<_> = unit_hex().iter().map(|p| p.map(|x| x * 1e110)).collect();
+    if let Ok(v) = volume(Kind::C3D8, &big) {
+        bad.push(format!("volume of a huge element: {v}"));
+    }
+    if stiffness(Kind::C3D8, &big, &d).is_ok() {
+        bad.push("stiffness of a huge element".into());
+    }
+    // A finite element and a finite material whose stiffness overflows.
+    let small: Vec<_> = unit_hex().iter().map(|p| p.map(|x| x * 1e-100)).collect();
+    if stiffness(Kind::C3D8, &small, &elasticity(1e300, 0.3)).is_ok() {
+        bad.push("stiffness that overflows".into());
+    }
+    for kind in KINDS {
+        let c = geometry(kind);
+        let mut nan_c = c.clone();
+        nan_c[1][2] = f64::NAN;
+        if volume(kind, &nan_c).is_ok() {
+            bad.push(format!("{kind:?}: volume with a NaN coordinate"));
+        }
+        for v in [f64::NAN, f64::INFINITY] {
+            let mut u = vec![0.0; 3 * c.len()];
+            u[4] = v;
+            let place = Placement {
+                start: &c,
+                disp: &u,
+            };
+            let mut out = Evaluation::default();
+            let state = ElementState::default();
+            if evaluate(kind, &place, &Elastic { d }, &state, &mut out, true).is_ok() {
+                bad.push(format!("{kind:?}: displacement {v}"));
+            }
+        }
+        let mut out = Evaluation::default();
+        let state = ElementState::default();
+        if evaluate(kind, &place(&c), &NotFinite, &state, &mut out, true).is_ok() {
+            bad.push(format!("{kind:?}: a material stress that is not finite"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
 /// A material that gets stiffer with the strain: stress = strain³ + 1e-12 strain,
 /// with its exact tangent. Newton on the mode amplitudes converges slowly near 0.
 struct Cubic;

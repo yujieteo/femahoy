@@ -357,25 +357,33 @@ fn b_matrix<const M: usize>(dx: &[[f64; 3]]) -> Mat<6, M> {
     b
 }
 
-fn check_det(det: f64, kind: Kind) -> Result<(), SolverError> {
-    if det > 0.0 {
-        Ok(())
-    } else {
+fn check_det(det: f64, jinv: &Mat<3, 3>, kind: Kind) -> Result<(), SolverError> {
+    if det.is_nan() || det <= 0.0 {
         Err(SolverError::new(format!(
             "{kind:?} element has a non-positive Jacobian ({det:e})"
         )))
+    } else if !det.is_finite() || jinv.iter().flatten().any(|v| !v.is_finite()) {
+        Err(SolverError::new(format!(
+            "{kind:?} element has a Jacobian or an inverse Jacobian that is not finite ({det:e})"
+        )))
+    } else {
+        Ok(())
     }
 }
 
 fn check_nodes(kind: Kind, coords: &[[f64; 3]]) -> Result<(), SolverError> {
-    if coords.len() == kind.node_count() {
-        Ok(())
-    } else {
+    if coords.len() != kind.node_count() {
         Err(SolverError::new(format!(
             "{kind:?} needs {} nodes, found {}",
             kind.node_count(),
             coords.len()
         )))
+    } else if coords.iter().flatten().any(|v| !v.is_finite()) {
+        Err(SolverError::new(format!(
+            "{kind:?} element has a node coordinate that is not finite"
+        )))
+    } else {
+        Ok(())
     }
 }
 
@@ -387,7 +395,7 @@ fn tet10_points(coords: &[[f64; 3]]) -> Result<[Point<30>; MAX_POINTS], SolverEr
         l[p] = b;
         let dn = tet_dn(l);
         let (jinv, det) = inv3(&jacobian(coords, &dn));
-        check_det(det, Kind::C3D10)?;
+        check_det(det, &jinv, Kind::C3D10)?;
         let dx = cartesian(&dn, &jinv);
         *slot = Point {
             w: det / 24.0,
@@ -404,12 +412,12 @@ fn hex8_points(kind: Kind, coords: &[[f64; 3]]) -> Result<[Point<24>; MAX_POINTS
     let g = 1.0 / 3.0_f64.sqrt();
     let mut out = [Point::<24>::ZERO; MAX_POINTS];
     let (jinv0, det0) = inv3(&jacobian(coords, &hex_dn([0.0; 3])));
-    check_det(det0, kind)?;
+    check_det(det0, &jinv0, kind)?;
     for (slot, s) in out.iter_mut().zip(HEX_XI) {
         let xi = [s[0] * g, s[1] * g, s[2] * g];
         let dn = hex_dn(xi);
         let (jinv, det) = inv3(&jacobian(coords, &dn));
-        check_det(det, kind)?;
+        check_det(det, &jinv, kind)?;
         let dx8 = cartesian(&dn, &jinv);
         let b = b_matrix(&dx8);
         let mut dxs = [[0.0; 3]; 10];
@@ -499,6 +507,14 @@ pub fn evaluate<M: Material + ?Sized>(
     if place.disp.len() < 3 * coords.len() {
         return Err(SolverError::new("too few displacements for the nodes"));
     }
+    if place.disp[..3 * coords.len()]
+        .iter()
+        .any(|v| !v.is_finite())
+    {
+        return Err(SolverError::new(format!(
+            "{kind:?} element has a displacement that is not finite"
+        )));
+    }
     match kind {
         Kind::C3D10 => {
             let pts = tet10_points(coords)?;
@@ -582,6 +598,15 @@ fn run<const M: usize, Mt: Material + ?Sized>(
             }
             let g = gradient(p, u, &alpha, &eps);
             let (stress, c) = material.update(&g, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
+            if stress
+                .iter()
+                .chain(c.iter().flatten())
+                .any(|v| !v.is_finite())
+            {
+                return Err(SolverError::new(
+                    "the material gave a stress or a tangent that is not finite",
+                ));
+            }
             resp[i] = Response { stress, tangent: c };
             if let Some(g) = &p.g {
                 // The size of the stress before the compatible strain and the mode strain
@@ -673,6 +698,13 @@ fn run<const M: usize, Mt: Material + ?Sized>(
                 }
             }
         }
+    }
+    // Finite inputs can give a force or a stiffness that overflows.
+    let k_bad = tangent && kuu.iter().flatten().any(|v| !v.is_finite());
+    if k_bad || out.fint[..M].iter().any(|v| !v.is_finite()) || !vol.is_finite() {
+        return Err(SolverError::new(
+            "the element force or stiffness is not finite",
+        ));
     }
     if tangent {
         for (dst, src) in out.k.iter_mut().zip(&kuu) {
