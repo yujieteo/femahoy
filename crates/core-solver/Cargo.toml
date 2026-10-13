@@ -10,4 +10,5 @@ publish.workspace = true
 fh-inp = { path = "../inp" }
 fh-io = { path = "../io" }
 fh-solver-api = { path = "../solver-api" }
+fh-toon = { path = "../toon" }
 faer = { version = "0.24.4", default-features = false, features = ["std", "sparse-linalg"] }

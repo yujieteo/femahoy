@@ -4,6 +4,7 @@
 //!
 //! The writer takes one increment at a time from the solver and keeps only the
 //! base grid in memory. Every file is written under a temporary name and renamed.
+//! Decision D-09, see DESIGN.md.
 
 use std::fs;
 use std::io::{BufWriter, Write};
@@ -16,6 +17,7 @@ use fh_io::vtu::{
     write_pvd_units, write_vtu_to, Field, Grid, PvdEntry, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA,
 };
 use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
+use fh_toon as toon;
 
 use crate::element::Kind;
 use crate::restart::{read_latest, Restart};
@@ -28,6 +30,16 @@ use crate::{
 
 /// Name of the restart file in the run folder.
 pub const RESTART_FILE: &str = "restart.fh";
+
+/// Diagnostic code of a dof that no element reaches. The solver fixes it at zero.
+pub const ORPHAN_CODE: &str = "SOL101";
+
+/// The input file of a run: a name for the summary and the hash of its text.
+#[derive(Debug, Clone, Copy)]
+pub struct Input<'a> {
+    pub name: &'a str,
+    pub hash: u64,
+}
 
 /// The reference solver. Its results are unvalidated until the suite passes.
 pub struct CoreSolver;
@@ -44,7 +56,10 @@ impl Solver for CoreSolver {
     fn solve(&self, model: &Model, run_dir: &Path) -> Result<RunReport, ApiError> {
         run_model(
             model,
-            0,
+            &Input {
+                name: "model",
+                hash: 0,
+            },
             run_dir,
             &Options::default(),
             false,
@@ -152,44 +167,14 @@ fn base_grid(model: &Model) -> Result<Grid, ApiError> {
     Ok(grid)
 }
 
-/// Numbers of one finished step.
+/// One row of the increment table of the summary: an accepted increment or a cutback.
 #[derive(Debug, Clone, PartialEq)]
-struct StepLine {
-    free_dofs: usize,
-    method: String,
-    iterations: usize,
-    residual: f64,
-    max_u: f64,
-    max_mises: f64,
-    max_rf: f64,
-}
-
-impl StepLine {
-    fn text(&self) -> String {
-        format!(
-            "{} {} {} {:e} {:e} {:e} {:e}",
-            self.free_dofs,
-            self.method,
-            self.iterations,
-            self.residual,
-            self.max_u,
-            self.max_mises,
-            self.max_rf
-        )
-    }
-
-    fn parse(text: &str) -> Option<StepLine> {
-        let mut w = text.split_whitespace();
-        Some(StepLine {
-            free_dofs: w.next()?.parse().ok()?,
-            method: w.next()?.to_string(),
-            iterations: w.next()?.parse().ok()?,
-            residual: w.next()?.parse().ok()?,
-            max_u: w.next()?.parse().ok()?,
-            max_mises: w.next()?.parse().ok()?,
-            max_rf: w.next()?.parse().ok()?,
-        })
-    }
+struct IncLine {
+    step: usize,
+    number: usize,
+    /// Linear solves of the attempt.
+    iters: usize,
+    ok: bool,
 }
 
 /// Extension of the file that the PVD collection and the restart check use: the first grid
@@ -233,13 +218,17 @@ fn result_name(step: usize, number: usize, last: bool) -> String {
 }
 
 /// The lines of the history text of a restart file.
-fn history_text(entries: &[PvdEntry], lines: &[StepLine], part: Option<&StepInfo>) -> String {
+fn history_text(entries: &[PvdEntry], incs: &[IncLine], part: Option<&StepInfo>) -> String {
     let mut s = String::new();
     for e in entries {
         s.push_str(&format!("entry {:e} {}\n", e.time, e.file));
     }
-    for l in lines {
-        s.push_str(&format!("step {}\n", l.text()));
+    for i in incs {
+        let result = if i.ok { "ok" } else { "cutback" };
+        s.push_str(&format!(
+            "inc {} {} {} {result}\n",
+            i.step, i.number, i.iters
+        ));
     }
     if let Some(i) = part {
         s.push_str(&format!(
@@ -256,12 +245,14 @@ fn history_text(entries: &[PvdEntry], lines: &[StepLine], part: Option<&StepInfo
     s
 }
 
+/// What a restart file keeps for the writer: PVD entries, increment rows, and the totals of
+/// the step that is not complete.
+type History = (Vec<PvdEntry>, Vec<IncLine>, Option<StepInfo>);
+
 /// The inverse of [`history_text`].
-fn parse_history(
-    text: &str,
-) -> Result<(Vec<PvdEntry>, Vec<StepLine>, Option<StepInfo>), ApiError> {
+fn parse_history(text: &str) -> Result<History, ApiError> {
     let bad = || ApiError(format!("{RESTART_FILE}: bad history line"));
-    let (mut entries, mut lines, mut part) = (Vec::new(), Vec::new(), None);
+    let (mut entries, mut incs, mut part) = (Vec::new(), Vec::new(), None);
     for l in text.lines() {
         if let Some(r) = l.strip_prefix("entry ") {
             let (t, f) = r.split_once(' ').ok_or_else(bad)?;
@@ -269,8 +260,18 @@ fn parse_history(
                 time: t.parse().map_err(|_| bad())?,
                 file: f.to_string(),
             });
-        } else if let Some(r) = l.strip_prefix("step ") {
-            lines.push(StepLine::parse(r).ok_or_else(bad)?);
+        } else if let Some(r) = l.strip_prefix("inc ") {
+            let w: Vec<&str> = r.split_whitespace().collect();
+            if w.len() != 4 || !matches!(w[3], "ok" | "cutback") {
+                return Err(bad());
+            }
+            let num = |i: usize| w[i].parse::<usize>().map_err(|_| bad());
+            incs.push(IncLine {
+                step: num(0)?,
+                number: num(1)?,
+                iters: num(2)?,
+                ok: w[3] == "ok",
+            });
         } else if let Some(r) = l.strip_prefix("part ") {
             let w: Vec<&str> = r.split_whitespace().collect();
             if w.len() != 7 {
@@ -294,7 +295,7 @@ fn parse_history(
             return Err(bad());
         }
     }
-    Ok((entries, lines, part))
+    Ok((entries, incs, part))
 }
 
 /// Delete the temporary files and the result files of increments that the restart point does
@@ -340,7 +341,7 @@ struct Writer<'a> {
     restart_minutes: Option<f64>,
     last_restart: Instant,
     entries: Vec<PvdEntry>,
-    lines: Vec<StepLine>,
+    incs: Vec<IncLine>,
     emit: &'a mut dyn FnMut(&str),
     cancel: &'a dyn Fn() -> bool,
     last: (usize, String, f64),
@@ -375,21 +376,23 @@ impl Writer<'_> {
         number: usize,
         last: bool,
         result: &StepResult,
-        info: &StepInfo,
     ) -> Result<(), ApiError> {
         let g = &mut self.grid;
         g.point_data
             .push(Field::f64("U", 3, flat(&result.displacement)));
-        g.point_data.push(Field::f64("RF", 3, flat(&result.reaction)));
+        g.point_data
+            .push(Field::f64("RF", 3, flat(&result.reaction)));
         if result.rotation.iter().flatten().any(|v| *v != 0.0) {
-            g.point_data.push(Field::f64("UR", 3, flat(&result.rotation)));
+            g.point_data
+                .push(Field::f64("UR", 3, flat(&result.rotation)));
         }
         g.cell_data.push(Field::f64(
             "S",
             6,
             result.element_stress.iter().flatten().copied().collect(),
         ));
-        g.cell_data.push(Field::f64("MISES", 1, result.mises.clone()));
+        g.cell_data
+            .push(Field::f64("MISES", 1, result.mises.clone()));
         let stem = result_name(step, number, last);
         let mut written = Ok(());
         if self.formats.vtu {
@@ -423,23 +426,12 @@ impl Writer<'_> {
             time: result.time,
             file: format!("{stem}.{}", primary(self.formats)),
         });
-        if last {
-            self.lines.push(StepLine {
-                free_dofs: info.free_dofs,
-                method: method_name(info).into(),
-                iterations: info.iterations,
-                residual: info.residual,
-                max_u: max_norm(&result.displacement),
-                max_mises: result.mises.iter().copied().fold(0.0, f64::max),
-                max_rf: max_norm(&result.reaction),
-            });
-        }
         Ok(())
     }
 
     fn restart_due(&self, inc: &Increment) -> bool {
         inc.last
-            || inc.number % self.restart_every.max(1) == 0
+            || inc.number.is_multiple_of(self.restart_every.max(1))
             || self
                 .restart_minutes
                 .is_some_and(|m| self.last_restart.elapsed().as_secs_f64() >= 60.0 * m)
@@ -456,12 +448,18 @@ impl Writer<'_> {
             lambda: inc.lambda,
             next_size: inc.next_size,
             displacement: inc.displacement.to_vec(),
-            base: if inc.last { Vec::new() } else { inc.base.to_vec() },
+            base: if inc.last {
+                Vec::new()
+            } else {
+                inc.base.to_vec()
+            },
             image: inc.states.image(),
-            contact: Vec::new(),
-            history: history_text(&self.entries, &self.lines, part),
+            contact: inc.contact.image().ip,
+            history: history_text(&self.entries, &self.incs, part),
         };
-        restart.write(self.run_dir).map_err(|e| io(RESTART_FILE, e))?;
+        restart
+            .write(self.run_dir)
+            .map_err(|e| io(RESTART_FILE, e))?;
         self.last_restart = Instant::now();
         (self.emit)(&format!("restart {RESTART_FILE}"));
         Ok(())
@@ -501,9 +499,36 @@ impl Observer for Writer<'_> {
         (self.cancel)()
     }
 
+    fn cutback(&mut self, step: usize, number: usize, solves: usize) {
+        self.incs.push(IncLine {
+            step,
+            number,
+            iters: solves,
+            ok: false,
+        });
+    }
+
     fn increment_done(&mut self, inc: &Increment, result: StepResult) -> Result<(), SolverError> {
+        if inc.last {
+            // Peak values of the step, for a person who reads the event lines.
+            (self.emit)(&format!(
+                "step {} max_u={:e} max_mises={:e} max_rf={:e} free_dofs={} method={}",
+                inc.step + 1,
+                max_norm(&result.displacement),
+                result.mises.iter().copied().fold(0.0, f64::max),
+                max_norm(&result.reaction),
+                inc.info.free_dofs,
+                method_name(&inc.info)
+            ));
+        }
+        self.incs.push(IncLine {
+            step: inc.step,
+            number: inc.number,
+            iters: inc.solves,
+            ok: true,
+        });
         let mut run = || -> Result<(), ApiError> {
-            self.write_files(inc.step, inc.number, inc.last, &result, &inc.info)?;
+            self.write_files(inc.step, inc.number, inc.last, &result)?;
             if self.restart_due(inc) {
                 self.write_restart(inc)?;
             }
@@ -517,56 +542,105 @@ impl Observer for Writer<'_> {
     }
 }
 
-fn summary_toon(model: &Model, lines: &[StepLine], summary: &Summary) -> String {
-    let mut s = String::from("schema: fh.run\nversion: 1.0.0\nstatus: ok\n");
-    s.push_str(&format!(
-        "nodes: {}\nelements: {}\ndofs: {}\nnnz: {}\nestimate_bytes: {}\npattern_builds: {}\n",
-        model.nodes.len(),
-        model.elements.len(),
-        summary.total_dofs,
-        summary.nnz,
-        summary.estimate_bytes,
-        summary.pattern_builds
-    ));
-    s.push_str(&format!(
-        "orphans[{}]{{node,dof}}:\n",
-        summary.orphans.len()
-    ));
-    for (n, d) in &summary.orphans {
-        s.push_str(&format!("  {n},{d}\n"));
-    }
-    s.push_str(&format!(
-        "steps[{}]{{step,free_dofs,method,iterations,residual,max_u,max_mises,max_rf}}:\n",
-        lines.len()
-    ));
-    for (i, l) in lines.iter().enumerate() {
-        s.push_str(&format!(
-            "  {},{},{},{},{:e},{:e},{:e},{:e}\n",
-            i + 1,
-            l.free_dofs,
-            l.method,
-            l.iterations,
-            l.residual,
-            l.max_u,
-            l.max_mises,
-            l.max_rf
-        ));
-    }
-    s
+/// The `fh.run` summary of a finished run (schema sections 3.5 and 3.8).
+fn summary_toon(
+    model: &Model,
+    input: &Input,
+    run_dir: &Path,
+    incs: &[IncLine],
+    summary: &Summary,
+    wall: f64,
+) -> Result<String, ApiError> {
+    let step_name = |i: usize| {
+        model.steps[i]
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("Step-{}", i + 1))
+    };
+    let steps = (0..model.steps.len())
+        .map(|i| toon::RunStep {
+            name: step_name(i),
+            status: "converged".into(),
+            reached: 1.0,
+            increments: incs.iter().filter(|r| r.ok && r.step == i).count() as u64,
+        })
+        .collect();
+    let increments = incs
+        .iter()
+        .map(|r| toon::Increment {
+            step: step_name(r.step),
+            inc: r.number as u64,
+            iters: r.iters as u64,
+            result: if r.ok {
+                toon::IncResult::Ok
+            } else {
+                toon::IncResult::Cutback
+            },
+        })
+        .collect();
+    let diagnostics: Vec<toon::Diag> = summary
+        .orphans
+        .iter()
+        .map(|(n, d)| toon::Diag {
+            code: ORPHAN_CODE.into(),
+            severity: toon::Severity::Warning,
+            line: 0,
+            message: format!("node N{n} dof {d} has no stiffness, it is fixed at zero"),
+        })
+        .collect();
+    let run = toon::Run {
+        header: toon::Header {
+            source: input.name.to_string(),
+            source_hash: format!("{:016x}", input.hash),
+            units: "unspecified".into(),
+            status: if diagnostics.is_empty() {
+                toon::Status::Ok
+            } else {
+                toon::Status::Warning
+            },
+        },
+        run_id: run_dir
+            .file_name()
+            .map_or_else(|| "run".into(), |n| n.to_string_lossy().to_string()),
+        solver: "core".into(),
+        results: PVD_FILE.into(),
+        wall_s: wall,
+        steps,
+        increments,
+        contact: None,
+        failure: None,
+        diagnostics,
+        next: Vec::new(),
+    };
+    run.render(&toon::Opts::default())
+        .map_err(|e| ApiError(e.to_string()))
 }
 
 fn finish(
     model: &Model,
+    input: &Input,
     writer: &mut Writer,
     run_dir: &Path,
     summary: &Summary,
+    wall: f64,
 ) -> Result<RunReport, ApiError> {
     writer.write_pvd()?;
-    let text = summary_toon(model, &writer.lines, summary);
+    let text = summary_toon(model, input, run_dir, &writer.incs, summary, wall)?;
     atomic(run_dir, SUMMARY_FILE, |w| {
-        w.write_all(text.as_bytes()).map_err(|e| io(SUMMARY_FILE, e))
+        w.write_all(text.as_bytes())
+            .map_err(|e| io(SUMMARY_FILE, e))
     })?;
-    // Times change from run to run, so they go to the event stream and not to the files.
+    // Times and sizes go to the event stream, for a person or a benchmark that reads it.
+    (writer.emit)(&format!(
+        "stats dofs={} nnz={} pattern_builds={} estimate_bytes={} assemblies={} factorizations={} orphans={}",
+        summary.total_dofs,
+        summary.nnz,
+        summary.pattern_builds,
+        summary.estimate_bytes,
+        summary.assemblies,
+        summary.factorizations,
+        summary.orphans.len()
+    ));
     (writer.emit)(&format!(
         "timing assemble={:.3} factor={:.3} solve={:.3}",
         summary.assemble_seconds, summary.factor_seconds, summary.solve_seconds
@@ -584,17 +658,19 @@ fn finish(
 /// `restart`, the run continues from the newest valid restart file.
 pub fn run_model(
     model: &Model,
-    hash: u64,
+    input: &Input,
     run_dir: &Path,
     options: &Options,
     restart: bool,
     emit: &mut dyn FnMut(&str),
     cancel: &dyn Fn() -> bool,
 ) -> Result<RunReport, ApiError> {
+    let clock = Instant::now();
+    let hash = input.hash;
     fs::create_dir_all(run_dir).map_err(|e| io("run folder", e))?;
     let grid = base_grid(model)?;
     let (n_point, n_cell) = (grid.point_data.len(), grid.cell_data.len());
-    let (mut entries, mut lines, mut resume) = (Vec::new(), Vec::new(), None);
+    let (mut entries, mut incs, mut resume) = (Vec::new(), Vec::new(), None);
     if restart {
         let r = read_latest(run_dir, hash).map_err(ApiError)?;
         if r.step >= model.steps.len() {
@@ -605,7 +681,7 @@ pub fn run_model(
         clean_run_folder(run_dir, &r)?;
         let (e, l, part) = parse_history(&r.history)?;
         entries = e;
-        lines = l;
+        incs = l;
         resume = Some(Resume {
             step: r.step,
             number: r.number,
@@ -616,11 +692,15 @@ pub fn run_model(
             displacement: r.displacement,
             base: r.base,
             image: r.image,
+            contact: r.contact,
             info: if r.complete { None } else { part },
         });
     } else {
         // A new run removes the temporary files of an earlier one.
-        for e in fs::read_dir(run_dir).map_err(|e| io("run folder", e))?.flatten() {
+        for e in fs::read_dir(run_dir)
+            .map_err(|e| io("run folder", e))?
+            .flatten()
+        {
             if e.file_name().to_string_lossy().ends_with(".tmp") {
                 let _ = fs::remove_file(e.path());
             }
@@ -637,7 +717,7 @@ pub fn run_model(
         restart_minutes: options.restart_minutes,
         last_restart: Instant::now(),
         entries,
-        lines,
+        incs,
         emit,
         cancel,
         last: (0, String::new(), 0.0),
@@ -656,7 +736,8 @@ pub fn run_model(
             return Err(ApiError(e.to_string()));
         }
     };
-    finish(model, &mut writer, run_dir, &summary)
+    let wall = clock.elapsed().as_secs_f64();
+    finish(model, input, &mut writer, run_dir, &summary, wall)
 }
 
 /// Write the results of a finished [`Solution`] in `run_dir`. Each step counts as one increment.
@@ -679,7 +760,7 @@ pub fn write_results(
         restart_minutes: None,
         last_restart: Instant::now(),
         entries: Vec::new(),
-        lines: Vec::new(),
+        incs: Vec::new(),
         emit: &mut |_| {},
         cancel: &|| false,
         last: (0, String::new(), 0.0),
@@ -687,7 +768,18 @@ pub fn write_results(
     };
     for (i, step) in solution.steps.iter().enumerate() {
         let info = &solution.summary.steps[i];
-        writer.write_files(i, info.increments.max(1), true, step, info)?;
+        let number = info.increments.max(1);
+        writer.write_files(i, number, true, step)?;
+        writer.incs.push(IncLine {
+            step: i,
+            number,
+            iters: info.newton_iterations.max(1),
+            ok: true,
+        });
     }
-    finish(model, &mut writer, run_dir, &solution.summary)
+    let input = Input {
+        name: "model",
+        hash: 0,
+    };
+    finish(model, &input, &mut writer, run_dir, &solution.summary, 0.0)
 }

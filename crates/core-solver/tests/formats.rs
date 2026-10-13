@@ -4,7 +4,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-use fh_core_solver::{run_model, Formats, Options};
+use fh_core_solver::{run_model, Formats, Input, Options};
 use fh_io::vtu::read_vtu;
 
 fn fixture() -> String {
@@ -28,7 +28,11 @@ fn run(name: &str, formats: Formats) -> PathBuf {
         formats,
         ..Options::default()
     };
-    run_model(&model, 1, &d, &options, false, &mut |_| {}, &|| false).unwrap();
+    let input = Input {
+        name: "input.inp",
+        hash: 1,
+    };
+    run_model(&model, &input, &d, &options, false, &mut |_| {}, &|| false).unwrap();
     d
 }
 

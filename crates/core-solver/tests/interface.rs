@@ -11,8 +11,8 @@ use fh_core_solver::element::{
 };
 use fh_core_solver::state::StateStore;
 use fh_core_solver::{
-    solve_options, solve_with, Increment, MaterialFactory, Observer, Options, Solution, SolverError,
-    StepInfo, StepResult,
+    solve_options, solve_with, Increment, MaterialFactory, Observer, Options, Solution,
+    SolverError, StepInfo, StepResult,
 };
 use fh_inp::{parse, Model};
 
@@ -73,7 +73,11 @@ fn the_material_gets_the_deformation_gradient_from_the_current_positions() {
         let want = [[1.1, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         for i in 0..3 {
             for j in 0..3 {
-                assert!((f[i][j] - want[i][j]).abs() < 1e-12, "F{i}{j} = {}", f[i][j]);
+                assert!(
+                    (f[i][j] - want[i][j]).abs() < 1e-12,
+                    "F{i}{j} = {}",
+                    f[i][j]
+                );
             }
         }
     }
@@ -108,8 +112,24 @@ fn elements_hold_no_material_constants() {
         disp: &u,
     };
     let st = ElementState::default();
-    evaluate(Kind::C3D8I, &place, &Elastic::new(1000.0, 0.3), &st, &mut ev1, true).unwrap();
-    evaluate(Kind::C3D8I, &place, &Elastic::new(2000.0, 0.3), &st, &mut ev2, true).unwrap();
+    evaluate(
+        Kind::C3D8I,
+        &place,
+        &Elastic::new(1000.0, 0.3),
+        &st,
+        &mut ev1,
+        true,
+    )
+    .unwrap();
+    evaluate(
+        Kind::C3D8I,
+        &place,
+        &Elastic::new(2000.0, 0.3),
+        &st,
+        &mut ev2,
+        true,
+    )
+    .unwrap();
     for i in 0..24 {
         for j in 0..24 {
             assert!((2.0 * ev1.k[i][j] - ev2.k[i][j]).abs() < 1e-9);
@@ -121,10 +141,7 @@ fn elements_hold_no_material_constants() {
 fn a_pressure_load_uses_the_current_positions() {
     // Face 1 has the normal z. Double the x size: the face area, and so the force, doubles.
     let force = |disp: &[f64]| -> f64 {
-        let place = Placement {
-            start: &UNIT,
-            disp,
-        };
+        let place = Placement { start: &UNIT, disp };
         pressure_load(Kind::C3D8, &place, 1, 1.0)
             .unwrap()
             .iter()
@@ -148,7 +165,11 @@ fn the_state_store_keeps_the_committed_and_the_trial_copy_apart() {
     assert_eq!(s.committed(0), &[0.0, 0.0]);
     s.set_trial(0, &[1.0, 2.0]);
     assert_eq!(s.trial(0), &[1.0, 2.0]);
-    assert_eq!(s.committed(0), &[0.0, 0.0], "a trial value is not committed");
+    assert_eq!(
+        s.committed(0),
+        &[0.0, 0.0],
+        "a trial value is not committed"
+    );
     s.commit();
     assert_eq!(s.committed(0), &[1.0, 2.0]);
     s.set_trial(0, &[9.0, 9.0]);
@@ -250,10 +271,9 @@ impl Material for Bilinear {
         let kappa = old[0].max(e);
         new[0] = kappa;
         let (s, ds) = self.scale(kappa);
-        let mut de = [0.0; 6];
-        for i in 0..6 {
-            de[i] = (0..6).map(|j| self.d[i][j] * eps[j]).sum::<f64>();
-        }
+        let de = self
+            .d
+            .map(|row| (0..6).map(|j| row[j] * eps[j]).sum::<f64>());
         let stress = de.map(|v| s * v);
         let mut tangent = [[0.0; 6]; 6];
         for i in 0..6 {
@@ -297,7 +317,10 @@ fn bilinear_options(max_jump: f64) -> Options {
 fn forced_options() -> Options {
     Options {
         materials: Some(MaterialFactory::new(|m| {
-            let e = m.elastic.as_ref().ok_or_else(|| SolverError::new("no *ELASTIC"))?;
+            let e = m
+                .elastic
+                .as_ref()
+                .ok_or_else(|| SolverError::new("no *ELASTIC"))?;
             Ok(Box::new(ForcedNewton(Elastic::new(
                 e.youngs_modulus,
                 e.poissons_ratio,
@@ -341,8 +364,16 @@ fn committed_state_survives_the_next_step() {
         pull("0.25, 1.", 2.5)
     ));
     let sol = solve_options(&model, &bilinear_options(1.0)).unwrap();
-    assert!((tip(&model, &sol, 0) - 0.21).abs() < 1e-9, "{}", tip(&model, &sol, 0));
-    assert!((tip(&model, &sol, 1) - 0.07).abs() < 1e-9, "{}", tip(&model, &sol, 1));
+    assert!(
+        (tip(&model, &sol, 0) - 0.21).abs() < 1e-9,
+        "{}",
+        tip(&model, &sol, 0)
+    );
+    assert!(
+        (tip(&model, &sol, 1) - 0.07).abs() < 1e-9,
+        "{}",
+        tip(&model, &sol, 1)
+    );
 }
 
 #[test]
@@ -356,15 +387,24 @@ fn a_rejected_trial_causes_a_cutback_and_the_result_is_the_same() {
     assert!(info.increments > 1);
     let fine = bar(&pull("0.01, 1., 0.01, 0.01", 22.5));
     let want = solve_options(&fine, &bilinear_options(0.3)).unwrap();
-    assert!((tip(&model, &sol, 0) - 0.81).abs() < 1e-8, "{}", tip(&model, &sol, 0));
+    assert!(
+        (tip(&model, &sol, 0) - 0.81).abs() < 1e-8,
+        "{}",
+        tip(&model, &sol, 0)
+    );
     assert!((tip(&model, &sol, 0) - tip(&fine, &want, 0)).abs() < 1e-8);
 }
 
 #[test]
 fn a_step_that_cannot_cut_back_further_fails_with_the_reason() {
     let model = bar(&pull("1., 1., 0.5, 1.", 22.5));
-    let e = solve_options(&model, &bilinear_options(1e-9)).unwrap_err().to_string();
-    assert!(e.contains("minimum increment") || e.contains("strain jump"), "{e}");
+    let e = solve_options(&model, &bilinear_options(1e-9))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        e.contains("minimum increment") || e.contains("strain jump"),
+        "{e}"
+    );
 }
 
 // ---- Increments ----
@@ -400,6 +440,39 @@ fn increments_follow_first_largest_and_growth_and_land_on_one() {
     assert_eq!(log.lasts, [false, false, false, false, true]);
 }
 
+/// Records the x displacement of node 2 at the end of each increment.
+#[derive(Default)]
+struct Tip(Vec<f64>);
+
+impl Observer for Tip {
+    fn increment_done(&mut self, inc: &Increment, _r: StepResult) -> Result<(), SolverError> {
+        // Node 2 is the second node: its x dof is dof 3.
+        self.0.push(inc.displacement[3]);
+        Ok(())
+    }
+}
+
+#[test]
+fn prescribed_values_ramp_in_each_increment_from_the_start_of_the_step() {
+    // Each increment builds its constraint transform from the prescribed values at its load
+    // factor. Step 2 ramps from the value at the end of step 1.
+    let step = |v: f64| {
+        format!(
+            "*STEP\n*STATIC\n0.25, 1., 0.25, 0.25\n{FIX}*BOUNDARY\n2,1,1,{v}\n3,1,1,{v}\n6,1,1,{v}\n7,1,1,{v}\n*END STEP\n"
+        )
+    };
+    let model = bar(&format!("{}{}", step(0.01), step(0.02)));
+    let mut tip = Tip::default();
+    let summary = solve_with(&model, &forced_options(), &mut tip).unwrap();
+    let want = [0.0025, 0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02];
+    assert_eq!(tip.0.len(), want.len(), "{:?}", tip.0);
+    for (got, want) in tip.0.iter().zip(want) {
+        assert!((got - want).abs() < 1e-15, "{:?}", tip.0);
+    }
+    // Only the values changed, not the structure: one pattern for the whole run.
+    assert_eq!(summary.pattern_builds, 1);
+}
+
 #[test]
 fn a_linear_step_is_one_increment_through_the_same_loop() {
     let model = bar(&pull("0.1, 1.", 1.0));
@@ -418,7 +491,11 @@ fn the_newton_path_gives_the_linear_answer_for_a_linear_material() {
     let nl = solve_options(&model, &forced_options()).unwrap();
     assert!((tip(&model, &lin, 0) - 0.004).abs() < 1e-12);
     assert!((tip(&model, &lin, 0) - tip(&model, &nl, 0)).abs() < 1e-12);
-    for (a, b) in lin.steps[0].element_stress.iter().zip(&nl.steps[0].element_stress) {
+    for (a, b) in lin.steps[0]
+        .element_stress
+        .iter()
+        .zip(&nl.steps[0].element_stress)
+    {
         for i in 0..6 {
             assert!((a[i] - b[i]).abs() < 1e-9);
         }
@@ -465,7 +542,10 @@ fn modified_newton_reuses_the_factor_inside_an_increment() {
     let s = &modified.summary;
     let iterations: usize = s.steps.iter().map(|i| i.newton_iterations).sum();
     let increments: usize = s.steps.iter().map(|i| i.increments).sum();
-    assert_eq!(s.factorizations, increments, "one factor for each increment");
+    assert_eq!(
+        s.factorizations, increments,
+        "one factor for each increment"
+    );
     assert!(iterations >= increments);
     assert!((tip(&model, &modified, 0) - tip(&model, &full, 0)).abs() < 1e-7);
 }
@@ -493,7 +573,9 @@ fn block_model(ty: &'static str, n: [usize; 3]) -> Model {
     };
     text.push_str("*ELSET, ELSET=ALL, GENERATE\n1,");
     text.push_str(&format!("{},1\n", b.elements.len()));
-    text.push_str("*MATERIAL, NAME=M\n*ELASTIC\n1000, 0.25\n*SOLID SECTION, ELSET=ALL, MATERIAL=M\n");
+    text.push_str(
+        "*MATERIAL, NAME=M\n*ELASTIC\n1000, 0.25\n*SOLID SECTION, ELSET=ALL, MATERIAL=M\n",
+    );
     text.push_str("*STEP\n*STATIC\n0.2, 1.\n*BOUNDARY\n");
     for n in face(0, 0.0) {
         text.push_str(&format!("{n},1,3\n"));
@@ -518,7 +600,12 @@ fn the_nonlinear_result_is_the_same_bit_for_bit_for_any_thread_count() {
     for t in [2, 3, 7] {
         let many = run(t);
         let bits = |s: &Solution| -> Vec<u64> {
-            s.steps[0].displacement.iter().flatten().map(|v| v.to_bits()).collect()
+            s.steps[0]
+                .displacement
+                .iter()
+                .flatten()
+                .map(|v| v.to_bits())
+                .collect()
         };
         assert_eq!(bits(&one), bits(&many), "{t} threads");
         assert_eq!(one.steps[0].element_stress, many.steps[0].element_stress);

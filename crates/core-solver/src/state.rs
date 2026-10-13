@@ -111,8 +111,12 @@ impl StateStore {
             ));
         }
         self.ip.copy_from_slice(&image.ip);
-        for (dst, src) in self.internal.iter_mut().zip(image.internal.chunks_exact(9)) {
-            dst.copy_from_slice(src);
+        for (dst, src) in self
+            .internal
+            .iter_mut()
+            .zip(image.internal.as_chunks::<9>().0)
+        {
+            *dst = *src;
         }
         self.cutback();
         Ok(())

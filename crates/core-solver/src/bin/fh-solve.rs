@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use fh_core_solver::{input_hash, run_model, Formats, Options};
+use fh_core_solver::{input_hash, run_model, Formats, Input, Options};
 use fh_solver_api::PROTOCOL_HEADER;
 
 /// Exit code of a run that the user cancelled.
@@ -38,9 +38,17 @@ fn run(
         let _ = writeln!(o, "{line}");
         let _ = o.flush();
     };
+    let name = inp.file_name().map_or_else(
+        || inp.display().to_string(),
+        |n| n.to_string_lossy().to_string(),
+    );
+    let input = Input {
+        name: &name,
+        hash: input_hash(&text),
+    };
     run_model(
         &model,
-        input_hash(&text),
+        &input,
         run_dir,
         &options,
         restart,

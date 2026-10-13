@@ -189,33 +189,6 @@ impl Transform {
         self.same_structure(other) && self.coefs == other.coefs
     }
 
-    /// `T * u_r`, without the offset.
-    pub fn apply(&self, reduced: &[f64]) -> Vec<f64> {
-        (0..self.n_full())
-            .map(|d| {
-                let (c, k) = self.row(d);
-                c.iter()
-                    .zip(k)
-                    .map(|(&r, k)| k * reduced[r as usize])
-                    .sum::<f64>()
-            })
-            .collect()
-    }
-
-    /// `T * u_r + offset` for an offset that the caller chooses.
-    pub fn expand_with(&self, reduced: &[f64], offset: &[f64]) -> Vec<f64> {
-        (0..self.n_full())
-            .map(|d| {
-                let (c, k) = self.row(d);
-                offset[d]
-                    + c.iter()
-                        .zip(k)
-                        .map(|(&r, k)| k * reduced[r as usize])
-                        .sum::<f64>()
-            })
-            .collect()
-    }
-
     /// `T * u_r + u_0`.
     pub fn expand(&self, reduced: &[f64]) -> Vec<f64> {
         (0..self.n_full())

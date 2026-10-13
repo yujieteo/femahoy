@@ -5,7 +5,7 @@
 //! the conjugate gradient solver.
 
 use faer::linalg::solvers::Solve;
-use faer::sparse::linalg::solvers::Llt;
+use faer::sparse::linalg::solvers::{Llt, SymbolicLlt};
 use faer::sparse::{SparseColMatRef, SymbolicSparseColMatRef};
 use faer::{Mat, Side};
 
@@ -183,7 +183,8 @@ impl Matrix {
     }
 
     /// Add `v` at row `a`, column `b`, with `a >= b`. The entry must be in the pattern.
-    #[inline]
+    /// The assembly uses the slot map. The tests use this.
+    #[cfg(test)]
     pub fn add(&mut self, a: u32, b: u32, v: f64) {
         let (s, e) = (
             self.col_ptr[b as usize] as usize,
@@ -237,22 +238,29 @@ impl Matrix {
         }
     }
 
-    /// Sparse Cholesky factor of the matrix (faer). It needs more memory than the matrix.
-    pub fn cholesky(&self) -> Result<Llt<u32, f64>, SolverError> {
-        let symbolic = SymbolicSparseColMatRef::new_checked(
-            self.n,
-            self.n,
-            &self.col_ptr,
-            None,
-            &self.row_idx,
-        );
-        let a = SparseColMatRef::new(symbolic, &self.values);
-        a.sp_cholesky(Side::Lower).map_err(|_| not_spd())
+    fn symbolic(&self) -> SymbolicSparseColMatRef<'_, u32> {
+        SymbolicSparseColMatRef::new_checked(self.n, self.n, &self.col_ptr, None, &self.row_idx)
     }
 
-    /// Factor the matrix and solve once.
+    /// The symbolic analysis of the Cholesky factor: the fill-reducing order and the
+    /// pattern of the factor. It depends only on the pattern, so one analysis serves
+    /// every factorization of the values of this pattern.
+    pub fn cholesky_analysis(&self) -> Result<SymbolicLlt<u32>, SolverError> {
+        SymbolicLlt::try_new(self.symbolic(), Side::Lower)
+            .map_err(|e| SolverError::new(format!("the Cholesky analysis failed: {e:?}")))
+    }
+
+    /// Sparse Cholesky factor of the values (faer), with an analysis of this pattern.
+    /// It needs more memory than the matrix.
+    pub fn cholesky_with(&self, analysis: &SymbolicLlt<u32>) -> Result<Llt<u32, f64>, SolverError> {
+        let a = SparseColMatRef::new(self.symbolic(), &self.values);
+        Llt::try_new_with_symbolic(analysis.clone(), a, Side::Lower).map_err(|_| not_spd())
+    }
+
+    /// Analyse, factor and solve once.
+    #[cfg(test)]
     pub fn cholesky_solve(&self, rhs: &[f64]) -> Result<Vec<f64>, SolverError> {
-        solve_with_factor(&self.cholesky()?, rhs)
+        solve_with_factor(&self.cholesky_with(&self.cholesky_analysis()?)?, rhs)
     }
 
     /// Conjugate gradients with a Jacobi preconditioner. The sums run in a
@@ -326,9 +334,13 @@ fn solve_with_factor(llt: &Llt<u32, f64>, rhs: &[f64]) -> Result<Vec<f64>, Solve
 }
 
 /// The linear solve of a step. A backend (a GPU solver, another sparse library) replaces
-/// the two types below by implementing this trait. `factor` prepares for the values
-/// that the matrix holds now, and `solve` can run many times after it, as long as the
-/// matrix is the same. The solver does not own the matrix.
+/// the two types below by implementing this trait. The trait names no device.
+/// Decision D-08, see DESIGN.md.
+///
+/// One solver serves one matrix pattern. Work that depends only on the pattern (the
+/// symbolic analysis of a direct solver) runs once and stays for every later `factor`.
+/// `factor` prepares for the values that the matrix holds now, and `solve` can run many
+/// times after it, as long as the values do not change. The solver does not own the matrix.
 pub trait LinearSolver {
     fn factor(&mut self, a: &Matrix) -> Result<(), SolverError>;
 
@@ -342,16 +354,28 @@ pub trait LinearSolver {
     ) -> Result<(Vec<f64>, usize), SolverError>;
 }
 
-/// Sparse Cholesky with faer.
+/// Sparse Cholesky with faer. The symbolic analysis of the first `factor` stays for the
+/// later ones, so the Newton iterations and the steps that keep the pattern only
+/// repeat the numeric factorization.
 #[derive(Default)]
 pub struct CholeskySolver {
+    analysis: Option<SymbolicLlt<u32>>,
     llt: Option<Llt<u32, f64>>,
+    /// Symbolic analyses that this solver made. It is 1 for a pattern that does not change.
+    pub analyses: usize,
 }
 
 impl LinearSolver for CholeskySolver {
     fn factor(&mut self, a: &Matrix) -> Result<(), SolverError> {
+        // Free the old factor first, so two factors never exist at the same time.
         self.llt = None;
-        self.llt = Some(a.cholesky()?);
+        if self.analysis.is_none() {
+            self.analysis = Some(a.cholesky_analysis()?);
+            self.analyses += 1;
+        }
+        if let Some(analysis) = &self.analysis {
+            self.llt = Some(a.cholesky_with(analysis)?);
+        }
         Ok(())
     }
 
@@ -461,6 +485,33 @@ mod tests {
         m.mul(&direct, &mut y);
         for (a, b) in y.iter().zip(&rhs) {
             assert!((a - b).abs() < 1e-10, "{a} {b}");
+        }
+    }
+
+    #[test]
+    fn the_cholesky_analysis_runs_once_for_a_pattern() {
+        let (g, t) = chain(4);
+        let mut m = Matrix::pattern(&g, &|n, c| 3 * n + c, &t).unwrap();
+        let mut solver = CholeskySolver::default();
+        let rhs = vec![1.0; 12];
+        let mut answers = Vec::new();
+        for scale in [1.0, 2.0] {
+            m.clear();
+            for d in 0..12_u32 {
+                m.add(d, d, 4.0 * scale);
+            }
+            for e in 0..3_u32 {
+                for c in 0..3_u32 {
+                    m.add(3 * (e + 1) + c, 3 * e + c, -scale);
+                }
+            }
+            solver.factor(&m).unwrap();
+            answers.push(solver.solve(&m, &rhs, &mut |_, _| true).unwrap().0);
+        }
+        assert_eq!(solver.analyses, 1);
+        // Twice the matrix gives half the answer.
+        for (a, b) in answers[0].iter().zip(&answers[1]) {
+            assert!((a - 2.0 * b).abs() < 1e-14 * a.abs(), "{a} {b}");
         }
     }
 

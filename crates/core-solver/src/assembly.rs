@@ -37,11 +37,6 @@ pub struct SlotMap {
 }
 
 impl SlotMap {
-    /// Bytes of the map.
-    pub fn bytes(&self) -> usize {
-        self.start.len() * 8 + self.slots.len() * 4
-    }
-
     /// Build the map. `dofs_of(e, buf)` returns the number of dofs of element `e` and writes the
     /// full dofs into `buf`.
     pub fn build(
@@ -93,10 +88,10 @@ impl SlotMap {
                 }
             } else {
                 let mut list = Vec::new();
-                for i in 0..n {
-                    let (ca, ka) = t.row(dofs[i]);
-                    for j in 0..n {
-                        let (cb, kb) = t.row(dofs[j]);
+                for (i, &di) in dofs[..n].iter().enumerate() {
+                    let (ca, ka) = t.row(di);
+                    for (j, &dj) in dofs[..n].iter().enumerate() {
+                        let (cb, kb) = t.row(dj);
                         for (&a, &xa) in ca.iter().zip(ka) {
                             for (&b, &xb) in cb.iter().zip(kb) {
                                 if a >= b {
@@ -117,7 +112,11 @@ impl SlotMap {
             }
         }
         start.push(slots.len());
-        SlotMap { start, slots, terms }
+        SlotMap {
+            start,
+            slots,
+            terms,
+        }
     }
 }
 

@@ -317,7 +317,7 @@ fn internal_force_equals_stiffness_times_displacement_for_linear_elasticity() {
     ] {
         let u = displacement(n);
         let mut ev = Evaluation::default();
-        let mut state = ElementState::default();
+        let state = ElementState::default();
         let place = Placement {
             start: &coords[..n],
             disp: &u,
@@ -405,15 +405,39 @@ fn the_tangent_is_the_derivative_of_the_internal_force() {
             Placement { start: c, disp: u }
         }
         let c = &coords[..n];
-        evaluate(kind, &at(c, &u), &m, &ElementState::default(), &mut ev, true).unwrap();
+        evaluate(
+            kind,
+            &at(c, &u),
+            &m,
+            &ElementState::default(),
+            &mut ev,
+            true,
+        )
+        .unwrap();
         let h = 1e-6;
         for j in 0..3 * n {
             let (mut up, mut um) = (u.clone(), u.clone());
             up[j] += h;
             um[j] -= h;
             let (mut a, mut b) = (Evaluation::default(), Evaluation::default());
-            evaluate(kind, &at(c, &up), &m, &ElementState::default(), &mut a, false).unwrap();
-            evaluate(kind, &at(c, &um), &m, &ElementState::default(), &mut b, false).unwrap();
+            evaluate(
+                kind,
+                &at(c, &up),
+                &m,
+                &ElementState::default(),
+                &mut a,
+                false,
+            )
+            .unwrap();
+            evaluate(
+                kind,
+                &at(c, &um),
+                &m,
+                &ElementState::default(),
+                &mut b,
+                false,
+            )
+            .unwrap();
             for i in 0..3 * n {
                 let fd = (a.fint[i] - b.fint[i]) / (2.0 * h);
                 assert!(

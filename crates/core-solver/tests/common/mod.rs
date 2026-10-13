@@ -1,4 +1,6 @@
 //! Structured block meshes for the tests. No mesher is part of the product.
+// Each test binary uses only some of the helpers.
+#![allow(dead_code)]
 
 use fh_inp::{parse, Model};
 

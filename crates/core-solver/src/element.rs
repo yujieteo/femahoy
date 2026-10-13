@@ -193,6 +193,18 @@ pub struct Evaluation {
     pub fabs: [f64; MAX_DOFS],
 }
 
+impl Evaluation {
+    /// The trial state as one flat slice: point `i`, number `c` of an element is at
+    /// `i * MAX_MAT_STATE + c`. A contribution group writes its state here.
+    pub fn state(&self) -> &[f64] {
+        self.ip_state.as_flattened()
+    }
+
+    pub fn state_mut(&mut self) -> &mut [f64] {
+        self.ip_state.as_flattened_mut()
+    }
+}
+
 impl Default for Evaluation {
     fn default() -> Self {
         Evaluation {

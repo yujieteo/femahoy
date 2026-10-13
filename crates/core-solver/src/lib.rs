@@ -5,6 +5,7 @@
 
 mod assembly;
 mod constraint;
+pub mod contribution;
 mod dense;
 pub mod element;
 mod mesh;
@@ -16,7 +17,9 @@ mod step;
 mod system;
 mod text;
 
-pub use output::{input_hash, run_model, write_results, CoreSolver, RESTART_FILE};
+pub use output::{
+    input_hash, run_model, write_results, CoreSolver, Input, ORPHAN_CODE, RESTART_FILE,
+};
 pub use system::{
     estimate_bytes, solve, solve_from, solve_options, solve_with, step_times, Formats, Increment,
     MaterialFactory, Method, Observer, Options, Resume, Sizes, Solution, StepInfo, StepResult,

@@ -2,9 +2,11 @@
 //!
 //! Layout (little endian): magic `FHRS`, version (u32), input hash (u64), step (u32),
 //! increments done in the step (u32), step complete (u8), time, load factor, next
-//! increment size (f64), then five blocks (displacement, step start displacement, integration point state,
-//! element internal state, contact state) with a u64 count before each, then the
-//! history text (u64 length, bytes) and a checksum (u64, FNV-1a of every byte before it).
+//! increment size (f64), then five blocks of f64 numbers (displacement, step start
+//! displacement, integration point state, element internal state, state of the
+//! contribution groups such as contact) with a u64 count before each, then the history
+//! text (u64 length, bytes) and a checksum (u64, FNV-1a of every byte before it).
+//! Decision D-09, see DESIGN.md.
 //!
 //! A file is written under a temporary name and renamed. The newest file is
 //! `restart.fh` and the one before it is `restart.fh.prev`. A reader takes the newest
@@ -17,7 +19,7 @@ use std::path::Path;
 use crate::state::StateImage;
 
 pub const MAGIC: &[u8; 4] = b"FHRS";
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 pub const NEWEST: &str = "restart.fh";
 pub const PREVIOUS: &str = "restart.fh.prev";
 
@@ -39,8 +41,8 @@ pub struct Restart {
     /// increments ramps its prescribed values from it. Empty otherwise.
     pub base: Vec<f64>,
     pub image: StateImage,
-    /// State of the contact pairs. Empty before M5.
-    pub contact: Vec<u8>,
+    /// State of the contribution groups (contact in M6). Empty when there is none.
+    pub contact: Vec<f64>,
     /// Text for the writer of the results: the lines of the finished increments.
     pub history: String,
 }
@@ -114,7 +116,7 @@ impl Restart {
         w.floats(&self.base)?;
         w.floats(&self.image.ip)?;
         w.floats(&self.image.internal)?;
-        w.bytes(&self.contact)?;
+        w.floats(&self.contact)?;
         w.bytes(self.history.as_bytes())?;
         let sum = w.hash;
         w.inner.write_all(&sum.to_le_bytes())?;
@@ -156,8 +158,7 @@ impl Restart {
         out.base = r.floats()?;
         out.image.ip = r.floats()?;
         out.image.internal = r.floats()?;
-        let n = r.u64()? as usize;
-        out.contact = r.take(n)?.to_vec();
+        out.contact = r.floats()?;
         let n = r.u64()? as usize;
         out.history = String::from_utf8(r.take(n)?.to_vec()).map_err(|_| "bad history text")?;
         if r.at != body.len() {
@@ -181,10 +182,14 @@ impl Reader<'_> {
         Ok(s)
     }
     fn u32(&mut self) -> Result<u32, String> {
-        Ok(u32::from_le_bytes(self.take(4)?.try_into().map_err(|_| "short")?))
+        Ok(u32::from_le_bytes(
+            self.take(4)?.try_into().map_err(|_| "short")?,
+        ))
     }
     fn u64(&mut self) -> Result<u64, String> {
-        Ok(u64::from_le_bytes(self.take(8)?.try_into().map_err(|_| "short")?))
+        Ok(u64::from_le_bytes(
+            self.take(8)?.try_into().map_err(|_| "short")?,
+        ))
     }
     fn f64(&mut self) -> Result<f64, String> {
         Ok(f64::from_bits(self.u64()?))
@@ -193,8 +198,10 @@ impl Reader<'_> {
         let n = self.u64()? as usize;
         let raw = self.take(n.checked_mul(8).ok_or("bad count")?)?;
         Ok(raw
-            .chunks_exact(8)
-            .map(|c| f64::from_le_bytes(c.try_into().unwrap_or([0; 8])))
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|c| f64::from_le_bytes(*c))
             .collect())
     }
 }

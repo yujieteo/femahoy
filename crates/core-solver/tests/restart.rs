@@ -4,13 +4,15 @@
 mod common;
 
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
 
 use fh_core_solver::element::{small_strain, Material};
-use fh_core_solver::restart::Restart;
-use fh_core_solver::{input_hash, run_model, Formats, MaterialFactory, Options, SolverError};
+use fh_core_solver::restart::{read_latest, Restart};
+use fh_core_solver::{
+    input_hash, run_model, Formats, Input, MaterialFactory, Options, SolverError,
+};
 
 // ---- A material with state, for runs through the library ----
 
@@ -89,7 +91,11 @@ fn bar_input() -> String {
 *CLOAD\n2,1,{load}\n3,1,{load}\n6,1,{load}\n7,1,{load}\n*END STEP\n"
         )
     };
-    format!("{BAR}{}{}", step("0.2, 1., 0.01, 0.2", 7.5), step("0.5, 1.", 2.5))
+    format!(
+        "{BAR}{}{}",
+        step("0.2, 1., 0.01, 0.2", 7.5),
+        step("0.5, 1.", 2.5)
+    )
 }
 
 fn dir(name: &str) -> PathBuf {
@@ -107,29 +113,38 @@ fn run(
     cancel: &dyn Fn() -> bool,
 ) -> Result<(), String> {
     let model = fh_inp::parse(text).map_err(|e| e.to_string())?;
-    run_model(
-        &model,
-        input_hash(text),
-        run_dir,
-        opts,
-        restart,
-        &mut |_| {},
-        cancel,
-    )
-    .map(|_| ())
-    .map_err(|e| e.to_string())
+    let input = Input {
+        name: "input.inp",
+        hash: input_hash(text),
+    };
+    run_model(&model, &input, run_dir, opts, restart, &mut |_| {}, cancel)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
-/// Every file of the folder except the files that name the time or the process.
+/// Every file of the folder except the restart files and the input. The wall time and the
+/// run id (the folder name) of the summary differ from run to run, so they are left out.
 fn snapshot(d: &Path) -> Vec<(String, Vec<u8>)> {
     let mut v: Vec<(String, Vec<u8>)> = fs::read_dir(d)
         .unwrap()
         .map(|e| e.unwrap())
         .filter(|e| {
             let n = e.file_name().to_string_lossy().to_string();
-            !n.starts_with("restart") && n != "input.inp"
+            !n.starts_with("restart") && !n.ends_with(".inp")
         })
-        .map(|e| (e.file_name().to_string_lossy().to_string(), fs::read(e.path()).unwrap()))
+        .map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let mut bytes = fs::read(e.path()).unwrap();
+            if name == "summary.toon" {
+                let text = String::from_utf8(bytes).unwrap();
+                let kept: Vec<&str> = text
+                    .lines()
+                    .filter(|l| !l.contains("wall_s:") && !l.starts_with("run_id:"))
+                    .collect();
+                bytes = kept.join("\n").into_bytes();
+            }
+            (name, bytes)
+        })
         .collect();
     v.sort();
     v
@@ -139,6 +154,14 @@ fn assert_same(a: &[(String, Vec<u8>)], b: &[(String, Vec<u8>)]) {
     let names = |v: &[(String, Vec<u8>)]| v.iter().map(|x| x.0.clone()).collect::<Vec<_>>();
     assert_eq!(names(a), names(b));
     for (x, y) in a.iter().zip(b) {
+        if x.0.ends_with(".toon") || x.0.ends_with(".pvd") {
+            assert_eq!(
+                String::from_utf8_lossy(&x.1),
+                String::from_utf8_lossy(&y.1),
+                "{} differs",
+                x.0
+            );
+        }
         assert!(x.1 == y.1, "{} differs", x.0);
     }
 }
@@ -163,7 +186,10 @@ fn results_are_written_at_each_increment_end() {
     }
     assert!(!names.iter().any(|n| n.ends_with(".tmp")), "{names:?}");
     let pvd = fs::read_to_string(d.join("results.pvd")).unwrap();
-    assert!(pvd.contains("step-1-inc-1.vtu") && pvd.contains("step-2.vtu"), "{pvd}");
+    assert!(
+        pvd.contains("step-1-inc-1.vtu") && pvd.contains("step-2.vtu"),
+        "{pvd}"
+    );
 }
 
 // ---- The restart file ----
@@ -175,14 +201,17 @@ fn the_restart_file_has_a_version_a_hash_and_a_checksum_and_the_last_two_are_kep
     run(&text, &d, &options(), false, &|| false).unwrap();
     let bytes = fs::read(d.join("restart.fh")).unwrap();
     assert_eq!(&bytes[..4], b"FHRS");
-    assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 2);
+    assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 3);
     let r = Restart::decode(&bytes).unwrap();
     assert_eq!(r.hash, input_hash(&text));
     assert_eq!((r.step, r.complete), (1, true));
     assert_eq!(r.displacement.len(), 24);
     assert!((r.lambda - 1.0).abs() < 1e-15);
     assert!(r.next_size > 0.0);
-    assert!(!r.image.ip.is_empty(), "a nonlinear run keeps the integration point state");
+    assert!(
+        !r.image.ip.is_empty(),
+        "a nonlinear run keeps the integration point state"
+    );
     let prev = fs::read(d.join("restart.fh.prev")).unwrap();
     let p = Restart::decode(&prev).unwrap();
     assert!(p.step < r.step || (p.step == r.step && p.number < r.number));
@@ -228,7 +257,10 @@ fn the_restart_interval_counts_increments() {
     o.restart_every = 2;
     // Stop after increment 3 of step 1: the file written last is the one of increment 2.
     let dd = d.clone();
-    run(&text, &d, &o, false, &move || dd.join("step-1-inc-3.vtu").exists()).unwrap_err();
+    run(&text, &d, &o, false, &move || {
+        dd.join("step-1-inc-3.vtu").exists()
+    })
+    .unwrap_err();
     let r = Restart::decode(&fs::read(d.join("restart.fh")).unwrap()).unwrap();
     assert_eq!((r.step, r.number), (0, 2));
 }
@@ -327,9 +359,9 @@ fn results_beyond_the_resumed_increment_are_deleted() {
 
 // ---- Kill the real executable ----
 
-/// A linear model with many steps, so that a kill at a random time lands in the run.
+/// A linear model with many steps, so that the run has many restart points.
 fn long_input() -> String {
-    let b = common::hex_block([14, 14, 14], [1.0, 1.0, 1.0], 0.1, "C3D8");
+    let b = common::hex_block([8, 8, 8], [1.0, 1.0, 1.0], 0.1, "C3D8");
     let mut t = String::from("*NODE\n");
     for (i, p) in b.nodes.iter().enumerate() {
         t.push_str(&format!("{},{},{},{}\n", i + 1, p[0], p[1], p[2]));
@@ -373,57 +405,81 @@ fn spawn(inp: &Path, d: &Path, restart: bool) -> std::process::Child {
         c.arg("--restart");
     }
     // Hold stdin open: the end of stdin is a cancel.
-    c.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::null());
+    c.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
     c.env("FH_THREADS", "2").spawn().unwrap()
+}
+
+/// Read the event lines of `child`. `kill` gets each line and returns true to kill the
+/// process at that line. Returns true when the kill happened, and false when the run ended.
+fn run_until(mut child: std::process::Child, kill: &mut dyn FnMut(&str) -> bool) -> bool {
+    let _hold = child.stdin.take();
+    let out = BufReader::new(child.stdout.take().unwrap());
+    for line in out.lines() {
+        let Ok(line) = line else { break };
+        if kill(&line) {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            return true;
+        }
+    }
+    assert!(child.wait().unwrap().success(), "the run failed");
+    false
 }
 
 #[test]
 fn killing_fh_solve_three_times_and_resuming_gives_the_same_result() {
     let base = dir("kill");
     let inp = base.join("long.inp");
-    fs::write(&inp, long_input()).unwrap();
+    let text = long_input();
+    fs::write(&inp, &text).unwrap();
     let whole = base.join("whole");
-    let mut c = spawn(&inp, &whole, false);
-    // `wait` closes stdin, and the end of stdin is a cancel. Hold the pipe open.
-    let _hold = c.stdin.take();
-    assert!(c.wait().unwrap().success());
+    let mut points = 0;
+    run_until(spawn(&inp, &whole, false), &mut |l| {
+        points += usize::from(l.starts_with("restart "));
+        false
+    });
     let want = snapshot(&whole);
+    assert_eq!(points, 8, "one restart point for each step");
 
+    // Three random restart points a1 <= a2 <= a3 below the last two, and a kill a few event
+    // lines after each one. Each run starts at the newest restart file, so it reaches its
+    // point, and the kill comes before the run ends.
     let d = base.join("killed");
     let mut seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .subsec_nanos() as u64
         | 1;
-    let mut kills = 0;
+    let mut next = |n: u64| {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (seed >> 33) % n
+    };
+    let mut targets: Vec<(usize, usize)> = (0..3)
+        .map(|_| (next(points as u64 - 1) as usize, 1 + next(3) as usize))
+        .collect();
+    targets.sort();
+    let hash = input_hash(&text);
     let mut restart = false;
-    // Each try runs for a random time. A run that finishes before the kill ends the loop.
-    for _ in 0..3 {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let wait = Duration::from_millis(150 + (seed >> 40) % 1200);
-        let mut child = spawn(&inp, &d, restart);
-        let start = Instant::now();
-        let mut done = false;
-        while start.elapsed() < wait {
-            if child.try_wait().unwrap().is_some() {
-                done = true;
-                break;
+    for &(point, after) in &targets {
+        // The restart point that this run starts from.
+        let mut at = read_latest(&d, hash).map_or(0, |r| r.step + 1);
+        let mut extra = 0;
+        let killed = run_until(spawn(&inp, &d, restart), &mut |l| {
+            if at >= point {
+                extra += 1;
             }
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        if done {
-            break;
-        }
-        child.kill().unwrap();
-        child.wait().unwrap();
-        kills += 1;
-        restart = d.join("restart.fh").exists() || d.join("restart.fh.prev").exists();
+            at += usize::from(l.starts_with("restart "));
+            extra > after
+        });
+        assert!(killed, "targets {targets:?}: the run ended before the kill");
+        restart = read_latest(&d, hash).is_ok();
     }
-    let mut last = spawn(&inp, &d, restart);
-    let _hold = last.stdin.take();
-    let status = last.wait().unwrap();
-    assert!(status.success(), "seed {seed}, kills {kills}, restart {restart}");
-    assert!(kills >= 1, "the run finished before any kill: make the model larger");
+    run_until(spawn(&inp, &d, restart), &mut |_| false);
+    eprintln!("kills (restart point, event lines after it): {targets:?}");
     assert_same(&want, &snapshot(&d));
 }
 

@@ -186,6 +186,7 @@ dependencies = [
  "fh-inp",
  "fh-io",
  "fh-solver-api",
+ "fh-toon",
 ]
 
 [[package]]

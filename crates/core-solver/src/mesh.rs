@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use fh_inp::{CouplingKind, ElementTarget, Model, MpcKind, Target};
 
 use crate::constraint::Elimination;
+use crate::contribution::{Contribution, MAX_GROUP_NODES, MAX_GROUP_STATE};
 use crate::element::{
     evaluate, ElementState, Evaluation, Kind, Material, Placement, MAX_DOFS, MAX_MAT_STATE,
     MAX_POINTS,
@@ -25,14 +26,24 @@ pub(crate) struct Mesh<'a> {
     /// Index into `mats` for each element.
     pub(crate) mat: Vec<u16>,
     pub(crate) mats: Vec<Box<dyn Material>>,
-    /// Node indices of all elements, one after the other.
+    /// Node indices of all elements, then of all contribution groups, one after the other.
+    /// An entry is an element (`e < kinds.len()`) or a group. Both add to the matrix the
+    /// same way.
     pub(crate) conn: Vec<u32>,
-    /// Position in `conn` of the first node of each element, and one past the end.
+    /// Position in `conn` of the first node of each entry, and one past the end.
     pub(crate) conn_start: Vec<u32>,
+    /// Contributions that are not elements (contact in M6).
+    pub(crate) contribs: Vec<Box<dyn Contribution>>,
+    /// For each group entry: the contribution and the group number in it.
+    pub(crate) groups: Vec<(u32, u32)>,
 }
 
 impl<'a> Mesh<'a> {
-    pub(crate) fn new(model: &'a Model, factory: &MaterialFactory) -> Result<Self, SolverError> {
+    pub(crate) fn new(
+        model: &'a Model,
+        factory: &MaterialFactory,
+        contribs: Vec<Box<dyn Contribution>>,
+    ) -> Result<Self, SolverError> {
         let node_index: HashMap<u32, usize> = model
             .nodes
             .iter()
@@ -106,9 +117,9 @@ impl<'a> Mesh<'a> {
             let index = match mat_index.get(name) {
                 Some(&i) => i,
                 None => {
-                    let m = model.material(name).ok_or_else(|| {
-                        SolverError::new(format!("material {name} not found"))
-                    })?;
+                    let m = model
+                        .material(name)
+                        .ok_or_else(|| SolverError::new(format!("material {name} not found")))?;
                     let built = factory.build(m)?;
                     if built.state_len() > MAX_MAT_STATE {
                         return Err(SolverError::new(format!(
@@ -139,6 +150,30 @@ impl<'a> Mesh<'a> {
                 conn.push(node(*n)? as u32);
             }
         }
+        let mut groups = Vec::new();
+        for (ci, c) in contribs.iter().enumerate() {
+            if c.state_len() > MAX_GROUP_STATE {
+                return Err(SolverError::new(format!(
+                    "{} keeps {} state numbers for each group, the limit is {MAX_GROUP_STATE}",
+                    c.name(),
+                    c.state_len()
+                )));
+            }
+            for (gi, nodes) in c.groups().iter().enumerate() {
+                if nodes.is_empty() || nodes.len() > MAX_GROUP_NODES {
+                    return Err(SolverError::new(format!(
+                        "{}: a group has {} nodes, the limit is {MAX_GROUP_NODES}",
+                        c.name(),
+                        nodes.len()
+                    )));
+                }
+                conn_start.push(conn.len() as u32);
+                for n in nodes {
+                    conn.push(node(*n)? as u32);
+                }
+                groups.push((ci as u32, gi as u32));
+            }
+        }
         conn_start.push(conn.len() as u32);
         Ok(Mesh {
             model,
@@ -151,7 +186,14 @@ impl<'a> Mesh<'a> {
             mats,
             conn,
             conn_start,
+            contribs,
+            groups,
         })
+    }
+
+    /// Elements and contribution groups.
+    pub(crate) fn n_entries(&self) -> usize {
+        self.conn_start.len() - 1
     }
 
     pub(crate) fn dof(&self, node: usize, d: u8) -> usize {
@@ -232,7 +274,11 @@ impl<'a> Mesh<'a> {
         Ok(())
     }
 
-    pub(crate) fn surface_nodes(&self, name: &str, ref_node: usize) -> Result<Vec<usize>, SolverError> {
+    pub(crate) fn surface_nodes(
+        &self,
+        name: &str,
+        ref_node: usize,
+    ) -> Result<Vec<usize>, SolverError> {
         let s = self
             .model
             .surfaces
@@ -255,7 +301,10 @@ impl<'a> Mesh<'a> {
     }
 
     /// Prescribed values first, then the model constraints.
-    pub(crate) fn elimination(&self, bc: &BTreeMap<(usize, u8), f64>) -> Result<Elimination, SolverError> {
+    pub(crate) fn elimination(
+        &self,
+        bc: &BTreeMap<(usize, u8), f64>,
+    ) -> Result<Elimination, SolverError> {
         let mut el = Elimination::new(self.n_dofs);
         for (&(n, d), &v) in bc {
             let dof = self.dof(n, d);
@@ -340,7 +389,11 @@ impl<'a> Mesh<'a> {
         ]
     }
 
-    pub(crate) fn add_coupling(&self, el: &mut Elimination, c: &fh_inp::Coupling) -> Result<(), SolverError> {
+    pub(crate) fn add_coupling(
+        &self,
+        el: &mut Elimination,
+        c: &fh_inp::Coupling,
+    ) -> Result<(), SolverError> {
         let rn = self.node(c.ref_node)?;
         let slaves = self.surface_nodes(&c.surface, rn)?;
         if slaves.is_empty() {
@@ -545,6 +598,49 @@ impl<'a> Mesh<'a> {
 
     pub(crate) fn all_linear(&self) -> bool {
         self.mats.iter().all(|m| m.is_linear())
+    }
+
+    /// True when the run takes the linear fallback: every material is linear and there is
+    /// no contribution (no contact).
+    pub(crate) fn linear(&self) -> bool {
+        self.all_linear() && self.contribs.is_empty()
+    }
+
+    /// Numbers of state of each contribution group.
+    pub(crate) fn group_state_lens(&self) -> Vec<usize> {
+        self.groups
+            .iter()
+            .map(|&(c, _)| self.contribs[c as usize].state_len())
+            .collect()
+    }
+
+    /// Evaluate group `g` (counted from 0 among the groups) at the displacements `u` of its
+    /// nodes. `old` is its committed state.
+    pub(crate) fn evaluate_group(
+        &self,
+        g: usize,
+        u: &[f64],
+        old: &[f64],
+        out: &mut Evaluation,
+        tangent: bool,
+    ) -> Result<(), SolverError> {
+        let mut coords = [[0.0; 3]; 10];
+        let n = self.element_coords(self.kinds.len() + g, &mut coords);
+        let (c, gi) = self.groups[g];
+        let contrib = &self.contribs[c as usize];
+        let place = Placement {
+            start: &coords[..n],
+            disp: &u[..3 * n],
+        };
+        // The contribution adds into a clean output. Its trial state starts as the committed one.
+        out.n = 3 * n;
+        out.fint = [0.0; MAX_DOFS];
+        out.fabs = [0.0; MAX_DOFS];
+        out.k = [[0.0; MAX_DOFS]; MAX_DOFS];
+        out.state_mut()[..old.len()].copy_from_slice(old);
+        contrib
+            .evaluate(gi as usize, &place, old, out, tangent)
+            .map_err(|e| SolverError::new(format!("{}: {e}", contrib.name())))
     }
 
     /// Evaluate element `e` at the displacements `u` (its `3n` numbers).

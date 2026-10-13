@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use fh_inp::Model;
 
+use crate::contribution::ContributionFactory;
 use crate::element::{Elastic, Evaluation, Material};
 use crate::mesh::Mesh;
 use crate::sparse::NodeGraph;
@@ -162,6 +163,8 @@ pub struct Options {
     pub growth_factor: f64,
     /// Builds the materials. `None` is [`MaterialFactory::elastic`].
     pub materials: Option<MaterialFactory>,
+    /// Builds the contributions that are not elements (contact in M6). `None` adds none.
+    pub contributions: Option<ContributionFactory>,
 }
 
 impl Default for Options {
@@ -181,6 +184,7 @@ impl Default for Options {
             cutback_factor: 0.25,
             growth_factor: 1.5,
             materials: None,
+            contributions: None,
         }
     }
 }
@@ -262,9 +266,14 @@ pub struct Increment<'a> {
     /// Committed displacement of all dofs.
     pub displacement: &'a [f64],
     /// Displacement at the start of the step, if the run needs it to continue inside the step.
-    /// Empty when the step is done or the run is linear.
+    /// Empty when the step is done.
     pub base: &'a [f64],
+    /// Material state of the integration points and internal dofs of the elements.
     pub states: &'a StateStore,
+    /// State of the contribution groups (contact in M6).
+    pub contact: &'a StateStore,
+    /// Linear solves of this increment: 1 for the linear fallback, the Newton iterations otherwise.
+    pub solves: usize,
 }
 
 /// A point to continue a run from. A restart file holds it.
@@ -282,6 +291,8 @@ pub struct Resume {
     pub displacement: Vec<f64>,
     pub base: Vec<f64>,
     pub image: StateImage,
+    /// State of the contribution groups.
+    pub contact: Vec<f64>,
     /// Totals of the step so far, when it is not complete.
     pub info: Option<StepInfo>,
 }
@@ -296,6 +307,8 @@ pub trait Observer {
     fn cancelled(&mut self) -> bool {
         false
     }
+    /// The increment `number` of step `step` (from 0) was cut back after `solves` solves.
+    fn cutback(&mut self, _step: usize, _number: usize, _solves: usize) {}
     /// An increment is done. The observer owns the result.
     fn increment_done(
         &mut self,
@@ -386,7 +399,11 @@ pub fn solve_from(
         .materials
         .clone()
         .unwrap_or_else(MaterialFactory::elastic);
-    let mesh = Mesh::new(model, &factory)?;
+    let contribs = match &options.contributions {
+        Some(f) => f.build(model)?,
+        None => Vec::new(),
+    };
+    let mesh = Mesh::new(model, &factory, contribs)?;
     let graph = NodeGraph::new(model.nodes.len(), &mesh.conn, &mesh.conn_start);
     // The matrix has about 9 entries for each pair of neighbour nodes, half of them in the lower triangle.
     let nnz_guess = (9 * graph.entries() + 3 * model.nodes.len()) / 2;
@@ -402,16 +419,15 @@ pub fn solve_from(
         iterative: method_guess || options.method == Method::Pcg,
         ip_stress: options.formats.text,
         state_bytes: 8 * lens.iter().sum::<usize>()
-            + if mesh.all_linear() {
+            + 8 * mesh.group_state_lens().iter().sum::<usize>()
+            + if mesh.linear() {
                 0
             } else {
                 72 * model.elements.len()
             },
     });
     observer.estimate(estimate);
-    crate::step::run(
-        &mesh, &graph, options, threads, estimate, observer, resume,
-    )
+    crate::step::run(&mesh, &graph, options, threads, estimate, observer, resume)
 }
 
 /// Sizes that decide the memory of a run.
