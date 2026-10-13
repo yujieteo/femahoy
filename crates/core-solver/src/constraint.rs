@@ -37,6 +37,11 @@ pub struct Transform {
 
 const DROP: f64 = 1e-13;
 
+/// A NaN or an infinite value would change or remove a constraint without an error.
+fn not_finite() -> SolverError {
+    SolverError::new("a constraint has a coefficient or a value that is not finite")
+}
+
 impl Elimination {
     pub fn new(n: usize) -> Self {
         Elimination {
@@ -55,6 +60,9 @@ impl Elimination {
         rhs: f64,
         prefer: Option<usize>,
     ) -> Result<(), SolverError> {
+        if !rhs.is_finite() || row.iter().any(|(_, c)| !c.is_finite()) {
+            return Err(not_finite());
+        }
         let mut acc: BTreeMap<usize, f64> = BTreeMap::new();
         let mut rhs_now = rhs;
         let mut scale = 1.0 + rhs.abs();
@@ -70,6 +78,10 @@ impl Elimination {
                 }
                 None => *acc.entry(j).or_insert(0.0) += c,
             }
+        }
+        // The substitution of earlier slaves can overflow.
+        if !rhs_now.is_finite() || acc.values().any(|c| !c.is_finite()) {
+            return Err(not_finite());
         }
         let max = acc.values().fold(0.0_f64, |m, c| m.max(c.abs()));
         acc.retain(|_, c| c.abs() > DROP * max);
@@ -94,6 +106,9 @@ impl Elimination {
             terms: acc.into_iter().map(|(k, c)| (k, -c / a)).collect(),
             offset: rhs_now / a,
         };
+        if !def.offset.is_finite() || def.terms.values().any(|c| !c.is_finite()) {
+            return Err(not_finite());
+        }
         // Replace the new slave in the definitions that use it.
         if let Some(users) = self.users.remove(&pivot) {
             for s in users {
@@ -105,6 +120,9 @@ impl Elimination {
                 for (&m, &c) in &def.terms {
                     *slave.terms.entry(m).or_insert(0.0) += t * c;
                     self.users.entry(m).or_default().insert(s);
+                }
+                if !slave.offset.is_finite() || slave.terms.values().any(|c| !c.is_finite()) {
+                    return Err(not_finite());
                 }
             }
         }
@@ -258,6 +276,20 @@ mod tests {
         e.add(&[(0, 2.0)], 2.0, Some(0)).unwrap();
         let err = e.add(&[(0, 1.0)], 3.0, Some(0)).unwrap_err();
         assert!(err.to_string().contains("conflicting constraints"));
+    }
+
+    #[test]
+    fn a_value_that_is_not_finite_is_an_error() {
+        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let mut e = Elimination::new(2);
+            assert!(e.add(&[(0, bad), (1, -1.0)], 0.0, None).is_err());
+            assert!(e.add(&[(0, 1.0)], bad, None).is_err());
+        }
+        // Finite input can overflow in the substitution: u1 = 1e8 u0, then 1e305 u1 = u2.
+        let mut e = Elimination::new(3);
+        e.add(&[(1, 1e-8), (0, -1.0)], 0.0, Some(1)).unwrap();
+        let err = e.add(&[(1, 1e305), (2, -1.0)], 0.0, Some(2)).unwrap_err();
+        assert!(err.to_string().contains("not finite"), "{err}");
     }
 
     #[test]

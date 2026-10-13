@@ -527,3 +527,21 @@ fn pvd_times_add_up_and_units_are_named() {
         "{pvd}"
     );
 }
+
+#[test]
+fn an_equation_coefficient_or_a_boundary_value_that_is_not_finite_is_an_error() {
+    // The parser refuses these values, but a program can build the model directly.
+    let text = format!(
+        "*EQUATION\n2\n2,1,1,3,1,-1\n*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n2,1,25\n*END STEP\n"
+    );
+    for bad in [f64::NAN, f64::INFINITY] {
+        let mut model = cube("", &text);
+        model.equations[0].terms[0].coefficient = bad;
+        let e = solve(&model).unwrap_err().to_string();
+        assert!(e.contains("not finite"), "{e}");
+        let mut model = cube("", &text);
+        model.steps[0].boundaries[0].value = bad;
+        let e = solve(&model).unwrap_err().to_string();
+        assert!(e.contains("not finite"), "{e}");
+    }
+}
