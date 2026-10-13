@@ -124,13 +124,10 @@ impl Solve for Subprocess {
             }
         }
         input.push_str("*END STEP\n");
-        let dir = std::env::temp_dir().join(format!("fh-validate-{}-in", std::process::id()));
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let file = dir.join(format!("{}.inp", stem(mesh)));
+        let file = std::env::temp_dir().join(format!("fh-validate-{}.inp", std::process::id()));
         std::fs::write(&file, input).map_err(|e| e.to_string())?;
         let result = self.run(&file, stem(mesh), |run| rms_error(&read_step(run, 0)?, m));
         let _ = std::fs::remove_file(&file);
-        let _ = std::fs::remove_dir(&dir);
         result
     }
 }
@@ -142,21 +139,10 @@ fn rms_error(grid: &Grid, m: &Manufactured) -> Result<f64, String> {
         .and_then(|f| f.as_f64().filter(|_| f.components == 3))
         .ok_or("no point field U with 3 components")?;
     if u.len() != 3 * grid.points.len() || grid.points.is_empty() {
-        return Err(format!(
-            "U has {} values for {} points",
-            u.len(),
-            grid.points.len()
-        ));
+        return Err("U does not match the points".into());
     }
-    let sum: f64 = grid
-        .points
-        .iter()
-        .zip(u.chunks(3))
-        .map(|(p, got)| {
-            (0..3)
-                .map(|d| (got[d] - m.exact[d].eval(*p)).powi(2))
-                .sum::<f64>()
-        })
+    let sum: f64 = (grid.points.iter().zip(u.chunks(3)))
+        .flat_map(|(p, got)| (0..3).map(move |d| (got[d] - m.exact[d].eval(*p)).powi(2)))
         .sum();
     let rms = (sum / grid.points.len() as f64).sqrt();
     if rms.is_finite() {

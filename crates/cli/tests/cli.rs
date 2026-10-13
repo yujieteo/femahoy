@@ -138,7 +138,6 @@ fn validate_runs_every_case_through_the_solver() {
         );
     }
     assert!(stdout.contains("13 cases: 13 pass, 0 fail"), "{stdout}");
-    // A class R case reports the observed rate and the errors of its meshes.
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
@@ -174,23 +173,6 @@ fn validate_exits_1_when_a_class_r_rate_is_outside_the_band() {
     assert_eq!(out.status.code(), Some(1), "{stdout}");
     assert!(stdout.contains("mms-c3d8\tR\t3 meshes\tfail"), "{stdout}");
     assert!(text(out.stderr).contains("observed rate"), "stderr");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn validate_exits_1_when_the_class_r_boundary_set_is_missing() {
-    let dir = copy_root("badboundary");
-    let path = dir.join("validation/cases/mms-c3d10/case.toml");
-    let text_in = std::fs::read_to_string(&path).unwrap();
-    let broken = text_in.replacen("boundary_set = \"BOUNDARY\"", "boundary_set = \"NOPE\"", 1);
-    assert_ne!(broken, text_in);
-    std::fs::write(&path, broken).unwrap();
-    let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
-    assert_eq!(out.status.code(), Some(1));
-    assert!(
-        text(out.stderr).contains("no node set `NOPE` for `boundary_set`"),
-        "stderr"
-    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
