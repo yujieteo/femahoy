@@ -3,8 +3,10 @@
 //! and they fix no design decision.
 
 use fh_core_solver::element::{
-    elasticity, mean_stress, pressure_load, stiffness, volume, Kind, Placement,
+    elasticity, evaluate, mean_stress, pressure_load, small_strain, stiffness, volume,
+    ElementState, Evaluation, Kind, Material, Placement,
 };
+use fh_core_solver::SolverError;
 
 static ZERO: [f64; 30] = [0.0; 30];
 
@@ -237,6 +239,62 @@ fn tet_pressure_pushes_into_the_body() {
             assert!(
                 (t[k] - 3.0 * area * n[k]).abs() < 1e-13,
                 "face {face} {t:?}"
+            );
+        }
+    }
+}
+
+/// A material that gets stiffer with the strain: stress = strain³ + 1e-12 strain,
+/// with its exact tangent. Newton on the mode amplitudes converges slowly near 0.
+struct Cubic;
+
+impl Material for Cubic {
+    fn is_linear(&self) -> bool {
+        false
+    }
+
+    fn update(
+        &self,
+        f: &[[f64; 3]; 3],
+        _old: &[f64],
+        _new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        let e = small_strain(f);
+        let mut d = [[0.0; 6]; 6];
+        for (i, row) in d.iter_mut().enumerate() {
+            row[i] = 3.0 * e[i] * e[i] + 1e-12;
+        }
+        Ok((e.map(|x| x * x * x + 1e-12 * x), d))
+    }
+}
+
+#[test]
+fn incompatible_modes_that_do_not_converge_are_an_error() {
+    let c = unit_hex();
+    let state = ElementState {
+        internal: [1.0; 9],
+        ..Default::default()
+    };
+    let mut out = Evaluation::default();
+    match evaluate(Kind::C3D8I, &place(&c), &Cubic, &state, &mut out, true) {
+        Err(e) => assert!(e.to_string().contains("incompatible modes"), "{e}"),
+        Ok(()) => {
+            // A converged result is a fixed point: a second call does not move the modes.
+            let again = ElementState {
+                internal: out.internal,
+                ..state
+            };
+            let mut next = Evaluation::default();
+            evaluate(Kind::C3D8I, &place(&c), &Cubic, &again, &mut next, false).unwrap();
+            let moved = out
+                .internal
+                .iter()
+                .zip(&next.internal)
+                .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()));
+            assert!(
+                moved <= 1e-9,
+                "accepted modes {:?} that move by {moved:e}",
+                out.internal
             );
         }
     }

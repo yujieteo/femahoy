@@ -561,20 +561,26 @@ fn run<const M: usize, Mt: Material + ?Sized>(
         let mut kaa = [[0.0; 9]; 9];
         for (i, p) in pts.iter().enumerate() {
             let mut eps = eps_u[i];
-            if let Some(g) = &p.g {
-                let ga = mul_vec(g, &alpha);
-                for (e, v) in eps.iter_mut().zip(ga) {
-                    *e += v;
-                }
+            let ga = p.g.as_ref().map_or([0.0; 6], |g| mul_vec(g, &alpha));
+            for (e, v) in eps.iter_mut().zip(ga) {
+                *e += v;
             }
             let f = gradient(p, u, &alpha, &eps);
             let (stress, c) = material.update(&f, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
             resp[i] = Response { stress, tangent: c };
             if let Some(g) = &p.g {
+                // The size of the stress before the compatible strain and the mode strain
+                // cancel. The rounding of the mode force is relative to this size.
+                let mut size = stress.map(f64::abs);
+                for (s, row) in size.iter_mut().zip(&c) {
+                    for (k, ck) in row.iter().enumerate() {
+                        *s += ck.abs() * (eps_u[i][k].abs() + ga[k].abs());
+                    }
+                }
                 for a in 0..9 {
                     let t: f64 = (0..6).map(|r| g[r][a] * stress[r]).sum();
                     f_a[a] += p.w * t;
-                    scale += (p.w * t).abs();
+                    scale += (0..6).map(|r| (p.w * g[r][a] * size[r]).abs()).sum::<f64>();
                 }
                 let cg = a_b(&c, g);
                 add_at_b(&mut kaa, p.w, g, &cg);
@@ -583,11 +589,23 @@ fn run<const M: usize, Mt: Material + ?Sized>(
         if !has_modes {
             break;
         }
+        if !(scale.is_finite() && f_a.iter().all(|v| v.is_finite())) {
+            return Err(SolverError::new(
+                "the stress of the incompatible modes is not finite",
+            ));
+        }
         let max = f_a.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
         kaa_inv =
             invert(&kaa).ok_or_else(|| SolverError::new("incompatible mode matrix is singular"))?;
-        if max <= 1e-12 * scale || iterations == MAX_MODE_ITERATIONS {
+        if max <= 1e-12 * scale {
             break;
+        }
+        // The step cuts the increment back on this error.
+        if iterations == MAX_MODE_ITERATIONS {
+            return Err(SolverError::new(format!(
+                "incompatible modes did not converge in {MAX_MODE_ITERATIONS} iterations \
+                 (mode force {max:e}, scale {scale:e})"
+            )));
         }
         // Newton step on the mode amplitudes: kaa * d_alpha = f_a.
         let da = mul_vec(&kaa_inv, &f_a);
