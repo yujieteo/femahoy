@@ -809,6 +809,9 @@ dependencies = [
 [[package]]
 name = "fh-daemon"
 version = "0.0.0"
+dependencies = [
+ "fh-solver-api",
+]
 
 [[package]]
 name = "fh-inp"
