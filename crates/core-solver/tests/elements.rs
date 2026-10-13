@@ -538,3 +538,14 @@ fn incompatible_modes_that_do_not_converge_are_an_error() {
         }
     }
 }
+
+#[test]
+fn face_nodes_maps_each_face_to_local_nodes() {
+    use fh_core_solver::element::face_nodes;
+    assert_eq!(face_nodes(Kind::C3D8, 1).unwrap(), &[0, 1, 2, 3]);
+    assert_eq!(face_nodes(Kind::C3D8I, 4).unwrap(), &[1, 5, 6, 2]);
+    assert_eq!(face_nodes(Kind::C3D10, 2).unwrap(), &[0, 3, 1, 7, 8, 4]);
+    assert!(face_nodes(Kind::C3D8, 0).is_err());
+    assert!(face_nodes(Kind::C3D8, 7).is_err());
+    assert!(face_nodes(Kind::C3D10, 5).is_err());
+}

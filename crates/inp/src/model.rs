@@ -10,6 +10,7 @@ pub struct Model {
     pub boundaries: Vec<Boundary>,
     pub sections: Vec<SolidSection>,
     pub surfaces: Vec<NodeSurface>,
+    pub element_surfaces: Vec<ElementSurface>,
     pub equations: Vec<Equation>,
     pub mpcs: Vec<Mpc>,
     pub couplings: Vec<Coupling>,
@@ -28,6 +29,15 @@ pub struct SolidSection {
 pub struct NodeSurface {
     pub name: String,
     pub ids: Vec<u32>,
+}
+
+/// `*SURFACE, TYPE=ELEMENT`: a named list of element faces. A face number is 1 to 6
+/// (1 to 4 for a tet). The nodes of a face depend on the element type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElementSurface {
+    pub name: String,
+    /// `(element id, face number)`, in input order.
+    pub faces: Vec<(u32, u8)>,
 }
 
 /// One term of an `*EQUATION`: `coefficient * u(node, dof)`.
@@ -189,6 +199,10 @@ impl Model {
         self.elsets
             .iter()
             .find(|s| s.name.eq_ignore_ascii_case(name))
+    }
+
+    pub fn element_surface(&self, name: &str) -> Option<&ElementSurface> {
+        self.element_surfaces.iter().find(|s| s.name == name)
     }
 
     pub fn material(&self, name: &str) -> Option<&Material> {

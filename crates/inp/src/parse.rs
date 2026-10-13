@@ -524,17 +524,23 @@ impl Parser {
     fn surface(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "NAME"])?;
         self.model_data(b)?;
-        match b.value("TYPE")? {
-            Some("NODE") => {}
+        let element = match b.value("TYPE")? {
+            Some("NODE") => false,
+            Some("ELEMENT") => true,
             Some(t) => return Err(b.error(b.line, format!("unsupported TYPE {t}"))),
             None => return Err(b.error(b.line, "parameter TYPE is required")),
-        }
+        };
         let name = b
             .value("NAME")?
             .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
         // A coupling finds its surface by name, so a second surface of a name is lost.
-        if self.model.surfaces.iter().any(|s| s.name == name) {
+        if self.model.surfaces.iter().any(|s| s.name == name)
+            || self.model.element_surface(name).is_some()
+        {
             return Err(b.error(b.line, format!("surface '{name}' is already defined")));
+        }
+        if element {
+            return self.element_surface(b, name);
         }
         let mut ids = Vec::new();
         for d in &b.data {
@@ -552,6 +558,60 @@ impl Parser {
         self.model.surfaces.push(NodeSurface {
             name: name.to_owned(),
             ids,
+        });
+        Ok(())
+    }
+
+    /// Data lines: `element or element set, S<face>`.
+    fn element_surface(&mut self, b: &Block, name: &str) -> Result<(), ParseError> {
+        let types: std::collections::HashMap<u32, &str> = self
+            .model
+            .elements
+            .iter()
+            .map(|e| (e.id, e.element_type.as_str()))
+            .collect();
+        let mut faces = Vec::new();
+        for d in &b.data {
+            if d.fields.len() != 2 {
+                return Err(b.error(d.line, "line needs element and face"));
+            }
+            let ty = d.fields[1].to_uppercase();
+            let face = ty
+                .strip_prefix('S')
+                .and_then(|n| n.parse::<u8>().ok())
+                .ok_or_else(|| b.error(d.line, format!("unsupported face {ty}")))?;
+            let f = d.fields[0].as_str();
+            let ids = if let Ok(id) = f.parse::<u32>() {
+                if !self.element_ids.contains(&id) {
+                    return Err(b.error(d.line, format!("element {id} is not defined")));
+                }
+                vec![id]
+            } else {
+                let set = f.to_uppercase();
+                match self.model.elset(&set) {
+                    Some(s) => s.ids.clone(),
+                    None => {
+                        return Err(b.error(d.line, format!("element set '{set}' is not defined")))
+                    }
+                }
+            };
+            for id in ids {
+                let max = match types.get(&id).copied() {
+                    Some("C3D10" | "C3D10M") => 4,
+                    _ => 6,
+                };
+                if !(1..=max).contains(&face) {
+                    return Err(b.error(
+                        d.line,
+                        format!("face must be 1 to {max} for element {id}, found {face}"),
+                    ));
+                }
+                faces.push((id, face));
+            }
+        }
+        self.model.element_surfaces.push(ElementSurface {
+            name: name.to_owned(),
+            faces,
         });
         Ok(())
     }
@@ -575,7 +635,9 @@ impl Parser {
             )
         })?;
         let ref_node = self.known_node(b, b.line, ref_id)?;
-        if !self.model.surfaces.iter().any(|s| s.name == surface) {
+        if !self.model.surfaces.iter().any(|s| s.name == surface)
+            && self.model.element_surface(surface).is_none()
+        {
             return Err(b.error(b.line, format!("surface '{surface}' is not defined")));
         }
         if let Some(d) = b.data.first() {

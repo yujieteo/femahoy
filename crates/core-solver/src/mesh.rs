@@ -8,7 +8,7 @@ use fh_inp::{CouplingKind, ElementTarget, Model, MpcKind, Target};
 use crate::constraint::Elimination;
 use crate::contribution::{Contribution, MAX_GROUP_NODES, MAX_GROUP_STATE};
 use crate::element::{
-    evaluate, ElementState, Evaluation, Kind, Material, Placement, MAX_DOFS, MAX_MAT_STATE,
+    self, evaluate, ElementState, Evaluation, Kind, Material, Placement, MAX_DOFS, MAX_MAT_STATE,
     MAX_POINTS,
 };
 use crate::state::StateStore;
@@ -285,22 +285,37 @@ impl<'a> Mesh<'a> {
         Ok(())
     }
 
+    /// Mesh node indices of an element face, as `(element index, face)` gives them.
+    pub(crate) fn face_node_indices(&self, e: usize, face: u8) -> Result<Vec<usize>, SolverError> {
+        let local = element::face_nodes(self.kinds[e], face)?;
+        let ids = &self.model.elements[e].nodes;
+        local.iter().map(|&l| self.node(ids[l])).collect()
+    }
+
     pub(crate) fn surface_nodes(
         &self,
         name: &str,
         ref_node: usize,
     ) -> Result<Vec<usize>, SolverError> {
-        let s = self
-            .model
-            .surfaces
-            .iter()
-            .find(|s| s.name == name)
-            .ok_or_else(|| SolverError::new(format!("surface {name} not found")))?;
-        let mut v: Vec<usize> = s
-            .ids
-            .iter()
-            .map(|id| self.node(*id))
-            .collect::<Result<_, _>>()?;
+        let mut v: Vec<usize> = if let Some(s) = self.model.surfaces.iter().find(|s| s.name == name)
+        {
+            s.ids
+                .iter()
+                .map(|id| self.node(*id))
+                .collect::<Result<_, _>>()?
+        } else if let Some(s) = self.model.element_surface(name) {
+            let mut v = Vec::new();
+            for &(id, face) in &s.faces {
+                let e = *self
+                    .elem_index
+                    .get(&id)
+                    .ok_or_else(|| SolverError::new(format!("element {id} not found")))?;
+                v.extend(self.face_node_indices(e, face)?);
+            }
+            v
+        } else {
+            return Err(SolverError::new(format!("surface {name} not found")));
+        };
         v.sort_unstable();
         v.dedup();
         v.retain(|&n| n != ref_node);
