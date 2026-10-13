@@ -312,3 +312,28 @@ fn check_fails_when_a_case_mesh_has_no_section() {
     );
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[cfg(unix)]
+#[test]
+fn check_fails_when_a_fixture_directory_is_unreadable() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("fh-cli-unreadable-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let hidden = dir.join("fixtures/hidden");
+    std::fs::create_dir_all(&hidden).unwrap();
+    let mesh = "*node\n1,0,0,0\n";
+    std::fs::write(dir.join("fixtures/good.inp"), mesh).unwrap();
+    std::fs::write(hidden.join("bad.inp"), mesh).unwrap();
+    std::fs::set_permissions(&hidden, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let readable = std::fs::read_dir(&hidden).is_ok(); // true when the test runs as root
+    let out = fh(&["check", "--root", dir.to_str().unwrap()]);
+    std::fs::set_permissions(&hidden, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let err = text(out.stderr);
+    let code = out.status.code();
+    let _ = std::fs::remove_dir_all(&dir);
+    if readable {
+        return;
+    }
+    assert_eq!(code, Some(2), "{err}");
+    assert!(err.contains("hidden"), "{err}");
+}

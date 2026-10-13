@@ -142,6 +142,24 @@ fn shipped_class_l_cases_pass_with_the_recorded_solver_values() {
         let (limit, order, est) = richardson(&values, ratio).unwrap();
         println!("{id} {name}: limit {limit:e} ref {r:e} order {order:.3} estimate {est:e}");
         assert!(res.is_ok(), "{id} {name}: {res:?}");
+        // The limit sits close to the reference and the order is near 2 for these elements.
+        assert!(
+            (limit - r).abs() <= 0.02 * r.abs(),
+            "{id} {name}: limit {limit}, ref {r}"
+        );
+        assert!((1.5..=2.5).contains(&order), "{id} {name}: order {order}");
+        // A wrong solver result must fail: a 10 percent error in the finest value, or in the
+        // reference, is outside the tolerance.
+        let mut wrong = values;
+        wrong[3] *= 1.1;
+        assert!(
+            check_l(&wrong, ratio, r, e, band).is_err(),
+            "{id} {name}: wrong value"
+        );
+        assert!(
+            check_l(&values, ratio, r * 1.1, e, band).is_err(),
+            "{id} {name}: wrong ref"
+        );
     }
 }
 
