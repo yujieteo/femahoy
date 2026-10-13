@@ -3,27 +3,33 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// Every `.inp` file under `dir`, sorted. A missing `dir` gives no files.
-fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
+/// Every `.inp` file under `dir`. A missing `dir` gives no files. Any other read error fails.
+fn collect(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("cannot read {}: {e}", dir.display())),
     };
-    for path in entries.flatten().map(|e| e.path()) {
+    for entry in entries {
+        let path = entry
+            .map_err(|e| format!("cannot read an entry of {}: {e}", dir.display()))?
+            .path();
         if path.is_dir() {
-            collect(&path, out);
+            collect(&path, out)?;
         } else if path.extension().is_some_and(|x| x == "inp") {
             out.push(path);
         }
     }
+    Ok(())
 }
 
-/// The fixtures of a repository: `fixtures/` and `validation/cases/`.
-pub fn fixture_files(root: &Path) -> Vec<PathBuf> {
+/// The fixtures of a repository: `fixtures/` and `validation/cases/`, sorted.
+pub fn fixture_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut files = Vec::new();
-    collect(&root.join("fixtures"), &mut files);
-    collect(&root.join("validation/cases"), &mut files);
+    collect(&root.join("fixtures"), &mut files)?;
+    collect(&root.join("validation/cases"), &mut files)?;
     files.sort();
-    files
+    Ok(files)
 }
 
 /// True for a file inside `validation/cases`. The solver needs a section there.
@@ -61,7 +67,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         }
     }
     if files.is_empty() {
-        files = fixture_files(&root);
+        files = fixture_files(&root)?;
         if files.is_empty() {
             return Err(format!("no .inp fixtures found under {}", root.display()));
         }
