@@ -1,31 +1,38 @@
 # validation skill
 
 ## Purpose
-- The validation harness, the tolerance classes and the manufactured solutions (DESIGN.md sections 10 and 11).
-- Licence role: validated core. Line budget: 6k, tests included (DESIGN.md section 11).
+
+Load case TOML files, measure solver results and compare them with declared references.
 
 ## Inputs and outputs
-- Input: fixtures in `validation/cases/<id>/`. Each holds the input files, the reference values, the tolerance class and the justification (DESIGN.md section 10.4).
-- Output: `fh validate` reports pass or fail for each case (DESIGN.md section 10.5).
-- Fixture schema: see `crates/validation/SCHEMA.md`.
+
+- Each case resides in `validation/cases/<id>/case.toml`. The accepted schema is `schema = 2`.
+- The top-level `units` key is required. Values are `SI-mm` or `SI-m`.
+- SI-mm uses mm, N, MPa, tonne and s. SI-m uses m, N, Pa, kg and s.
+- Each reference names a quantity with `set`, `field`, `component`, `step` and `op`.
+- Fields are `U`, `RF` and `S`. Operations are `value`, `mean`, `max`, `min` and `sum`.
 
 ## Invariants the code must keep
-- Fixtures are data files, not prose (DESIGN.md section 10.4).
-- Tolerance class L: Richardson extrapolation over at least three mesh refinements (DESIGN.md section 10.3).
-- Tolerance class N: a fixed tolerance per case, written and justified in the fixture file (DESIGN.md section 10.3).
-- Tolerance class R: the fixture states the expected convergence rate and the allowed band (DESIGN.md section 10.3).
-- A failure blocks the merge. There is no override (DESIGN.md section 10.5).
-- Line budget: 6k lines, tests included (DESIGN.md section 11).
+
+- All case numbers use the declared unit system. Units are not inferred from the mesh.
+- Class L uses Richardson extrapolation and observed-order bounds. Class N uses fixed relative and absolute tolerances.
+- Class R checks a rate within a declared band.
+- Convergence over a case collection skips class N. A direct class N convergence request fails.
+- A failed case or unavailable solver makes `fh validate` fail.
 
 ## Forbidden actions
-- Run Abaqus. No Abaqus licence is available (DESIGN.md section 10.1).
-- Add NAFEMS target values before the leader confirms the legal check (AGENTS.md section 4).
-- Weaken, skip or delete a validation case. Change a tolerance only with a written reason and leader approval (AGENTS.md section 4).
+
+Do not describe `no solver` as a successful validation result.
 
 ## Validation hooks it must pass
-- `fh validate` runs the suite. M1 done-when: it reports "no solver" (DESIGN.md sections 10.5 and 13).
-- For each changed solver path: `fh validate --convergence <path>` (DESIGN.md section 10.5, AGENTS.md section 6).
-- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
+
+Run `cargo check -p fh-validation` and `cargo test -p fh-validation`. Use `fh validate` for the suite.
 
 ## Examples
-- Cases from DESIGN.md section 10.2 include the patch test, the cantilever, the Lamé thick cylinder and the Hertz sphere on a flat plane.
+
+```sh
+fh validate --root .
+fh validate --convergence validation/cases/cantilever
+fh info part.step --case validation/cases/cantilever
+```
+See `SCHEMA.md` for the full fixture structure.
