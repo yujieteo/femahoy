@@ -814,6 +814,34 @@ pub fn von_mises(s: &[f64; 6]) -> f64 {
         .sqrt()
 }
 
+const HEX_FACES: [[usize; 4]; 6] = [
+    [0, 1, 2, 3],
+    [4, 7, 6, 5],
+    [0, 4, 5, 1],
+    [1, 5, 6, 2],
+    [2, 6, 7, 3],
+    [3, 7, 4, 0],
+];
+
+/// Tet faces: corners, then the three midside nodes in the same cyclic order.
+const TET_FACES: [[usize; 6]; 4] = [
+    [0, 1, 2, 4, 5, 6],
+    [0, 3, 1, 7, 8, 4],
+    [1, 3, 2, 8, 9, 5],
+    [2, 3, 0, 9, 7, 6],
+];
+
+/// Local node numbers (0 based) of face `face` (1 to 6 for a hex, 1 to 4 for a tet).
+/// A hex face has its 4 corners. A tet face has 3 corners, then 3 midside nodes.
+pub fn face_nodes(kind: Kind, face: u8) -> Result<&'static [usize], SolverError> {
+    let f = usize::from(face).wrapping_sub(1);
+    let nodes: Option<&'static [usize]> = match kind {
+        Kind::C3D8 | Kind::C3D8I => HEX_FACES.get(f).map(|n| &n[..]),
+        Kind::C3D10 => TET_FACES.get(f).map(|n| &n[..]),
+    };
+    nodes.ok_or_else(|| SolverError::new(format!("{kind:?} has no face {face}")))
+}
+
 /// Consistent nodal forces of a uniform pressure `p` on face `face` (1 to 6).
 /// Positive pressure pushes into the body. The face is taken at the current positions
 /// (start + displacement). Returns `(local node, force)` pairs.
@@ -824,32 +852,15 @@ pub fn pressure_load(
     p: f64,
 ) -> Result<Vec<(usize, [f64; 3])>, SolverError> {
     check_place(kind, place)?;
-    let bad = || SolverError::new(format!("{kind:?} has no face {face}"));
-    let f = usize::from(face).checked_sub(1).ok_or_else(bad)?;
     let mut now = [[0.0; 3]; 10];
     for (a, x) in now.iter_mut().enumerate().take(place.start.len()) {
         *x = place.current(a);
     }
     let coords = &now[..place.start.len()];
-    let hex_faces: [[usize; 4]; 6] = [
-        [0, 1, 2, 3],
-        [4, 7, 6, 5],
-        [0, 4, 5, 1],
-        [1, 5, 6, 2],
-        [2, 6, 7, 3],
-        [3, 7, 4, 0],
-    ];
-    // Tet faces: corners, then the three midside nodes in the same cyclic order.
-    let tet_faces: [[usize; 6]; 4] = [
-        [0, 1, 2, 4, 5, 6],
-        [0, 3, 1, 7, 8, 4],
-        [1, 3, 2, 8, 9, 5],
-        [2, 3, 0, 9, 7, 6],
-    ];
     let mut out: Vec<(usize, [f64; 3])> = Vec::new();
     match kind {
         Kind::C3D8 | Kind::C3D8I => {
-            let nodes = hex_faces.get(f).ok_or_else(bad)?;
+            let nodes = face_nodes(kind, face)?;
             let g = 1.0 / 3.0_f64.sqrt();
             for (sa, sb) in [(-g, -g), (g, -g), (g, g), (-g, g)] {
                 // Bilinear quad shape functions on the face.
@@ -871,7 +882,7 @@ pub fn pressure_load(
             }
         }
         Kind::C3D10 => {
-            let nodes = tet_faces.get(f).ok_or_else(bad)?;
+            let nodes = face_nodes(kind, face)?;
             // A quadratic shape function times the quadratic area vector of a curved face
             // has degree 4. The symmetric 6-point rule on the triangle is exact to degree 4.
             // Each weight includes the reference area 1/2.

@@ -41,7 +41,45 @@ fn node_surface_takes_nodes_and_sets() {
     let m = ok("*NSET, NSET=TOP\n5,6,7,8\n*SURFACE, TYPE=NODE, NAME=S\nTOP\n1\n");
     assert_eq!(m.surfaces[0].name, "S");
     assert_eq!(m.surfaces[0].ids, vec![5, 6, 7, 8, 1]);
-    assert!(err("*SURFACE, TYPE=ELEMENT, NAME=S\n").contains("unsupported TYPE ELEMENT"));
+    assert!(err("*SURFACE, TYPE=FACE, NAME=S\n").contains("unsupported TYPE FACE"));
+}
+
+#[test]
+fn element_surface_takes_elements_and_sets() {
+    let m = ok("*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\nall, s6\n");
+    assert_eq!(m.element_surfaces.len(), 1);
+    assert_eq!(m.element_surfaces[0].name, "S");
+    assert_eq!(m.element_surfaces[0].faces, vec![(1, 4), (1, 6)]);
+    assert!(m.surfaces.is_empty());
+    assert!(m.element_surface("S").is_some());
+}
+
+#[test]
+fn element_surface_errors() {
+    assert!(err("*SURFACE, TYPE=ELEMENT, NAME=S\n1, S7\n").contains("face must be 1 to 6"));
+    assert!(err("*SURFACE, TYPE=ELEMENT, NAME=S\n1, P1\n").contains("unsupported face P1"));
+    assert!(err("*SURFACE, TYPE=ELEMENT, NAME=S\n1\n").contains("element and face"));
+    assert!(err("*SURFACE, TYPE=ELEMENT, NAME=S\n9, S1\n").contains("element 9 is not defined"));
+    assert!(err("*SURFACE, TYPE=ELEMENT, NAME=S\nNOPE, S1\n").contains("element set 'NOPE'"));
+}
+
+#[test]
+fn tet_element_surface_has_4_faces() {
+    let tet =
+        "*NODE\n1,0,0,0\n2,1,0,0\n3,0,1,0\n4,0,0,1\n5,.5,0,0\n6,.5,.5,0\n7,0,.5,0\n8,0,0,.5\n\
+9,.5,0,.5\n10,0,.5,.5\n*ELEMENT, TYPE=C3D10\n1,1,2,3,4,5,6,7,8,9,10\n";
+    let bad = parse(&format!("{tet}*SURFACE, TYPE=ELEMENT, NAME=S\n1, S5\n")).unwrap_err();
+    assert!(bad
+        .to_string()
+        .contains("face must be 1 to 4 for element 1"));
+    assert!(parse(&format!("{tet}*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n")).is_ok());
+}
+
+#[test]
+fn coupling_accepts_an_element_surface() {
+    let m = ok("*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n\
+*COUPLING, CONSTRAINT NAME=C1, REF NODE=9, SURFACE=S\n*KINEMATIC\n");
+    assert_eq!(m.couplings[0].surface, "S");
 }
 
 #[test]
@@ -225,4 +263,26 @@ fn dload_errors() {
     assert!(err(&format!("{pre}*DLOAD\nALL, P7, 1\n")).contains("face"));
     assert!(err(&format!("{pre}*DLOAD\nALL, GRAV, 1\n")).contains("unsupported load type GRAV"));
     assert!(err("*DLOAD\nALL, P1, 1\n").contains("needs an open *STEP"));
+}
+
+#[test]
+fn dsload_reads_a_pressure_on_an_element_surface() {
+    let m = ok(
+        "*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n*STEP\n*STATIC\n*DSLOAD\nS, P, 2.5\n*END STEP\n",
+    );
+    let d = &m.steps[0].dsloads;
+    assert_eq!((d[0].surface.as_str(), d[0].pressure), ("S", 2.5));
+}
+
+#[test]
+fn dsload_errors() {
+    let step = "*STEP\n*STATIC\n*DSLOAD\n";
+    let s = "*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n";
+    assert!(err(&format!("{s}{step}NOPE, P, 1\n")).contains("'NOPE' is not defined"));
+    assert!(
+        err(&format!("*SURFACE, TYPE=NODE, NAME=N\n1\n{step}N, P, 1\n"))
+            .contains("'N' is not defined")
+    );
+    assert!(err(&format!("{s}{step}S, P1, 1\n")).contains("unsupported load type P1"));
+    assert!(err(&format!("{s}*DSLOAD\nS, P, 1\n")).contains("needs an open *STEP"));
 }
