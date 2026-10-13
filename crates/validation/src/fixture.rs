@@ -126,8 +126,8 @@ impl Case {
             line: e.span().map(|s| line_of(&text, s.start)),
             message: e.message().to_owned(),
         })?;
-        let fx = Fx { file, text: &text };
-        fx.build(dir, doc.as_table())
+        let reader = FixtureReader { file, text: &text };
+        reader.build(dir, doc.as_table())
     }
 }
 
@@ -140,12 +140,12 @@ fn line_of(text: &str, offset: usize) -> usize {
 }
 
 /// The parsed text and its file, for errors with line numbers.
-struct Fx<'a> {
+struct FixtureReader<'a> {
     file: PathBuf,
     text: &'a str,
 }
 
-impl Fx<'_> {
+impl FixtureReader<'_> {
     fn err(&self, item: Option<&Item>, message: String) -> FixtureError {
         FixtureError {
             file: self.file.clone(),
@@ -163,11 +163,14 @@ impl Fx<'_> {
     }
 
     fn string(&self, table: &Table, key: &str) -> Result<String, FixtureError> {
-        let item = self.get(table, key)?;
-        match item.as_str() {
-            Some(s) if !s.is_empty() => Ok(s.to_owned()),
-            _ => Err(self.err(Some(item), format!("`{key}` must be a non-empty string"))),
-        }
+        self.non_empty_string(self.get(table, key)?, key)
+            .map(str::to_owned)
+    }
+
+    fn non_empty_string<'i>(&self, item: &'i Item, key: &str) -> Result<&'i str, FixtureError> {
+        item.as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| self.err(Some(item), format!("`{key}` must be a non-empty string")))
     }
 
     fn number(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
@@ -184,56 +187,58 @@ impl Fx<'_> {
             .and_then(Item::as_table_like)
             .and_then(|t| t.get(name))
             .ok_or_else(|| self.err(None, format!("no quantity for reference `{name}`")))?;
-        let t = item
+        let quantity_table = item
             .as_table_like()
             .ok_or_else(|| self.err(Some(item), format!("`quantity.{name}` must be a table")))?;
-        for (k, i) in t.iter() {
+        for (k, i) in quantity_table.iter() {
             if !["set", "field", "component", "step", "op"].contains(&k) {
                 return Err(self.err(Some(i), format!("unknown key `{k}` in `quantity.{name}`")));
             }
         }
         let get = |key: &str| {
-            t.get(key).ok_or_else(|| {
+            quantity_table.get(key).ok_or_else(|| {
                 self.err(
                     Some(item),
                     format!("missing key `{key}` in `quantity.{name}`"),
                 )
             })
         };
-        let text = |key: &str| -> Result<(String, &Item), FixtureError> {
-            let i = get(key)?;
-            match i.as_str() {
-                Some(s) if !s.is_empty() => Ok((s.to_owned(), i)),
-                _ => Err(self.err(Some(i), format!("`{key}` must be a non-empty string"))),
-            }
+        let text = |key: &str| -> Result<(&str, &Item), FixtureError> {
+            let item = get(key)?;
+            Ok((self.non_empty_string(item, key)?, item))
         };
         let (set, _) = text("set")?;
         let (step, _) = text("step")?;
-        let (field_name, fi) = text("field")?;
-        let (field, valid): (Field, &[u32]) = match field_name.as_str() {
+        let (field_name, field_item) = text("field")?;
+        let (field, valid_components): (Field, &[u32]) = match field_name {
             "U" => (Field::U, &[1, 2, 3]),
             "RF" => (Field::RF, &[1, 2, 3]),
             "S" => (Field::S, &[11, 22, 33, 12, 23, 13]),
             other => {
                 return Err(self.err(
-                    Some(fi),
+                    Some(field_item),
                     format!("unknown field `{other}`, expected U, RF or S"),
                 ))
             }
         };
-        let ci = get("component")?;
-        let component = ci
+        let component_item = get("component")?;
+        let component = component_item
             .as_integer()
             .and_then(|c| u32::try_from(c).ok())
-            .ok_or_else(|| self.err(Some(ci), "`component` must be an integer".into()))?;
-        if !valid.contains(&component) {
+            .ok_or_else(|| {
+                self.err(
+                    Some(component_item),
+                    "`component` must be an integer".into(),
+                )
+            })?;
+        if !valid_components.contains(&component) {
             return Err(self.err(
-                Some(ci),
+                Some(component_item),
                 format!("component {component} is not valid for field {field_name}"),
             ));
         }
-        let (word, oi) = text("op")?;
-        let op = match word.as_str() {
+        let (op_name, op_item) = text("op")?;
+        let op = match op_name {
             "value" => Op::Value,
             "mean" => Op::Mean,
             "max" => Op::Max,
@@ -241,16 +246,16 @@ impl Fx<'_> {
             "sum" => Op::Sum,
             other => {
                 return Err(self.err(
-                    Some(oi),
+                    Some(op_item),
                     format!("unknown op `{other}`, expected value, mean, max, min or sum"),
                 ))
             }
         };
         Ok(Quantity {
-            set,
+            set: set.to_owned(),
             field,
             component,
-            step,
+            step: step.to_owned(),
             op,
         })
     }
@@ -414,7 +419,7 @@ impl Fx<'_> {
             }
         }
         let class_item = self.get(table, "class")?;
-        let class = match self.string(table, "class")?.as_str() {
+        let class = match class_name.as_str() {
             "L" => Class::L {
                 ratio: self.number(table, "ratio")?,
                 reference_error: self.number(table, "reference_error")?,
