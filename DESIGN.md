@@ -502,7 +502,7 @@ Platform work is separate from solver features. M10 and M11 do not wait for M5 t
 |---|---|---|---|
 | R1 Licence and rights review | A planned review for the commercial licence (section 2). It records the exact versions, the sources, the licences (also transitive ones), the notices and the contribution rights of each dependency and each external program. A lawyer checks the CLA and the file-based adapters for external programs (section 15). | None. It can start at any time. | A rights record exists for each dependency and each external program. A lawyer checked the CLA. The review closes before any commercial distribution. |
 
-Later, with no milestone number yet: a GPU backend (Metal first, D-08) and the general `fh mesh` command (D-02). femahoy has no mesher of its own (D-15).
+Later, with no milestone number yet: a GPU backend (Metal first, D-08). femahoy has no mesher of its own (D-15).
 
 The managed LLM tier is a separate track. It starts after the second user test.
 
@@ -567,7 +567,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** gmsh is GPL, and the commercial licence (section 2) forbids linking GPL code.
 - **Rejected:** link gmsh, bundle gmsh.
 - **Reverse if:** gmsh changes its licence.
-- **Built:** `.msh` import only. `fh mesh` is not built yet.
+- **Built:** `.msh` import and `fh mesh` (`cli` crate). `fh mesh` runs gmsh as a subprocess. v1 refuses a `.geo` file that can run other programs or files.
 
 ### D-03 TOON is for agents, VTU keeps full precision
 - **Decided by:** the captain.
