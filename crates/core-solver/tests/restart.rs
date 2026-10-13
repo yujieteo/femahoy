@@ -235,6 +235,28 @@ fn a_changed_input_file_is_rejected() {
 }
 
 #[test]
+fn a_restart_refuses_a_damaged_or_missing_result_of_a_committed_increment() {
+    // The file, and true to remove it, false to damage it.
+    for (file, remove) in [
+        ("step-1-inc-1.vtu", false),
+        ("step-1.vtu", true),
+        ("step-1-inc-4.txt", true),
+    ] {
+        let d = dir("damaged");
+        run(&bar_input(), &d, &options(), false, &|| false).unwrap();
+        if remove {
+            fs::remove_file(d.join(file)).unwrap();
+        } else {
+            fs::write(d.join(file), "broken").unwrap();
+        }
+        match run(&bar_input(), &d, &options(), true, &|| false) {
+            Ok(()) => panic!("{file}: the restart passed"),
+            Err(e) => assert!(e.contains(file), "{file}: {e}"),
+        }
+    }
+}
+
+#[test]
 fn a_restart_without_a_restart_file_is_an_error() {
     let d = dir("none");
     assert!(run(&bar_input(), &d, &options(), true, &|| false).is_err());
