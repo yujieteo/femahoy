@@ -506,7 +506,7 @@ Later, with no milestone number yet: a GPU backend (Metal first, D-08). femahoy 
 
 The managed LLM tier is a separate track. It starts after the second user test.
 
-**Status on main:** M0 and M1 are done. The M2 solver is on main ([PR 10](https://github.com/yujieteo/femahoy/pull/10)), but nobody checked it against the M2 stage gates yet. E1 is partly done: section 11.2 has measurements on aarch64. P1 is not done, because CI checks x86-64 only. All other items are not started. `docs/milestones.md` has the status of each item. The decision log (section 17) states the build status of each decision.
+**Status on main:** M0 and M1 are done. The M2 solver is on main ([PR 10](https://github.com/yujieteo/femahoy/pull/10)), but nobody checked it against the M2 stage gates yet. E1 is done on aarch64 macOS: section 11.2 and `docs/phase-memory.md` have the measurements. P1 is not done, because CI checks x86-64 only. All other items are not started. `docs/milestones.md` has the status of each item. The decision log (section 17) states the build status of each decision.
 
 ---
 
