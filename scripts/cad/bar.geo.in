@@ -1,0 +1,22 @@
+// Mesh recipe for a bar along x: STEP in, C3D10 `.msh` out (decision D-14).
+// Replace @STEP@, @UNIT@ (MM or M, from `fh info --case`), @SIZE@ and @OUT@, then run
+// `gmsh FILE.geo -0 -nopopup`. Always set the unit here. Never rely on earlier gmsh state (D-12).
+Geometry.OCCTargetUnit = "@UNIT@";
+SetFactory("OpenCASCADE");
+Merge "@STEP@";
+Coherence; // `fragment`: bodies share nodes at a common face
+b[] = Volume{:};
+bb[] = BoundingBox Volume{b[0]};
+x0 = bb[0]; y0 = bb[1]; z0 = bb[2]; x1 = bb[3]; y1 = bb[4]; z1 = bb[5];
+eps = 1e-6 * (x1 - x0);
+// Faces by plane, because STEP keeps no face names.
+fixed[] = Surface In BoundingBox{x0 - eps, y0 - eps, z0 - eps, x0 + eps, y1 + eps, z1 + eps};
+tip[] = Surface In BoundingBox{x1 - eps, y0 - eps, z0 - eps, x1 + eps, y1 + eps, z1 + eps};
+Physical Surface("fixed") = fixed[];
+Physical Surface("tip") = tip[];
+Physical Volume("solid") = b[];
+Mesh.MeshSizeMax = @SIZE@;
+Mesh.ElementOrder = 2;
+Mesh.MshFileVersion = 4.1;
+Mesh 3;
+Save "@OUT@";

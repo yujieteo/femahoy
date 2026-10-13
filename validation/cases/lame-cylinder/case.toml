@@ -1,6 +1,7 @@
 # Lame thick cylinder, quarter model, plane strain. Class L: 4 meshes, 4x2, 8x4, 16x8 and 32x16 elements.
 schema = 2
 id = "lame-cylinder"
+units = "SI-mm"
 class = "L"
 justification = "Reference is the closed-form Lame solution. Richardson over the 3 finest of 4 meshes gives the discretisation error. The chord approximation of the arc is part of that error. The closed form has no stated error, so reference_error is 0. The captain accepted it. The order band 1.5 to 2.5 holds the expected order of 2 for trilinear elements (the solver values give 1.97). A lower order widens the Richardson estimate, so it fails."
 derivation = "derivation.md"

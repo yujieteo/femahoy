@@ -8,7 +8,7 @@ mod run;
 mod tolerance;
 
 pub use fixture::{
-    load_all, Case, Class, Field, FixtureError, Op, Quantity, Reference, ELEMENT_TYPES,
+    load_all, Case, Class, Field, FixtureError, Op, Quantity, Reference, Units, ELEMENT_TYPES,
     SCHEMA_VERSION,
 };
 pub use run::{run_case_with, run_convergence_with, Outcome, Report, Row, Solve};

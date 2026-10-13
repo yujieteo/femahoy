@@ -1,6 +1,7 @@
 # Patch test. Class N: the field is linear, so the exact result has no discretisation error.
 schema = 2
 id = "patch-test"
+units = "SI-mm"
 class = "N"
 justification = "The imposed displacement field is linear, so C3D8 must reproduce it and its uniform stress to round-off. No mesh error exists, so Richardson does not apply. The tolerance covers round-off in a sparse solve only."
 derivation = "derivation.md"

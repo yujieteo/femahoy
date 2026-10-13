@@ -1,6 +1,7 @@
 //! The `fh` command line binary.
 
 mod check;
+mod info;
 mod measure;
 mod mesh;
 mod validate;
@@ -15,7 +16,8 @@ fn usage() -> String {
         "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
          mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
-         validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n\n\
+         validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
+         info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n\n\
          planned subcommands:\n",
     );
     for name in PLANNED {
@@ -35,6 +37,7 @@ fn main() -> ExitCode {
         Some("check") => check::run(&args[1..]),
         Some("mesh") => mesh::run(&args[1..]),
         Some("validate") => validate::run(&args[1..]),
+        Some("info") => info::run(&args[1..]),
         _ => {
             if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
                 eprintln!("fh {}: not implemented", args[0]);
