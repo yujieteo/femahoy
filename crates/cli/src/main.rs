@@ -2,6 +2,7 @@
 
 mod check;
 mod measure;
+mod mesh;
 mod validate;
 
 use std::process::ExitCode;
@@ -13,6 +14,7 @@ fn usage() -> String {
     let mut text = String::from(
         "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
+         mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n\n\
          planned subcommands:\n",
     );
@@ -31,6 +33,7 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Some("check") => check::run(&args[1..]),
+        Some("mesh") => mesh::run(&args[1..]),
         Some("validate") => validate::run(&args[1..]),
         _ => {
             if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
