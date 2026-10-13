@@ -2,6 +2,9 @@
 // Each test binary uses only some of the helpers.
 #![allow(dead_code)]
 
+use std::fs;
+use std::path::Path;
+
 use fh_inp::{parse, Model};
 
 pub struct Block {
@@ -158,4 +161,88 @@ pub fn inp_text(b: &Block, tail: &str) -> String {
 
 pub fn model(b: &Block, tail: &str) -> Model {
     parse(&inp_text(b, tail)).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// A C3D8 block with `steps` steps: the face x = 0 is fixed and the face x = size[0] has a
+/// load that grows from step to step.
+pub fn block_input(n: [usize; 3], size: [f64; 3], steps: usize) -> String {
+    let b = hex_block(n, size, 0.1, "C3D8");
+    let mut t = String::from("*NODE\n");
+    for (i, p) in b.nodes.iter().enumerate() {
+        t.push_str(&format!("{},{},{},{}\n", i + 1, p[0], p[1], p[2]));
+    }
+    t.push_str("*ELEMENT, TYPE=C3D8\n");
+    for (i, e) in b.elements.iter().enumerate() {
+        let ids: Vec<String> = e.iter().map(|n| (n + 1).to_string()).collect();
+        t.push_str(&format!("{},{}\n", i + 1, ids.join(",")));
+    }
+    t.push_str(&format!(
+        "*ELSET, ELSET=ALL, GENERATE\n1,{},1\n*MATERIAL, NAME=M\n*ELASTIC\n1000, 0.25\n\
+*SOLID SECTION, ELSET=ALL, MATERIAL=M\n",
+        b.elements.len()
+    ));
+    let at = |axis: usize, v: f64| -> Vec<usize> {
+        b.nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| (p[axis] - v).abs() < 1e-12)
+            .map(|(i, _)| i + 1)
+            .collect()
+    };
+    for s in 0..steps {
+        t.push_str("*STEP\n*STATIC\n*BOUNDARY\n");
+        for n in at(0, 0.0) {
+            t.push_str(&format!("{n},1,3\n"));
+        }
+        t.push_str("*CLOAD\n");
+        for n in at(0, size[0]) {
+            t.push_str(&format!("{n},1,{}\n", 0.1 * (s + 1) as f64));
+        }
+        t.push_str("*END STEP\n");
+    }
+    t
+}
+
+/// Every file of the folder except the restart files and the input. The wall time and the
+/// run id (the folder name) of the summary differ from run to run, so they are left out.
+pub fn snapshot(d: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut v: Vec<(String, Vec<u8>)> = fs::read_dir(d)
+        .unwrap()
+        .map(|e| e.unwrap())
+        .filter(|e| {
+            let n = e.file_name().to_string_lossy().to_string();
+            !n.starts_with("restart") && !n.ends_with(".inp")
+        })
+        .map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let mut bytes = fs::read(e.path()).unwrap();
+            if name == "summary.toon" {
+                let text = String::from_utf8(bytes).unwrap();
+                let kept: Vec<&str> = text
+                    .lines()
+                    .filter(|l| !l.contains("wall_s:") && !l.starts_with("run_id:"))
+                    .collect();
+                bytes = kept.join("\n").into_bytes();
+            }
+            (name, bytes)
+        })
+        .collect();
+    v.sort();
+    v
+}
+
+pub fn assert_same(a: &[(String, Vec<u8>)], b: &[(String, Vec<u8>)]) {
+    let names = |v: &[(String, Vec<u8>)]| v.iter().map(|x| x.0.clone()).collect::<Vec<_>>();
+    assert_eq!(names(a), names(b));
+    for (x, y) in a.iter().zip(b) {
+        if x.0.ends_with(".toon") || x.0.ends_with(".pvd") {
+            assert_eq!(
+                String::from_utf8_lossy(&x.1),
+                String::from_utf8_lossy(&y.1),
+                "{} differs",
+                x.0
+            );
+        }
+        assert!(x.1 == y.1, "{} differs", x.0);
+    }
 }
