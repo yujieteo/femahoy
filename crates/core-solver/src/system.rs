@@ -15,7 +15,7 @@ use fh_inp::Model;
 use crate::contribution::ContributionFactory;
 use crate::element::{Elastic, Evaluation, Material};
 use crate::mesh::Mesh;
-use crate::sparse::NodeGraph;
+use crate::sparse::{NodeGraph, PcgSolver};
 use crate::state::{StateImage, StateStore};
 use crate::SolverError;
 
@@ -480,8 +480,15 @@ pub fn estimate_bytes(s: &Sizes) -> u64 {
     let slots = s.slot_bytes as u64;
     // The state: the committed and the trial copy, a copy for the restart file, and slack.
     let state = 4 * s.state_bytes as u64;
-    // The transform, and the full and reduced vectors of the step.
-    let vectors = 24 * n + 48 * n + if s.iterative { 72 * n } else { 24 * n };
+    // The transform, and the full and reduced vectors of the step. The conjugate gradient
+    // solver adds a row copy of the strict lower triangle and its vectors.
+    let vectors = 24 * n
+        + 48 * n
+        + if s.iterative {
+            72 * n + PcgSolver::bytes(s.dofs, s.nnz) as u64
+        } else {
+            24 * n
+        };
     // The Cholesky factor of a 3-D mesh: fill grows as n^1.35 (measured, DESIGN.md section 11).
     let factor = if s.iterative {
         0

@@ -12,6 +12,9 @@ use faer::{Mat, Side};
 use crate::constraint::Transform;
 use crate::SolverError;
 
+mod pcg;
+pub use pcg::PcgSolver;
+
 /// Which node shares an element with which node. Compressed rows, 32-bit.
 pub struct NodeGraph {
     ptr: Vec<usize>,
@@ -262,69 +265,6 @@ impl Matrix {
     pub fn cholesky_solve(&self, rhs: &[f64]) -> Result<Vec<f64>, SolverError> {
         solve_with_factor(&self.cholesky_with(&self.cholesky_analysis()?)?, rhs)
     }
-
-    /// Conjugate gradients with a Jacobi preconditioner. The sums run in a
-    /// fixed order, so the result is the same on every run. `progress` gets
-    /// the iteration count and the relative residual.
-    pub fn pcg_solve(
-        &self,
-        rhs: &[f64],
-        tolerance: f64,
-        max_iterations: usize,
-        progress: &mut dyn FnMut(usize, f64) -> bool,
-    ) -> Result<(Vec<f64>, usize), SolverError> {
-        let n = self.n;
-        let inv_diag: Vec<f64> = self
-            .diagonal()
-            .into_iter()
-            .map(|d| if d > 0.0 { 1.0 / d } else { 0.0 })
-            .collect();
-        if inv_diag.contains(&0.0) {
-            return Err(not_spd());
-        }
-        let dot = |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
-        let b_norm = dot(rhs, rhs).sqrt();
-        let mut x = vec![0.0; n];
-        if b_norm == 0.0 {
-            return Ok((x, 0));
-        }
-        let mut r = rhs.to_vec();
-        let mut z: Vec<f64> = r.iter().zip(&inv_diag).map(|(r, d)| r * d).collect();
-        let mut p = z.clone();
-        let mut q = vec![0.0; n];
-        let mut rz = dot(&r, &z);
-        for it in 1..=max_iterations {
-            self.mul(&p, &mut q);
-            let pq = dot(&p, &q);
-            if pq <= 0.0 || !pq.is_finite() {
-                return Err(not_spd());
-            }
-            let alpha = rz / pq;
-            for i in 0..n {
-                x[i] += alpha * p[i];
-                r[i] -= alpha * q[i];
-            }
-            let rel = dot(&r, &r).sqrt() / b_norm;
-            if it % 25 == 0 && !progress(it, rel) {
-                return Err(SolverError::new("cancelled"));
-            }
-            if rel <= tolerance {
-                return Ok((x, it));
-            }
-            for i in 0..n {
-                z[i] = r[i] * inv_diag[i];
-            }
-            let rz_new = dot(&r, &z);
-            let beta = rz_new / rz;
-            rz = rz_new;
-            for i in 0..n {
-                p[i] = z[i] + beta * p[i];
-            }
-        }
-        Err(SolverError::new(format!(
-            "the conjugate gradient solver did not reach the tolerance {tolerance:e} in {max_iterations} iterations"
-        )))
-    }
 }
 
 fn solve_with_factor(llt: &Llt<u32, f64>, rhs: &[f64]) -> Result<Vec<f64>, SolverError> {
@@ -393,30 +333,6 @@ impl LinearSolver for CholeskySolver {
     }
 }
 
-/// Conjugate gradients with a Jacobi preconditioner.
-pub struct PcgSolver {
-    pub tolerance: f64,
-    pub max_iterations: usize,
-}
-
-impl LinearSolver for PcgSolver {
-    fn factor(&mut self, a: &Matrix) -> Result<(), SolverError> {
-        if a.diagonal().iter().any(|d| *d <= 0.0) {
-            return Err(not_spd());
-        }
-        Ok(())
-    }
-
-    fn solve(
-        &self,
-        a: &Matrix,
-        rhs: &[f64],
-        progress: &mut dyn FnMut(usize, f64) -> bool,
-    ) -> Result<(Vec<f64>, usize), SolverError> {
-        a.pcg_solve(rhs, self.tolerance, self.max_iterations, progress)
-    }
-}
-
 fn not_spd() -> SolverError {
     SolverError::new(
         "stiffness matrix is not positive definite: check the boundary conditions for rigid body motion",
@@ -476,7 +392,9 @@ mod tests {
         }
         let rhs: Vec<f64> = (0..18).map(|i| 1.0 + f64::from(i) * 0.1).collect();
         let direct = m.cholesky_solve(&rhs).unwrap();
-        let (iter, its) = m.pcg_solve(&rhs, 1e-13, 1000, &mut |_, _| true).unwrap();
+        let mut pcg = PcgSolver::new(1e-13, 1000, 1);
+        pcg.factor(&m).unwrap();
+        let (iter, its) = pcg.solve(&m, &rhs, &mut |_, _| true).unwrap();
         assert!(its > 0);
         for (a, b) in direct.iter().zip(&iter) {
             assert!((a - b).abs() < 1e-9 * a.abs().max(1.0), "{a} {b}");
@@ -533,7 +451,73 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("not positive definite"));
-        let e = m.pcg_solve(&rhs, 1e-10, 200, &mut |_, _| true).unwrap_err();
+        let mut pcg = PcgSolver::new(1e-10, 200, 1);
+        let e = pcg
+            .factor(&m)
+            .and_then(|()| pcg.solve(&m, &rhs, &mut |_, _| true))
+            .unwrap_err();
         assert!(!e.to_string().is_empty());
+    }
+
+    /// A chain of `nodes` nodes with a matrix that has a strong diagonal and couplings
+    /// between the components of neighbour nodes.
+    fn coupled_chain(nodes: usize) -> Matrix {
+        let (g, t) = chain(nodes);
+        let mut m = Matrix::pattern(&g, &|n, c| 3 * n + c, &t).unwrap();
+        for d in 0..3 * nodes as u32 {
+            m.add(d, d, 4.0 + f64::from(d % 7) * 0.1);
+        }
+        for e in 0..nodes as u32 - 1 {
+            for ci in 0..3 {
+                for cj in 0..3 {
+                    let v = if ci == cj { -1.0 } else { -0.1 };
+                    m.add(3 * (e + 1) + ci, 3 * e + cj, v);
+                }
+            }
+        }
+        m
+    }
+
+    #[test]
+    fn the_conjugate_gradient_result_has_the_same_bits_for_any_thread_count() {
+        // 9000 rows: 9 blocks, so up to 9 threads share the work.
+        let m = coupled_chain(3000);
+        let rhs: Vec<f64> = (0..m.n).map(|i| ((i * 37) % 101) as f64 - 50.0).collect();
+        let solve = |threads| {
+            let mut pcg = PcgSolver::new(1e-12, 1000, threads);
+            pcg.factor(&m).unwrap();
+            pcg.solve(&m, &rhs, &mut |_, _| true).unwrap()
+        };
+        let (one, its) = solve(1);
+        assert!(its > 1);
+        for threads in [2, 3, 7, 16] {
+            let (x, it) = solve(threads);
+            assert_eq!(it, its, "{threads} threads");
+            assert!(
+                x.iter().zip(&one).all(|(a, b)| a.to_bits() == b.to_bits()),
+                "{threads} threads"
+            );
+        }
+        let direct = m.cholesky_solve(&rhs).unwrap();
+        for (a, b) in direct.iter().zip(&one) {
+            assert!((a - b).abs() < 1e-9 * a.abs().max(1.0), "{a} {b}");
+        }
+    }
+
+    #[test]
+    fn the_progress_callback_stops_every_thread_of_the_solve() {
+        let m = coupled_chain(3000);
+        let rhs = vec![1.0; m.n];
+        let mut pcg = PcgSolver::new(1e-300, 1000, 4);
+        pcg.factor(&m).unwrap();
+        let mut calls = Vec::new();
+        let e = pcg
+            .solve(&m, &rhs, &mut |it, _| {
+                calls.push(it);
+                it < 50
+            })
+            .unwrap_err();
+        assert!(e.to_string().contains("cancel"), "{e}");
+        assert_eq!(calls, [25, 50]);
     }
 }

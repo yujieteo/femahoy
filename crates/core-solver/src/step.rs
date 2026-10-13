@@ -489,10 +489,11 @@ impl Run<'_> {
 
     fn new_solver(&self, method: Method) -> Box<dyn LinearSolver> {
         match method {
-            Method::Pcg => Box::new(PcgSolver {
-                tolerance: self.options.tolerance,
-                max_iterations: self.options.max_iterations,
-            }),
+            Method::Pcg => Box::new(PcgSolver::new(
+                self.options.tolerance,
+                self.options.max_iterations,
+                self.threads,
+            )),
             _ => Box::new(CholeskySolver::default()),
         }
     }
