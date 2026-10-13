@@ -176,51 +176,62 @@ mod os {
     }
 }
 
+/// The Windows structures of the calls. Tests compile them on every system, so that a
+/// test can check their sizes.
+#[cfg(any(windows, test))]
+#[allow(dead_code)]
+mod win {
+    /// `JOBOBJECT_BASIC_LIMIT_INFORMATION`.
+    #[repr(C)]
+    pub struct BasicLimit {
+        pub per_process_time: i64,
+        pub per_job_time: i64,
+        pub flags: u32,
+        pub min_ws: usize,
+        pub max_ws: usize,
+        pub active_limit: u32,
+        pub affinity: usize,
+        pub priority: u32,
+        pub scheduling: u32,
+    }
+
+    /// `JOBOBJECT_EXTENDED_LIMIT_INFORMATION`.
+    #[repr(C)]
+    pub struct ExtendedLimit {
+        pub basic: BasicLimit,
+        pub io: [u64; 6],
+        pub process_memory: usize,
+        pub job_memory: usize,
+        pub peak_process: usize,
+        pub peak_job: usize,
+    }
+
+    /// `PROCESS_MEMORY_COUNTERS`.
+    #[repr(C)]
+    pub struct MemoryCounters {
+        pub cb: u32,
+        pub page_faults: u32,
+        pub peak_working_set: usize,
+        pub working_set: usize,
+        pub rest: [usize; 6],
+    }
+
+    /// `MEMORYSTATUSEX`: 2 DWORD and 7 DWORDLONG fields.
+    #[repr(C)]
+    pub struct MemoryStatus {
+        pub length: u32,
+        pub load: u32,
+        pub total_phys: u64,
+        pub rest: [u64; 6],
+    }
+}
+
 #[cfg(windows)]
 mod os {
+    use super::win::*;
     use super::*;
     use std::ffi::c_void;
     use std::os::windows::io::AsRawHandle;
-
-    #[repr(C)]
-    struct BasicLimit {
-        per_process_time: i64,
-        per_job_time: i64,
-        flags: u32,
-        min_ws: usize,
-        max_ws: usize,
-        active_limit: u32,
-        affinity: usize,
-        priority: u32,
-        scheduling: u32,
-    }
-
-    #[repr(C)]
-    struct ExtendedLimit {
-        basic: BasicLimit,
-        io: [u64; 6],
-        process_memory: usize,
-        job_memory: usize,
-        peak_process: usize,
-        peak_job: usize,
-    }
-
-    #[repr(C)]
-    struct MemoryCounters {
-        cb: u32,
-        page_faults: u32,
-        peak_working_set: usize,
-        working_set: usize,
-        rest: [usize; 6],
-    }
-
-    #[repr(C)]
-    struct MemoryStatus {
-        length: u32,
-        load: u32,
-        total_phys: u64,
-        rest: [u64; 5],
-    }
 
     extern "system" {
         fn CreateJobObjectW(attrs: *mut c_void, name: *const u16) -> isize;
@@ -358,6 +369,20 @@ pub fn default_probe() -> Probe {
 /// Physical memory of the machine in bytes, or `None` if the system does not tell.
 pub fn total_memory() -> Option<u64> {
     os::total_memory()
+}
+
+#[cfg(all(test, target_pointer_width = "64"))]
+mod win_tests {
+    use super::win::*;
+    use std::mem::size_of;
+
+    #[test]
+    fn the_windows_structures_have_the_sizes_of_the_api() {
+        assert_eq!(size_of::<BasicLimit>(), 64);
+        assert_eq!(size_of::<ExtendedLimit>(), 144);
+        assert_eq!(size_of::<MemoryCounters>(), 72);
+        assert_eq!(size_of::<MemoryStatus>(), 64);
+    }
 }
 
 #[cfg(test)]
