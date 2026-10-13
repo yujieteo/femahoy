@@ -257,6 +257,19 @@ impl Transform {
         }
         out
     }
+
+    /// `|T|ᵀ * f`: the reduction of a vector of sizes. Signed coefficients would let the
+    /// sizes cancel, like the forces in `reduce`.
+    pub fn reduce_abs(&self, full: &[f64]) -> Vec<f64> {
+        let mut out = vec![0.0; self.n_free];
+        for (d, f) in full.iter().enumerate() {
+            let (c, k) = self.row(d);
+            for (&r, k) in c.iter().zip(k) {
+                out[r as usize] += k.abs() * f;
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]

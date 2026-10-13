@@ -1020,7 +1020,7 @@ impl Run<'_> {
             let r = c.t.reduce(&full);
             drop(full);
             let size = norm(&r);
-            let scale = norm(&c.t.reduce(&sweep.fabs)).max(norm(&c.t.reduce(&f_ext)));
+            let scale = norm(&c.t.reduce_abs(&sweep.fabs)).max(norm(&c.t.reduce(&f_ext)));
             let residual = if scale > 0.0 { size / scale } else { size };
             // An infinite residual and scale would pass the test below as inf <= inf.
             if !size.is_finite() || !scale.is_finite() {

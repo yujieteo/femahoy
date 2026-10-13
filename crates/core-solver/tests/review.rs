@@ -628,3 +628,68 @@ fn newton_does_not_accept_zero_displacement_under_a_large_force() {
     let x = u(&model, &sol, 0, 2)[0];
     assert!(x > 1e190 && x.is_finite(), "u2x = {x}");
 }
+
+/// Forces with a preload on the x dofs of nodes 1 and 2: f1 = 1 + sqrt(2) u1 and
+/// f2 = pi + e u2, with the exact tangent.
+struct Preload;
+
+impl Contribution for Preload {
+    fn name(&self) -> &str {
+        "preload"
+    }
+
+    fn groups(&self) -> Vec<Vec<u32>> {
+        vec![vec![1, 2]]
+    }
+
+    fn evaluate(
+        &self,
+        _group: usize,
+        place: &Placement,
+        _old: &[f64],
+        out: &mut Evaluation,
+        tangent: bool,
+    ) -> Result<(), SolverError> {
+        let (k1, k2) = (std::f64::consts::SQRT_2, std::f64::consts::E);
+        out.fint[0] = 1.0 + k1 * place.disp[0];
+        out.fint[3] = std::f64::consts::PI + k2 * place.disp[3];
+        out.fabs[0] = out.fint[0].abs();
+        out.fabs[3] = out.fint[3].abs();
+        if tangent {
+            out.k[0][0] = k1;
+            out.k[3][3] = k2;
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn newton_converges_when_a_signed_constraint_cancels_the_force_scale() {
+    // u1 + u2 = 0 and no load: f1 = f2 at equilibrium. The signed sum of the force sizes
+    // then cancels like the residual, and the scale was as small as the residual.
+    let model = parse(
+        "*NODE\n1,0,0,0\n2,1,0,0\n*EQUATION\n2\n1,1,1,2,1,1\n\
+*STEP\n*STATIC\n*BOUNDARY\n1,2,3\n2,2,3\n*END STEP\n",
+    )
+    .unwrap();
+    let options = Options {
+        contributions: Some(ContributionFactory::new(|_| {
+            Ok(vec![Box::new(Preload) as Box<dyn Contribution>])
+        })),
+        ..Options::default()
+    };
+    let sol = solve_options(&model, &options).unwrap_or_else(|e| panic!("{e}"));
+    let (consts_pi, k1, k2) = (
+        std::f64::consts::PI,
+        std::f64::consts::SQRT_2,
+        std::f64::consts::E,
+    );
+    let exact = (consts_pi - 1.0) / (k1 + k2);
+    let d = &sol.steps[0].displacement;
+    assert!(
+        (d[0][0] - exact).abs() < 1e-8 * exact,
+        "u1 = {}, exact {exact}",
+        d[0][0]
+    );
+    assert!((d[1][0] + d[0][0]).abs() < 1e-12, "u2 = {}", d[1][0]);
+}
