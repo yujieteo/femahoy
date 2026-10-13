@@ -687,7 +687,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - **Rejected:** a CAD kernel or a STEP reader inside `fh`.
 - **Reverse if:** build123d or gmsh cannot write or read STEP on a supported platform.
-- **Built:** not yet. M2b builds the first path.
+- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, a `.geo` template for gmsh, and `fh info` for the checks. Named regions and `fh mesh` are not built.
 
 ### D-18 The case declares units, `fh` refuses a mismatch
 - **Decided by:** the captain.
@@ -695,7 +695,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A wrong unit gives wrong results without any warning.
 - **Rejected:** a default unit, a guessed unit, a warning in place of the refusal.
 - **Reverse if:** the captain allows a run with unknown units.
-- **Built:** not yet. M2b builds it.
+- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). The result files and the TOON summary do not state the units yet.
 
 ### D-19 C3D10 is the default element
 - **Decided by:** the captain.
@@ -703,4 +703,4 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending lock of plain hex8. In a test, plain hex8 gave a deflection 17 percent too small.
 - **Rejected:** hex8 as the default element.
 - **Reverse if:** the `C3D10` workload test (section 13, E2) shows that typical tet10 models do not fit D-06.
-- **Built:** the `C3D10` element is on main (M2, PR 10). M2b makes it the default for meshes from CAD.
+- **Built:** the `C3D10` element is on main (M2, PR 10). The M2b recipe makes `C3D10` meshes from CAD, and `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`).

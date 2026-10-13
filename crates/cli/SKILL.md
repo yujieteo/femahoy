@@ -7,7 +7,7 @@
 
 ## Inputs and outputs
 - Input: command line arguments.
-- Implemented commands: `check`, `validate` (`fh validate [--root DIR] [--convergence PATH]`; fixture schema in `crates/validation/SCHEMA.md`).
+- Implemented commands: `check`, `validate` (`fh validate [--root DIR] [--convergence PATH]`; fixture schema in `crates/validation/SCHEMA.md`), `info` (`fh info FILE.step|FILE.msh [--case DIR]`; unit and mesh checks, D-18).
 - Planned commands: `results`, `plot`, `serve`, `init`, `team`, `skills` (DESIGN.md sections 5 to 8).
 - `fh check <file.inp>` parses and checks a model. It prints a TOON summary (DESIGN.md section 6.1).
 - `fh results` prints TOON summaries. `fh plot` writes images (DESIGN.md section 8).
