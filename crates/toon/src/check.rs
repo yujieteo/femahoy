@@ -56,7 +56,11 @@ pub struct Check {
 
 impl Check {
     pub fn render(&self, opts: &Opts) -> Result<String, Error> {
-        let elements: u64 = self.element_types.iter().map(|e| e.count).sum();
+        let elements = self
+            .element_types
+            .iter()
+            .try_fold(0u64, |total, e| total.checked_add(e.count))
+            .ok_or_else(|| Error("element count overflow".into()))?;
         let totals = vec![
             ("nodes", self.nodes.into()),
             ("elements", elements.into()),

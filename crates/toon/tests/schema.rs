@@ -177,6 +177,35 @@ fn check_snapshot() {
     assert_rules(&text);
 }
 
+#[test]
+fn check_total_overflow_returns_an_error() {
+    let mut c = sample_check();
+    c.element_types[0].count = u64::MAX;
+    c.element_types[1].count = 1;
+    assert_eq!(
+        c.render(&rows(0)).unwrap_err().to_string(),
+        "toon encode failed: element count overflow"
+    );
+}
+
+#[test]
+fn unsigned_cells_preserve_large_values() {
+    for value in [i64::MAX as u64, i64::MAX as u64 + 1, u64::MAX] {
+        let cell = Cell::from(value);
+        let table = Table::new("items", ["count"], "no items").ranked([[cell.clone()]], 1);
+        let text = Doc::new()
+            .scalar("count", cell.clone())
+            .block("totals", vec![("count", cell)])
+            .table(table)
+            .encode(&Opts::default())
+            .unwrap();
+        assert_eq!(
+            text,
+            format!("count: {value}\ntotals:\n  count: {value}\nitems[1]{{count}}:\n  {value}\n")
+        );
+    }
+}
+
 fn case(id: &str, class: &str, status: CaseStatus, margin: f64) -> CaseRow {
     CaseRow {
         id: id.into(),
@@ -349,6 +378,37 @@ fn run_snapshot() {
     let text = sample_run().render(&rows(2)).unwrap();
     assert_eq!(text, include_str!("snapshots/run.toon"));
     assert_rules(&text);
+}
+
+#[test]
+fn run_total_overflow_returns_an_error() {
+    let mut r = sample_run();
+    r.increments = vec![inc(1, u64::MAX, IncResult::Ok), inc(2, 1, IncResult::Ok)];
+    assert_eq!(
+        r.render(&rows(0)).unwrap_err().to_string(),
+        "toon encode failed: iteration count overflow"
+    );
+}
+
+#[test]
+fn totals_preserve_the_largest_valid_sum() {
+    let mut c = sample_check();
+    c.element_types[0].count = u64::MAX - 1;
+    c.element_types[1].count = 1;
+    assert!(c
+        .render(&rows(0))
+        .unwrap()
+        .contains(&format!("  elements: {}\n", u64::MAX)));
+
+    let mut r = sample_run();
+    r.increments = vec![
+        inc(1, u64::MAX - 1, IncResult::Ok),
+        inc(2, 1, IncResult::Ok),
+    ];
+    assert!(r
+        .render(&rows(0))
+        .unwrap()
+        .contains(&format!("  iterations: {}\n", u64::MAX)));
 }
 
 #[test]
