@@ -687,7 +687,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - **Rejected:** a CAD kernel or a STEP reader inside `fh`.
 - **Reverse if:** build123d or gmsh cannot write or read STEP on a supported platform.
-- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, a `.geo` template for gmsh, and `fh info` for the checks. Named regions and `fh mesh` are not built.
+- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, a `.geo` template for gmsh, and `fh info` for the checks. `fh mesh` is built (D-02). Named regions are not built.
 
 ### D-18 The case declares units, `fh` refuses a mismatch
 - **Decided by:** the captain.
