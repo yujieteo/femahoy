@@ -370,7 +370,7 @@ Rules:
 
 Requirements:
 
-1. A model of 1M `C3D8` elements (about 3.1M dofs) solves inside 16 GB. Measured peak memory footprint: 6.1 GiB (below).
+1. A model of 1M `C3D8` elements (about 3.1M dofs) solves inside 16 GB. Measured peak memory footprint: 6 063 MiB, or 5.9 GiB (below).
 2. The build uses the baseline x86-64 target (`-C target-cpu=nehalem` is the test setting: SSE4.2, no AVX). `faer` and its dense kernels pick AVX2 and AVX-512 code at run time with CPU feature detection, so a CPU without AVX uses the SSE code. The femahoy crates contain no SIMD code of their own. The check (PR 10): a search of the crates and the CI files finds no `std::arch`, `core::arch`, `target_feature`, `asm!` or `target-cpu`, and the repo has no `.cargo/config`. No x86-64 build with `-C target-cpu=nehalem` and no run on a CPU without AVX has been done yet. Do both on real hardware before the first user test.
 3. If the matrix does not fit, the iterative solver is used. Its memory is about the size of the matrix. The out-of-core scheme is not needed so far, and is not built.
 4. The default memory limit of a run is 85 percent of the RAM of the machine.
@@ -396,19 +396,19 @@ Requirements:
 
 The factor 1.35 covers allocator slack and the input text. The measured peak memory footprint of the PCG runs below is 1.03 to 1.10 times the sum.
 
-**Measurements** (release build, macOS aarch64, Apple M5 with 10 cores and 16 GB, all 3 result formats). The peak is the peak memory footprint from `/usr/bin/time -l`. The resident set size leaves out compressed pages, so it can be lower than the footprint. The machine ran other work at the same time, so the times change from run to run (the 100k solve on 10 threads took 1.9 to 3.9 s in 3 runs). The times below come from the run with the lowest load.
+**Measurements** (2026-10-13, release build, all 3 result formats). Machine: Apple M5 chip with 10 cores (4 performance cores and 6 efficiency cores), 16 GB RAM, macOS 27.0.1 (build 26A434), aarch64. The peak is the peak memory footprint from `/usr/bin/time -l`. The resident set size leaves out compressed pages, so it can be lower than the footprint. The machine ran other work at the same time (load average 2 before the runs), so the times change from run to run. For example, an earlier run of the 1M model took 129 s (1 thread) and 59 s (10 threads) for the solve.
 
 | Model | Elements | Free dofs | Method | Threads | Peak | Assemble | Factor | Solve | Wall time |
 |---|---|---|---|---|---|---|---|---|---|
-| Cantilever and Lamé case meshes (8 meshes) | 4 to 512 | 48 to 2 176 | Cholesky | 1 or 10 | 1.7 to 12 MiB | at most 3.1 ms | at most 3.0 ms | at most 0.1 ms | 8 to 21 ms |
-| `C3D8` box 100x40x25, one tip load | 100 000 | 319 800 | PCG, 656 iterations | 1 | 578 MiB | 0.58 s | 0.02 s | 8.9 s | 10.5 s |
-| same | 100 000 | 319 800 | PCG, 656 iterations | 10 | 599 MiB | 0.18 s | 0.02 s | 2.0 s | 3.2 s |
-| `C3D8` box 100x100x100, one tip load | 1 000 000 | 3 060 300 | PCG | 1 | 6 047 MiB | 6.2 s | 0.66 s | 129 s | 146 s |
-| same | 1 000 000 | 3 060 300 | PCG | 10 | 6 065 MiB | 2.2 s | 0.38 s | 59 s | 72 s |
+| Cantilever and Lamé case meshes (8 meshes) | 4 to 512 | 48 to 2 176 | Cholesky | 1 or 10 | 1.7 to 12 MiB | at most 3.1 ms | at most 3.0 ms | at most 0.1 ms | 10 to 20 ms (the first run: 0.30 s, a cold start) |
+| `C3D8` box 100x40x25, one tip load | 100 000 | 319 800 | PCG, 656 iterations | 1 | 578 MiB | 0.58 s | 0.02 s | 8.9 s | 10.4 s |
+| same | 100 000 | 319 800 | PCG, 656 iterations | 10 | 599 MiB | 0.18 s | 0.03 s | 2.0 s | 3.2 s |
+| `C3D8` box 100x100x100, one tip load | 1 000 000 | 3 060 300 | PCG | 1 | 6 046 MiB | 6.3 s | 0.58 s | 146 s | 164 s |
+| same | 1 000 000 | 3 060 300 | PCG | 10 | 6 063 MiB | 3.2 s | 0.51 s | 68 s | 83 s |
 
-For PCG, "Factor" is the row copy and the preconditioner. The PCG solve is bound by memory bandwidth, so 10 threads give 4.4 times the speed at 100k elements and 2.2 times at 1M elements. The results of 1 thread and 10 threads are bit-identical (all result files of the 100k run compared).
+For PCG, "Factor" is the row copy and the preconditioner. The PCG solve is bound by memory bandwidth, so 10 threads give 4.3 times the speed at 100k elements and 2.2 times at 1M elements. The results of 1 thread and 10 threads are bit-identical (all result files of the 100k run compared). The test `crates/core-solver/tests/threads.rs` compares the result files and the restart files of 1, 2, 4 and all threads, for PCG and for Cholesky.
 
-For the 1M-element model the estimate is 7.4 GiB against a measured peak of 6.1 GiB. All files of the run (3 formats, PVD, restart file and summary) take 2.28 GB. A 2010 machine has slower cores, less memory bandwidth and a slower disk, so expect longer times. The memory numbers do not depend on the CPU.
+For the 1M-element model the estimate is 7 442 MiB (7.3 GiB) against a measured peak of 6 063 MiB (5.9 GiB). All files of the run (3 formats, PVD, restart file and summary) take 2.28 GB. A 2010 machine has slower cores, less memory bandwidth and a slower disk, so expect longer times. The memory numbers do not depend on the CPU.
 
 Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip load, 10 cores, peak is the resident set size):
 
