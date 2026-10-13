@@ -34,6 +34,7 @@
 mod client;
 mod contract;
 mod http;
+mod serve;
 mod service;
 
 use std::fs::File;
@@ -46,6 +47,7 @@ pub use contract::{
     valid_project, valid_request, valid_run, Ack, Command, Error, Event, Events, Message, Outcome,
     RunRecord, RunState, CONTRACT,
 };
+pub use serve::{serve, serve_until};
 pub use service::{
     Config, Service, EVENT_BATCH, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_ACKS, MAX_QUEUED,
     MAX_WAIT,

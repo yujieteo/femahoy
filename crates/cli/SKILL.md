@@ -16,6 +16,7 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 - STEP checks report units. With `--case`, they refuse a mismatch against `case.toml`.
 - MSH checks report counts, bounds, volume and minimum scaled Jacobian. They refuse empty solid meshes and nonpositive corner Jacobians.
 - `fh validate [--root DIR] [--convergence PATH]` uses `FH_SOLVE` or the adjacent `fh-solve` binary.
+- `fh serve [--state DIR] [--port N]` calls `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
 
 ## Invariants the code must keep
 
@@ -23,7 +24,8 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 - STEP mesh checks refuse missing, mixed or mismatched length units.
 - gmsh must be at least 4.8. The tested release line is 4.15.
 - Mesh runs fail on gmsh errors, timeout, unreadable output or output without supported volume elements.
-- `results`, `plot`, `serve`, `init`, `team` and `skills` are not implemented.
+- `results`, `plot`, `init`, `team` and `skills` are not implemented.
+- `fh serve` has no option for the listen address. The daemon binds to 127.0.0.1 only (DESIGN.md section 4.1).
 - The binary is `fh`. Never `fea` (CLAUDE.md).
 - Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
 - Line budget: 3k lines, tests included (DESIGN.md section 11).

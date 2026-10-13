@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `check`, `mesh`, `validate`, and `info`.
+`fh` implements `check`, `mesh`, `validate`, `info`, and `serve`.
 This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
 The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
@@ -9,7 +9,7 @@ The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --hel
 | Invocation | Output | Exit |
 |---|---|---:|
 | `fh`, `fh -h`, `fh --help` | Usage and command list on stdout. | 0 |
-| `fh results`, `plot`, `serve`, `init`, `team`, or `skills` | `fh COMMAND: not implemented` and usage on stderr. | 2 |
+| `fh results`, `plot`, `init`, `team`, or `skills` | `fh COMMAND: not implemented` and usage on stderr. | 2 |
 | Unknown command or invalid top-level arguments | `fh: unknown argument: ARGUMENTS` and usage on stderr. | 2 |
 
 A command error returned to the dispatcher prints `fh COMMAND: MESSAGE` on stderr and exits with 2.
@@ -156,6 +156,27 @@ Quantity rows contain the case ID, quantity name, `computed`, `reference`, `tole
 Convergence case rows also contain the mesh count.
 Read or solver failures, absent result fields, empty sets, and invalid reductions can supply the failure reason.
 See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
+
+## `fh serve`
+
+```text
+fh serve [--state DIR] [--port N]
+```
+
+Source: [serve.rs](../../crates/daemon/src/serve.rs). The dispatcher calls it with the solver of `fh validate`.
+
+The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
+`--state` defaults to `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy` (`%LOCALAPPDATA%\femahoy` on Windows).
+`--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
+
+| Condition | Diagnostic or output | Exit |
+|---|---|---:|
+| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN` and the state folder. `DIR/daemon.info` gets the port and the token. | |
+| Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
+| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running` | 1 |
+| Missing option value | `fh serve: OPTION needs a value` | 2 |
+| Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
+| Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
 
 ## Keep this list current
 

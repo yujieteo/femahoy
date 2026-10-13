@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 
 /// Runs the `fh-solve` binary in a scratch folder for every mesh.
 pub struct Subprocess {
-    exe: PathBuf,
+    pub exe: PathBuf,
 }
 
 impl Subprocess {

@@ -1,5 +1,5 @@
 use std::process::{Command, Output};
-const PLANNED: [&str; 6] = ["results", "plot", "serve", "init", "team", "skills"];
+const PLANNED: [&str; 5] = ["results", "plot", "init", "team", "skills"];
 
 fn solver_path() -> std::path::PathBuf {
     let fh = std::path::Path::new(env!("CARGO_BIN_EXE_fh"));
@@ -7,11 +7,7 @@ fn solver_path() -> std::path::PathBuf {
 }
 
 fn fh(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_fh"))
-        .args(args)
-        .env("FH_SOLVE", solver_path())
-        .output()
-        .expect("run fh")
+    fh_with_solver(args, solver_path().to_str().unwrap())
 }
 
 fn fh_with_solver(args: &[&str], solver: &str) -> Output {

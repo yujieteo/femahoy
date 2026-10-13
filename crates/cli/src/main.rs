@@ -12,7 +12,7 @@ mod view;
 use std::process::ExitCode;
 
 /// Subcommands planned in DESIGN.md section 13 and not implemented yet.
-const PLANNED: &[&str] = &["results", "plot", "serve", "init", "team", "skills"];
+const PLANNED: &[&str] = &["results", "plot", "init", "team", "skills"];
 
 fn usage() -> String {
     let mut text = String::from(
@@ -22,6 +22,7 @@ fn usage() -> String {
          model     write a solver input from a .msh file and the case (fh model FILE.msh --case DIR [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
+         serve     run the daemon on 127.0.0.1 with a token (fh serve [--state DIR] [--port N])\n  \
          view      show the mesh and its outline in 3D (fh view MODEL.inp)\n\n\
          TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
          Exact values are in the VTU files.\n\n\
@@ -47,6 +48,7 @@ fn main() -> ExitCode {
         Some("model") => model::run(&args[1..]),
         Some("info") => info::run(&args[1..]),
         Some("view") => view::run(&args[1..]),
+        Some("serve") => fh_daemon::serve(&args[1..], measure::Subprocess::locate().exe),
         _ => {
             if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
                 eprintln!("fh {}: not implemented", args[0]);
