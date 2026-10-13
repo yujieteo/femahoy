@@ -49,7 +49,7 @@ mod sys;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -97,6 +97,37 @@ impl ApiError {
 
 fn fail<T>(message: impl Into<String>) -> Result<T, ApiError> {
     Err(ApiError(message.into()))
+}
+
+/// A result file of the solver as text. A file larger than `MAX_RESULT_FILE` is an error.
+fn read_result(path: &Path, name: &str) -> Result<String, ApiError> {
+    let err = |e: std::io::Error| ApiError(format!("{name}: {e}"));
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .map_err(err)?
+        .take(MAX_RESULT_FILE + 1)
+        .read_to_end(&mut bytes)
+        .map_err(err)?;
+    if bytes.len() as u64 > MAX_RESULT_FILE {
+        return fail(format!("{name} is larger than {MAX_RESULT_FILE} bytes"));
+    }
+    String::from_utf8(bytes).map_err(|_| ApiError(format!("{name} is not UTF-8 text")))
+}
+
+/// The last `STDERR_TAIL` bytes of the solver's stderr. A failing solver writes the cause last.
+fn stderr_tail(path: &Path) -> String {
+    let Ok(mut file) = fs::File::open(path) else {
+        return String::new();
+    };
+    let len = file.metadata().map_or(0, |m| m.len());
+    let mut bytes = Vec::new();
+    if file
+        .seek(SeekFrom::Start(len.saturating_sub(STDERR_TAIL)))
+        .is_ok()
+    {
+        let _ = file.take(STDERR_TAIL).read_to_end(&mut bytes);
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// What a solver run produced.
@@ -251,6 +282,10 @@ const PROBE_EVERY: Duration = Duration::from_millis(100);
 /// The memory probe does not count the runner. Provisional values.
 const MAX_LINE: usize = 64 << 10;
 const BACKLOG: usize = 256;
+/// The largest summary or PVD file that the runner reads, and the end of `stderr.txt` that
+/// an error shows. A solver can write files of any size. Provisional values.
+const MAX_RESULT_FILE: u64 = 16 << 20;
+const STDERR_TAIL: u64 = 64 << 10;
 
 impl SubprocessSolver {
     /// A new subprocess solver. It is unvalidated until the suite passes. The
@@ -483,14 +518,13 @@ impl SubprocessSolver {
             on_event(&event);
         }
         drop(reader);
-        let read = |name: &str| fs::read_to_string(run_dir.join(name)).unwrap_or_default();
         if !status.success() {
             if cancel_sent.is_some() {
                 return Err(ApiError::cancelled());
             }
             return fail(format!(
                 "solver failed ({status}): {}",
-                read("stderr.txt").trim()
+                stderr_tail(&run_dir.join("stderr.txt")).trim()
             ));
         }
         if !header_seen {
@@ -498,8 +532,7 @@ impl SubprocessSolver {
                 "solver does not speak protocol v2: first stdout line is not \"{PROTOCOL_HEADER}\""
             ));
         }
-        let summary = fs::read_to_string(run_dir.join(SUMMARY_FILE))
-            .map_err(|e| ApiError(format!("{SUMMARY_FILE}: {e}")))?;
+        let summary = read_result(&run_dir.join(SUMMARY_FILE), SUMMARY_FILE)?;
         check_summary(&summary)?;
         let pvd = run_dir.join(PVD_FILE);
         check_pvd(&run_dir, &pvd)?;
@@ -607,7 +640,7 @@ fn check_summary(text: &str) -> Result<(), ApiError> {
 }
 
 fn check_pvd(run_dir: &Path, pvd: &Path) -> Result<(), ApiError> {
-    let text = fs::read_to_string(pvd).map_err(|e| ApiError(format!("{PVD_FILE}: {e}")))?;
+    let text = read_result(pvd, PVD_FILE)?;
     let listed: Vec<&str> = text
         .split("file=\"")
         .skip(1)

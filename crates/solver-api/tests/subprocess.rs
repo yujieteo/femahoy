@@ -449,6 +449,34 @@ fn a_slow_callback_keeps_only_a_small_backlog_of_lines() {
 }
 
 #[test]
+fn a_large_summary_or_pvd_file_is_refused() {
+    // 32 MiB of zero bytes after a valid file. The runner must not read all of it.
+    for name in ["summary.toon", "results.pvd"] {
+        let body = format!("{GOOD}\nhead -c 33554432 /dev/zero >> {name}");
+        let e = match run(&format!("large-{name}"), &body) {
+            Ok(_) => panic!("a {name} of 32 MiB passed"),
+            Err(e) => e,
+        };
+        assert!(e.contains(&format!("{name} is larger than")), "{e}");
+    }
+}
+
+#[test]
+fn a_large_stderr_shows_only_its_end_in_the_error() {
+    let e = run(
+        "large-stderr",
+        "head -c 33554432 /dev/zero >&2; echo 'bad mesh' >&2; exit 3",
+    )
+    .unwrap_err();
+    assert!(
+        e.contains("bad mesh"),
+        "{}",
+        &e[e.len().saturating_sub(200)..]
+    );
+    assert!(e.len() < 1 << 20, "the error has {} bytes", e.len());
+}
+
+#[test]
 fn estimate_above_the_limit_stops_the_solver_early() {
     let dir = scratch("estimate");
     let mut s = solver(
