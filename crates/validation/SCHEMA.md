@@ -29,6 +29,18 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 | `rel_tol`, `abs_tol` | class N | Pass if `|computed - ref| <= rel_tol * |ref| + abs_tol`. Both tolerances are 0 or more. |
 | `rate`, `band` | class R | Expected convergence rate, and the allowed band (0 or more). |
 
+## Model table (optional)
+
+`fh model` builds a solver input from a `.msh` file and the `[model]` table. The table is optional.
+
+| Key | Meaning |
+|---|---|
+| `model.step` | Step name. Default `LOAD`. |
+| `model.material` | `name`, `youngs_modulus`, `poissons_ratio` (isotropic, in the case units). |
+| `[[model.set]]` | `name`, `axis` (`x`, `y` or `z`), `at`, optional `tol`. The set holds the nodes within `tol` of that plane. The default `tol` is 1e-6 of the largest bounding box side. `ALL` is reserved. |
+| `[[model.boundary]]` | `set`, `first_dof`, optional `last_dof`, optional `value` (default 0). At least 1 is needed. |
+| `[[model.cload]]` | `set`, `dof`, `per_node`. The force acts on each node of the set. It is not a total force. |
+
 ## Measured quantity
 
 Each `[ref]` entry has a `[quantity.<name>]` table with the same name. A case needs no Rust code for its own quantities.

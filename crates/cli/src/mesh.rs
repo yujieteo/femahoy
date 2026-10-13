@@ -377,6 +377,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
 
     // A stale file must not pass as a new result.
+    let _ = std::fs::remove_file(crate::model::units_file(&output));
     match std::fs::remove_file(&output) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
             return Err(format!("cannot replace {}: {e}", output.display()))
@@ -425,6 +426,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
     rules::hex_needs_extrusion(&model)?;
 
+    // `fh model` reads this record and refuses a mesh with other units than its case.
+    std::fs::write(
+        crate::model::units_file(&output),
+        format!("{}\n", units.name()),
+    )
+    .map_err(|e| format!("cannot write the unit record: {e}"))?;
     let mut report = format!(
         "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t{}\nnodes\t{}\nelements\t{}\n",
         output.display(),

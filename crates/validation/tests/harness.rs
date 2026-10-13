@@ -468,6 +468,7 @@ fn shipped_cases_load_and_have_existing_inputs() {
     assert_eq!(
         ids,
         [
+            "bar-tension",
             "cantilever",
             "cantilever-c3d10",
             "cantilever-c3d8",
@@ -728,4 +729,71 @@ fn units_are_read_and_a_missing_or_unknown_value_is_refused() {
     let error = write_case(&tmp("units-unknown"), &unknown).unwrap_err();
     assert!(error.message.contains("unknown units `inch`"), "{error}");
     assert_eq!(error.line, Some(3));
+}
+
+const MODEL: &str =
+    "\n[model.material]\nname = \"M\"\nyoungs_modulus = 2.0\npoissons_ratio = 0.3\n\
+[[model.set]]\nname = \"A\"\naxis = \"z\"\nat = 1.5\n\
+[[model.boundary]]\nset = \"A\"\nfirst_dof = 1\nlast_dof = 3\n";
+
+#[test]
+fn the_model_table_is_read() {
+    let valid = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0");
+    let case = write_case(&tmp("model-ok"), &format!("{valid}{MODEL}")).unwrap();
+    let model = case.model.unwrap();
+    assert_eq!(model.step, "LOAD");
+    assert_eq!(
+        (model.sets[0].axis, model.sets[0].at, model.sets[0].tol),
+        (2, 1.5, None)
+    );
+    assert_eq!(model.boundaries[0].value, 0.0);
+    assert!(write_case(&tmp("model-none"), &valid)
+        .unwrap()
+        .model
+        .is_none());
+}
+
+#[test]
+fn a_bad_model_table_is_an_error() {
+    let valid = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0");
+    let cases = [
+        (
+            "set = \"A\"",
+            "set = \"B\"",
+            "`B` is not a `[[model.set]]` name",
+        ),
+        ("axis = \"z\"", "axis = \"w\"", "`axis` must be x, y or z"),
+        (
+            "name = \"A\"",
+            "name = \"all\"",
+            "set name `all` is reserved or repeated",
+        ),
+        (
+            "last_dof = 3",
+            "last_dof = 4",
+            "`last_dof` must be 1, 2 or 3",
+        ),
+        (
+            "poissons_ratio = 0.3",
+            "poissons_ratio = 0.5",
+            "`poissons_ratio` must be above -1 and below 0.5",
+        ),
+        (
+            "youngs_modulus = 2.0",
+            "youngs_modulus = 2.0\nextra = 1",
+            "unknown key `extra` in `model.material`",
+        ),
+    ];
+    for (index, (old, new, message)) in cases.iter().enumerate() {
+        let text = format!("{valid}{}", MODEL.replace(old, new));
+        let error = write_case(&tmp(&format!("model-bad{index}")), &text).unwrap_err();
+        assert_eq!(error.message, *message);
+    }
+    let no_boundary = MODEL.split("[[model.boundary]]").next().unwrap();
+    let error = write_case(&tmp("model-nobc"), &format!("{valid}{no_boundary}")).unwrap_err();
+    assert!(
+        error.message.contains("at least one `[[model.boundary]]`"),
+        "{}",
+        error.message
+    );
 }

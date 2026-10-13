@@ -1,0 +1,78 @@
+# Uniaxial tension of a 100 x 20 x 10 mm bar, made from bar.step with `fh mesh` and `fh model`.
+# Class N: the displacement field is linear, so C3D10 reproduces it and the stress to round-off.
+schema = 2
+id = "bar-tension"
+units = "SI-mm"
+class = "N"
+justification = "The prescribed end displacement gives a linear displacement field, which C3D10 represents exactly. No mesh error exists, so Richardson does not apply. The tolerance covers round-off in a sparse solve only."
+derivation = "derivation.md"
+element_types = ["C3D10"]
+# bar.inp is the output of: fh mesh bar.step --case . --size 8 -o bar.msh && fh model bar.msh --case . -o bar.inp
+mesh = ["bar.inp"]
+rel_tol = 1e-6
+abs_tol = 1e-6
+
+[model]
+step = "LOAD"
+
+[model.material]
+name = "STEEL"
+youngs_modulus = 210000.0
+poissons_ratio = 0.3
+
+# Nodes on a coordinate plane. Units are mm.
+[[model.set]]
+name = "FIXED"
+axis = "x"
+at = 0.0
+
+[[model.set]]
+name = "TIP"
+axis = "x"
+at = 100.0
+
+[[model.set]]
+name = "SYM_Y"
+axis = "y"
+at = 0.0
+
+[[model.set]]
+name = "SYM_Z"
+axis = "z"
+at = 0.0
+
+[[model.boundary]]
+set = "FIXED"
+first_dof = 1
+
+[[model.boundary]]
+set = "SYM_Y"
+first_dof = 2
+
+[[model.boundary]]
+set = "SYM_Z"
+first_dof = 3
+
+[[model.boundary]]
+set = "TIP"
+first_dof = 1
+value = 0.1
+
+# Strain 0.1 / 100 = 1e-3. Stress E * strain = 210 MPa. Reaction = 210 MPa * 200 mm2 = 42000 N.
+[ref]
+s_xx = 210.0
+rf_x = -42000.0
+
+[quantity.s_xx]
+set = "ALL"
+field = "S"
+component = 11
+step = "LOAD"
+op = "mean"
+
+[quantity.rf_x]
+set = "FIXED"
+field = "RF"
+component = 1
+step = "LOAD"
+op = "sum"

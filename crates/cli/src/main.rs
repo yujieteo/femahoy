@@ -4,6 +4,7 @@ mod check;
 mod info;
 mod measure;
 mod mesh;
+mod model;
 mod rules;
 mod validate;
 mod view;
@@ -18,6 +19,7 @@ fn usage() -> String {
         "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
          mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
+         model     write a solver input from a .msh file and the case (fh model FILE.msh --case DIR [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
          view      show the mesh and its outline in 3D (fh view MODEL.inp)\n\n\
@@ -42,6 +44,7 @@ fn main() -> ExitCode {
         Some("check") => check::run(&args[1..]),
         Some("mesh") => mesh::run(&args[1..]),
         Some("validate") => validate::run(&args[1..]),
+        Some("model") => model::run(&args[1..]),
         Some("info") => info::run(&args[1..]),
         Some("view") => view::run(&args[1..]),
         _ => {

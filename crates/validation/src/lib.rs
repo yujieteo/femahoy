@@ -4,6 +4,7 @@
 //! (DESIGN.md section 10.3), and a runner that reports `no solver`.
 
 mod fixture;
+mod model;
 mod run;
 mod tolerance;
 
@@ -11,6 +12,7 @@ pub use fixture::{
     load_all, Case, Class, Field, FixtureError, Op, Quantity, Reference, Units, ELEMENT_TYPES,
     SCHEMA_VERSION,
 };
+pub use model::{BoundarySpec, CloadSpec, MaterialSpec, ModelSpec, SetSpec};
 pub use run::{run_case_with, run_convergence_with, Outcome, Report, Row, Solve};
 pub use tolerance::{check_l, check_n, check_r, richardson};
 
