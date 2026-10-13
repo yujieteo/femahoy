@@ -410,6 +410,7 @@ impl<'a> Mesh<'a> {
         let in_range = |d: u8| (c.first_dof..=c.last_dof).contains(&d);
         match c.kind {
             CouplingKind::Kinematic => {
+                let mut rows = 0;
                 for &s in &slaves {
                     let r = sub(self.xyz(s), self.xyz(rn));
                     for k in 0..3 {
@@ -422,7 +423,26 @@ impl<'a> Mesh<'a> {
                         ];
                         row.extend(self.rot_terms(rn, r, k));
                         el.add(&row, 0.0, Some(self.dof(s, k as u8 + 1)))?;
+                        rows += 1;
                     }
+                    // A slave with rotation dofs turns with the reference.
+                    if self.node_dofs(s) < 6 {
+                        continue;
+                    }
+                    for d in (4..=6).filter(|d| in_range(*d)) {
+                        el.add(
+                            &[(self.dof(s, d), 1.0), (self.dof(rn, d), -1.0)],
+                            0.0,
+                            Some(self.dof(s, d)),
+                        )?;
+                        rows += 1;
+                    }
+                }
+                if rows == 0 {
+                    return Err(SolverError::new(format!(
+                        "coupling {}: no slave node has a dof in the range {} to {}",
+                        c.name, c.first_dof, c.last_dof
+                    )));
                 }
             }
             CouplingKind::Distributing => self.distributing(el, c, rn, &slaves)?,

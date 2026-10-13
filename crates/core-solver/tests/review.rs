@@ -738,3 +738,31 @@ fn a_very_long_or_a_very_short_link_keeps_its_equation() {
     let e = solve(&model).unwrap_err().to_string();
     assert!(e.contains("not finite"), "{e}");
 }
+
+#[test]
+fn a_kinematic_coupling_turns_the_slave_rotations_with_the_reference() {
+    // *MPC BEAM gives nodes 2 and 3 rotation dofs.
+    let coupling = |slaves: &str| {
+        cube(
+            "9,2,0.5,0.5\n",
+            &format!(
+                "*MPC\nBEAM,2,3\n*SURFACE, TYPE=NODE, NAME=S\n{slaves}\
+*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n4,6\n\
+*BOUNDARY\n{FIX}*STEP\n*STATIC\n*BOUNDARY\n9,4,6,0.1\n*END STEP\n"
+            ),
+        )
+    };
+    let model = coupling("2\n3\n");
+    let sol = solve(&model).unwrap_or_else(|e| panic!("{e}"));
+    for id in [2, 3, 9] {
+        let i = model.nodes.iter().position(|n| n.id == id).unwrap();
+        let r = sol.steps[0].rotation[i];
+        assert!(
+            r.iter().all(|v| (v - 0.1).abs() < 1e-12),
+            "node {id}: {r:?}"
+        );
+    }
+    // Nodes 6 and 7 have no rotation dofs, so the range 4 to 6 constrains nothing.
+    let e = solve(&coupling("6\n7\n")).unwrap_err().to_string();
+    assert!(e.contains("coupling C") && e.contains("4 to 6"), "{e}");
+}
