@@ -59,6 +59,6 @@ The M2 stage gates are newer than PR 10. Nobody checked the M2 code against them
 |---|---|---|---|---|
 | R1 Licence and rights review | A planned review for the commercial licence (section 2). It records the exact versions, the sources, the licences (also transitive ones), the notices and the contribution rights of each dependency and each external program. A lawyer checks the CLA and the file-based adapters for external programs (section 15). | None. It can start at any time. | A rights record exists for each dependency and each external program. A lawyer checked the CLA. The review closes before any commercial distribution. | Not started |
 
-Later, with no milestone number yet: a GPU backend (Metal first, D-08) and the general `fh mesh` command (D-02). None of these is built yet. femahoy has no mesher of its own (D-15).
+Later, with no milestone number yet: a GPU backend (Metal first, D-08). It is not built yet. `fh mesh` is built: it runs gmsh as an external program (D-02). femahoy has no mesher of its own (D-15).
 
 The managed LLM tier is a separate track. It starts after the second user test.
