@@ -35,6 +35,7 @@ pub struct Transform {
     free_dof: Vec<u32>,
 }
 
+/// A coefficient smaller than this part of the sum of its parts is a rounding rest, zero.
 const DROP: f64 = 1e-13;
 
 /// A NaN or an infinite value would change or remove a constraint without an error.
@@ -67,7 +68,8 @@ impl Elimination {
         // change the meaning of an equation, so the tests below must not depend on it.
         let norm = row.iter().fold(0.0_f64, |m, (_, c)| m.max(c.abs()));
         let norm = if norm > 0.0 { norm } else { 1.0 };
-        let mut acc: BTreeMap<usize, f64> = BTreeMap::new();
+        // For each dof: the coefficient, and the sum of the sizes of its parts.
+        let mut acc: BTreeMap<usize, (f64, f64)> = BTreeMap::new();
         let mut rhs_now = rhs / norm;
         // The size of the values that make `rhs_now`, for the conflict test.
         let mut scale = rhs_now.abs();
@@ -77,20 +79,37 @@ impl Elimination {
             match self.slaves.get(&j) {
                 Some(s) => {
                     for (&m, &t) in &s.terms {
-                        *acc.entry(m).or_insert(0.0) += c * t;
+                        let e = acc.entry(m).or_insert((0.0, 0.0));
+                        e.0 += c * t;
+                        e.1 += (c * t).abs();
                     }
                     rhs_now -= c * s.offset;
                     scale += (c * s.offset).abs();
                 }
-                None => *acc.entry(j).or_insert(0.0) += c,
+                None => {
+                    let e = acc.entry(j).or_insert((0.0, 0.0));
+                    e.0 += c;
+                    e.1 += c.abs();
+                }
             }
         }
         // The substitution of earlier slaves can overflow.
-        if !rhs_now.is_finite() || acc.values().any(|c| !c.is_finite()) {
+        if !rhs_now.is_finite()
+            || acc
+                .values()
+                .any(|(c, parts)| !c.is_finite() || !parts.is_finite())
+        {
             return Err(not_finite());
         }
+        // Remove only the rests of cancellations. A small coefficient that is not a rest stays,
+        // because its dof can be large. A test against the largest coefficient would remove it,
+        // and it would keep the rest of a redundant equation when that rest is the only term.
+        let mut acc: BTreeMap<usize, f64> = acc
+            .into_iter()
+            .filter(|(_, (c, parts))| c.abs() > DROP * parts)
+            .map(|(k, (c, _))| (k, c))
+            .collect();
         let max = acc.values().fold(0.0_f64, |m, c| m.max(c.abs()));
-        acc.retain(|_, c| c.abs() > DROP * max);
         if acc.is_empty() {
             if rhs_now.abs() > 1e-9 * scale {
                 return Err(SolverError::new(format!(
@@ -282,6 +301,27 @@ mod tests {
         e.add(&[(0, 2.0)], 2.0, Some(0)).unwrap();
         let err = e.add(&[(0, 1.0)], 3.0, Some(0)).unwrap_err();
         assert!(err.to_string().contains("conflicting constraints"));
+    }
+
+    #[test]
+    fn a_small_coefficient_that_is_not_a_rounding_rest_stays() {
+        // u0 = 1e-14 u1, so u1 = 1e14 gives u0 = 1.
+        let mut e = Elimination::new(2);
+        e.add(&[(0, 1.0), (1, -1e-14)], 0.0, Some(0)).unwrap();
+        assert_eq!(e.finish().expand(&[1e14]), vec![1.0, 1e14]);
+    }
+
+    #[test]
+    fn the_rounding_rest_of_a_redundant_equation_is_zero() {
+        // u1 = 0.1 u0 and u2 = 0.2 u0 make u1 + u2 - 0.3 u0 = 0 redundant. The sum leaves
+        // 5.6e-17 u0, which must not become a constraint u0 = 0.
+        let mut e = Elimination::new(3);
+        e.add(&[(1, 1.0), (0, -0.1)], 0.0, Some(1)).unwrap();
+        e.add(&[(2, 1.0), (0, -0.2)], 0.0, Some(2)).unwrap();
+        e.add(&[(1, 1.0), (2, 1.0), (0, -0.3)], 0.0, None).unwrap();
+        let t = e.finish();
+        assert_eq!(t.n_free, 1);
+        assert_eq!(t.expand(&[1.0]), vec![1.0, 0.1, 0.2]);
     }
 
     #[test]
