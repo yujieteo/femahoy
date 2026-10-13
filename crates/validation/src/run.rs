@@ -109,7 +109,14 @@ pub fn run_case_with(case: &Case, solver: &dyn Solve) -> Report {
                             r.name
                         ));
                     }
-                    if w.margin < 0.0 {
+                    // An overflow makes the tolerance infinite and the margin NaN, and NaN is
+                    // not below 0. Thus only a finite margin can pass.
+                    if !w.margin.is_finite() {
+                        problems.push(format!(
+                            "{}: the tolerance {tol} or the difference |limit {limit} - {}| is not finite",
+                            r.name, r.value
+                        ));
+                    } else if w.margin < 0.0 {
                         problems.push(format!(
                             "{}: |limit {limit} - {}| exceeds {tol}",
                             r.name, r.value
