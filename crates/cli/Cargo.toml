@@ -11,6 +11,7 @@ name = "fh"
 path = "src/main.rs"
 
 [dependencies]
+fh-daemon = { path = "../daemon" }
 fh-inp = { path = "../inp" }
 fh-io = { path = "../io" }
 fh-validation = { path = "../validation" }

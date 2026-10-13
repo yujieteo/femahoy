@@ -1,6 +1,6 @@
 # Run contract (D1)
 
-The run contract is one contract for runs. The `fh` CLI and the UI both use it. The code is in `crates/daemon`. `fh serve` is not built yet. M3 builds it on this contract.
+The run contract is one contract for runs. The `fh` CLI and the UI both use it. The code is in `crates/daemon`. `fh serve` runs the daemon (see [`fh serve`](#fh-serve)).
 
 The solve path does not change. A run starts the protocol v2 solver (`fh-solve`, `docs/solver-protocol.md`) on a fixed copy of the input file.
 
@@ -42,7 +42,9 @@ The daemon listens on 127.0.0.1 only. It makes a random token at each start and 
 
 1. The `Host` header must be `127.0.0.1:<port>`.
 2. A request with an `Origin` header must come from `http://127.0.0.1:<port>`, the page of the daemon. Any other `Origin` fails with 403 `origin.refused`.
-3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`, such as the CLI, needs only the token.
+3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`, such as the CLI, needs only the token. Only `GET /`, the page of the daemon, can also take the token as `?token=<token>`, because a browser that opens a link sends no header.
+
+Each answer has `Referrer-Policy: no-referrer`, so the page never sends its address with the token to another site.
 
 ## Messages and routes
 
@@ -50,6 +52,7 @@ A message is UTF-8 text with one `key=value` line for each field. An empty line 
 
 | Method and path | Body | Answer |
 |---|---|---|
+| `GET /` | | the page of the daemon (HTML). The wasm viewer replaces it later. |
 | `GET /api/v1/status` | | `instance`, `pid` |
 | `POST /api/v1/projects` | `root` | `project`, `root` |
 | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
@@ -100,6 +103,29 @@ The daemon owns every run. A browser, the native UI and the CLI are only clients
 
 The daemon writes each record and each acknowledgement to a temporary file and then renames it. Thus a reader never sees a partial file.
 
+## `fh serve`
+
+```
+fh serve [--state DIR] [--port N]
+```
+
+`fh serve` starts the daemon and runs until a stop signal. It listens on 127.0.0.1 only. No option changes the address.
+
+| Option | Default |
+|---|---|
+| `--state DIR` | `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows, `%LOCALAPPDATA%\femahoy`. |
+| `--port N` | 0, a free port. The port is in `daemon.info`. |
+
+The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, and the state folder.
+
+SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon.info`, and each active run ends as `interrupted`. On Windows, Ctrl+C ends the process. That is the path of a failed daemon (see "Which process stays alive").
+
+| Exit | Meaning |
+|---|---|
+| 0 | Stopped by a signal. |
+| 1 | The daemon could not start, for example another daemon uses the state folder (`daemon.running`). |
+| 2 | Usage error. |
+
 ## Tests
 
 `crates/daemon/tests/contract.rs` has the D1 exit checks:
@@ -110,3 +136,5 @@ The daemon writes each record and each acknowledgement to a temporary file and t
 - a closed browser does not stop the run,
 - cancel keeps one record,
 - a stopped daemon and a failed daemon (SIGKILL) each leave one `interrupted` record.
+
+`crates/daemon/tests/serve.rs` tests `fh serve`: a missing token, a wrong token and a wrong `Origin` each fail, the token with no `Origin` or with the own `Origin` passes, a network address of the machine gets no connection, a second daemon on the same state folder fails, and a stop or SIGTERM stops the daemon and removes `daemon.info`.

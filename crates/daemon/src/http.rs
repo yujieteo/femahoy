@@ -6,14 +6,18 @@
 //! 2. A request with an `Origin` header must come from the daemon's own page,
 //!    `http://127.0.0.1:<port>`. Any other `Origin`, also `null`, fails with 403.
 //! 3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`,
-//!    such as the CLI, needs only the token.
+//!    such as the CLI, needs only the token. Only `GET /`, the page of the daemon, can also
+//!    take the token as `?token=<token>`, because a browser that opens a link sends no header.
 //!
 //! The daemon sends no CORS header, so a page of another origin cannot read an answer.
+//! Each answer has `Referrer-Policy: no-referrer`, so the page never sends its address with
+//! the token to another site.
 //!
 //! # Routes
 //!
 //! | Method and path | Body | Answer |
 //! |---|---|---|
+//! | `GET /` | | the page of the daemon (HTML) |
 //! | `GET /api/v1/status` | | `instance`, `pid` |
 //! | `POST /api/v1/projects` | `root` | `project`, `root` |
 //! | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
@@ -42,6 +46,17 @@ const MAX_BODY: usize = 16 << 10;
 const MAX_CONNECTIONS: usize = 32;
 /// The longest time that a client can take to send its request.
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
+/// The page of the daemon. The wasm viewer replaces it (roadmap item M3).
+const PAGE: &str = "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\">\
+    <title>femahoy</title></head>\n<body>\n<h1>femahoy</h1>\n\
+    <p>fh serve runs. The viewer is not built yet. The run contract is at /api/v1/.</p>\n\
+    </body>\n</html>\n";
+
+/// The answer to a request that passed the access rules.
+enum Reply {
+    Message(Message),
+    Page(&'static str),
+}
 
 pub(crate) struct Server {
     port: u16,
@@ -120,12 +135,18 @@ impl Request {
             .map(|(_, v)| v.as_str())
     }
 
-    fn query_number(&self, key: &str) -> Result<u64, Error> {
-        match self
-            .query
+    fn query_value(&self, key: &str) -> Option<&str> {
+        self.query
             .split('&')
             .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
-        {
+    }
+
+    fn is_page(&self) -> bool {
+        self.method == "GET" && self.path == "/"
+    }
+
+    fn query_number(&self, key: &str) -> Result<u64, Error> {
+        match self.query_value(key) {
             None => Ok(0),
             Some(v) => v
                 .parse()
@@ -234,10 +255,12 @@ fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Error> {
             ));
         }
     }
-    let Some(given) = req
-        .header("authorization")
-        .and_then(|v| v.strip_prefix("Bearer "))
-    else {
+    let given = match req.header("authorization") {
+        Some(v) => v.strip_prefix("Bearer "),
+        None if req.is_page() => req.query_value("token"),
+        None => None,
+    };
+    let Some(given) = given else {
         return Err(Error::new(
             401,
             "token.missing",
@@ -250,7 +273,10 @@ fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn route(service: &Service, req: &Request) -> Result<Message, Error> {
+fn route(service: &Service, req: &Request) -> Result<Reply, Error> {
+    if req.is_page() {
+        return Ok(Reply::Page(PAGE));
+    }
     let segments: Vec<&str> = req.path.split('/').collect();
     let body = || Message::parse(&req.body);
     let mut m = Message::new();
@@ -296,17 +322,19 @@ fn route(service: &Service, req: &Request) -> Result<Message, Error> {
             ))
         }
     }
-    Ok(m)
+    Ok(Reply::Message(m))
 }
 
-fn respond(stream: &mut TcpStream, answer: Result<Message, Error>) -> io::Result<()> {
-    let (status, body) = match answer {
-        Ok(m) => (200, m.to_text()),
+fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<()> {
+    let text = "text/plain";
+    let (status, kind, body) = match answer {
+        Ok(Reply::Message(m)) => (200, text, m.to_text()),
+        Ok(Reply::Page(page)) => (200, "text/html", page.to_owned()),
         Err(e) => {
             let mut m = Message::new();
             m.set("error", &e.code);
             m.set("message", &e.message);
-            (e.status, m.to_text())
+            (e.status, text, m.to_text())
         }
     };
     let reason = match status {
@@ -323,8 +351,10 @@ fn respond(stream: &mut TcpStream, answer: Result<Message, Error>) -> io::Result
     };
     write!(
         stream,
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain; charset=utf-8\r\n\
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}; charset=utf-8\r\n\
          Content-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\
+         Referrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\
+         Content-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\n\
          Connection: close\r\n\r\n{body}",
         body.len()
     )?;
@@ -375,5 +405,20 @@ mod tests {
         assert_eq!(code(&[host]), Err("token.missing".into()));
         let wrong = ("authorization", "Bearer secreT");
         assert_eq!(code(&[host, wrong]), Err("token.invalid".into()));
+    }
+
+    #[test]
+    fn only_the_page_takes_the_token_in_the_query() {
+        let host = ("host", "127.0.0.1:7000");
+        let code = |path: &str, query: &str| {
+            let mut req = request(&[host]);
+            (req.path, req.query) = (path.into(), query.into());
+            authorize(&req, 7000, "secret").map_err(|e| e.code)
+        };
+        assert_eq!(code("/", "token=secret"), Ok(()));
+        assert_eq!(code("/", "token=secreT"), Err("token.invalid".into()));
+        assert_eq!(code("/", ""), Err("token.missing".into()));
+        let api = Err("token.missing".to_owned());
+        assert_eq!(code("/api/v1/status", "token=secret"), api);
     }
 }

@@ -788,6 +788,7 @@ version = "0.0.0"
 name = "fh-cli"
 version = "0.0.0"
 dependencies = [
+ "fh-daemon",
  "fh-inp",
  "fh-io",
  "fh-validation",

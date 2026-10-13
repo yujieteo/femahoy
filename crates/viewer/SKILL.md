@@ -10,7 +10,7 @@ No viewport, terminal widget, chat panel or daemon client exists in this crate.
 
 ## Invariants the code must keep
 
-`fh serve` is not implemented in `cli/src/main.rs`.
+`fh serve` serves a placeholder page. It does not use this crate yet.
 - Line budget: 15k lines, tests included (DESIGN.md section 11).
 - Wrap `alacritty_terminal` behind our own interface and pin an exact version (DESIGN.md section 11.1).
 
