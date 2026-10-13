@@ -505,6 +505,24 @@ mod tests {
     }
 
     #[test]
+    fn a_tiny_or_a_huge_right_hand_side_gives_a_scaled_solution() {
+        // The squares of these loads underflow or overflow, but the solutions are numbers.
+        let m = coupled_chain(4);
+        let rhs: Vec<f64> = (0..m.n).map(|i| 1.0 + i as f64 * 0.1).collect();
+        let mut pcg = PcgSolver::new(1e-12, 1000, 1);
+        pcg.factor(&m).unwrap();
+        let (unit, _) = pcg.solve(&m, &rhs, &mut |_, _| true).unwrap();
+        for s in [1e-170, 1e170, 1e-310] {
+            let scaled: Vec<f64> = rhs.iter().map(|b| b * s).collect();
+            let (x, its) = pcg.solve(&m, &scaled, &mut |_, _| true).unwrap();
+            assert!(its > 0, "{s:e}: {its} iterations");
+            for (a, b) in x.iter().zip(&unit) {
+                assert!((a / s - b).abs() < 1e-6 * b.abs(), "{s:e}: {a:e} {b:e}");
+            }
+        }
+    }
+
+    #[test]
     fn the_progress_callback_stops_every_thread_of_the_solve() {
         let m = coupled_chain(3000);
         let rhs = vec![1.0; m.n];

@@ -947,19 +947,18 @@ impl Run<'_> {
             iterations = its;
         }
         // Residual of the reduced system.
+        // The scaled norms do not underflow for a very small load.
         let residual = {
             let mut kx = vec![0.0; c.t.n_free];
             c.matrix.mul(&ur, &mut kx);
-            let num = kx
-                .iter()
-                .zip(&fr)
-                .map(|(a, b)| (b - a) * (b - a))
-                .sum::<f64>();
-            let den = fr.iter().map(|b| b * b).sum::<f64>();
+            for (a, b) in kx.iter_mut().zip(&fr) {
+                *a = b - *a;
+            }
+            let den = norm(&fr);
             if den > 0.0 {
-                (num / den).sqrt()
+                norm(&kx) / den
             } else {
-                num.sqrt()
+                norm(&kx)
             }
         };
         if residual.is_nan() || residual > RESIDUAL_LIMIT {

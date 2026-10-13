@@ -693,3 +693,25 @@ fn newton_converges_when_a_signed_constraint_cancels_the_force_scale() {
     );
     assert!((d[1][0] + d[0][0]).abs() < 1e-12, "u2 = {}", d[1][0]);
 }
+
+#[test]
+fn both_solvers_carry_a_load_so_small_that_its_square_is_0() {
+    let model = cube(
+        "",
+        &format!("*BOUNDARY\n{FIX}*STEP\n*STATIC\n*CLOAD\n7,1,1e-170\n*END STEP\n"),
+    );
+    let unit = cube(
+        "",
+        &format!("*BOUNDARY\n{FIX}*STEP\n*STATIC\n*CLOAD\n7,1,1\n*END STEP\n"),
+    );
+    let reference = u(&unit, &solve(&unit).unwrap(), 0, 7)[0];
+    assert!(reference > 0.0);
+    for method in [Method::Cholesky, Method::Pcg] {
+        let sol = solve_options(&model, &options(method, 1)).unwrap_or_else(|e| panic!("{e}"));
+        let x = u(&model, &sol, 0, 7)[0];
+        assert!(
+            (x / 1e-170 - reference).abs() < 1e-6 * reference,
+            "{method:?}: {x:e}, reference {reference:e} for a unit load"
+        );
+    }
+}
