@@ -351,8 +351,11 @@ impl SubprocessSolver {
         let mut cancel_sent: Option<Instant> = None;
         let mut last_probe = Instant::now();
         let status = loop {
-            // Events first, so that the header check comes before everything.
-            while let Ok(line) = rx.recv_timeout(POLL) {
+            // Events first, so that the header check comes before everything. Take events
+            // for one poll period at most: a solver that writes without a pause, or a slow
+            // callback, must not hold back the checks below.
+            let batch = Instant::now();
+            while let Ok(line) = rx.recv_timeout(POLL.saturating_sub(batch.elapsed())) {
                 if !header_seen {
                     if line != PROTOCOL_HEADER {
                         return stop(&mut tree, ApiError(format!(
@@ -375,11 +378,9 @@ impl SubprocessSolver {
                     restart_file = Some(f.clone());
                 }
                 on_event(&event);
-            }
-            match tree.child.try_wait() {
-                Ok(Some(s)) => break s,
-                Ok(None) => {}
-                Err(e) => return stop(&mut tree, ApiError(format!("wait failed: {e}"))),
+                if batch.elapsed() >= POLL {
+                    break;
+                }
             }
             if cancel.is_cancelled() && cancel_sent.is_none() {
                 if let Some(mut pipe) = stdin.take() {
@@ -414,7 +415,7 @@ impl SubprocessSolver {
                     }
                     Ok(_) => {}
                     Err(e) => {
-                        // The solver can end between the wait and the probe.
+                        // The solver can end before the probe.
                         if let Ok(Some(s)) = tree.child.try_wait() {
                             break s;
                         }
@@ -423,6 +424,13 @@ impl SubprocessSolver {
                         )));
                     }
                 }
+            }
+            // The end of the solver comes after the checks, so a late end does not hide a
+            // cancel or the time limit.
+            match tree.child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {}
+                Err(e) => return stop(&mut tree, ApiError(format!("wait failed: {e}"))),
             }
         };
         // The solver has ended. Remove the processes that it left behind, then

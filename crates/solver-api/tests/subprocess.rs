@@ -349,6 +349,63 @@ fn unavailable_memory_probe_stops_the_solver() {
     assert!(e.to_string().contains("memory probe"), "{e}");
 }
 
+/// A solver that writes the header and then log lines without end.
+const FLOOD: &str = "echo \"fh-solver-protocol 2\"\nwhile true; do echo \"log x\"; done";
+
+/// Run `s` on `FLOOD` in a thread, with an event callback of 2 ms that can also cancel.
+/// The runner must return within 5 s. Its error and whether it is a cancel.
+fn run_flood(s: SubprocessSolver, dir: &Path, cancel: bool) -> (bool, String) {
+    let (inp, run) = (dir.join("a.inp"), dir.join("run"));
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let token = CancelToken::new();
+        let r = s.run_with(&inp, &run, &token, &mut |_| {
+            if cancel {
+                token.cancel();
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        });
+        let _ = tx.send(r.map_err(|e| (e.is_cancelled(), e.to_string())));
+    });
+    let r = rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the runner did not return within 5 s");
+    r.unwrap_err()
+}
+
+#[test]
+fn a_stream_of_events_cannot_delay_the_time_limit() {
+    let dir = scratch("flood-time");
+    let mut s = solver(&dir, FLOOD);
+    s.timeout = Duration::from_millis(500);
+    let (_, e) = run_flood(s, &dir, false);
+    assert!(e.contains("time limit"), "{e}");
+}
+
+fn over_the_limit(_: u32) -> Result<u64, String> {
+    Ok(100 << 20)
+}
+
+#[test]
+fn a_stream_of_events_cannot_delay_the_memory_check() {
+    let dir = scratch("flood-memory");
+    let mut s = solver(&dir, FLOOD);
+    s.memory_limit = 50 << 20;
+    s.probe = over_the_limit;
+    let (_, e) = run_flood(s, &dir, false);
+    assert!(e.contains("memory limit"), "{e}");
+}
+
+#[test]
+fn a_stream_of_events_cannot_delay_the_cancel() {
+    // The solver does not read stdin, so the runner kills it after the grace time.
+    let dir = scratch("flood-cancel");
+    let mut s = solver(&dir, FLOOD);
+    s.cancel_grace = Duration::from_millis(200);
+    let (cancelled, e) = run_flood(s, &dir, true);
+    assert!(cancelled, "{e}");
+}
+
 #[test]
 fn estimate_above_the_limit_stops_the_solver_early() {
     let dir = scratch("estimate");
