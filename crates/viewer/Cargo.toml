@@ -7,3 +7,6 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+bytemuck = { version = "1.25.2", features = ["derive"] }
+eframe = { version = "0.36.2", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
+fh-inp = { version = "0.0.0", path = "../inp" }

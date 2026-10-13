@@ -704,3 +704,11 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Rejected:** hex8 as the default element.
 - **Reverse if:** the `C3D10` workload test (section 13, E2) shows that typical tet10 models do not fit D-06.
 - **Built:** the `C3D10` element is on main (M2, PR 10). The M2b recipe makes `C3D10` meshes from CAD. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). `fh info` and `fh mesh` refuse a hex8 mesh that is not one extrusion (`crates/cli/src/rules.rs`).
+
+### D-20 Early mesh-only viewer
+- **Decided by:** the captain.
+- **Choice:** A mesh-only viewer (`fh view MODEL.inp`, native, no results) is built before the workflow lock. This is an exception to D-16. The viewer shows the surface mesh, the element edges and the outline of the part with orbit, pan and zoom.
+- **Reason:** The interface to the harness workflow must ship soon. The viewer needs no daemon and does not change the validated solver path.
+- **Rejected:** results, deformed shape, contours, the daemon, chat and the wasm build in this step. These stay in track 2.
+- **Reverse if:** the viewer work delays a track 1 item.
+- **Built:** `crates/viewer` and `fh view` (`docs/viewer.md`).

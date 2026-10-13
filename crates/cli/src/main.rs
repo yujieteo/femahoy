@@ -6,6 +6,7 @@ mod measure;
 mod mesh;
 mod rules;
 mod validate;
+mod view;
 
 use std::process::ExitCode;
 
@@ -18,7 +19,8 @@ fn usage() -> String {
          check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
          mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
-         info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n\n\
+         info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
+         view      show the mesh and its outline in 3D (fh view MODEL.inp)\n\n\
          TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
          Exact values are in the VTU files.\n\n\
          planned subcommands:\n",
@@ -41,6 +43,7 @@ fn main() -> ExitCode {
         Some("mesh") => mesh::run(&args[1..]),
         Some("validate") => validate::run(&args[1..]),
         Some("info") => info::run(&args[1..]),
+        Some("view") => view::run(&args[1..]),
         _ => {
             if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
                 eprintln!("fh {}: not implemented", args[0]);
