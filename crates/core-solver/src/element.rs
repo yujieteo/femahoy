@@ -575,7 +575,12 @@ fn run<const M: usize, Mt: Material + ?Sized>(
     tangent: bool,
 ) -> Result<(), SolverError> {
     let has_modes = pts[0].g.is_some();
-    let sl = material.state_len().min(MAX_MAT_STATE);
+    let sl = material.state_len();
+    if sl > MAX_MAT_STATE {
+        return Err(SolverError::new(format!(
+            "the material keeps {sl} state numbers, the limit is {MAX_MAT_STATE}"
+        )));
+    }
     let mut alpha = state.internal;
     let mut new_ip = [[0.0; MAX_MAT_STATE]; MAX_POINTS];
     let mut resp = [Response {

@@ -373,6 +373,40 @@ fn a_bad_pressure_input_is_an_error_not_a_panic() {
     assert!(bad.is_empty(), "{bad:#?}");
 }
 
+/// A material that keeps 9 state numbers. The element keeps at most 8.
+struct NineStates;
+
+impl Material for NineStates {
+    fn state_len(&self) -> usize {
+        9
+    }
+
+    fn update(
+        &self,
+        _g: &Gradient,
+        old: &[f64],
+        new: &mut [f64],
+    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
+        new[8] = old[8];
+        Ok(([0.0; 6], elasticity(1.0, 0.3)))
+    }
+}
+
+#[test]
+fn a_material_with_too_many_state_numbers_is_an_error() {
+    let c = unit_hex();
+    let run = || {
+        let mut out = Evaluation::default();
+        let state = ElementState::default();
+        evaluate(Kind::C3D8, &place(&c), &NineStates, &state, &mut out, false)
+    };
+    match std::panic::catch_unwind(run) {
+        Ok(Err(e)) => assert!(e.to_string().contains("state"), "{e}"),
+        Ok(Ok(())) => panic!("accepted"),
+        Err(_) => panic!("the evaluation panicked"),
+    }
+}
+
 /// A material whose stress is not finite.
 struct NotFinite;
 
