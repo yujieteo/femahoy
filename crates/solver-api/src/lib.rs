@@ -302,8 +302,9 @@ impl SubprocessSolver {
         if cancel.is_cancelled() {
             return Err(ApiError::cancelled());
         }
-        let run_dir = prepare_run_dir(run_dir, restart)?;
+        // Check the input before the folder changes: a new run clears the folder.
         let inp = fs::canonicalize(inp).map_err(|e| ApiError(format!("input file: {e}")))?;
+        let run_dir = prepare_run_dir(run_dir, restart, &inp)?;
         let open = |name: &str| {
             fs::File::create(run_dir.join(name)).map_err(|e| ApiError(format!("{name}: {e}")))
         };
@@ -483,11 +484,18 @@ fn stop(
 }
 
 /// Make the run folder ready. A folder with files in it must be a run folder of
-/// this runner (it has the marker file), or the call fails. A fresh run clears it.
-fn prepare_run_dir(run_dir: &Path, restart: bool) -> Result<PathBuf, ApiError> {
+/// this runner (it has the marker file), or the call fails. A fresh run clears it,
+/// so the input `inp` (a real path) must be outside it.
+fn prepare_run_dir(run_dir: &Path, restart: bool, inp: &Path) -> Result<PathBuf, ApiError> {
     let err = |e: std::io::Error| ApiError(format!("run folder: {e}"));
     fs::create_dir_all(run_dir).map_err(err)?;
     let dir = fs::canonicalize(run_dir).map_err(err)?;
+    if !restart && inp.starts_with(&dir) {
+        return fail(format!(
+            "input file {} is inside the run folder, which a new run clears",
+            inp.display()
+        ));
+    }
     let marked = dir.join(RUN_MARKER).is_file();
     let empty = fs::read_dir(&dir).map_err(err)?.next().is_none();
     if restart {

@@ -239,6 +239,32 @@ fn run_folder_with_foreign_files_is_not_cleared() {
 }
 
 #[test]
+fn an_input_inside_the_run_folder_is_refused_and_kept() {
+    let dir = scratch("input-inside");
+    let s = solver(&dir, GOOD);
+    let run = dir.join("run");
+    s.run(&dir.join("a.inp"), &run).unwrap();
+    fs::write(run.join("model.inp"), "*NODE\n").unwrap();
+    let e = s.run(&run.join("model.inp"), &run).unwrap_err().to_string();
+    assert!(e.contains("inside the run folder"), "{e}");
+    assert!(run.join("model.inp").is_file());
+}
+
+#[test]
+fn a_missing_input_keeps_the_earlier_results() {
+    let dir = scratch("input-missing");
+    let s = solver(&dir, GOOD);
+    let run = dir.join("run");
+    s.run(&dir.join("a.inp"), &run).unwrap();
+    let e = s
+        .run(&dir.join("missing.inp"), &run)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("input file"), "{e}");
+    assert!(run.join("results.pvd").is_file());
+}
+
+#[test]
 fn pvd_path_outside_the_run_folder_is_rejected() {
     for bad in ["../outside.vtu", "/etc/hosts"] {
         let dir = scratch("escape");
