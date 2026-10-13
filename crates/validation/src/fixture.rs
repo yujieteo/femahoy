@@ -5,8 +5,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, Table};
 
-use crate::ModelSpec;
 use crate::expr::Expr;
+use crate::ModelSpec;
 
 /// The tolerance class of a case and its parameters.
 #[derive(Debug, Clone, PartialEq)]
