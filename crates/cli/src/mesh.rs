@@ -6,7 +6,9 @@ use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
 const USAGE: &str = "usage: fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2] [--size H] \
-[--scale S] [--set NAME=VALUE]... [--units SI-mm|SI-m] [--timeout SECONDS] [--gmsh PATH]";
+[--scale S] [--set NAME=VALUE]... [--units SI-mm|SI-m] [--timeout SECONDS] [--gmsh PATH]\n\
+v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
+or Merge of a file that is not .msh.";
 
 /// Tested gmsh release line, and the oldest release that `fh mesh` accepts.
 const TESTED: (u32, u32) = (4, 15);
@@ -130,14 +132,78 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 }
 
 /// A refusal of the input that does not need gmsh.
+/// A `.geo` file is code. v1 refuses every command that can run another program or file:
+/// `SystemCall`, `NonBlockingSystemCall`, `OnelabRun`, `Include`, and `Merge` of a non-`.msh` file.
 fn check_geo(text: &str) -> Result<(), String> {
-    // A `.geo` file is code. Refuse the commands that run a shell command (gmsh scout report).
-    if text.to_ascii_lowercase().contains("systemcall") {
-        return Err(
-            "the .geo file contains SystemCall (or NonBlockingSystemCall). \
-fh mesh refuses it, because gmsh would run a shell command"
-                .into(),
-        );
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    let mut merge_pending = false;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '/' && chars.get(i + 1) == Some(&'/') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+        } else if c == '/' && chars.get(i + 1) == Some(&'*') {
+            i += 2;
+            while i < chars.len() && !(chars[i] == '*' && chars.get(i + 1) == Some(&'/')) {
+                i += 1;
+            }
+            i += 2;
+        } else if c == '"' {
+            let mut literal = String::new();
+            i += 1;
+            while i < chars.len() && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < chars.len() {
+                    i += 1;
+                }
+                literal.push(chars[i]);
+                i += 1;
+            }
+            i += 1;
+            if std::mem::take(&mut merge_pending) && !literal.to_ascii_lowercase().ends_with(".msh")
+            {
+                return Err(format!(
+                    "the .geo file merges `{literal}`. fh mesh v1 refuses Merge of a file that is not .msh"
+                ));
+            }
+        } else if c.is_ascii_alphabetic() || c == '_' {
+            let start = i;
+            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+            if merge_pending {
+                return Err(
+                    "the .geo file has a Merge that is not a plain file name. fh mesh v1 refuses it"
+                        .into(),
+                );
+            }
+            let word: String = chars[start..i]
+                .iter()
+                .collect::<String>()
+                .to_ascii_lowercase();
+            match word.as_str() {
+                "systemcall" | "nonblockingsystemcall" | "onelabrun" | "include" => {
+                    return Err(format!(
+                        "the .geo file contains {word}. fh mesh v1 refuses it, \
+because gmsh would run a shell command or another file"
+                    ));
+                }
+                "merge" => merge_pending = true,
+                _ => {}
+            }
+        } else {
+            if !c.is_whitespace() && c != '(' && merge_pending {
+                return Err(
+                    "the .geo file has a Merge that is not a plain file name. fh mesh v1 refuses it"
+                        .into(),
+                );
+            }
+            i += 1;
+        }
+    }
+    if merge_pending {
+        return Err("the .geo file has a Merge without a file name".into());
     }
     Ok(())
 }

@@ -62,11 +62,18 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
 }
 
 #[test]
-fn geo_file_with_system_call_is_refused_before_gmsh_starts() {
+fn geo_file_with_a_forbidden_command_is_refused_before_gmsh_starts() {
     let dir = scratch("syscall");
     for (i, text) in [
         "SystemCall \"echo x\";\n",
         "NonBlockingSystemCall \"echo x\";\n",
+        "systemcall(\"echo x\");\n",
+        "OnelabRun(\"x\");\n",
+        "Include \"evil.geo\";\n",
+        "Merge \"evil.geo\";\n",
+        "Merge \"evil.pro\";\n",
+        "Merge a;\n",
+        "/* ok */ // ok\nSystemCall \"echo x\";\n",
     ]
     .iter()
     .enumerate()
@@ -77,9 +84,34 @@ fn geo_file_with_system_call_is_refused_before_gmsh_starts() {
             &[geo.to_str().unwrap()],
             Some(Path::new("/nonexistent/gmsh")),
         );
-        assert_eq!(out.status.code(), Some(1));
-        assert!(stderr(&out).contains("SystemCall"), "{}", stderr(&out));
+        assert_eq!(out.status.code(), Some(1), "{text}: {}", stderr(&out));
+        assert!(stderr(&out).contains("refuses"), "{text}: {}", stderr(&out));
         assert!(!dir.join(format!("bad{i}.msh")).exists());
+    }
+}
+
+#[test]
+fn geo_file_with_merge_msh_or_commented_keywords_reaches_gmsh() {
+    let dir = scratch("allowed");
+    for (i, text) in [
+        "Merge \"part.MSH\";\n",
+        "// SystemCall \"x\";\n/* Include \"a.geo\"; OnelabRun */\nPoint(1) = {0,0,0};\n",
+        "Printf(\"// Include\");\n",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let geo = dir.join(format!("ok{i}.geo"));
+        std::fs::write(&geo, text).unwrap();
+        let out = fh(
+            &[geo.to_str().unwrap()],
+            Some(Path::new("/nonexistent/gmsh")),
+        );
+        assert!(
+            !stderr(&out).contains("refuses"),
+            "{text}: {}",
+            stderr(&out)
+        );
     }
 }
 
