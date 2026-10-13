@@ -443,12 +443,16 @@ impl Run<'_> {
         let mut t = el.finish();
         let fixed = self.orphan_dofs(&t);
         if !fixed.is_empty() {
-            for &d in &fixed {
+            // A constraint can move a load to a free dof, so check the reduced load T^T f.
+            // The load at the full dof alone can be zero.
+            let reduced = t.reduce(f);
+            for &r in &fixed {
+                let d = t.full_dof(r);
                 let node = mesh.base.partition_point(|&b| b <= d) - 1;
                 let (id, comp) = (mesh.model.nodes[node].id, (d - mesh.base[node]) as u8 + 1);
-                if f[d] != 0.0 {
+                if reduced[r] != 0.0 {
                     return Err(SolverError::new(format!(
-                        "node {id} has a load on dof {comp} but no element gives it stiffness"
+                        "node {id} has a load on dof {comp}, directly or through a constraint, but no element gives it stiffness"
                     )));
                 }
                 orphans.insert((id, comp));
@@ -459,7 +463,7 @@ impl Run<'_> {
         Ok(t)
     }
 
-    /// Full dofs that stay free after elimination but that no element stiffness reaches.
+    /// Free dofs (reduced numbers) that no element stiffness reaches.
     fn orphan_dofs(&self, t: &Transform) -> Vec<usize> {
         let mesh = self.mesh;
         let mut used = vec![false; t.n_free];
@@ -473,10 +477,7 @@ impl Run<'_> {
                 }
             }
         }
-        (0..t.n_free)
-            .filter(|&r| !used[r])
-            .map(|r| t.full_dof(r))
-            .collect()
+        (0..t.n_free).filter(|&r| !used[r]).collect()
     }
 
     /// A step that a restart skips still counts its pattern, so the counter equals the one of a full run.

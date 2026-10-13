@@ -149,6 +149,37 @@ fn a_load_on_a_node_without_element_is_an_error() {
     assert!(e.contains("node 99") && e.contains("no element"), "{e}");
 }
 
+/// The equation u9 = u10 moves the load at node 9 to dof 1 of node 10. No element reaches
+/// either node, so nothing carries the load.
+#[test]
+fn a_load_that_an_equation_moves_to_a_node_without_element_is_an_error() {
+    let model = cube(
+        "9,2,0,0\n10,3,0,0\n",
+        &format!(
+            "*EQUATION\n2\n9,1,1.,10,1,-1.\n\
+*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n9,1,5\n*END STEP\n"
+        ),
+    );
+    let e = solve(&model).unwrap_err().to_string();
+    assert!(e.contains("node 10") && e.contains("no element"), "{e}");
+}
+
+/// The equation u9 = u2 moves the load at node 9 to the cube, which carries it.
+#[test]
+fn a_load_that_an_equation_moves_to_the_mesh_is_carried() {
+    let model = cube(
+        "9,2,0,0\n",
+        &format!(
+            "*EQUATION\n2\n9,1,1.,2,1,-1.\n\
+*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n9,1,5\n*END STEP\n"
+        ),
+    );
+    let sol = solve(&model).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(sol.summary.orphans, vec![(9, 2), (9, 3)]);
+    let (u9, u2) = (u(&model, &sol, 0, 9), u(&model, &sol, 0, 2));
+    assert!(u2[0] > 0.0 && u9[0] == u2[0], "{u9:?} {u2:?}");
+}
+
 #[test]
 fn the_residual_is_small_and_reported() {
     let sol = solve(&bar("*CLOAD\n2,1,25\n3,1,25\n6,1,25\n7,1,25\n")).unwrap();
