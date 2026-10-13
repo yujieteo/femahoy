@@ -63,11 +63,17 @@ impl Elimination {
         if !rhs.is_finite() || row.iter().any(|(_, c)| !c.is_finite()) {
             return Err(not_finite());
         }
+        // Scale the equation so that its largest coefficient is 1. A nonzero factor does not
+        // change the meaning of an equation, so the tests below must not depend on it.
+        let norm = row.iter().fold(0.0_f64, |m, (_, c)| m.max(c.abs()));
+        let norm = if norm > 0.0 { norm } else { 1.0 };
         let mut acc: BTreeMap<usize, f64> = BTreeMap::new();
-        let mut rhs_now = rhs;
-        let mut scale = 1.0 + rhs.abs();
+        let mut rhs_now = rhs / norm;
+        // The size of the values that make `rhs_now`, for the conflict test.
+        let mut scale = rhs_now.abs();
         for &(j, c) in row {
             debug_assert!(j < self.n);
+            let c = c / norm;
             match self.slaves.get(&j) {
                 Some(s) => {
                     for (&m, &t) in &s.terms {
@@ -279,16 +285,30 @@ mod tests {
     }
 
     #[test]
+    fn a_conflict_does_not_depend_on_the_scale_of_the_equation() {
+        for k in [1.0, 1e-12, 1e12] {
+            // x = 1, then k x = 2 k is a conflict, and k x = k is redundant.
+            let mut e = Elimination::new(1);
+            e.add(&[(0, 1.0)], 1.0, None).unwrap();
+            assert!(e.add(&[(0, k)], 2.0 * k, None).is_err(), "k = {k}");
+            e.add(&[(0, k)], k, None).unwrap();
+        }
+    }
+
+    #[test]
     fn a_value_that_is_not_finite_is_an_error() {
         for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             let mut e = Elimination::new(2);
             assert!(e.add(&[(0, bad), (1, -1.0)], 0.0, None).is_err());
             assert!(e.add(&[(0, 1.0)], bad, None).is_err());
         }
-        // Finite input can overflow in the substitution: u1 = 1e8 u0, then 1e305 u1 = u2.
+        // Finite input can overflow in the substitution: u0 = u1 = 1.5e308, then u0 + u1 = u2.
         let mut e = Elimination::new(3);
-        e.add(&[(1, 1e-8), (0, -1.0)], 0.0, Some(1)).unwrap();
-        let err = e.add(&[(1, 1e305), (2, -1.0)], 0.0, Some(2)).unwrap_err();
+        e.add(&[(0, 1.0)], 1.5e308, None).unwrap();
+        e.add(&[(1, 1.0)], 1.5e308, None).unwrap();
+        let err = e
+            .add(&[(0, 1.0), (1, 1.0), (2, -1.0)], 0.0, None)
+            .unwrap_err();
         assert!(err.to_string().contains("not finite"), "{err}");
     }
 

@@ -545,3 +545,19 @@ fn an_equation_coefficient_or_a_boundary_value_that_is_not_finite_is_an_error() 
         assert!(e.contains("not finite"), "{e}");
     }
 }
+
+#[test]
+fn conflicting_constraints_fail_at_each_scale_of_the_equation() {
+    // u(2,1) = 1 and u(3,1) = 2 contradict k u(2,1) - k u(3,1) = 0 for each k.
+    for k in ["1", "1e-12", "1e12"] {
+        let model = cube(
+            "",
+            &format!(
+                "*EQUATION\n2\n2,1,{k},3,1,-{k}\n\
+*STEP\n*STATIC\n*BOUNDARY\n{FIX}2,1,1,1\n3,1,1,2\n*END STEP\n"
+            ),
+        );
+        let e = solve(&model).unwrap_err().to_string();
+        assert!(e.contains("conflicting constraints"), "k = {k}: {e}");
+    }
+}
