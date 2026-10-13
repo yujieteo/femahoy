@@ -53,10 +53,20 @@ fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError>
     })
 }
 
+/// A finite number. The Rust parser also accepts NaN, infinity and numbers that overflow to
+/// infinity, and these would change or remove a constraint without an error.
+fn finite(f: &str) -> Option<f64> {
+    f.parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
 fn real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<f64, ParseError> {
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
-    f.parse::<f64>()
-        .map_err(|_| b.error(d.line, format!("{what} must be a number, found '{f}'")))
+    finite(f).ok_or_else(|| {
+        b.error(
+            d.line,
+            format!("{what} must be a finite number, found '{f}'"),
+        )
+    })
 }
 
 fn opt_real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<Option<f64>, ParseError> {
@@ -642,10 +652,10 @@ impl Parser {
                         format!("degree of freedom must be 1 to 6, found '{}'", t[1].1),
                     )
                 })?;
-            let coefficient = t[2].1.parse::<f64>().map_err(|_| {
+            let coefficient = finite(t[2].1).ok_or_else(|| {
                 b.error(
                     line,
-                    format!("coefficient must be a number, found '{}'", t[2].1),
+                    format!("coefficient must be a finite number, found '{}'", t[2].1),
                 )
             })?;
             terms.push(EquationTerm {
@@ -787,7 +797,7 @@ mod tests {
     fn bad_number_names_line() {
         assert_eq!(
             err("*NODE\n1,0,x,0\n"),
-            "line 2, *NODE: coordinate must be a number, found 'x'"
+            "line 2, *NODE: coordinate must be a finite number, found 'x'"
         );
     }
 
