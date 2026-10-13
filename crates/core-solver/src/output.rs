@@ -512,13 +512,14 @@ impl Observer for Writer<'_> {
         if inc.last {
             // Peak values of the step, for a person who reads the event lines.
             (self.emit)(&format!(
-                "step {} max_u={:e} max_mises={:e} max_rf={:e} free_dofs={} method={}",
+                "step {} max_u={:e} max_mises={:e} max_rf={:e} free_dofs={} method={} iterations={}",
                 inc.step + 1,
                 max_norm(&result.displacement),
                 result.mises.iter().copied().fold(0.0, f64::max),
                 max_norm(&result.reaction),
                 inc.info.free_dofs,
-                method_name(&inc.info)
+                method_name(&inc.info),
+                inc.info.iterations
             ));
         }
         self.incs.push(IncLine {
@@ -642,7 +643,7 @@ fn finish(
         summary.orphans.len()
     ));
     (writer.emit)(&format!(
-        "timing assemble={:.3} factor={:.3} solve={:.3}",
+        "timing assemble={:.6} factor={:.6} solve={:.6}",
         summary.assemble_seconds, summary.factor_seconds, summary.solve_seconds
     ));
     Ok(RunReport {

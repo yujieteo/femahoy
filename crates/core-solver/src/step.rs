@@ -18,7 +18,7 @@
 //!
 //! A sweep is one call of a pure kernel for each element and each contribution group.
 //! Threads compute the results of a chunk. One thread then adds them to the arrays in entry
-//! order. Thus the result does not depend on the number of threads. Decision D-09, see DESIGN.md.
+//! order. Thus the result does not depend on the number of threads. Decision D-10, see DESIGN.md.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;

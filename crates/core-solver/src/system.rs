@@ -409,6 +409,14 @@ pub fn solve_from(
     let nnz_guess = (9 * graph.entries() + 3 * model.nodes.len()) / 2;
     let method_guess = options.method != Method::Cholesky && mesh.n_dofs > options.direct_max_dofs;
     let lens = mesh.state_lens();
+    let slot_bytes = mesh
+        .conn_start
+        .windows(2)
+        .map(|w| {
+            let n = 3 * (w[1] - w[0]) as usize;
+            4 * n * (n + 1) / 2 + 8
+        })
+        .sum();
     let estimate = estimate_bytes(&Sizes {
         nodes: model.nodes.len(),
         elements: model.elements.len(),
@@ -425,6 +433,7 @@ pub fn solve_from(
             } else {
                 72 * model.elements.len()
             },
+        slot_bytes,
     });
     observer.estimate(estimate);
     crate::step::run(&mesh, &graph, options, threads, estimate, observer, resume)
@@ -446,6 +455,9 @@ pub struct Sizes {
     pub ip_stress: bool,
     /// Bytes of one copy of the material and element state.
     pub state_bytes: usize,
+    /// Bytes of the slot map: 4 for each entry of the lower triangle of each element matrix
+    /// (300 for a hexahedron, 465 for a 10-node tetrahedron), and 8 for each element.
+    pub slot_bytes: usize,
 }
 
 /// Estimate of the peak memory of a run in bytes, without the Cholesky factor.
@@ -464,8 +476,8 @@ pub fn estimate_bytes(s: &Sizes) -> u64 {
     // The matrix: 32-bit column pointers and rows, and the values.
     let matrix = 12 * nnz + 4 * n;
     // The slot map: one 32-bit slot for each entry of the lower triangle of an element
-    // matrix (300 for a hexahedron), and the offsets.
-    let slots = 1300 * els;
+    // matrix, and the offsets.
+    let slots = s.slot_bytes as u64;
     // The state: the committed and the trial copy, a copy for the restart file, and slack.
     let state = 4 * s.state_bytes as u64;
     // The transform, and the full and reduced vectors of the step.
@@ -479,8 +491,9 @@ pub fn estimate_bytes(s: &Sizes) -> u64 {
     // The results of one step and the output grid.
     let results =
         72 * nodes + 56 * els + 120 * nodes + 70 * els + if s.ip_stress { 8 * 48 * els } else { 0 };
-    // The chunk buffers of the threads.
-    let chunks = s.threads as u64 * 256 * std::mem::size_of::<Evaluation>() as u64;
+    // The chunk buffers of the threads: at most one evaluation for each element.
+    let chunks =
+        (s.threads as u64 * 256).min(els.max(1)) * std::mem::size_of::<Evaluation>() as u64;
     // Allocator slack, the input text, and parts the terms miss. The measured peak is 1.21 to
     // 1.26 times the sum (iterative path, 1M elements: 1.26). The factor 1.35 keeps the
     // estimate above the peak (DESIGN.md section 11).
