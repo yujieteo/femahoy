@@ -417,9 +417,9 @@ impl SubprocessSolver {
                     ))));
                     break;
                 }
-                let Ok(line) = String::from_utf8(buf) else {
-                    break;
-                };
+                // A line that is not UTF-8 is not an event. It stays as a log line.
+                let line = String::from_utf8(buf)
+                    .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
                 let _ = writeln!(log, "{line}");
                 if tx.send(Ok(line)).is_err() {
                     break;

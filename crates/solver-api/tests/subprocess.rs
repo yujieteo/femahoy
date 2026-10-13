@@ -162,6 +162,30 @@ fn events_arrive_in_order() {
 }
 
 #[test]
+fn a_log_line_that_is_not_utf8_does_not_stop_the_events() {
+    let dir = scratch("latin1");
+    // A Latin-1 log line, for example a file name from a library, comes before the events.
+    let body = GOOD.replacen('\n', "\nprintf 'caf\\351 au lait\\n'\n", 1);
+    let s = solver(&dir, &body);
+    let mut seen = Vec::new();
+    let r = s.run_with(
+        &dir.join("a.inp"),
+        &dir.join("run"),
+        &CancelToken::new(),
+        &mut |e| seen.push(e.clone()),
+    );
+    let r = r.unwrap();
+    assert_eq!(
+        seen.first(),
+        Some(&Event::Log("caf\u{FFFD} au lait".into()))
+    );
+    assert_eq!(seen.len(), 3, "{seen:?}");
+    assert!(r.restart.unwrap().ends_with("restart.txt"));
+    let log = fs::read(dir.join("run/stdout.txt")).unwrap();
+    assert!(String::from_utf8_lossy(&log).contains("caf\u{FFFD} au lait"));
+}
+
+#[test]
 fn event_lines_parse() {
     assert_eq!(
         Event::parse("estimate bytes=1048576"),
