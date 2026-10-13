@@ -8,6 +8,32 @@
 
 use std::process::{Child, Command};
 
+/// Address space limit for a solver with `threads` threads: the resident limit
+/// plus 256 MiB and 64 MiB for each thread.
+#[cfg_attr(
+    not(all(target_os = "linux", target_pointer_width = "64")),
+    allow(dead_code)
+)]
+pub fn address_space_limit(resident_limit: u64, threads: usize) -> u64 {
+    resident_limit
+        .saturating_add(256 << 20)
+        .saturating_add((threads as u64).saturating_mul(64 << 20))
+}
+
+/// Thread count of the solver: `FH_THREADS` when set and above 0, else the CPU count.
+#[cfg_attr(
+    not(all(target_os = "linux", target_pointer_width = "64")),
+    allow(dead_code)
+)]
+fn solver_threads() -> usize {
+    std::env::var("FH_THREADS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()))
+        .unwrap_or(1)
+}
+
 /// Handle for the process tree of a child.
 pub struct Group {
     pid: u32,
@@ -35,9 +61,10 @@ mod os {
         cmd.process_group(0);
         #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
         if let Some(bytes) = hard_limit {
-            // RLIMIT_AS is 9 on Linux. The extra 256 MiB is for stacks and the
-            // mappings of the loader. SAFETY: `setrlimit` is async-signal-safe.
-            let limit = [bytes.saturating_add(256 << 20); 2];
+            // RLIMIT_AS is 9 on Linux. Address space is not resident memory:
+            // malloc arenas and thread stacks reserve address space per thread.
+            // SAFETY: `setrlimit` is async-signal-safe.
+            let limit = [address_space_limit(bytes, solver_threads()); 2];
             unsafe {
                 cmd.pre_exec(move || {
                     if setrlimit(9, &limit) == 0 {
@@ -331,4 +358,19 @@ pub fn default_probe() -> Probe {
 /// Physical memory of the machine in bytes, or `None` if the system does not tell.
 pub fn total_memory() -> Option<u64> {
     os::total_memory()
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::address_space_limit;
+
+    #[test]
+    fn allowance_scales_with_threads() {
+        assert_eq!(address_space_limit(1 << 30, 1), (1 << 30) + (320 << 20));
+        assert_eq!(
+            address_space_limit(1 << 30, 64),
+            (1 << 30) + (256 << 20) + (64 * (64 << 20))
+        );
+        assert_eq!(address_space_limit(u64::MAX, 8), u64::MAX);
+    }
 }
