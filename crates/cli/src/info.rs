@@ -69,6 +69,12 @@ fn msh(file: &Path, text: &str, units: Option<Units>) -> Result<ExitCode, String
         "volume: {:.6e}\nmin_scaled_jacobian: {:.4}",
         s.volume, s.min_scaled_jacobian
     );
+    if let Err(message) = crate::rules::hex_needs_extrusion(&model) {
+        let (code, text) = message
+            .split_once(": ")
+            .unwrap_or(("mesh.hex.not_extruded", &message));
+        return Ok(refuse(code, text.to_string()));
+    }
     if s.inverted > 0 {
         return Ok(refuse(
             "mesh.jacobian.negative",
