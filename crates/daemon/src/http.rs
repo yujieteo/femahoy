@@ -1,0 +1,379 @@
+//! The HTTP transport of the run contract, on 127.0.0.1 only (DESIGN.md section 4.1).
+//!
+//! # Access rules
+//!
+//! 1. The `Host` header must be `127.0.0.1:<port>`. This stops DNS rebinding.
+//! 2. A request with an `Origin` header must come from the daemon's own page,
+//!    `http://127.0.0.1:<port>`. Any other `Origin`, also `null`, fails with 403.
+//! 3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`,
+//!    such as the CLI, needs only the token.
+//!
+//! The daemon sends no CORS header, so a page of another origin cannot read an answer.
+//!
+//! # Routes
+//!
+//! | Method and path | Body | Answer |
+//! |---|---|---|
+//! | `GET /api/v1/status` | | `instance`, `pid` |
+//! | `POST /api/v1/projects` | `root` | `project`, `root` |
+//! | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
+//! | `POST /api/v1/projects/<p>/runs` | `request`, `input` | acknowledgement |
+//! | `GET /api/v1/projects/<p>/runs/<r>` | | run record |
+//! | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
+//! | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events |
+//!
+//! An error has the fields `error` (a stable code) and `message`.
+
+use std::io::{self, BufRead, BufReader, Read, Write};
+use std::net::{Ipv4Addr, TcpListener, TcpStream};
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+use crate::contract::{Error, Message};
+use crate::service::Service;
+
+const MAX_HEAD: usize = 16 << 10;
+const MAX_HEADERS: usize = 64;
+const MAX_BODY: usize = 16 << 10;
+/// The most connections at the same time. Each one has a thread.
+const MAX_CONNECTIONS: usize = 32;
+/// The longest time that a client can take to send its request.
+const IO_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub(crate) struct Server {
+    port: u16,
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Server {
+    pub(crate) fn start(service: Arc<Service>, port: u16, token: String) -> io::Result<Server> {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
+        let port = listener.local_addr()?.port();
+        let stop = Arc::new(AtomicBool::new(false));
+        let active = Arc::new(AtomicUsize::new(0));
+        let flag = stop.clone();
+        let thread = std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                if flag.load(Ordering::SeqCst) {
+                    break;
+                }
+                let Ok(mut stream) = stream else { continue };
+                let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+                let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+                if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    let busy = Error::new(503, "daemon.busy", "too many connections");
+                    let _ = respond(&mut stream, Err(busy));
+                    continue;
+                }
+                let (service, token, active) = (service.clone(), token.clone(), active.clone());
+                std::thread::spawn(move || {
+                    let answer = read_request(&mut stream).and_then(|req| {
+                        authorize(&req, port, &token)?;
+                        route(&service, &req)
+                    });
+                    // A client that has gone, such as a closed browser tab, gets no answer.
+                    // This changes no run.
+                    let _ = respond(&mut stream, answer);
+                    active.fetch_sub(1, Ordering::SeqCst);
+                });
+            }
+        });
+        Ok(Server {
+            port,
+            stop,
+            thread: Some(thread),
+        })
+    }
+
+    pub(crate) fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub(crate) fn stop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        // Wake the accept loop.
+        let _ = TcpStream::connect((Ipv4Addr::LOCALHOST, self.port));
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+struct Request {
+    method: String,
+    path: String,
+    query: String,
+    headers: Vec<(String, String)>,
+    body: String,
+}
+
+impl Request {
+    fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
+    }
+
+    fn query_number(&self, key: &str) -> Result<u64, Error> {
+        match self
+            .query
+            .split('&')
+            .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
+        {
+            None => Ok(0),
+            Some(v) => v
+                .parse()
+                .map_err(|_| Error::bad("query.invalid", format!("{key} is not a number"))),
+        }
+    }
+}
+
+fn read_line(reader: &mut impl BufRead, head: &mut usize) -> Result<String, Error> {
+    let mut line = String::new();
+    let n = reader
+        .read_line(&mut line)
+        .map_err(|e| Error::bad("http.invalid", e.to_string()))?;
+    *head += n;
+    if *head > MAX_HEAD {
+        return Err(Error::new(
+            431,
+            "http.too-large",
+            "the request head is too large",
+        ));
+    }
+    if n == 0 || !line.ends_with('\n') {
+        return Err(Error::bad("http.invalid", "the request ended early"));
+    }
+    Ok(line.trim_end_matches(['\r', '\n']).to_owned())
+}
+
+fn read_request(stream: &mut TcpStream) -> Result<Request, Error> {
+    let mut reader = BufReader::new(Read::take(&*stream, (MAX_HEAD + MAX_BODY + 1) as u64));
+    let mut head = 0;
+    let line = read_line(&mut reader, &mut head)?;
+    let parts: Vec<&str> = line.split(' ').collect();
+    let [method, target, version] = parts[..] else {
+        return Err(Error::bad("http.invalid", "bad request line"));
+    };
+    if !version.starts_with("HTTP/1.") {
+        return Err(Error::bad("http.invalid", "only HTTP/1 is served"));
+    }
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    let mut headers: Vec<(String, String)> = Vec::new();
+    loop {
+        let line = read_line(&mut reader, &mut head)?;
+        if line.is_empty() {
+            break;
+        }
+        let Some((name, value)) = line.split_once(':') else {
+            return Err(Error::bad("http.invalid", "bad header line"));
+        };
+        let name = name.trim().to_ascii_lowercase();
+        let unique = ["host", "origin", "authorization", "content-length"];
+        if headers.len() == MAX_HEADERS
+            || (unique.contains(&name.as_str()) && headers.iter().any(|(n, _)| *n == name))
+        {
+            return Err(Error::bad("http.invalid", format!("bad header {name}")));
+        }
+        headers.push((name, value.trim().to_owned()));
+    }
+    let mut req = Request {
+        method: method.to_owned(),
+        path: path.to_owned(),
+        query: query.to_owned(),
+        headers,
+        body: String::new(),
+    };
+    if req.header("transfer-encoding").is_some() {
+        return Err(Error::bad("http.invalid", "send a Content-Length body"));
+    }
+    let length: usize = match req.header("content-length") {
+        None => 0,
+        Some(v) => v
+            .parse()
+            .map_err(|_| Error::bad("http.invalid", "bad Content-Length"))?,
+    };
+    if length > MAX_BODY {
+        return Err(Error::new(413, "http.too-large", "the body is too large"));
+    }
+    let mut body = vec![0; length];
+    reader
+        .read_exact(&mut body)
+        .map_err(|e| Error::bad("http.invalid", e.to_string()))?;
+    req.body =
+        String::from_utf8(body).map_err(|_| Error::bad("http.invalid", "body is not UTF-8"))?;
+    Ok(req)
+}
+
+/// Compare in a time that does not depend on where the texts differ.
+fn same_token(a: &str, b: &str) -> bool {
+    a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0, |d, (x, y)| d | (x ^ y)) == 0
+}
+
+fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Error> {
+    let own = format!("127.0.0.1:{port}");
+    if req.header("host") != Some(own.as_str()) {
+        return Err(Error::new(
+            403,
+            "host.refused",
+            format!("the Host must be {own}"),
+        ));
+    }
+    if let Some(origin) = req.header("origin") {
+        if origin != format!("http://{own}") {
+            return Err(Error::new(
+                403,
+                "origin.refused",
+                format!("Origin {origin} is not the daemon page"),
+            ));
+        }
+    }
+    let Some(given) = req
+        .header("authorization")
+        .and_then(|v| v.strip_prefix("Bearer "))
+    else {
+        return Err(Error::new(
+            401,
+            "token.missing",
+            "send Authorization: Bearer <token>",
+        ));
+    };
+    if !same_token(given, token) {
+        return Err(Error::new(401, "token.invalid", "the token is not correct"));
+    }
+    Ok(())
+}
+
+fn route(service: &Service, req: &Request) -> Result<Message, Error> {
+    let segments: Vec<&str> = req.path.split('/').collect();
+    let body = || Message::parse(&req.body);
+    let mut m = Message::new();
+    match (req.method.as_str(), &segments[..]) {
+        ("GET", ["", "api", "v1", "status"]) => {
+            m.set("instance", service.instance());
+            m.set("pid", std::process::id());
+        }
+        ("POST", ["", "api", "v1", "projects"]) => {
+            let (project, root) = service.register(Path::new(body()?.need("root")?))?;
+            m.set("project", project);
+            m.set("root", root.display());
+        }
+        ("GET", ["", "api", "v1", "projects", p, "runs"]) => {
+            m.items = service
+                .runs(p)?
+                .iter()
+                .map(|r| format!("{} {}", r.run, r.state))
+                .collect();
+        }
+        ("POST", ["", "api", "v1", "projects", p, "runs"]) => {
+            let b = body()?;
+            m = service
+                .submit(p, b.need("request")?, b.need("input")?)?
+                .to_message();
+        }
+        ("GET", ["", "api", "v1", "projects", p, "runs", r]) => {
+            m = service.record(p, r)?.to_message();
+        }
+        ("POST", ["", "api", "v1", "projects", p, "runs", r, "cancel"]) => {
+            m = service.cancel(p, r, body()?.need("request")?)?.to_message();
+        }
+        ("GET", ["", "api", "v1", "projects", p, "runs", r, "events"]) => {
+            let since = req.query_number("since")?;
+            let wait = Duration::from_millis(req.query_number("wait_ms")?);
+            m = service.events(p, r, since, wait)?.to_message();
+        }
+        _ => {
+            return Err(Error::new(
+                404,
+                "route.unknown",
+                format!("no route {} {}", req.method, req.path),
+            ))
+        }
+    }
+    Ok(m)
+}
+
+fn respond(stream: &mut TcpStream, answer: Result<Message, Error>) -> io::Result<()> {
+    let (status, body) = match answer {
+        Ok(m) => (200, m.to_text()),
+        Err(e) => {
+            let mut m = Message::new();
+            m.set("error", &e.code);
+            m.set("message", &e.message);
+            (e.status, m.to_text())
+        }
+    };
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        403 => "Forbidden",
+        404 => "Not Found",
+        409 => "Conflict",
+        413 => "Payload Too Large",
+        431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
+        _ => "Internal Server Error",
+    };
+    write!(
+        stream,
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: text/plain; charset=utf-8\r\n\
+         Content-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\
+         Connection: close\r\n\r\n{body}",
+        body.len()
+    )?;
+    stream.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(headers: &[(&str, &str)]) -> Request {
+        Request {
+            method: "GET".into(),
+            path: "/api/v1/status".into(),
+            query: String::new(),
+            headers: headers
+                .iter()
+                .map(|(n, v)| (n.to_string(), v.to_string()))
+                .collect(),
+            body: String::new(),
+        }
+    }
+
+    #[test]
+    fn access_rules() {
+        let host = ("host", "127.0.0.1:7000");
+        let token = ("authorization", "Bearer secret");
+        let code = |h: &[(&str, &str)]| authorize(&request(h), 7000, "secret").map_err(|e| e.code);
+        assert_eq!(code(&[host, token]), Ok(()));
+        assert_eq!(
+            code(&[host, token, ("origin", "http://127.0.0.1:7000")]),
+            Ok(())
+        );
+        let refused = Err("origin.refused".to_owned());
+        assert_eq!(
+            code(&[host, token, ("origin", "http://evil.example")]),
+            refused
+        );
+        assert_eq!(code(&[host, token, ("origin", "null")]), refused);
+        assert_eq!(
+            code(&[host, token, ("origin", "http://localhost:7000")]),
+            refused
+        );
+        assert_eq!(
+            code(&[("host", "evil.example:7000"), token]),
+            Err("host.refused".into())
+        );
+        assert_eq!(code(&[host]), Err("token.missing".into()));
+        let wrong = ("authorization", "Bearer secreT");
+        assert_eq!(code(&[host, wrong]), Err("token.invalid".into()));
+    }
+}
