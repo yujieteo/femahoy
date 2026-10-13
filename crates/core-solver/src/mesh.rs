@@ -85,14 +85,25 @@ impl<'a> Mesh<'a> {
                 "the model has {n_dofs} dofs, more than the 32-bit index allows"
             )));
         }
-        // Material of each element, from the sections.
+        // Material of each element, from the sections. An element takes one section only.
         let mut material: HashMap<u32, &str> = HashMap::new();
-        for s in &model.sections {
+        let mut section_of: HashMap<u32, usize> = HashMap::new();
+        for (i, s) in model.sections.iter().enumerate() {
             let set = model
                 .elset(&s.elset)
                 .ok_or_else(|| SolverError::new(format!("element set {} not found", s.elset)))?;
             for id in &set.ids {
-                material.insert(*id, &s.material);
+                match section_of.insert(*id, i) {
+                    Some(j) if j != i => {
+                        return Err(SolverError::new(format!(
+                            "element {id} is in 2 *SOLID SECTION element sets ({} and {})",
+                            model.sections[j].elset, s.elset
+                        )));
+                    }
+                    _ => {
+                        material.insert(*id, &s.material);
+                    }
+                }
             }
         }
         let mut mat_index: HashMap<&str, u16> = HashMap::new();
