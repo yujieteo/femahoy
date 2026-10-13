@@ -343,6 +343,36 @@ fn a_tiny_strain_keeps_its_stress_and_its_force() {
     assert!(bad.is_empty(), "{bad:#?}");
 }
 
+#[test]
+fn a_bad_pressure_input_is_an_error_not_a_panic() {
+    let c = unit_hex();
+    let t = tet([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+    let (zeros, eleven) = ([0.0; 30], [[0.0; 3]; 11]);
+    let at = |start, disp| Placement { start, disp };
+    let cases = [
+        ("face 0", Kind::C3D8, at(&c, &zeros[..24]), 0),
+        ("face 0", Kind::C3D10, at(&t, &zeros), 0),
+        ("no displacements", Kind::C3D8, at(&c, &[]), 1),
+        (
+            "too few displacements",
+            Kind::C3D10,
+            at(&t, &zeros[..29]),
+            1,
+        ),
+        ("2 nodes", Kind::C3D8, at(&c[..2], &zeros[..6]), 1),
+        ("11 nodes", Kind::C3D10, at(&eleven, &zeros), 1),
+    ];
+    let mut bad = Vec::new();
+    for (what, kind, place, face) in cases {
+        match std::panic::catch_unwind(|| pressure_load(kind, &place, face, 1.0)) {
+            Ok(Ok(_)) => bad.push(format!("{what}: accepted")),
+            Ok(Err(_)) => {}
+            Err(_) => bad.push(format!("{what}: panic")),
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
 /// A material whose stress is not finite.
 struct NotFinite;
 

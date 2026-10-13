@@ -387,6 +387,21 @@ fn check_nodes(kind: Kind, coords: &[[f64; 3]]) -> Result<(), SolverError> {
     }
 }
 
+/// The node count, and finite start positions and displacements.
+fn check_place(kind: Kind, place: &Placement) -> Result<(), SolverError> {
+    check_nodes(kind, place.start)?;
+    let n = 3 * place.start.len();
+    if place.disp.len() < n {
+        return Err(SolverError::new("too few displacements for the nodes"));
+    }
+    if place.disp[..n].iter().any(|v| !v.is_finite()) {
+        return Err(SolverError::new(format!(
+            "{kind:?} element has a displacement that is not finite"
+        )));
+    }
+    Ok(())
+}
+
 fn tet10_points(coords: &[[f64; 3]]) -> Result<[Point<30>; MAX_POINTS], SolverError> {
     let (a, b) = (0.138_196_601_125_010_5, 0.585_410_196_624_968_5);
     let mut out = [Point::<30>::ZERO; MAX_POINTS];
@@ -503,18 +518,7 @@ pub fn evaluate<M: Material + ?Sized>(
     tangent: bool,
 ) -> Result<(), SolverError> {
     let coords = place.start;
-    check_nodes(kind, coords)?;
-    if place.disp.len() < 3 * coords.len() {
-        return Err(SolverError::new("too few displacements for the nodes"));
-    }
-    if place.disp[..3 * coords.len()]
-        .iter()
-        .any(|v| !v.is_finite())
-    {
-        return Err(SolverError::new(format!(
-            "{kind:?} element has a displacement that is not finite"
-        )));
-    }
+    check_place(kind, place)?;
     match kind {
         Kind::C3D10 => {
             let pts = tet10_points(coords)?;
@@ -792,6 +796,9 @@ pub fn pressure_load(
     face: u8,
     p: f64,
 ) -> Result<Vec<(usize, [f64; 3])>, SolverError> {
+    check_place(kind, place)?;
+    let bad = || SolverError::new(format!("{kind:?} has no face {face}"));
+    let f = usize::from(face).checked_sub(1).ok_or_else(bad)?;
     let mut now = [[0.0; 3]; 10];
     for (a, x) in now.iter_mut().enumerate().take(place.start.len()) {
         *x = place.current(a);
@@ -812,8 +819,6 @@ pub fn pressure_load(
         [1, 3, 2, 8, 9, 5],
         [2, 3, 0, 9, 7, 6],
     ];
-    let f = usize::from(face) - 1;
-    let bad = || SolverError::new(format!("{kind:?} has no face {face}"));
     let mut out: Vec<(usize, [f64; 3])> = Vec::new();
     match kind {
         Kind::C3D8 | Kind::C3D8I => {
