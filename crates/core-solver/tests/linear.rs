@@ -228,3 +228,25 @@ fn steps_accumulate_boundary_conditions() {
     assert!((u(&model, &sol, 0, 7)[0] - 0.1).abs() < 1e-12);
     assert!((u(&model, &sol, 1, 7)[0] - 0.2).abs() < 1e-12);
 }
+
+#[test]
+fn mpc_pin_transfers_load_and_equalises_all_translations() {
+    let model = cube(
+        "C3D8I",
+        "*NODE\n9,1,1,1\n*MPC\nPIN, 9, 7\n*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n2,3,3\n3,3,3\n\
+*CLOAD\n2,1,25\n3,1,25\n6,1,25\n9,1,25\n*END STEP\n",
+    );
+    let sol = solve(&model).unwrap();
+    // The pin transfers 25 N to corner 7. Uniform tension gives u = (0.1, -0.03, -0.03).
+    for id in [7, 9] {
+        let got = u(&model, &sol, 0, id);
+        for (i, want) in [0.1, -0.03, -0.03].into_iter().enumerate() {
+            assert!(
+                (got[i] - want).abs() < 1e-12,
+                "node {id} component {i}: {got:?}"
+            );
+        }
+    }
+    let reaction: f64 = sol.steps[0].reaction.iter().map(|r| r[0]).sum();
+    assert!((reaction + 100.0).abs() < 1e-9, "reaction {reaction}");
+}

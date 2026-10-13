@@ -465,7 +465,20 @@ fn schema_preserves_string_errors_and_class_error_order() {
 fn shipped_cases_load_and_have_existing_inputs() {
     let cases = load_all(&root()).unwrap();
     let ids: Vec<_> = cases.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids, ["cantilever", "lame-cylinder", "patch-test"]);
+    assert_eq!(
+        ids,
+        [
+            "cantilever",
+            "cantilever-c3d10",
+            "cantilever-c3d8",
+            "lame-cylinder",
+            "lame-cylinder-c3d10",
+            "lame-cylinder-c3d8i",
+            "patch-test",
+            "patch-test-c3d10",
+            "patch-test-c3d8i"
+        ]
+    );
     for c in &cases {
         assert!(!c.references.is_empty() && !c.justification.is_empty());
         for m in &c.meshes {
@@ -496,6 +509,32 @@ fn shipped_cases_load_and_have_existing_inputs() {
     assert_eq!(types("cantilever"), ["C3D8I"]);
     assert_eq!(types("lame-cylinder"), ["C3D8"]);
     assert_eq!(types("patch-test"), ["C3D8"]);
+    for (base, variant, ty) in [
+        ("cantilever", "cantilever-c3d10", "C3D10"),
+        ("cantilever", "cantilever-c3d8", "C3D8"),
+        ("lame-cylinder", "lame-cylinder-c3d10", "C3D10"),
+        ("lame-cylinder", "lame-cylinder-c3d8i", "C3D8I"),
+        ("patch-test", "patch-test-c3d10", "C3D10"),
+        ("patch-test", "patch-test-c3d8i", "C3D8I"),
+    ] {
+        let original = cases.iter().find(|c| c.id == base).unwrap();
+        let added = cases.iter().find(|c| c.id == variant).unwrap();
+        assert_eq!(types(variant), [ty]);
+        assert_eq!(added.class, original.class, "{variant} tolerances");
+        assert_eq!(added.units, original.units, "{variant} units");
+        assert_eq!(
+            added.meshes.len(),
+            original.meshes.len(),
+            "{variant} meshes"
+        );
+        assert_eq!(added.references.len(), original.references.len());
+        for (a, b) in added.references.iter().zip(&original.references) {
+            assert_eq!(a.name, b.name, "{variant}");
+            assert_eq!(a.value, b.value, "{variant} {}", a.name);
+            assert_eq!(a.quantity, b.quantity, "{variant} {}", a.name);
+        }
+    }
+
     // Class L cases have 4 meshes. Their references and ratio stay as they were.
     for id in ["cantilever", "lame-cylinder"] {
         let c = cases.iter().find(|c| c.id == id).unwrap();
