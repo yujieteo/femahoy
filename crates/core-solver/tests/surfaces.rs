@@ -47,3 +47,13 @@ fn a_coupling_on_an_invalid_face_is_an_error() {
         Ok(m) => assert!(solve(&m).is_err()),
     }
 }
+
+#[test]
+fn a_dsload_is_an_error_and_never_ignored() {
+    let text = format!(
+        "{CUBE}*SURFACE, TYPE=ELEMENT, NAME=S\nE, S4\n*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n\
+*DSLOAD\nS, P, 1\n*END STEP\n"
+    );
+    let e = solve(&parse(&text).unwrap()).unwrap_err();
+    assert!(e.to_string().contains("*DSLOAD is not solved yet"), "{e}");
+}

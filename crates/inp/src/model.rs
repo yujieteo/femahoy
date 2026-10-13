@@ -169,6 +169,13 @@ pub struct Dload {
     pub pressure: f64,
 }
 
+/// One `*DSLOAD` data line: a pressure on every face of an element surface.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dsload {
+    pub surface: String,
+    pub pressure: f64,
+}
+
 /// `*STATIC` data: initial increment, time period, minimum and maximum increment.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Static {
@@ -186,6 +193,7 @@ pub struct Step {
     pub boundaries: Vec<Boundary>,
     pub cloads: Vec<Cload>,
     pub dloads: Vec<Dload>,
+    pub dsloads: Vec<Dsload>,
 }
 
 impl Model {

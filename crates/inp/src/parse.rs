@@ -119,6 +119,7 @@ impl Parser {
             "BOUNDARY" => self.boundary(b),
             "CLOAD" => self.cload(b),
             "DLOAD" => self.dload(b),
+            "DSLOAD" => self.dsload(b),
             "SOLID SECTION" => self.solid_section(b),
             "SURFACE" => self.surface(b),
             "COUPLING" => self.coupling(b),
@@ -827,6 +828,38 @@ impl Parser {
         }
         if let Some(step) = self.open_step.as_mut() {
             step.dloads.extend(out);
+        }
+        Ok(())
+    }
+
+    fn dsload(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&[])?;
+        if self.open_step.is_none() {
+            return Err(b.error(b.line, "keyword needs an open *STEP"));
+        }
+        let mut out = Vec::new();
+        for d in &b.data {
+            if d.fields.len() != 3 {
+                return Err(b.error(d.line, "line needs surface, load type and magnitude"));
+            }
+            let name = d.fields[0].as_str();
+            if self.model.element_surface(name).is_none() {
+                return Err(b.error(
+                    d.line,
+                    format!("element surface '{name}' is not defined"),
+                ));
+            }
+            let ty = d.fields[1].as_str();
+            if !ty.eq_ignore_ascii_case("P") {
+                return Err(b.error(d.line, format!("unsupported load type {ty}")));
+            }
+            out.push(Dsload {
+                surface: name.to_owned(),
+                pressure: real(b, d, 2, "magnitude")?,
+            });
+        }
+        if let Some(step) = self.open_step.as_mut() {
+            step.dsloads.extend(out);
         }
         Ok(())
     }
