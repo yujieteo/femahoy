@@ -3,18 +3,20 @@
 //! M1: fixture schema, the checks for tolerance classes L, N and R
 //! (DESIGN.md section 10.3), and a runner that reports `no solver`.
 
+mod expr;
 mod fixture;
 mod model;
 mod run;
 mod tolerance;
 
+pub use expr::Expr;
 pub use fixture::{
-    load_all, Case, Class, Field, FixtureError, Op, Quantity, Reference, Units, ELEMENT_TYPES,
-    SCHEMA_VERSION,
+    load_all, Case, Class, Field, FixtureError, Manufactured, Op, Quantity, Reference, Units,
+    ELEMENT_TYPES, SCHEMA_VERSION,
 };
 pub use model::{BoundarySpec, CloadSpec, MaterialSpec, ModelSpec, SetSpec};
 pub use run::{run_case_with, run_convergence_with, Outcome, Report, Row, Solve};
-pub use tolerance::{check_l, check_n, check_r, richardson};
+pub use tolerance::{check_l, check_n, check_r, observed_rate, richardson};
 
 /// Run one case. In M1 no solver exists, so every case reports `NoSolver`.
 pub fn run_case(_case: &Case) -> Outcome {

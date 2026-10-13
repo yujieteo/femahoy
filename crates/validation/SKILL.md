@@ -16,7 +16,7 @@ Load case TOML files, measure solver results and compare them with declared refe
 
 - All case numbers use the declared unit system. Units are not inferred from the mesh.
 - Class L uses Richardson extrapolation and observed-order bounds. Class N uses fixed relative and absolute tolerances.
-- Class R checks a rate within a declared band.
+- Class R fixes the boundary nodes to an exact field, then checks the rate of the error against `mesh_size` within a declared band.
 - Convergence over a case collection skips class N. A direct class N convergence request fails.
 - A failed case or unavailable solver makes `fh validate` fail.
 - Fixtures are data files, not prose (DESIGN.md section 10.4).

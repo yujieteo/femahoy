@@ -5,6 +5,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, Table};
 
+use crate::expr::Expr;
 use crate::ModelSpec;
 
 /// The tolerance class of a case and its parameters.
@@ -133,6 +134,20 @@ pub struct Case {
     pub references: Vec<Reference>,
     /// How to build a solver input from a `.msh` file (`fh model`). Optional.
     pub model: Option<ModelSpec>,
+    /// Class R only.
+    pub manufactured: Option<Manufactured>,
+}
+
+/// The manufactured solution of a class R case. The harness takes the boundary values from
+/// `exact`, solves with them, and measures the error of `U` against `exact` over all nodes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Manufactured {
+    /// The mesh size of each mesh, in the order of `Case::meshes` (coarse to fine).
+    pub mesh_sizes: Vec<f64>,
+    /// The node set that gets the boundary values.
+    pub boundary_set: String,
+    /// The components of the exact displacement, as functions of `x`, `y` and `z`.
+    pub exact: [Expr; 3],
 }
 
 /// A fixture error. It names the file and, when known, the line.
@@ -335,8 +350,95 @@ impl FixtureReader<'_> {
         }
     }
 
+    /// The `[ref]` table and the `[quantity.<name>]` table of each entry.
+    fn references(&self, table: &Table) -> Result<Vec<Reference>, FixtureError> {
+        let ref_item = table
+            .get("ref")
+            .ok_or_else(|| self.err(None, "missing table `[ref]`".into()))?;
+        let ref_table = ref_item
+            .as_table_like()
+            .ok_or_else(|| self.err(Some(ref_item), "`ref` must be a table".into()))?;
+        let mut references = Vec::new();
+        for (name, item) in ref_table.iter() {
+            let value = item
+                .as_float()
+                .or_else(|| item.as_integer().map(|i| i as f64))
+                .ok_or_else(|| {
+                    self.err(Some(item), format!("reference `{name}` must be a number"))
+                })?;
+            if !value.is_finite() {
+                return Err(self.err(Some(item), format!("reference `{name}` must be finite")));
+            }
+            references.push(Reference {
+                name: name.to_owned(),
+                value,
+                quantity: self.quantity(table, name)?,
+            });
+        }
+        if references.is_empty() {
+            return Err(self.err(Some(ref_item), "`[ref]` has no entries".into()));
+        }
+        if let Some(ex) = table.get("quantity").and_then(Item::as_table_like) {
+            for (name, item) in ex.iter() {
+                if !references.iter().any(|r| r.name == name) {
+                    return Err(self.err(
+                        Some(item),
+                        format!("quantity `{name}` has no reference in `[ref]`"),
+                    ));
+                }
+            }
+        }
+        Ok(references)
+    }
+
+    /// The keys of a class R case.
+    fn manufactured(&self, table: &Table, meshes: usize) -> Result<Manufactured, FixtureError> {
+        let sizes_item = self.get(table, "mesh_size")?;
+        let mut mesh_sizes = Vec::new();
+        for v in sizes_item.as_array().into_iter().flat_map(|a| a.iter()) {
+            let h = v
+                .as_float()
+                .or_else(|| v.as_integer().map(|i| i as f64))
+                .filter(|h| h.is_finite() && *h > 0.0)
+                .ok_or_else(|| {
+                    self.err(
+                        Some(sizes_item),
+                        "`mesh_size` must hold positive finite numbers".into(),
+                    )
+                })?;
+            mesh_sizes.push(h);
+        }
+        if mesh_sizes.len() != meshes || mesh_sizes.windows(2).any(|w| w[1] >= w[0]) {
+            return Err(self.err(
+                Some(sizes_item),
+                format!("`mesh_size` needs {meshes} values, one for each mesh, falling from coarse to fine"),
+            ));
+        }
+        let exact_item = self.get(table, "exact")?;
+        let exact_table = exact_item
+            .as_table_like()
+            .ok_or_else(|| self.err(Some(exact_item), "`exact` must be a table".into()))?;
+        for (k, i) in exact_table.iter() {
+            if !["u1", "u2", "u3"].contains(&k) {
+                return Err(self.err(Some(i), format!("unknown key `{k}` in `exact`")));
+            }
+        }
+        let component = |key: &str| -> Result<Expr, FixtureError> {
+            let item = exact_table.get(key).ok_or_else(|| {
+                self.err(Some(exact_item), format!("missing key `{key}` in `exact`"))
+            })?;
+            let text = self.non_empty_string(item, key)?;
+            Expr::parse(text).map_err(|e| self.err(Some(item), format!("`exact.{key}`: {e}")))
+        };
+        Ok(Manufactured {
+            mesh_sizes,
+            boundary_set: self.string(table, "boundary_set")?,
+            exact: [component("u1")?, component("u2")?, component("u3")?],
+        })
+    }
+
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 19] = [
+        const KEYS: [&str; 22] = [
             "schema",
             "model",
             "units",
@@ -356,6 +458,9 @@ impl FixtureReader<'_> {
             "abs_tol",
             "rate",
             "band",
+            "mesh_size",
+            "boundary_set",
+            "exact",
         ];
         for (k, item) in table.iter() {
             if !KEYS.contains(&k) {
@@ -367,7 +472,7 @@ impl FixtureReader<'_> {
         let own: &[&str] = match class_name.as_str() {
             "L" => &["ratio", "reference_error", "order_min", "order_max"],
             "N" => &["rel_tol", "abs_tol"],
-            "R" => &["rate", "band"],
+            "R" => &["rate", "band", "mesh_size", "boundary_set", "exact"],
             _ => &[],
         };
         for (k, item) in table.iter() {
@@ -380,6 +485,9 @@ impl FixtureReader<'_> {
                 "abs_tol",
                 "rate",
                 "band",
+                "mesh_size",
+                "boundary_set",
+                "exact",
             ]
             .contains(&k);
             if is_class_key && !own.contains(&k) && !own.is_empty() {
@@ -459,41 +567,17 @@ impl FixtureReader<'_> {
             }
             meshes.push(path);
         }
-        let ref_item = table
-            .get("ref")
-            .ok_or_else(|| self.err(None, "missing table `[ref]`".into()))?;
-        let ref_table = ref_item
-            .as_table_like()
-            .ok_or_else(|| self.err(Some(ref_item), "`ref` must be a table".into()))?;
+        let is_r = class_name == "R";
         let mut references = Vec::new();
-        for (name, item) in ref_table.iter() {
-            let value = item
-                .as_float()
-                .or_else(|| item.as_integer().map(|i| i as f64))
-                .ok_or_else(|| {
-                    self.err(Some(item), format!("reference `{name}` must be a number"))
-                })?;
-            if !value.is_finite() {
-                return Err(self.err(Some(item), format!("reference `{name}` must be finite")));
-            }
-            references.push(Reference {
-                name: name.to_owned(),
-                value,
-                quantity: self.quantity(table, name)?,
-            });
-        }
-        if references.is_empty() {
-            return Err(self.err(Some(ref_item), "`[ref]` has no entries".into()));
-        }
-        if let Some(ex) = table.get("quantity").and_then(Item::as_table_like) {
-            for (name, item) in ex.iter() {
-                if !references.iter().any(|r| r.name == name) {
-                    return Err(self.err(
-                        Some(item),
-                        format!("quantity `{name}` has no reference in `[ref]`"),
-                    ));
+        if is_r {
+            // Class R measures the error of the whole field, so it has no point references.
+            for key in ["ref", "quantity"] {
+                if let Some(item) = table.get(key) {
+                    return Err(self.err(Some(item), format!("`{key}` does not belong to class R")));
                 }
             }
+        } else {
+            references = self.references(table)?;
         }
         let class_item = self.get(table, "class")?;
         let class = match class_name.as_str() {
@@ -547,6 +631,11 @@ impl FixtureReader<'_> {
             ));
         }
         let model = self.model(table)?;
+        let manufactured = if is_r {
+            Some(self.manufactured(table, meshes.len())?)
+        } else {
+            None
+        };
         Ok(Case {
             id,
             dir: dir.to_owned(),
@@ -558,6 +647,7 @@ impl FixtureReader<'_> {
             meshes,
             references,
             model,
+            manufactured,
         })
     }
 }

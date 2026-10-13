@@ -1,7 +1,7 @@
 //! Run `fh-solve` on a mesh and read one number per reference from the result files.
 
 use fh_io::vtu::{read_vtu, Grid, Values};
-use fh_validation::{Case, Field, Op, Quantity, Solve};
+use fh_validation::{Case, Field, Manufactured, Op, Quantity, Solve};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -24,20 +24,20 @@ impl Subprocess {
     }
 }
 
-impl Solve for Subprocess {
-    fn measure(&self, case: &Case, mesh: &Path) -> Result<Vec<f64>, String> {
-        let text = std::fs::read_to_string(mesh).map_err(|e| e.to_string())?;
-        let model = fh_inp::parse_file(&mesh.display().to_string(), &text)
-            .map_err(|e| fh_inp::join_errors(&e))?;
-        let run = std::env::temp_dir().join(format!(
-            "fh-validate-{}-{}",
-            std::process::id(),
-            mesh.file_stem().and_then(|s| s.to_str()).unwrap_or("mesh")
-        ));
+impl Subprocess {
+    /// Run `fh-solve` on `input` in a scratch folder named after `stem`. `read` gets the folder
+    /// of the results. The folder is removed afterwards.
+    fn run<T>(
+        &self,
+        input: &Path,
+        stem: &str,
+        read: impl FnOnce(&Path) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let run = std::env::temp_dir().join(format!("fh-validate-{}-{stem}", std::process::id()));
         let _ = std::fs::remove_dir_all(&run);
         // An open stdin pipe keeps the solver running: end of input means cancel.
         let mut child = Command::new(&self.exe)
-            .arg(mesh)
+            .arg(input)
             .arg(&run)
             // The harness reads the VTU only.
             .args(["--formats", "vtu"])
@@ -51,6 +51,36 @@ impl Solve for Subprocess {
             .wait_with_output()
             .map_err(|e| format!("cannot wait for {}: {e}", self.exe.display()))?;
         let result = if out.status.success() {
+            read(&run)
+        } else {
+            let err = String::from_utf8_lossy(&out.stderr);
+            Err(format!(
+                "fh-solve exited with {}: {}",
+                out.status,
+                err.lines().last().unwrap_or("")
+            ))
+        };
+        let _ = std::fs::remove_dir_all(&run);
+        result
+    }
+}
+
+fn stem(mesh: &Path) -> &str {
+    mesh.file_stem().and_then(|s| s.to_str()).unwrap_or("mesh")
+}
+
+fn read_step(run: &Path, step: usize) -> Result<Grid, String> {
+    let file = run.join(format!("step-{}.vtu", step + 1));
+    let bytes = std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    read_vtu(&bytes).map_err(|e| e.to_string())
+}
+
+impl Solve for Subprocess {
+    fn measure(&self, case: &Case, mesh: &Path) -> Result<Vec<f64>, String> {
+        let text = std::fs::read_to_string(mesh).map_err(|e| e.to_string())?;
+        let model = fh_inp::parse_file(&mesh.display().to_string(), &text)
+            .map_err(|e| fh_inp::join_errors(&e))?;
+        self.run(mesh, stem(mesh), |run| {
             case.references
                 .iter()
                 .map(|r| {
@@ -63,23 +93,62 @@ impl Solve for Subprocess {
                                 .is_some_and(|n| n.eq_ignore_ascii_case(&r.quantity.step))
                         })
                         .ok_or_else(|| format!("no step `{}`", r.quantity.step))?;
-                    let file = run.join(format!("step-{}.vtu", step + 1));
-                    let bytes =
-                        std::fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-                    let grid = read_vtu(&bytes).map_err(|e| e.to_string())?;
-                    extract(&grid, &r.quantity)
+                    extract(&read_step(run, step)?, &r.quantity)
                 })
                 .collect()
-        } else {
-            let err = String::from_utf8_lossy(&out.stderr);
-            Err(format!(
-                "fh-solve exited with {}: {}",
-                out.status,
-                err.lines().last().unwrap_or("")
-            ))
-        };
-        let _ = std::fs::remove_dir_all(&run);
+        })
+    }
+
+    fn field_error(&self, case: &Case, mesh: &Path) -> Result<f64, String> {
+        let m = case
+            .manufactured
+            .as_ref()
+            .ok_or("the case has no manufactured solution")?;
+        let text = std::fs::read_to_string(mesh).map_err(|e| e.to_string())?;
+        let model = fh_inp::parse_file(&mesh.display().to_string(), &text)
+            .map_err(|e| fh_inp::join_errors(&e))?;
+        let boundary = model
+            .nset(&m.boundary_set)
+            .ok_or_else(|| format!("no node set `{}`", m.boundary_set))?;
+        // The mesh has no step. The harness adds one with the values of the exact field.
+        let mut input = text;
+        input.push_str("\n*STEP\n*STATIC\n*BOUNDARY\n");
+        for id in &boundary.ids {
+            let node = model
+                .nodes
+                .iter()
+                .find(|n| n.id == *id)
+                .ok_or_else(|| format!("node {id} of `{}` is not defined", m.boundary_set))?;
+            for (d, e) in m.exact.iter().enumerate() {
+                input.push_str(&format!("{id}, {0}, {0}, {1:e}\n", d + 1, e.eval(node.xyz)));
+            }
+        }
+        input.push_str("*END STEP\n");
+        let file = std::env::temp_dir().join(format!("fh-validate-{}.inp", std::process::id()));
+        std::fs::write(&file, input).map_err(|e| e.to_string())?;
+        let result = self.run(&file, stem(mesh), |run| rms_error(&read_step(run, 0)?, m));
+        let _ = std::fs::remove_file(&file);
         result
+    }
+}
+
+/// The root mean square, over all points, of the distance between `U` and the exact field.
+fn rms_error(grid: &Grid, m: &Manufactured) -> Result<f64, String> {
+    let u = grid
+        .point_field("U")
+        .and_then(|f| f.as_f64().filter(|_| f.components == 3))
+        .ok_or("no point field U with 3 components")?;
+    if u.len() != 3 * grid.points.len() || grid.points.is_empty() {
+        return Err("U does not match the points".into());
+    }
+    let sum: f64 = (grid.points.iter().zip(u.chunks(3)))
+        .flat_map(|(p, got)| (0..3).map(move |d| (got[d] - m.exact[d].eval(*p)).powi(2)))
+        .sum();
+    let rms = (sum / grid.points.len() as f64).sqrt();
+    if rms.is_finite() {
+        Ok(rms)
+    } else {
+        Err("the error of U is not finite".into())
     }
 }
 

@@ -56,3 +56,74 @@ fn an_overflow_of_tolerance_and_difference_fails() {
     assert!((row.computed - (-1.7e308 - 1e300)).abs() < 1e295, "{r:?}");
     assert!(matches!(r.outcome, Outcome::Fail(_)), "{r:?}");
 }
+
+/// A solver for class R that gives the error `c * h^p` for each mesh.
+struct Power {
+    c: f64,
+    p: f64,
+}
+
+impl Solve for Power {
+    fn measure(&self, _: &Case, _: &Path) -> Result<Vec<f64>, String> {
+        Ok(vec![])
+    }
+
+    fn field_error(&self, case: &Case, mesh: &Path) -> Result<f64, String> {
+        let i = case.meshes.iter().position(|m| m == mesh).unwrap();
+        Ok(self.c * case.manufactured.as_ref().unwrap().mesh_sizes[i].powf(self.p))
+    }
+}
+
+/// The shipped `C3D10` class R case.
+fn case_r() -> Case {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases/mms-c3d10");
+    Case::load(&dir).unwrap()
+}
+
+#[test]
+fn class_r_passes_inside_the_band_and_fails_outside() {
+    let c = case_r();
+    let Class::R { rate, band } = c.class else {
+        panic!("not class R")
+    };
+    let pass = run_case_with(&c, &Power { c: 0.5, p: rate });
+    assert_eq!(pass.outcome, Outcome::Pass, "{pass:?}");
+    let row = &pass.rows[0];
+    assert_eq!(row.name, "rate");
+    assert!(
+        (row.computed - rate).abs() < 1e-12 && row.margin > 0.0,
+        "{row:?}"
+    );
+    for p in [rate - band - 0.1, rate + band + 0.1] {
+        let r = run_case_with(&c, &Power { c: 0.5, p });
+        assert!(matches!(r.outcome, Outcome::Fail(_)), "{p}: {r:?}");
+        assert!(r.rows[0].margin < 0.0, "{p}: {r:?}");
+    }
+}
+
+#[test]
+fn class_r_fails_when_the_error_does_not_fall() {
+    // A negative power makes the error grow as the mesh gets finer.
+    let r = run_case_with(&case_r(), &Power { c: 0.5, p: -3.0 });
+    let Outcome::Fail(why) = &r.outcome else {
+        panic!("{r:?}")
+    };
+    assert!(why.contains("does not fall"), "{why}");
+}
+
+#[test]
+fn class_r_cannot_run_without_a_field_error() {
+    // `Values` measures point values only, so it keeps the default `field_error`.
+    let r = run_case_with(&case_r(), &Values(vec![]));
+    let Outcome::Fail(why) = &r.outcome else {
+        panic!("{r:?}")
+    };
+    assert!(
+        why.contains("cannot run") && why.contains("error of a field"),
+        "{why}"
+    );
+    let mut c = case_r();
+    c.manufactured = None;
+    let r = run_case_with(&c, &Power { c: 1.0, p: 3.0 });
+    assert!(matches!(r.outcome, Outcome::Fail(_)), "{r:?}");
+}

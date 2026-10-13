@@ -37,6 +37,18 @@ fn body(meshes: usize, extra: &str) -> String {
     )
 }
 
+/// A class R fixture body: no `[ref]`, the manufactured solution instead.
+fn body_r(meshes: usize, extra: &str) -> String {
+    let list = vec!["\"m.inp\""; meshes].join(", ");
+    let sizes: Vec<String> = (0..meshes)
+        .map(|i| format!("{}", 1.0 / (1 << i) as f64))
+        .collect();
+    format!(
+        "schema = 2\nid = \"t\"\nunits = \"SI-mm\"\njustification = \"why\"\nderivation = \"d.md\"\nmesh = [{list}]\nelement_types = [\"C3D8\"]\nclass = \"R\"\nmesh_size = [{}]\nboundary_set = \"B\"\n{extra}\n[exact]\nu1 = \"x\"\nu2 = \"2 * y\"\nu3 = \"sin(z)\"\n",
+        sizes.join(", ")
+    )
+}
+
 #[test]
 fn richardson_recovers_second_order_limit() {
     // f(h) = 2 + 3 h^2 with h = 4, 2, 1 and ratio 2.
@@ -215,18 +227,58 @@ fn schema_accepts_each_class() {
     )
     .unwrap();
     assert!(matches!(n.class, Class::N { .. }));
-    let r = write_case(
-        &d.join("r"),
-        &body(2, "class = \"R\"\nrate = 2\nband = 0.2"),
-    )
-    .unwrap();
+    let r = write_case(&d.join("r"), &body_r(2, "rate = 2\nband = 0.2")).unwrap();
     assert!(matches!(r.class, Class::R { .. }));
-    assert_eq!(r.references[0].name, "q");
-    assert_eq!(r.references[0].value, 1.0);
+    assert!(r.references.is_empty());
     assert_eq!(r.element_types, ["C3D8"]);
-    let x = &r.references[0].quantity;
+    let m = r.manufactured.as_ref().unwrap();
+    assert_eq!(
+        (m.mesh_sizes.as_slice(), m.boundary_set.as_str()),
+        (&[1.0, 0.5][..], "B")
+    );
+    assert_eq!(m.exact[1].eval([0.0, 3.0, 0.0]), 6.0);
+    assert!(l.manufactured.is_none() && n.manufactured.is_none());
+    let x = &l.references[0].quantity;
     assert_eq!((x.field, x.component, x.set.as_str()), (Field::U, 1, "s"));
     assert_eq!((x.step.as_str(), x.op), ("st", Op::Mean));
+}
+
+#[test]
+fn class_r_rejects_a_bad_manufactured_solution() {
+    let d = tmp("r-bad");
+    let ok = body_r(2, "rate = 2\nband = 0.2");
+    assert!(write_case(&d.join("ok"), &ok).is_ok());
+    let cases = [
+        ("mesh_size = [1, 0.5]", "mesh_size = [1]", "needs 2 values"),
+        ("mesh_size = [1, 0.5]", "mesh_size = [0.5, 1]", "falling"),
+        ("mesh_size = [1, 0.5]", "mesh_size = [1, -0.5]", "positive"),
+        ("mesh_size = [1, 0.5]\n", "", "missing key `mesh_size`"),
+        ("boundary_set = \"B\"\n", "", "missing key `boundary_set`"),
+        ("u2 = \"2 * y\"", "u2 = \"2 * w\"", "unknown name `w`"),
+        ("u2 = \"2 * y\"", "u2 = \"2 *\"", "`exact.u2`"),
+        ("u3 = \"sin(z)\"\n", "", "missing key `u3`"),
+        (
+            "u3 = \"sin(z)\"",
+            "u3 = \"z\"\nu4 = \"z\"",
+            "unknown key `u4`",
+        ),
+        (
+            "rate = 2",
+            "rate = 2\nref = 1",
+            "`ref` does not belong to class R",
+        ),
+        (
+            "class = \"R\"",
+            "class = \"N\"\nrel_tol = 0\nabs_tol = 0",
+            "does not belong to class N",
+        ),
+    ];
+    for (i, (old, new, message)) in cases.iter().enumerate() {
+        let text = ok.replace(old, new);
+        assert_ne!(text, ok, "{old}");
+        let e = write_case(&d.join(format!("c{i}")), &text).unwrap_err();
+        assert!(e.message.contains(message), "{message}: {e}");
+    }
 }
 
 #[test]
@@ -475,13 +527,20 @@ fn shipped_cases_load_and_have_existing_inputs() {
             "lame-cylinder",
             "lame-cylinder-c3d10",
             "lame-cylinder-c3d8i",
+            "mms-c3d10",
+            "mms-c3d8",
+            "mms-c3d8i",
             "patch-test",
             "patch-test-c3d10",
             "patch-test-c3d8i"
         ]
     );
     for c in &cases {
-        assert!(!c.references.is_empty() && !c.justification.is_empty());
+        // Class R measures the whole field, so it has no point references.
+        let is_r = matches!(c.class, Class::R { .. });
+        assert_eq!(c.references.is_empty(), is_r, "{}", c.id);
+        assert_eq!(c.manufactured.is_some(), is_r, "{}", c.id);
+        assert!(!c.justification.is_empty());
         for m in &c.meshes {
             assert!(m.is_file(), "{}", m.display());
         }
@@ -536,6 +595,10 @@ fn shipped_cases_load_and_have_existing_inputs() {
         }
     }
 
+    // One class R case for each element type.
+    assert_eq!(types("mms-c3d8"), ["C3D8"]);
+    assert_eq!(types("mms-c3d8i"), ["C3D8I"]);
+    assert_eq!(types("mms-c3d10"), ["C3D10"]);
     // Class L cases have 4 meshes. Their references and ratio stay as they were.
     for id in ["cantilever", "lame-cylinder"] {
         let c = cases.iter().find(|c| c.id == id).unwrap();
@@ -678,13 +741,19 @@ fn schema_rejects_non_finite_numbers_and_invalid_parameters() {
             "class = \"L\"\nratio = 2\nreference_error = 0\norder_min = 1\norder_max = 3",
             vec!["ratio", "reference_error", "order_min", "order_max"],
         ),
-        (2, "class = \"R\"\nrate = 2\nband = 0", vec!["rate", "band"]),
+        (2, "rate = 2\nband = 0", vec!["rate", "band"]),
     ];
     let mut index = 0;
     for (meshes, parameters, keys) in classes {
-        let valid = body(meshes, parameters);
+        let is_r = parameters.starts_with("rate");
+        let valid = if is_r {
+            body_r(meshes, parameters)
+        } else {
+            body(meshes, parameters)
+        };
         assert!(write_case(&dir.join(format!("valid{meshes}")), &valid).is_ok());
-        for key in keys.iter().copied().chain(std::iter::once("q")) {
+        // Class R has no reference value `q`.
+        for key in keys.iter().copied().chain((!is_r).then_some("q")) {
             for bad in ["inf", "-inf", "nan", "-1"] {
                 if bad == "-1" && ["q", "rate"].contains(&key) {
                     continue;

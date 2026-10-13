@@ -183,8 +183,11 @@ Output excerpt:
 bar-tension     N       pass
 cantilever      L       pass
 lame-cylinder   L       pass
+mms-c3d10       R       pass
+mms-c3d8        R       pass
+mms-c3d8i       R       pass
 patch-test      N       pass
-4 cases: 4 pass, 0 fail
+7 cases: 7 pass, 0 fail
 ```
 
 The full output compares computed values with references, tolerances and margins.

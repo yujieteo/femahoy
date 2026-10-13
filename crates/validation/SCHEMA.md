@@ -22,12 +22,15 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 | `derivation` | 1 | A file in the folder that shows how the reference values were derived. |
 | `element_types` | 1 | Array of the element types of the meshes (`C3D8`, `C3D8I`, `C3D10`, `C3D10M`). The case runs once for each type. `fh validate` fails if a mesh holds another type. |
 | `mesh` | 1 | Array of input files, path relative to the folder, coarse to fine. |
-| `[ref]` | 1 table, 1 or more entries | `name = value`. The reference values. |
-| `[quantity.<name>]` | 1 table for each `[ref]` entry | What to measure for that reference. See below. |
+| `[ref]` | class L and N: 1 table, 1 or more entries. Not in class R. | `name = value`. The reference values. |
+| `[quantity.<name>]` | class L and N: 1 table for each `[ref]` entry. Not in class R. | What to measure for that reference. See below. |
 | `ratio`, `reference_error` | class L | Mesh size ratio (above 1), and the relative error of the reference (0 or more). |
 | `order_min`, `order_max` | class L | The band of the observed Richardson order. Both are above 0. |
 | `rel_tol`, `abs_tol` | class N | Pass if `|computed - ref| <= rel_tol * |ref| + abs_tol`. Both tolerances are 0 or more. |
 | `rate`, `band` | class R | Expected convergence rate, and the allowed band (0 or more). |
+| `mesh_size` | class R | Array of positive numbers, one for each `mesh`, falling from coarse to fine. |
+| `boundary_set` | class R | The node set that gets the boundary values. Every mesh holds it. |
+| `[exact]` | class R | Table with `u1`, `u2`, `u3`: the exact displacement as text in `x`, `y`, `z`. |
 
 ## Model table (optional)
 
@@ -82,6 +85,8 @@ op = "value"
 
 ## Rules
 
+- Class R fixes the `boundary_set` nodes to the exact field and compares `U` with the exact field at every node (root mean square). The observed rate is the least squares slope of `log(error)` against `log(mesh_size)` over all meshes. It must lie in `rate +/- band`, and the error must fall from each mesh to the next. The mesh files hold no step. The harness adds one.
+- The text of `[exact]` accepts numbers, `x`, `y`, `z`, `pi`, `+ - * / ^`, brackets, and `sin`, `cos`, `sinh`, `cosh`, `exp`, `sqrt`.
 - Class L needs at least 3 `mesh` entries. Class N needs exactly 1 (the reference mesh). Class R needs at least 2.
 - Class L uses the last 3 mesh values for the Richardson limit, the observed order and the estimate (the error of the finest value).
 - Class L passes if `|limit - ref| <= estimate + reference_error * |ref|`. The window is centred on the extrapolated limit, not on the finest value.
