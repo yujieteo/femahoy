@@ -34,6 +34,17 @@ fn solver_threads() -> usize {
         .unwrap_or(1)
 }
 
+/// Resident memory in bytes from the text of `/proc/<pid>/status`. `VmRSS` is in kB for
+/// every page size. A process without memory (a kernel thread or a zombie) has no line.
+#[cfg(any(target_os = "linux", test))]
+fn vm_rss_bytes(status: &str) -> u64 {
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix("VmRSS:"))
+        .and_then(|v| v.split_whitespace().next()?.parse::<u64>().ok())
+        .map_or(0, |kib| kib.saturating_mul(1024))
+}
+
 /// Handle for the process tree of a child.
 pub struct Group {
     pid: u32,
@@ -92,7 +103,6 @@ mod os {
 
     #[cfg(target_os = "linux")]
     pub fn probe(pgid: u32) -> Result<u64, String> {
-        let page = 4096;
         let mut total = 0_u64;
         let dir = std::fs::read_dir("/proc").map_err(|e| format!("/proc: {e}"))?;
         for entry in dir.flatten() {
@@ -104,13 +114,16 @@ mod os {
             let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
                 continue;
             };
-            // Fields after the name in parentheses: state ppid pgrp ... rss at 21.
+            // Fields after the name in parentheses: state ppid pgrp ...
             let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r) else {
                 continue;
             };
             let f: Vec<&str> = rest.split_whitespace().collect();
             if f.get(2).and_then(|v| v.parse::<u32>().ok()) == Some(pgid) {
-                total += f.get(21).and_then(|v| v.parse::<u64>().ok()).unwrap_or(0) * page;
+                // Not the rss of `stat`: it counts pages, and the page size is not
+                // always 4 KiB (for example 16 KiB or 64 KiB on arm64).
+                let status = std::fs::read_to_string(entry.path().join("status"));
+                total += vm_rss_bytes(&status.unwrap_or_default());
             }
         }
         Ok(total)
@@ -369,6 +382,30 @@ pub fn default_probe() -> Probe {
 /// Physical memory of the machine in bytes, or `None` if the system does not tell.
 pub fn total_memory() -> Option<u64> {
     os::total_memory()
+}
+
+#[cfg(test)]
+mod probe_tests {
+    use super::vm_rss_bytes;
+
+    #[test]
+    fn the_resident_size_comes_from_vm_rss_in_kib() {
+        let status = "Name:\tfh-solve\nVmPeak:\t  9999 kB\nVmRSS:\t    2048 kB\nRssAnon:\t1 kB\n";
+        assert_eq!(vm_rss_bytes(status), 2048 * 1024);
+        assert_eq!(vm_rss_bytes("Name:\tkthreadd\nState:\tS (sleeping)\n"), 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_probe_counts_this_process() {
+        extern "C" {
+            fn getpgrp() -> i32;
+        }
+        let own = vm_rss_bytes(&std::fs::read_to_string("/proc/self/status").unwrap());
+        let group = super::os::probe(unsafe { getpgrp() } as u32).unwrap();
+        // The memory can change between the two reads.
+        assert!(own > 0 && group >= own / 2, "group {group}, own {own}");
+    }
 }
 
 #[cfg(all(test, target_pointer_width = "64"))]
