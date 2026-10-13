@@ -20,6 +20,16 @@ pub fn address_space_limit(resident_limit: u64, threads: usize) -> u64 {
         .saturating_add((threads as u64).saturating_mul(64 << 20))
 }
 
+/// Soft and hard `RLIMIT_AS` for the child. A process without privilege cannot raise
+/// its hard limit, so the request stops at the hard limit that the runner inherited.
+#[cfg_attr(
+    not(all(target_os = "linux", target_pointer_width = "64")),
+    allow(dead_code)
+)]
+fn address_limits(requested: u64, inherited_hard: u64) -> [u64; 2] {
+    [requested.min(inherited_hard); 2]
+}
+
 /// Thread count of the solver: `FH_THREADS` when set and above 0, else the CPU count.
 #[cfg_attr(
     not(all(target_os = "linux", target_pointer_width = "64")),
@@ -65,6 +75,7 @@ mod os {
     }
     #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
     extern "C" {
+        fn getrlimit(resource: i32, limit: *mut [u64; 2]) -> i32;
         fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
     }
 
@@ -74,8 +85,14 @@ mod os {
         if let Some(bytes) = hard_limit {
             // RLIMIT_AS is 9 on Linux. Address space is not resident memory:
             // malloc arenas and thread stacks reserve address space per thread.
+            // RLIM_INFINITY is all ones, so an unknown limit does not clamp.
+            let mut inherited = [u64::MAX; 2];
+            // SAFETY: `inherited` is valid for the write of two numbers.
+            if unsafe { getrlimit(9, &mut inherited) } != 0 {
+                inherited = [u64::MAX; 2];
+            }
+            let limit = address_limits(address_space_limit(bytes, solver_threads()), inherited[1]);
             // SAFETY: `setrlimit` is async-signal-safe.
-            let limit = [address_space_limit(bytes, solver_threads()); 2];
             unsafe {
                 cmd.pre_exec(move || {
                     if setrlimit(9, &limit) == 0 {
@@ -434,5 +451,55 @@ mod limit_tests {
             (1 << 30) + (256 << 20) + (64 * (64 << 20))
         );
         assert_eq!(address_space_limit(u64::MAX, 8), u64::MAX);
+    }
+
+    #[test]
+    fn the_limit_never_asks_for_more_than_the_inherited_hard_limit() {
+        use super::address_limits;
+        let gib = 1u64 << 30;
+        // A child cannot raise its hard limit, so a request above it must not fail the spawn.
+        assert_eq!(address_limits(2 * gib, gib), [gib; 2]);
+        assert_eq!(address_limits(gib, 2 * gib), [gib; 2]);
+        // RLIM_INFINITY is all ones on Linux.
+        assert_eq!(address_limits(gib, u64::MAX), [gib; 2]);
+    }
+
+    #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+    #[test]
+    fn a_child_starts_under_a_lower_inherited_hard_limit() {
+        use std::os::unix::process::CommandExt;
+        use std::process::Command;
+        const NAME: &str = "sys::limit_tests::a_child_starts_under_a_lower_inherited_hard_limit";
+        const INNER: &str = "FH_TEST_INHERITED_HARD_LIMIT";
+        extern "C" {
+            fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
+        }
+        let gib = 1u64 << 30;
+        if std::env::var_os(INNER).is_some() {
+            // This copy of the test has a hard limit of 4 GiB. The request with its
+            // allowance is above it.
+            let mut cmd = Command::new("true");
+            super::prepare(&mut cmd, Some(4 * gib));
+            let status = cmd.status().expect("the child starts");
+            assert!(status.success());
+            return;
+        }
+        let limit = [4 * gib; 2];
+        let mut cmd = Command::new(std::env::current_exe().unwrap());
+        cmd.args(["--exact", NAME, "--test-threads", "1"])
+            .env(INNER, "1");
+        // SAFETY: `setrlimit` is async-signal-safe.
+        unsafe {
+            cmd.pre_exec(move || {
+                if setrlimit(9, &limit) == 0 {
+                    Ok(())
+                } else {
+                    Err(std::io::Error::last_os_error())
+                }
+            });
+        }
+        let out = cmd.output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && text.contains("1 passed"), "{text}");
     }
 }
