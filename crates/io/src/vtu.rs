@@ -6,30 +6,49 @@
 
 use std::fmt::{self, Write as _};
 
+use crate::code;
+
 /// VTK cell type numbers used by femahoy.
 pub const VTK_HEXAHEDRON: u8 = 12;
 pub const VTK_QUADRATIC_TETRA: u8 = 24;
 
 /// An error while reading a VTU or PVD file.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VtuError(String);
+pub struct VtuError {
+    pub code: &'static str,
+    pub file: Option<String>,
+    pub message: String,
+}
 
 impl fmt::Display for VtuError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        if let Some(file) = &self.file {
+            write!(f, "{file}: ")?;
+        }
+        write!(f, "{} ({})", self.message, self.code)
     }
 }
 
 impl VtuError {
-    pub fn new(message: impl Into<String>) -> Self {
-        VtuError(message.into())
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        VtuError {
+            code,
+            file: None,
+            message: message.into(),
+        }
+    }
+
+    /// The same error with the name of the file that has the problem.
+    pub fn with_file(mut self, file: impl Into<String>) -> Self {
+        self.file = Some(file.into());
+        self
     }
 }
 
 impl std::error::Error for VtuError {}
 
-fn err<T>(message: impl Into<String>) -> Result<T, VtuError> {
-    Err(VtuError(message.into()))
+fn err<T>(code: &'static str, message: impl Into<String>) -> Result<T, VtuError> {
+    Err(VtuError::new(code, message))
 }
 
 /// Array values. Floats hold fields. Integers hold sets and ids.
@@ -136,9 +155,12 @@ struct Array<'a> {
 /// array has no valid header, so it is an error.
 fn header_len(name: &str, bytes: u64) -> Result<u32, VtuError> {
     u32::try_from(bytes).map_err(|_| {
-        VtuError(format!(
-            "array {name} has {bytes} bytes, more than the 4 GiB limit of a UInt32 VTU header"
-        ))
+        VtuError::new(
+            code::VTU_UNSUPPORTED,
+            format!(
+                "array {name} has {bytes} bytes, more than the 4 GiB limit of a UInt32 VTU header"
+            ),
+        )
     })
 }
 
@@ -198,20 +220,28 @@ fn field_array(f: &Field) -> Array<'_> {
 pub(crate) fn check_cells(grid: &Grid) -> Result<(), VtuError> {
     for (i, cell) in grid.cells.iter().enumerate() {
         if let Some(p) = cell.iter().find(|p| **p as usize >= grid.points.len()) {
-            return err(format!(
-                "cell {i} has the point {p}, but the grid has {} points",
-                grid.points.len()
-            ));
+            return err(
+                code::VTU_INVALID_GRID,
+                format!(
+                    "cell {i} has the point {p}, but the grid has {} points",
+                    grid.points.len()
+                ),
+            );
         }
     }
     Ok(())
 }
 
-fn check(grid: &Grid) -> Result<(), VtuError> {
+/// All the problems that stop a grid from being written, in one list.
+pub fn check_grid(grid: &Grid) -> Vec<VtuError> {
+    let mut errors = Vec::new();
+    let mut add = |message: String| errors.push(VtuError::new(code::VTU_INVALID_GRID, message));
     if grid.cells.len() != grid.cell_types.len() {
-        return err("cells and cell_types differ in length");
+        add("cells and cell_types differ in length".into());
     }
-    check_cells(grid)?;
+    if let Err(e) = check_cells(grid) {
+        add(e.message);
+    }
     for (kind, list) in [("point", &grid.point_data), ("cell", &grid.cell_data)] {
         let n = if kind == "point" {
             grid.points.len()
@@ -220,11 +250,18 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
         };
         for f in list {
             if f.components == 0 || n.checked_mul(f.components) != Some(f.values.len()) {
-                return err(format!("{kind} field {} has the wrong length", f.name));
+                add(format!("{kind} field {} has the wrong length", f.name));
             }
         }
     }
-    Ok(())
+    errors
+}
+
+fn check(grid: &Grid) -> Result<(), VtuError> {
+    match check_grid(grid).into_iter().next() {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 /// Write a grid as a VTU file with appended raw data.
@@ -312,7 +349,8 @@ pub fn write_vtu_to<W: std::io::Write>(grid: &Grid, w: &mut W) -> Result<(), Vtu
     xml.push_str("</PointData>\n<CellData>\n");
     tags(&mut xml, &cell_data);
     xml.push_str("</CellData>\n</Piece>\n</UnstructuredGrid>\n<AppendedData encoding=\"raw\">\n_");
-    let io = |e: std::io::Error| VtuError(format!("write failed: {e}"));
+    let io =
+        |e: std::io::Error| VtuError::new(code::VTU_WRITE_FAILED, format!("write failed: {e}"));
     w.write_all(xml.as_bytes()).map_err(io)?;
     for a in order {
         // The length was checked above.
@@ -349,14 +387,24 @@ const FOOTER: &[u8] = b"\n</AppendedData>";
 
 /// The end of the block of one array in the appended data.
 fn block_end(data: &[u8], h: &Header) -> Result<usize, VtuError> {
-    let outside = || VtuError(format!("array {} lies outside the file", h.name));
+    let outside = || {
+        VtuError::new(
+            code::VTU_MALFORMED,
+            format!("array {} lies outside the file", h.name),
+        )
+    };
     let start = h.offset.checked_add(4).ok_or_else(outside)?;
     let head = data.get(h.offset..start).ok_or_else(outside)?;
     let len = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
     start
         .checked_add(len)
         .filter(|end| *end <= data.len())
-        .ok_or_else(|| VtuError(format!("array {} is cut short", h.name)))
+        .ok_or_else(|| {
+            VtuError::new(
+                code::VTU_MALFORMED,
+                format!("array {} is cut short", h.name),
+            )
+        })
 }
 
 /// Read the block of one array from the appended data.
@@ -369,7 +417,10 @@ fn whole(h: &Header, raw: &[u8], width: usize) -> Result<(), VtuError> {
     if raw.len().is_multiple_of(width) {
         Ok(())
     } else {
-        err(format!("array {} ends in an incomplete value", h.name))
+        err(
+            code::VTU_MALFORMED,
+            format!("array {} ends in an incomplete value", h.name),
+        )
     }
 }
 
@@ -378,7 +429,12 @@ fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, VtuError> {
         "Int64" => 8,
         "Int32" => 4,
         "UInt8" => 1,
-        t => return err(format!("array {}: unsupported type {t}", h.name)),
+        t => {
+            return err(
+                code::VTU_UNSUPPORTED,
+                format!("array {}: unsupported type {t}", h.name),
+            )
+        }
     };
     whole(h, raw, width)?;
     Ok(raw
@@ -397,24 +453,24 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     let at = bytes
         .windows(marker.len())
         .position(|w| w == marker)
-        .ok_or_else(|| VtuError("no raw appended data".into()))?;
+        .ok_or_else(|| VtuError::new(code::VTU_MALFORMED, "no raw appended data"))?;
     let text = String::from_utf8_lossy(&bytes[..at]).into_owned();
     let mut start = at + marker.len();
     while bytes.get(start) != Some(&b'_') {
         start += 1;
         if start >= bytes.len() {
-            return err("appended data has no start mark");
+            return err(code::VTU_MALFORMED, "appended data has no start mark");
         }
     }
     let data = &bytes[start + 1..];
     let piece = text
         .find("<Piece")
-        .ok_or_else(|| VtuError("no Piece tag".into()))?;
+        .ok_or_else(|| VtuError::new(code::VTU_MALFORMED, "no Piece tag"))?;
     let piece_tag = &text[piece..piece + text[piece..].find('>').unwrap_or(0)];
     let count = |key: &str| -> Result<usize, VtuError> {
         attr(piece_tag, key)
             .and_then(|v| v.parse().ok())
-            .ok_or_else(|| VtuError(format!("Piece has no valid {key}")))
+            .ok_or_else(|| VtuError::new(code::VTU_MALFORMED, format!("Piece has no valid {key}")))
     };
     let (n_points, n_cells) = (count("NumberOfPoints")?, count("NumberOfCells")?);
     let mut headers = Vec::new();
@@ -440,12 +496,15 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
                 components: match get("NumberOfComponents") {
                     None => 1,
                     Some(v) => v.parse().ok().filter(|c| *c > 0).ok_or_else(|| {
-                        VtuError(format!("DataArray has a bad NumberOfComponents {v}"))
+                        VtuError::new(
+                            code::VTU_MALFORMED,
+                            format!("DataArray has a bad NumberOfComponents {v}"),
+                        )
                     })?,
                 },
                 offset: get("offset")
                     .and_then(|v| v.parse().ok())
-                    .ok_or_else(|| VtuError("DataArray has no offset".into()))?,
+                    .ok_or_else(|| VtuError::new(code::VTU_MALFORMED, "DataArray has no offset"))?,
             });
         }
     }
@@ -455,27 +514,33 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     for h in &headers {
         end = end.max(block_end(data, h)?);
     }
-    let rest = data[end..]
-        .strip_prefix(FOOTER)
-        .ok_or_else(|| VtuError("the appended data does not end after its last array".into()))?;
+    let rest = data[end..].strip_prefix(FOOTER).ok_or_else(|| {
+        VtuError::new(
+            code::VTU_MALFORMED,
+            "the appended data does not end after its last array",
+        )
+    })?;
     if rest.trim_ascii() != b"</VTKFile>" {
-        return err("the file does not end with </VTKFile>");
+        return err(code::VTU_MALFORMED, "the file does not end with </VTKFile>");
     }
     let find = |sec: &str, name: &str| {
         headers
             .iter()
             .find(|h| h.section == sec && h.name == name)
-            .ok_or_else(|| VtuError(format!("array {name} is missing")))
+            .ok_or_else(|| VtuError::new(code::VTU_MALFORMED, format!("array {name} is missing")))
     };
     let mut grid = Grid::default();
     let p = find("Points", "Points")?;
     if p.type_name != "Float64" {
-        return err("points must be Float64");
+        return err(code::VTU_MALFORMED, "points must be Float64");
     }
     let raw = block(data, p)?;
     let flat = floats(p, &raw)?;
     if n_points.checked_mul(3) != Some(flat.len()) {
-        return err("point count does not match the Piece tag");
+        return err(
+            code::VTU_MALFORMED,
+            "point count does not match the Piece tag",
+        );
     }
     grid.points = flat.as_chunks::<3>().0.to_vec();
     let conn = ints(
@@ -491,20 +556,26 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
         &block(data, find("Cells", "types")?)?,
     )?;
     if offsets.len() != n_cells || types.len() != n_cells {
-        return err("cell count does not match the Piece tag");
+        return err(
+            code::VTU_MALFORMED,
+            "cell count does not match the Piece tag",
+        );
     }
     let mut from = 0;
     for &end in &offsets {
         let end = usize::try_from(end).unwrap_or(usize::MAX);
         let ids = conn
             .get(from..end)
-            .ok_or_else(|| VtuError("cell offsets are not valid".into()))?;
+            .ok_or_else(|| VtuError::new(code::VTU_MALFORMED, "cell offsets are not valid"))?;
         let point = |&i: &i64| {
             u32::try_from(i)
                 .ok()
                 .filter(|p| (*p as usize) < n_points)
                 .ok_or_else(|| {
-                    VtuError(format!("a cell has the point {i}, not a point of the grid"))
+                    VtuError::new(
+                        code::VTU_MALFORMED,
+                        format!("a cell has the point {i}, not a point of the grid"),
+                    )
                 })
         };
         grid.cells
@@ -512,18 +583,30 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
         from = end;
     }
     if from != conn.len() {
-        return err("the last cell offset does not end the connectivity");
+        return err(
+            code::VTU_MALFORMED,
+            "the last cell offset does not end the connectivity",
+        );
     }
     grid.cell_types = types
         .iter()
-        .map(|&t| u8::try_from(t).map_err(|_| VtuError(format!("cell type {t} is not valid"))))
+        .map(|&t| {
+            u8::try_from(t).map_err(|_| {
+                VtuError::new(code::VTU_MALFORMED, format!("cell type {t} is not valid"))
+            })
+        })
         .collect::<Result<_, _>>()?;
     for h in headers.iter().filter(|h| h.section.ends_with("Data")) {
         let raw = block(data, h)?;
         let values = match h.type_name.as_str() {
             "Float64" => Values::F64(floats(h, &raw)?),
             "Int32" => Values::I32(ints(h, &raw)?.into_iter().map(|v| v as i32).collect()),
-            t => return err(format!("array {}: unsupported type {t}", h.name)),
+            t => {
+                return err(
+                    code::VTU_UNSUPPORTED,
+                    format!("array {}: unsupported type {t}", h.name),
+                )
+            }
         };
         let n = if h.section == "PointData" {
             n_points
@@ -531,12 +614,15 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
             n_cells
         };
         if n.checked_mul(h.components) != Some(values.len()) {
-            return err(format!(
-                "array {} has {} values, not {n} x {}",
-                h.name,
-                values.len(),
-                h.components
-            ));
+            return err(
+                code::VTU_MALFORMED,
+                format!(
+                    "array {} has {} values, not {n} x {}",
+                    h.name,
+                    values.len(),
+                    h.components
+                ),
+            );
         }
         let field = Field {
             name: h.name.clone(),
@@ -593,7 +679,7 @@ pub fn write_pvd_units(entries: &[PvdEntry], units: &str) -> String {
 /// Read a PVD collection file.
 pub fn read_pvd(text: &str) -> Result<Vec<PvdEntry>, VtuError> {
     if !text.contains("type=\"Collection\"") {
-        return err("not a PVD collection file");
+        return err(code::VTU_MALFORMED, "not a PVD collection file");
     }
     text.split('<')
         .filter(|t| t.starts_with("DataSet"))
@@ -606,7 +692,7 @@ pub fn read_pvd(text: &str) -> Result<Vec<PvdEntry>, VtuError> {
                     time,
                     file: unescape(file),
                 }),
-                _ => err("DataSet needs timestep and file"),
+                _ => err(code::VTU_MALFORMED, "DataSet needs timestep and file"),
             }
         })
         .collect()
@@ -621,5 +707,28 @@ mod tests {
         assert_eq!(header_len("a", u64::from(u32::MAX)).unwrap(), u32::MAX);
         let e = header_len("big", u64::from(u32::MAX) + 1).unwrap_err();
         assert!(e.to_string().contains("big") && e.to_string().contains("4 GiB"));
+    }
+
+    #[test]
+    fn check_grid_collects_every_problem_with_a_code() {
+        let field = |name: &str| Field {
+            name: name.into(),
+            components: 1,
+            values: Values::F64(vec![0.0]),
+        };
+        let grid = Grid {
+            points: vec![[0.0; 3]; 2],
+            cell_types: vec![12],
+            cells: Vec::new(),
+            point_data: vec![field("a")],
+            cell_data: vec![field("b")],
+        };
+        let errors = check_grid(&grid);
+        assert_eq!(errors.len(), 3);
+        assert!(errors.iter().all(|e| e.code == "VTU001"));
+        assert!(write_vtu(&grid)
+            .unwrap_err()
+            .to_string()
+            .ends_with("(VTU001)"));
     }
 }

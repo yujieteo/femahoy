@@ -8,10 +8,10 @@ mod lexer;
 mod model;
 mod parse;
 
-pub use error::ParseError;
+pub use error::{code, ParseError};
 pub use model::{
     Boundary, Cload, Coupling, CouplingKind, Dload, Dsload, Elastic, Element, ElementSet,
     ElementSurface, ElementTarget, Equation, EquationTerm, Instance, Material, Model, Mpc, MpcKind,
     Node, NodeSet, NodeSurface, Origin, SolidSection, Static, Step, Target,
 };
-pub use parse::parse;
+pub use parse::{parse, parse_all, parse_file};

@@ -286,3 +286,16 @@ fn dsload_errors() {
     assert!(err(&format!("{s}{step}S, P1, 1\n")).contains("unsupported load type P1"));
     assert!(err(&format!("{s}*DSLOAD\nS, P, 1\n")).contains("needs an open *STEP"));
 }
+
+#[test]
+fn parse_all_collects_errors_with_codes_and_file() {
+    let text = format!(
+        "{MESH}*PLASTIC\n*ELASTIC, FOO=1\n1000,0.3\n*SOLID SECTION, ELSET=NONE, MATERIAL=M\n"
+    );
+    let errors = fh_inp::parse_file("bad.inp", &text).unwrap_err();
+    let codes: Vec<_> = errors.iter().map(|e| e.code).collect();
+    assert_eq!(codes, ["INP002", "INP003", "INP009"]);
+    assert!(errors.iter().all(|e| e.file.as_deref() == Some("bad.inp")));
+    assert!(errors[0].to_string().starts_with("bad.inp: line "));
+    assert_eq!(parse(&text).unwrap_err().code, "INP002");
+}

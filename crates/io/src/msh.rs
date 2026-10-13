@@ -5,18 +5,33 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
 
+use crate::code;
 use fh_inp::{Element, ElementSet, Model, Node, NodeSet};
 
-/// An import error. It names the line number of the input.
+/// An import error. It has a stable code and names the line number of the input.
+/// `file` is empty until the caller sets it with `with_file`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MshError {
+    pub code: &'static str,
+    pub file: Option<String>,
     pub line: usize,
     pub message: String,
 }
 
+impl MshError {
+    /// The same error with the name of the file that holds the line.
+    pub fn with_file(mut self, file: impl Into<String>) -> Self {
+        self.file = Some(file.into());
+        self
+    }
+}
+
 impl fmt::Display for MshError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "line {}: {}", self.line, self.message)
+        if let Some(file) = &self.file {
+            write!(f, "{file}: ")?;
+        }
+        write!(f, "line {}: {} ({})", self.line, self.message, self.code)
     }
 }
 
@@ -24,8 +39,10 @@ impl std::error::Error for MshError {}
 
 type Result<T> = std::result::Result<T, MshError>;
 
-fn fail<T>(line: usize, message: impl Into<String>) -> Result<T> {
+fn fail<T>(code: &'static str, line: usize, message: impl Into<String>) -> Result<T> {
     Err(MshError {
+        code,
+        file: None,
         line,
         message: message.into(),
     })
@@ -76,23 +93,31 @@ impl<'a> Lines<'a> {
                 return Ok((self.pos, tokens));
             }
         }
-        fail(self.pos + 1, "unexpected end of file")
+        fail(code::MSH_SYNTAX, self.pos + 1, "unexpected end of file")
     }
 }
 
 fn num<T: FromStr>(tokens: &[&str], i: usize, line: usize, what: &str) -> Result<T> {
     match tokens.get(i) {
-        None => fail(line, format!("missing {what}")),
-        Some(t) => t
-            .parse()
-            .or_else(|_| fail(line, format!("{what} is not a valid number: {t}"))),
+        None => fail(code::MSH_SYNTAX, line, format!("missing {what}")),
+        Some(t) => t.parse().or_else(|_| {
+            fail(
+                code::MSH_SYNTAX,
+                line,
+                format!("{what} is not a valid number: {t}"),
+            )
+        }),
     }
 }
 
 /// A node or element tag. It becomes a label of the model, and a label starts at 1.
 fn label(tokens: &[&str], i: usize, line: usize, what: &str) -> Result<u32> {
     match num(tokens, i, line, what)? {
-        0 => fail(line, format!("{what} 0 is not valid, a tag starts at 1")),
+        0 => fail(
+            code::MSH_SYNTAX,
+            line,
+            format!("{what} 0 is not valid, a tag starts at 1"),
+        ),
         id => Ok(id),
     }
 }
@@ -104,6 +129,7 @@ fn coordinate(tokens: &[&str], i: usize, line: usize, what: &str) -> Result<f64>
         Ok(v)
     } else {
         fail(
+            code::MSH_SYNTAX,
             line,
             format!("{what} is not a finite number: {}", tokens[i]),
         )
@@ -138,13 +164,17 @@ pub fn read_msh(text: &str) -> Result<Model> {
     let mut r = Reader::default();
     let (line, t) = l.next()?;
     if t != ["$MeshFormat"] {
-        return fail(line, "expected $MeshFormat");
+        return fail(code::MSH_SYNTAX, line, "expected $MeshFormat");
     }
     r.format(&mut l)?;
     while l.pos < l.lines.len() {
         let Ok((line, t)) = l.next() else { break };
         let Some(name) = t[0].strip_prefix('$') else {
-            return fail(line, format!("expected a section start, found {}", t[0]));
+            return fail(
+                code::MSH_SYNTAX,
+                line,
+                format!("expected a section start, found {}", t[0]),
+            );
         };
         match name {
             "PhysicalNames" => r.physical_names(&mut l)?,
@@ -155,7 +185,7 @@ pub fn read_msh(text: &str) -> Result<Model> {
         }
         let (line, t) = l.next()?;
         if t != [format!("$End{name}")] {
-            return fail(line, format!("expected $End{name}"));
+            return fail(code::MSH_SYNTAX, line, format!("expected $End{name}"));
         }
     }
     r.finish()
@@ -177,16 +207,21 @@ impl Reader {
         let (line, t) = l.next()?;
         if t[0] != "4.1" {
             return fail(
+                code::MSH_UNSUPPORTED,
                 line,
                 format!("unsupported MSH version {}, expected 4.1", t[0]),
             );
         }
         if num::<u8>(&t, 1, line, "file type")? != 0 {
-            return fail(line, "binary MSH is not supported, write ASCII");
+            return fail(
+                code::MSH_UNSUPPORTED,
+                line,
+                "binary MSH is not supported, write ASCII",
+            );
         }
         let (line, t) = l.next()?;
         if t != ["$EndMeshFormat"] {
-            return fail(line, "expected $EndMeshFormat");
+            return fail(code::MSH_SYNTAX, line, "expected $EndMeshFormat");
         }
         Ok(())
     }
@@ -199,10 +234,18 @@ impl Reader {
             let tag: u32 = num(&t, 1, line, "physical tag")?;
             let text = l.lines[line - 1];
             let (Some(a), Some(b)) = (text.find('"'), text.rfind('"')) else {
-                return fail(line, "the physical name needs quotation marks");
+                return fail(
+                    code::MSH_SYNTAX,
+                    line,
+                    "the physical name needs quotation marks",
+                );
             };
             if a == b {
-                return fail(line, "the physical name needs quotation marks");
+                return fail(
+                    code::MSH_SYNTAX,
+                    line,
+                    "the physical name needs quotation marks",
+                );
             }
             self.names.insert((dim, tag), text[a + 1..b].to_owned());
         }
@@ -243,7 +286,11 @@ impl Reader {
                 let (line, t) = l.next()?;
                 let id = label(&t, 0, line, "node tag")?;
                 if !self.node_ids.insert(id) {
-                    return fail(line, format!("node {id} is defined twice"));
+                    return fail(
+                        code::MSH_DUPLICATE,
+                        line,
+                        format!("node {id} is defined twice"),
+                    );
                 }
                 ids.push(id);
             }
@@ -272,11 +319,16 @@ impl Reader {
             let ty: u32 = num(&t, 2, line, "element type")?;
             let n: usize = num(&t, 3, line, "element count")?;
             let Some((count, tdim)) = type_info(ty) else {
-                return fail(line, format!("unknown element type {ty}"));
+                return fail(
+                    code::MSH_UNSUPPORTED,
+                    line,
+                    format!("unknown element type {ty}"),
+                );
             };
             let inp = inp_type(ty);
             if tdim == 3 && inp.is_none() {
                 return fail(
+                    code::MSH_UNSUPPORTED,
                     line,
                     format!("element type {ty} is not accepted, use 5 or 11"),
                 );
@@ -286,6 +338,7 @@ impl Reader {
                 let id = label(&t, 0, line, "element tag")?;
                 if t.len() != count + 1 {
                     return fail(
+                        code::MSH_SYNTAX,
                         line,
                         format!(
                             "element type {ty} needs {count} nodes, found {}",
@@ -294,13 +347,21 @@ impl Reader {
                     );
                 }
                 if !self.element_ids.insert(id) {
-                    return fail(line, format!("element {id} is defined twice"));
+                    return fail(
+                        code::MSH_DUPLICATE,
+                        line,
+                        format!("element {id} is defined twice"),
+                    );
                 }
                 let mut nodes = Vec::new();
                 for i in 1..=count {
                     let node: u32 = num(&t, i, line, "node tag")?;
                     if !self.node_ids.contains(&node) {
-                        return fail(line, format!("element {id} uses unknown node {node}"));
+                        return fail(
+                            code::MSH_UNDEFINED,
+                            line,
+                            format!("element {id} uses unknown node {node}"),
+                        );
                     }
                     nodes.push(node);
                 }

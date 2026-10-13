@@ -101,20 +101,23 @@ fn flat_and_part_data_mix() {
 fn part_errors_name_line_and_keyword() {
     assert_eq!(
         err("*PART, NAME=A\n"),
-        "line 1, *PART: part has no *END PART"
+        "line 1, *PART: part has no *END PART (INP011)"
     );
     assert_eq!(
         err("*PART, NAME=A\n*STEP\n"),
-        "line 2, *STEP: keyword is not allowed in *PART"
+        "line 2, *STEP: keyword is not allowed in *PART (INP010)"
     );
-    assert_eq!(err("*END PART\n"), "line 1, *END PART: no open *PART");
+    assert_eq!(
+        err("*END PART\n"),
+        "line 1, *END PART: no open *PART (INP010)"
+    );
     assert_eq!(
         err("*PART, NAME=A\n*END PART\n*PART, NAME=A\n"),
-        "line 3, *PART: part A is defined twice"
+        "line 3, *PART: part A is defined twice (INP008)"
     );
     assert_eq!(
         err("*PART, NAME=A\n*NODE\n1,0,0,0\n*ELEMENT, TYPE=C3D8\n1,1,2,3,4,5,6,7,8\n"),
-        "line 5, *ELEMENT: node 2 is not defined"
+        "line 5, *ELEMENT: node 2 is not defined (INP009)"
     );
 }
 
@@ -122,27 +125,30 @@ fn part_errors_name_line_and_keyword() {
 fn assembly_errors_name_line_and_keyword() {
     assert_eq!(
         err("*ASSEMBLY, NAME=A\n"),
-        "line 1, *ASSEMBLY: assembly has no *END ASSEMBLY"
+        "line 1, *ASSEMBLY: assembly has no *END ASSEMBLY (INP011)"
     );
     assert_eq!(
         err("*ASSEMBLY, NAME=A\n*NODE\n"),
-        "line 2, *NODE: keyword is not allowed in *ASSEMBLY"
+        "line 2, *NODE: keyword is not allowed in *ASSEMBLY (INP010)"
     );
     assert_eq!(
         err("*ASSEMBLY, NAME=A\n*INSTANCE, NAME=I, PART=NOPE\n"),
-        "line 2, *INSTANCE: part 'NOPE' is not defined"
+        "line 2, *INSTANCE: part 'NOPE' is not defined (INP009)"
     );
     assert_eq!(
         err("*INSTANCE, NAME=I, PART=B\n"),
-        "line 1, *INSTANCE: keyword needs an open *ASSEMBLY"
+        "line 1, *INSTANCE: keyword needs an open *ASSEMBLY (INP010)"
     );
     let dup = format!(
         "{PART}*ASSEMBLY, NAME=A\n*INSTANCE, NAME=I, PART=BLOCK\n*END INSTANCE\n\
 *INSTANCE, NAME=I, PART=BLOCK\n"
     );
-    assert_eq!(err(&dup), "line 20, *INSTANCE: instance I is defined twice");
+    assert_eq!(
+        err(&dup),
+        "line 20, *INSTANCE: instance I is defined twice (INP008)"
+    );
     let label = two_instances("*NSET, NSET=X, INSTANCE=I1\n9\n");
-    assert!(err(&label).ends_with("node 9 is not defined in instance I1"));
+    assert!(err(&label).ends_with("node 9 is not defined in instance I1 (INP009)"));
     let rotation =
         format!("{PART}*ASSEMBLY, NAME=A\n*INSTANCE, NAME=I, PART=BLOCK\n0,0,0\n0,0,0,1,0,0,90\n");
     assert!(err(&rotation).contains("only a translation"));
@@ -155,6 +161,6 @@ fn part_section_material_is_checked_at_the_end() {
     );
     assert_eq!(
         err(&text),
-        "line 18, *INSTANCE: material 'M' is not defined"
+        "line 18, *INSTANCE: material 'M' is not defined (INP009)"
     );
 }

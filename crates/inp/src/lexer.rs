@@ -1,5 +1,6 @@
 //! Split the text into keyword blocks. A block is one keyword line and its data lines.
 
+use crate::error::code;
 use crate::ParseError;
 
 /// A keyword parameter. Names and values are upper case.
@@ -45,7 +46,11 @@ impl Block {
         match self.param(name) {
             None => Ok(None),
             Some(Param { value: Some(v), .. }) => Ok(Some(v)),
-            Some(_) => Err(self.error(self.line, format!("parameter {name} needs a value"))),
+            Some(_) => Err(self.error(
+                code::MISSING_PARAMETER,
+                self.line,
+                format!("parameter {name} needs a value"),
+            )),
         }
     }
 
@@ -56,13 +61,17 @@ impl Block {
             .iter()
             .find(|p| !allowed.contains(&p.name.as_str()))
         {
-            Some(p) => Err(self.error(self.line, format!("unsupported parameter {}", p.name))),
+            Some(p) => Err(self.error(
+                code::UNSUPPORTED_PARAMETER,
+                self.line,
+                format!("unsupported parameter {}", p.name),
+            )),
             None => Ok(()),
         }
     }
 
-    pub fn error(&self, line: usize, message: impl Into<String>) -> ParseError {
-        ParseError::new(line, Some(&self.keyword), message)
+    pub fn error(&self, code: &'static str, line: usize, message: impl Into<String>) -> ParseError {
+        ParseError::new(code, line, Some(&self.keyword), message)
     }
 }
 
@@ -75,7 +84,9 @@ fn split_fields(text: &str) -> Vec<String> {
     text.split(',').map(|f| f.trim().to_owned()).collect()
 }
 
-pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
+/// Split the text into blocks. A bad line gives an error and the lexer goes on, so that
+/// one run reports many errors.
+pub(crate) fn lex(text: &str) -> (Vec<Block>, Vec<ParseError>) {
     let lines: Vec<(usize, &str)> = text
         .lines()
         .enumerate()
@@ -83,6 +94,9 @@ pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
         .filter(|(_, l)| !is_comment(l) && !l.trim().is_empty())
         .collect();
     let mut blocks: Vec<Block> = Vec::new();
+    let mut errors = Vec::new();
+    // The data lines of a keyword line without a name have no block.
+    let mut skip_data = false;
     let mut i = 0;
     while i < lines.len() {
         let (no, raw) = lines[i];
@@ -106,8 +120,16 @@ pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
                 .join(" ")
                 .to_uppercase();
             if keyword.is_empty() {
-                return Err(ParseError::new(no, None, "keyword line has no name"));
+                errors.push(ParseError::new(
+                    code::SYNTAX,
+                    no,
+                    None,
+                    "keyword line has no name",
+                ));
+                skip_data = true;
+                continue;
             }
+            skip_data = false;
             let mut params = Vec::new();
             for p in parts.filter(|p| !p.is_empty()) {
                 let (n, v) = match p.split_once('=') {
@@ -126,12 +148,18 @@ pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
                 data: Vec::new(),
             });
         } else {
+            if skip_data {
+                continue;
+            }
             let Some(block) = blocks.last_mut() else {
-                return Err(ParseError::new(
+                errors.push(ParseError::new(
+                    code::SYNTAX,
                     no,
                     None,
                     "data line before the first keyword",
                 ));
+                skip_data = true;
+                continue;
             };
             let mut fields = split_fields(&joined);
             if fields.last().is_some_and(String::is_empty) && joined.ends_with(',') {
@@ -152,16 +180,22 @@ pub(crate) fn lex(text: &str) -> Result<Vec<Block>, ParseError> {
             });
         }
     }
-    Ok(blocks)
+    (blocks, errors)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn lex_ok(text: &str) -> Vec<Block> {
+        let (blocks, errors) = lex(text);
+        assert!(errors.is_empty(), "{errors:?}");
+        blocks
+    }
+
     #[test]
     fn keywords_are_case_insensitive_and_params_split() {
-        let b = lex("*Node, nset=Top\n1, 0, 0, 0\n").unwrap();
+        let b = lex_ok("*Node, nset=Top\n1, 0, 0, 0\n");
         assert_eq!(b[0].keyword, "NODE");
         assert_eq!(b[0].value("NSET").unwrap(), Some("TOP"));
         assert_eq!(b[0].data[0].fields, ["1", "0", "0", "0"]);
@@ -169,28 +203,30 @@ mod tests {
 
     #[test]
     fn comments_and_blank_lines_are_skipped() {
-        let b = lex("** note\n\n*NODE\n** inside\n1, 0, 0, 0\n").unwrap();
+        let b = lex_ok("** note\n\n*NODE\n** inside\n1, 0, 0, 0\n");
         assert_eq!(b[0].data.len(), 1);
         assert_eq!(b[0].data[0].line, 5);
     }
 
     #[test]
     fn trailing_comma_joins_the_next_line() {
-        let b = lex("*ELEMENT, TYPE=C3D8\n1, 1, 2, 3,\n  4, 5\n").unwrap();
+        let b = lex_ok("*ELEMENT, TYPE=C3D8\n1, 1, 2, 3,\n  4, 5\n");
         assert_eq!(b[0].data.len(), 1);
         assert_eq!(b[0].data[0].fields, ["1", "1", "2", "3", "4", "5"]);
     }
 
     #[test]
     fn keyword_line_continues_and_names_collapse_spaces() {
-        let b = lex("*end   step\n*STEP, NAME=A,\n  NLGEOM=YES\n").unwrap();
+        let b = lex_ok("*end   step\n*STEP, NAME=A,\n  NLGEOM=YES\n");
         assert_eq!(b[0].keyword, "END STEP");
         assert_eq!(b[1].value("NLGEOM").unwrap(), Some("YES"));
     }
 
     #[test]
     fn data_before_keyword_fails_with_line() {
-        let e = lex("\n1, 2\n").unwrap_err();
-        assert_eq!(e.line, 2);
+        let (_, errors) = lex("\n1, 2\n");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].line, 2);
+        assert_eq!(errors[0].code, code::SYNTAX);
     }
 }
