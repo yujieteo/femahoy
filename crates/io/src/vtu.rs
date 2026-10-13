@@ -194,10 +194,24 @@ fn field_array(f: &Field) -> Array<'_> {
     }
 }
 
+/// Each point index of each cell must name a point of the grid.
+pub(crate) fn check_cells(grid: &Grid) -> Result<(), VtuError> {
+    for (i, cell) in grid.cells.iter().enumerate() {
+        if let Some(p) = cell.iter().find(|p| **p as usize >= grid.points.len()) {
+            return err(format!(
+                "cell {i} has the point {p}, but the grid has {} points",
+                grid.points.len()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn check(grid: &Grid) -> Result<(), VtuError> {
     if grid.cells.len() != grid.cell_types.len() {
         return err("cells and cell_types differ in length");
     }
+    check_cells(grid)?;
     for (kind, list) in [("point", &grid.point_data), ("cell", &grid.cell_data)] {
         let n = if kind == "point" {
             grid.points.len()
@@ -485,10 +499,25 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
         let ids = conn
             .get(from..end)
             .ok_or_else(|| VtuError("cell offsets are not valid".into()))?;
-        grid.cells.push(ids.iter().map(|&i| i as u32).collect());
+        let point = |&i: &i64| {
+            u32::try_from(i)
+                .ok()
+                .filter(|p| (*p as usize) < n_points)
+                .ok_or_else(|| {
+                    VtuError(format!("a cell has the point {i}, not a point of the grid"))
+                })
+        };
+        grid.cells
+            .push(ids.iter().map(point).collect::<Result<_, _>>()?);
         from = end;
     }
-    grid.cell_types = types.iter().map(|&t| t as u8).collect();
+    if from != conn.len() {
+        return err("the last cell offset does not end the connectivity");
+    }
+    grid.cell_types = types
+        .iter()
+        .map(|&t| u8::try_from(t).map_err(|_| VtuError(format!("cell type {t} is not valid"))))
+        .collect::<Result<_, _>>()?;
     for h in headers.iter().filter(|h| h.section.ends_with("Data")) {
         let raw = block(data, h)?;
         let values = match h.type_name.as_str() {

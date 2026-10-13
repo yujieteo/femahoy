@@ -105,3 +105,11 @@ fn a_huge_component_count_is_an_error_not_a_panic() {
     let mut out = Vec::new();
     assert!(write_vtk_to(&g, "t", &mut out).is_err());
 }
+
+#[test]
+fn a_cell_with_a_point_that_does_not_exist_is_refused() {
+    let mut g = cube();
+    g.cells[0][0] = 999;
+    let mut out = Vec::new();
+    assert!(write_vtk_to(&g, "t", &mut out).is_err());
+}

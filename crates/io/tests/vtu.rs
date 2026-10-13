@@ -135,6 +135,25 @@ fn a_field_with_the_wrong_number_of_values_is_an_error() {
 }
 
 #[test]
+fn a_cell_with_a_point_that_does_not_exist_is_an_error() {
+    // The first point index: -1 and 8 are not points of the 8-point grid.
+    for id in [-1_i64, 8] {
+        let mut b = write_vtu(&sample()).unwrap();
+        let at = block_at(&b, "connectivity") + 4;
+        b[at..at + 8].copy_from_slice(&id.to_le_bytes());
+        assert!(read_vtu(&b).is_err(), "point {id}");
+    }
+    // The last offset must use all of the connectivity.
+    let mut b = write_vtu(&sample()).unwrap();
+    let at = block_at(&b, "offsets") + 4;
+    b[at..at + 8].copy_from_slice(&7_i64.to_le_bytes());
+    assert!(read_vtu(&b).is_err(), "offset 7");
+    let mut g = sample();
+    g.cells[0][0] = 999;
+    assert!(write_vtu(&g).is_err());
+}
+
+#[test]
 fn field_names_with_special_characters_survive() {
     let mut g = sample();
     g.point_data.push(Field::f64("a<b&\"c\"", 1, vec![0.0; 8]));

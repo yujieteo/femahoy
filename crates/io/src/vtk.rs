@@ -6,7 +6,7 @@
 
 use std::io::Write;
 
-use crate::vtu::{Field, Grid, Values, VtuError};
+use crate::vtu::{check_cells, Field, Grid, Values, VtuError};
 
 fn bad<T>(msg: String) -> Result<T, VtuError> {
     Err(VtuError::new(msg))
@@ -25,6 +25,7 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
     if grid.cell_types.len() != grid.cells.len() {
         return bad("cell_types and cells differ in length".into());
     }
+    check_cells(grid)?;
     for (what, fields, n) in [
         ("point", &grid.point_data, grid.points.len()),
         ("cell", &grid.cell_data, grid.cells.len()),
