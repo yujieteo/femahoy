@@ -62,7 +62,7 @@ pub struct Group {
     job: isize,
 }
 
-/// Memory of the process tree of `pid`, in bytes of resident memory.
+/// Memory of the process tree in bytes: physical footprint on macOS, resident elsewhere.
 pub type Probe = fn(u32) -> Result<u64, String>;
 
 #[cfg(unix)]
@@ -146,7 +146,57 @@ mod os {
         Ok(total)
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    pub fn probe(pgid: u32) -> Result<u64, String> {
+        extern "C" {
+            fn proc_listpids(
+                kind: u32,
+                group: u32,
+                buffer: *mut std::ffi::c_void,
+                size: i32,
+            ) -> i32;
+            fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut std::ffi::c_void) -> i32;
+        }
+        // libproc.h: PROC_PGRP_ONLY = 2. Retry when the list fills the buffer.
+        let mut pids = vec![0_i32; 32];
+        loop {
+            let size = i32::try_from(pids.len() * std::mem::size_of::<i32>())
+                .map_err(|_| "process group is too large".to_string())?;
+            // SAFETY: the buffer holds `size` bytes, with the alignment of pid_t.
+            let used = unsafe { proc_listpids(2, pgid, pids.as_mut_ptr().cast(), size) };
+            if used <= 0 {
+                // libproc returns 0 on error too. The runner checks for child exit.
+                return Err(format!(
+                    "proc_listpids returned no processes: {}",
+                    std::io::Error::last_os_error()
+                ));
+            }
+            if used < size {
+                pids.truncate(used as usize / std::mem::size_of::<i32>());
+                break;
+            }
+            pids.resize(pids.len() * 2, 0);
+        }
+        let mut total = 0_u64;
+        for pid in pids.into_iter().filter(|&pid| pid > 0) {
+            // sys/resource.h: rusage_info_v2 has a 16-byte UUID and 18 u64 fields.
+            // ri_phys_footprint is field 8 after the UUID. It includes compressed pages.
+            let mut usage = [0_u64; 20];
+            // SAFETY: the buffer matches the size and alignment of rusage_info_v2.
+            if unsafe { proc_pid_rusage(pid, 2, usage.as_mut_ptr().cast()) } != 0 {
+                let error = std::io::Error::last_os_error();
+                // ESRCH: the process ended between the list and the memory query.
+                if error.raw_os_error() == Some(3) {
+                    continue;
+                }
+                return Err(format!("proc_pid_rusage({pid}): {error}"));
+            }
+            total = total.saturating_add(usage[9]);
+        }
+        Ok(total)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     pub fn probe(pgid: u32) -> Result<u64, String> {
         let out = Command::new("ps")
             .args(["-A", "-o", "pgid=", "-o", "rss="])
@@ -404,6 +454,57 @@ pub fn total_memory() -> Option<u64> {
 #[cfg(test)]
 mod probe_tests {
     use super::vm_rss_bytes;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_probe_reads_footprint_instead_of_rss() {
+        use std::os::unix::process::CommandExt;
+        extern "C" {
+            fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut std::ffi::c_void) -> i32;
+        }
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        // SDK rusage_info_v2: UUID (16 bytes), then 18 u64 fields.
+        let mut usage = [0_u64; 20];
+        let rc = unsafe { proc_pid_rusage(child.id() as i32, 2, usage.as_mut_ptr().cast()) };
+        let actual = super::os::probe(child.id());
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert_eq!(rc, 0);
+        let footprint = usage[9];
+        assert!(footprint > 0);
+        assert_eq!(actual.unwrap(), footprint);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_probe_counts_other_members_of_the_group() {
+        use std::os::unix::process::CommandExt;
+        let mut leader = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let own = super::os::probe(leader.id()).unwrap();
+        let mut member = std::process::Command::new("/bin/sleep")
+            .arg("30")
+            .process_group(leader.id() as i32)
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let both = super::os::probe(leader.id());
+        member.kill().unwrap();
+        member.wait().unwrap();
+        leader.kill().unwrap();
+        leader.wait().unwrap();
+        assert!(both.unwrap() > own + own / 2);
+        assert!(super::os::probe(u32::MAX).is_err());
+    }
 
     #[test]
     fn the_resident_size_comes_from_vm_rss_in_kib() {

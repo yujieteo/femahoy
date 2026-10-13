@@ -36,10 +36,10 @@
 //!
 //! The runner starts the solver as the leader of its own process tree. It kills
 //! the whole tree at the time limit or at the memory limit. The memory limit
-//! counts the resident memory of the tree. Linux and Windows also give the
-//! solver a hard limit that the kernel enforces. If the runner cannot read the
-//! memory, it stops the solver and reports this. The default memory limit is
-//! 85 % of the machine RAM.
+//! counts the physical footprint on macOS and resident memory elsewhere.
+//! Linux and Windows give the solver a hard limit that the kernel enforces.
+//! If the runner cannot read the memory, it stops the solver and reports this.
+//! The default memory limit is 85 % of the machine RAM.
 //!
 //! Results from a solver that did not pass the validation suite are marked
 //! unvalidated.
@@ -272,7 +272,7 @@ pub fn default_memory_limit() -> u64 {
 pub struct SubprocessSolver {
     pub exe: PathBuf,
     pub timeout: Duration,
-    /// Limit for the resident memory of the solver tree, in bytes.
+    /// Limit for the solver tree in bytes: physical footprint on macOS, resident elsewhere.
     /// `u64::MAX` means no limit.
     pub memory_limit: u64,
     pub cancel_grace: Duration,
