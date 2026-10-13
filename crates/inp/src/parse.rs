@@ -139,9 +139,15 @@ impl Parser {
             if d.fields.len() < 3 {
                 return Err(b.error(d.line, "node line needs an id and at least 2 coordinates"));
             }
+            if d.fields.len() > 4 {
+                return Err(b.error(
+                    d.line,
+                    "node line has more than 3 coordinates (a line that ends in a comma joins the next line)",
+                ));
+            }
             let id = int(b, d, 0, "node id")?;
             let mut xyz = [0.0; 3];
-            for (k, c) in xyz.iter_mut().enumerate().take(d.fields.len().min(4) - 1) {
+            for (k, c) in xyz.iter_mut().enumerate().take(d.fields.len() - 1) {
                 *c = real(b, d, k + 1, "coordinate")?;
             }
             if !self.node_ids.insert(id) {
@@ -828,6 +834,18 @@ mod tests {
             err("*NODE\n1,0,0,0\n1,1,0,0\n"),
             "line 3, *NODE: node 1 is defined twice"
         );
+    }
+
+    #[test]
+    fn a_node_line_with_more_than_3_coordinates_fails() {
+        // A trailing comma joins the next line, so node 2 would go into node 1.
+        for text in ["*NODE\n1,0,0,\n2,1,0\n", "*NODE\n1,0,0,0,5\n"] {
+            let e = err(text);
+            assert!(
+                e.starts_with("line 2, *NODE: node line has more than 3 coordinates"),
+                "{e}"
+            );
+        }
     }
 
     #[test]
