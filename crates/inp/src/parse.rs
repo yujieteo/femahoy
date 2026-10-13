@@ -92,6 +92,7 @@ fn dof(b: &Block, d: &DataLine, i: usize) -> Result<u8, ParseError> {
 
 fn element_nodes(element_type: &str) -> Option<usize> {
     match element_type {
+        "C3D4" => Some(4),
         "C3D8" | "C3D8I" => Some(8),
         "C3D10" | "C3D10M" => Some(10),
         _ => None,
@@ -873,6 +874,22 @@ mod tests {
         assert_eq!(
             err(&element),
             "line 11, *ELEMENT: element id must be a positive integer, found '0'"
+        );
+    }
+
+    #[test]
+    fn c3d4_keeps_node_count_and_reference_checks() {
+        let prefix = format!("{MESH}*ELEMENT, TYPE=c3d4\n");
+        let model = parse(&format!("{prefix}1,1,2,3,4\n")).unwrap();
+        assert_eq!(model.elements[0].element_type, "C3D4");
+        assert_eq!(model.elements[0].nodes, [1, 2, 3, 4]);
+        for nodes in ["1,2,3", "1,2,3,4,5"] {
+            assert!(err(&format!("{prefix}1,{nodes}\n"))
+                .starts_with("line 11, *ELEMENT: C3D4 needs an id and 4 nodes"));
+        }
+        assert_eq!(
+            err(&format!("{prefix}1,1,2,3,99\n")),
+            "line 11, *ELEMENT: node 99 is not defined"
         );
     }
 

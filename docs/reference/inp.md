@@ -49,6 +49,7 @@ Repeated definitions of a node or element ID fail. Repeated definitions of a set
 
 | `TYPE` | Nodes | Parser | Built-in solver |
 |---|---:|---|---|
+| `C3D4` | 4 | Accepted | Parsed only for mesh display. The solver reports that the type is not available yet. |
 | `C3D8` | 8 | Accepted | Solved: hex8 with B-bar |
 | `C3D8I` | 8 | Accepted | Solved: hex8 with incompatible modes |
 | `C3D10` | 10 | Accepted | Solved: tet10 with 4 integration points |

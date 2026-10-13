@@ -189,6 +189,16 @@ fn broken(from: &str, to: &str) -> (String, usize) {
 }
 
 #[test]
+fn c3d4_is_parsed_for_the_viewer_but_refused_by_the_solver() {
+    let mesh = include_str!("../../../fixtures/inp/viewer-c3d4.inp");
+    let m = parse(&format!("{mesh}*STEP\n*STATIC\n*END STEP\n")).unwrap();
+    assert_eq!(
+        solve(&m).unwrap_err().to_string(),
+        "element 1: type C3D4 is not available yet"
+    );
+}
+
+#[test]
 fn a_missing_set_a_missing_material_and_a_bad_element_type_are_errors() {
     let cases = [
         (
