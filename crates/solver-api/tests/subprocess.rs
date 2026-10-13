@@ -175,6 +175,40 @@ fn event_lines_parse() {
 }
 
 #[test]
+fn a_progress_line_outside_the_protocol_range_is_a_log() {
+    let mut bad = Vec::new();
+    for line in [
+        "progress step=9/0 phase=solve fraction=NaN",
+        "progress step=1/1 phase=solve fraction=NaN",
+        "progress step=1/1 phase=solve fraction=inf",
+        "progress step=1/1 phase=solve fraction=-0.1",
+        "progress step=1/1 phase=solve fraction=1.5",
+        "progress step=1/0 phase=solve fraction=0.5",
+        "progress step=0/2 phase=solve fraction=0.5",
+        "progress step=3/2 phase=solve fraction=0.5",
+    ] {
+        if Event::parse(line) != Event::Log(line.into()) {
+            bad.push(format!("{line}: {:?}", Event::parse(line)));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+    for (line, step, steps, fraction) in [
+        ("progress step=1/1 phase=solve fraction=0", 1, 1, 0.0),
+        ("progress step=2/2 phase=solve fraction=1", 2, 2, 1.0),
+    ] {
+        assert_eq!(
+            Event::parse(line),
+            Event::Progress {
+                step,
+                steps,
+                phase: "solve".into(),
+                fraction
+            }
+        );
+    }
+}
+
+#[test]
 fn cancel_line_reaches_the_solver() {
     let dir = scratch("cancel");
     // The solver waits for a line on stdin and exits with code 130.

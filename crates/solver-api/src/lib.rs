@@ -177,12 +177,17 @@ impl Event {
                 let parts = step.as_deref().and_then(|s| s.split_once('/'));
                 match (parts, phase, fraction.and_then(|f| f.parse::<f64>().ok())) {
                     (Some((i, n)), Some(phase), Some(fraction)) => match (i.parse(), n.parse()) {
-                        (Ok(step), Ok(steps)) => Event::Progress {
-                            step,
-                            steps,
-                            phase,
-                            fraction,
-                        },
+                        // Steps count from 1. The fraction is from 0 to 1. NaN is not in it.
+                        (Ok(step), Ok(steps))
+                            if (1..=steps).contains(&step) && (0.0..=1.0).contains(&fraction) =>
+                        {
+                            Event::Progress {
+                                step,
+                                steps,
+                                phase,
+                                fraction,
+                            }
+                        }
                         _ => log(),
                     },
                     _ => log(),
