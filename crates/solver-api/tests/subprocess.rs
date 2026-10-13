@@ -368,6 +368,19 @@ fn a_missing_input_keeps_the_earlier_results() {
 }
 
 #[test]
+fn a_missing_solver_keeps_the_earlier_results() {
+    let dir = scratch("solver-missing");
+    let run = dir.join("run");
+    solver(&dir, GOOD).run(&dir.join("a.inp"), &run).unwrap();
+    let e = SubprocessSolver::new(dir.join("missing.sh"))
+        .run(&dir.join("a.inp"), &run)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("cannot start"), "{e}");
+    assert!(run.join("results.pvd").is_file());
+}
+
+#[test]
 fn pvd_path_outside_the_run_folder_is_rejected() {
     for bad in ["../outside.vtu", "/etc/hosts"] {
         let dir = scratch("escape");

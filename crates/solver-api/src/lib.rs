@@ -346,12 +346,18 @@ impl SubprocessSolver {
         let inp = fs::canonicalize(inp).map_err(|e| ApiError(format!("input file: {e}")))?;
         // The solver starts in the run folder. A relative path with a folder must resolve from
         // the folder of the caller. A bare name stays a name for the PATH search.
+        let cannot_start = |e: &dyn std::fmt::Display| {
+            ApiError(format!("cannot start {}: {e}", self.exe.display()))
+        };
         let exe = if self.exe.is_relative() && self.exe.components().count() > 1 {
-            std::path::absolute(&self.exe)
-                .map_err(|e| ApiError(format!("cannot start {}: {e}", self.exe.display())))?
+            std::path::absolute(&self.exe).map_err(|e| cannot_start(&e))?
         } else {
             self.exe.clone()
         };
+        // A path that names no file cannot start. Check it before the folder is cleared.
+        if exe.components().count() > 1 && !exe.is_file() {
+            return Err(cannot_start(&"no such file"));
+        }
         let run_dir = prepare_run_dir(run_dir, restart, &inp)?;
         let open = |name: &str| {
             fs::File::create(run_dir.join(name)).map_err(|e| ApiError(format!("{name}: {e}")))
@@ -368,9 +374,7 @@ impl SubprocessSolver {
             .stderr(open("stderr.txt")?);
         let log = open("stdout.txt")?;
         sys::prepare(&mut cmd, limited.then_some(self.memory_limit));
-        let child = cmd
-            .spawn()
-            .map_err(|e| ApiError(format!("cannot start {}: {e}", self.exe.display())))?;
+        let child = cmd.spawn().map_err(|e| cannot_start(&e))?;
         // From here each return and each panic drops `tree`, and the drop kills the solver.
         let mut tree = Tree {
             group: sys::attach(&child, limited.then_some(self.memory_limit)),
