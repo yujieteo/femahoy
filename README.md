@@ -95,3 +95,6 @@ Plasticity, contact and large displacement are not built yet.
 
 - `DESIGN.md`: product design, architecture, solver scope and milestones.
 - `AGENTS.md`: rules for the agents that build femahoy.
+- [Input keywords and element types](docs/reference/inp.md): accepted input and built-in solver limits.
+- [`fh` commands](docs/reference/fh.md): diagnostics and exit codes.
+- [Case TOML fields](docs/reference/case-toml.md): schema, measurements, and tolerances.
