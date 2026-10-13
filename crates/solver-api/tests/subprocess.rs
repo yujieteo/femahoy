@@ -407,6 +407,48 @@ fn a_stream_of_events_cannot_delay_the_cancel() {
 }
 
 #[test]
+fn a_long_stdout_line_is_refused_and_stops_the_solver() {
+    // 16 MiB without a newline. The runner must not keep all of it in memory.
+    let dir = scratch("long-line");
+    let mut s = solver(
+        &dir,
+        "echo \"fh-solver-protocol 2\"\nhead -c 16777216 /dev/zero\nsleep 30",
+    );
+    s.timeout = Duration::from_secs(3);
+    let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
+    assert!(e.to_string().contains("stdout line longer than"), "{e}");
+}
+
+#[test]
+fn a_slow_callback_keeps_only_a_small_backlog_of_lines() {
+    // While the callback waits, the reader must stop at a bounded number of lines, and
+    // not copy all the output of the solver into memory. The log shows how far it read.
+    let dir = scratch("backlog");
+    let s = solver(
+        &dir,
+        "echo \"fh-solver-protocol 2\"\nyes \"log x\" | head -n 200000",
+    );
+    let run = dir.join("run");
+    let mut read = None;
+    let _ = s.run_with(&dir.join("a.inp"), &run, &CancelToken::new(), &mut |_| {
+        if read.is_none() {
+            std::thread::sleep(Duration::from_millis(500));
+            read = Some(
+                fs::read_to_string(run.join("stdout.txt"))
+                    .unwrap()
+                    .lines()
+                    .count(),
+            );
+        }
+    });
+    let read = read.expect("no event");
+    assert!(
+        read < 5000,
+        "the runner read {read} lines before the callback took the first"
+    );
+}
+
+#[test]
 fn estimate_above_the_limit_stops_the_solver_early() {
     let dir = scratch("estimate");
     let mut s = solver(

@@ -49,7 +49,7 @@ mod sys;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -246,6 +246,11 @@ pub struct SubprocessSolver {
 
 const POLL: Duration = Duration::from_millis(10);
 const PROBE_EVERY: Duration = Duration::from_millis(100);
+/// The longest stdout line that the runner reads, and the number of lines that can wait for
+/// the run loop. Together they limit the runner memory for solver output to about 16 MiB.
+/// The memory probe does not count the runner. Provisional values.
+const MAX_LINE: usize = 64 << 10;
+const BACKLOG: usize = 256;
 
 impl SubprocessSolver {
     /// A new subprocess solver. It is unvalidated until the suite passes. The
@@ -334,12 +339,36 @@ impl SubprocessSolver {
             .stdout
             .take()
             .ok_or_else(|| ApiError("no stdout pipe".into()))?;
-        let (tx, rx) = mpsc::channel::<String>();
+        // A full channel stops the reader, and then the pipe stops the solver.
+        let (tx, rx) = mpsc::sync_channel::<Result<String, ApiError>>(BACKLOG);
         let reader = std::thread::spawn(move || {
             let mut log = log;
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let mut out = BufReader::new(stdout);
+            loop {
+                let mut buf = Vec::new();
+                match (&mut out)
+                    .take(MAX_LINE as u64 + 1)
+                    .read_until(b'\n', &mut buf)
+                {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                    if buf.last() == Some(&b'\r') {
+                        buf.pop();
+                    }
+                } else if buf.len() > MAX_LINE {
+                    let _ = tx.send(Err(ApiError(format!(
+                        "the solver wrote a stdout line longer than {MAX_LINE} bytes"
+                    ))));
+                    break;
+                }
+                let Ok(line) = String::from_utf8(buf) else {
+                    break;
+                };
                 let _ = writeln!(log, "{line}");
-                if tx.send(line).is_err() {
+                if tx.send(Ok(line)).is_err() {
                     break;
                 }
             }
@@ -356,6 +385,10 @@ impl SubprocessSolver {
             // callback, must not hold back the checks below.
             let batch = Instant::now();
             while let Ok(line) = rx.recv_timeout(POLL.saturating_sub(batch.elapsed())) {
+                let line = match line {
+                    Ok(line) => line,
+                    Err(e) => return stop(&mut tree, e),
+                };
                 if !header_seen {
                     if line != PROTOCOL_HEADER {
                         return stop(&mut tree, ApiError(format!(
@@ -438,6 +471,7 @@ impl SubprocessSolver {
         tree.group.kill();
         drop(stdin);
         while let Ok(line) = rx.recv_timeout(Duration::from_millis(200)) {
+            let line = line?;
             if !header_seen {
                 header_seen = line == PROTOCOL_HEADER;
                 continue;
