@@ -351,8 +351,9 @@ impl Parser {
         if elastic.youngs_modulus <= 0.0 {
             return Err(b.error(d.line, "Young's modulus must be positive"));
         }
-        if !(-1.0..0.5).contains(&elastic.poissons_ratio) {
-            return Err(b.error(d.line, "Poisson's ratio must be in [-1, 0.5)"));
+        // At -1 the shear modulus has no value: it divides by 1 + nu.
+        if !(elastic.poissons_ratio > -1.0 && elastic.poissons_ratio < 0.5) {
+            return Err(b.error(d.line, "Poisson's ratio must be in (-1, 0.5)"));
         }
         let mat = &mut self.model.materials[idx];
         if mat.elastic.is_some() {
@@ -936,6 +937,7 @@ mod tests {
     #[test]
     fn elastic_range_checks() {
         assert!(err("*MATERIAL, NAME=M\n*ELASTIC\n100, 0.5\n").contains("Poisson's ratio"));
+        assert!(err("*MATERIAL, NAME=M\n*ELASTIC\n100, -1\n").contains("Poisson's ratio"));
         assert!(err("*MATERIAL, NAME=M\n*ELASTIC\n-1, 0.3\n").contains("Young's modulus"));
     }
 }

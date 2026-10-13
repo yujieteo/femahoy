@@ -124,7 +124,23 @@ impl MaterialFactory {
                 .elastic
                 .as_ref()
                 .ok_or_else(|| SolverError::new(format!("material {} has no *ELASTIC", m.name)))?;
-            Ok(Box::new(Elastic::new(e.youngs_modulus, e.poissons_ratio)))
+            // A model from code does not go through the checks of the parser.
+            let (ym, nu) = (e.youngs_modulus, e.poissons_ratio);
+            if !(ym > 0.0 && ym.is_finite() && nu > -1.0 && nu < 0.5) {
+                return Err(SolverError::new(format!(
+                    "material {}: *ELASTIC needs a finite positive Young's modulus and a \
+                     Poisson's ratio in (-1, 0.5), found {ym} and {nu}",
+                    m.name
+                )));
+            }
+            let elastic = Elastic::new(ym, nu);
+            if elastic.d.iter().flatten().any(|v| !v.is_finite()) {
+                return Err(SolverError::new(format!(
+                    "material {}: the elasticity matrix for {ym} and {nu} is not finite",
+                    m.name
+                )));
+            }
+            Ok(Box::new(elastic))
         })
     }
 }

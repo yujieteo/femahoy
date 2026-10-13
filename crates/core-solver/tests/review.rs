@@ -8,7 +8,9 @@ use fh_core_solver::element::{
     evaluate, small_strain, Elastic, ElementState, Evaluation, Kind, Material, Placement,
 };
 use fh_core_solver::SolverError;
-use fh_core_solver::{estimate_bytes, solve, solve_options, Method, Options, Sizes, Solution};
+use fh_core_solver::{
+    estimate_bytes, solve, solve_options, MaterialFactory, Method, Options, Sizes, Solution,
+};
 use fh_inp::{parse, Model};
 
 const CUBE: &str =
@@ -829,4 +831,37 @@ fn both_solvers_refuse_a_body_without_support() {
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+#[test]
+fn the_default_material_refuses_elastic_constants_out_of_range() {
+    let material = |e: f64, nu: f64| fh_inp::Material {
+        name: "M".into(),
+        elastic: Some(fh_inp::Elastic {
+            youngs_modulus: e,
+            poissons_ratio: nu,
+        }),
+    };
+    let factory = MaterialFactory::elastic();
+    let mut bad = Vec::new();
+    for (e, nu) in [
+        (1000.0, -1.0),
+        (1000.0, -1.5),
+        (1000.0, 0.5),
+        (1000.0, f64::NAN),
+        (0.0, 0.3),
+        (-1.0, 0.3),
+        (f64::INFINITY, 0.3),
+        (f64::NAN, 0.3),
+        // Each constant is in range, but the elasticity matrix is not finite.
+        (1e308, 0.4999999999999999),
+    ] {
+        if factory.build(&material(e, nu)).is_ok() {
+            bad.push(format!("E={e:e} nu={nu}"));
+        }
+    }
+    assert!(bad.is_empty(), "accepted: {bad:?}");
+    for (e, nu) in [(1000.0, 0.3), (1000.0, -0.999), (1000.0, 0.499)] {
+        assert!(factory.build(&material(e, nu)).is_ok(), "E={e} nu={nu}");
+    }
 }
