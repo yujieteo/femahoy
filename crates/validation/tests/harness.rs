@@ -53,6 +53,24 @@ fn richardson_rejects_fewer_than_three_values_and_non_monotone_data() {
 }
 
 #[test]
+fn richardson_does_not_depend_on_the_scale_of_the_values() {
+    // f(h) = 3 h^2 with h = 4, 2, 1, scaled across the finite range. The values are
+    // monotone, also where the product of two small differences underflows to 0.
+    let mut bad = Vec::new();
+    for e in (-300..=300).step_by(25) {
+        for sign in [1.0, -1.0] {
+            let s: f64 = sign * 10f64.powi(e);
+            match richardson(&[48.0 * s, 12.0 * s, 3.0 * s], 2.0) {
+                Ok((limit, order, _))
+                    if (order - 2.0).abs() < 1e-9 && limit.abs() <= 1e-9 * s.abs() => {}
+                r => bad.push(format!("scale {s:e}: {r:?}")),
+            }
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
+#[test]
 fn richardson_rejects_diverging_values() {
     // Differences grow towards the fine mesh: observed order is -1.
     let err = richardson(&[1.0, 1.1, 1.3], 2.0).unwrap_err();
