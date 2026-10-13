@@ -416,8 +416,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
     let msh = std::fs::read_to_string(&output)
         .map_err(|_| format!("gmsh wrote no mesh file: {}", output.display()))?;
-    let model = fh_io::read_msh(&msh)
-        .map_err(|e| format!("the mesh is not readable ({}): {e}", output.display()))?;
+    let model = fh_io::read_msh(&msh).map_err(|e| {
+        format!(
+            "the mesh is not readable: {}",
+            e.with_file(output.display().to_string())
+        )
+    })?;
     if model.elements.is_empty() {
         return Err(format!(
             "gmsh wrote a mesh with no volume elements: {}",

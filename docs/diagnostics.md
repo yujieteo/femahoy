@@ -14,7 +14,7 @@ The `file` field names the file when the caller knows it.
 - A block reports its first error only. An error in one block can cause errors in later blocks, for example an undefined node.
 - `fh_io::vtu::check_grid(grid)` returns all problems of a grid.
 - The runner reports all missing VTU files of a PVD file in one `API008` error.
-- The `.msh` reader and the other runner checks stop at the first error.
+- The `.msh` reader and the other runner checks stop at the first error. `fh_io::MshError::with_file` names the file.
 
 ## INP: `.inp` reader (`fh-inp`)
 
@@ -55,8 +55,8 @@ The `file` field names the file when the caller knows it.
 | Code | Meaning |
 |---|---|
 | API001 | The run was cancelled. |
-| API002 | The run folder is not usable. |
-| API003 | The runner cannot start the solver or open a file. |
+| API002 | The run folder is not usable, or the runner cannot create a file in it. |
+| API003 | The runner cannot start the solver or read the input file. |
 | API004 | The solver does not follow the protocol. |
 | API005 | The memory limit is passed, or the runner cannot enforce it. |
 | API006 | The time limit is passed. |
@@ -64,5 +64,6 @@ The `file` field names the file when the caller knows it.
 | API008 | A result file (`summary.toon`, `results.pvd`) is missing or not valid. |
 | API009 | A path leads out of the run folder. |
 | API010 | The solver cannot write or read its own output, restart or model data. |
+| API011 | A solver name is registered twice. |
 
 `StepUnitError` in `fh-io` already has its own codes (`unit.step.*`). `SolverError` in `core-solver` has no code yet.

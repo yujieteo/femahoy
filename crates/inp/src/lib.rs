@@ -8,7 +8,7 @@ mod lexer;
 mod model;
 mod parse;
 
-pub use error::{code, ParseError};
+pub use error::{code, join_errors, ParseError};
 pub use model::{
     Boundary, Cload, Coupling, CouplingKind, Dload, Dsload, Elastic, Element, ElementSet,
     ElementSurface, ElementTarget, Equation, EquationTerm, Instance, Material, Model, Mpc, MpcKind,

@@ -79,7 +79,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         let shown = file.display();
         let result = std::fs::read_to_string(file)
             .map_err(|e| e.to_string())
-            .and_then(|text| fh_inp::parse(&text).map_err(|e| e.to_string()))
+            .and_then(|text| {
+                fh_inp::parse_file(&shown.to_string(), &text).map_err(|e| fh_inp::join_errors(&e))
+            })
             .and_then(|m| match is_case_mesh(file) {
                 true => section_problem(&m).map_or(Ok(m), Err),
                 false => Ok(m),

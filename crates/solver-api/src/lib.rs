@@ -86,6 +86,7 @@ pub mod code {
     pub const BAD_RESULT: &str = "API008";
     pub const PATH_OUTSIDE: &str = "API009";
     pub const SOLVER_OUTPUT: &str = "API010";
+    pub const DUPLICATE_SOLVER: &str = "API011";
 }
 
 /// An error of the runner. It has a stable code and, when a file is the cause,
@@ -291,7 +292,7 @@ impl Registry {
         let name = solver.name().to_owned();
         if self.solvers.contains_key(&name) {
             return fail(
-                code::START_FAILED,
+                code::DUPLICATE_SOLVER,
                 format!("solver {name} is already registered"),
             );
         }
@@ -419,7 +420,7 @@ impl SubprocessSolver {
         let run_dir = prepare_run_dir(run_dir, restart, &inp)?;
         let open = |name: &str| {
             fs::File::create(run_dir.join(name))
-                .map_err(|e| ApiError::new(code::START_FAILED, e.to_string()).with_file(name))
+                .map_err(|e| ApiError::new(code::RUN_FOLDER, e.to_string()).with_file(name))
         };
         let limited = self.memory_limit != u64::MAX;
         let mut cmd = Command::new(&exe);
@@ -466,7 +467,7 @@ impl SubprocessSolver {
                     }
                 } else if buf.len() > MAX_LINE {
                     let _ = tx.send(Err(ApiError::new(
-                        code::START_FAILED,
+                        code::PROTOCOL,
                         format!("the solver wrote a stdout line longer than {MAX_LINE} bytes"),
                     )));
                     break;

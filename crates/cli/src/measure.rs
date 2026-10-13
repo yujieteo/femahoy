@@ -27,7 +27,8 @@ impl Subprocess {
 impl Solve for Subprocess {
     fn measure(&self, case: &Case, mesh: &Path) -> Result<Vec<f64>, String> {
         let text = std::fs::read_to_string(mesh).map_err(|e| e.to_string())?;
-        let model = fh_inp::parse(&text).map_err(|e| e.to_string())?;
+        let model = fh_inp::parse_file(&mesh.display().to_string(), &text)
+            .map_err(|e| fh_inp::join_errors(&e))?;
         let run = std::env::temp_dir().join(format!(
             "fh-validate-{}-{}",
             std::process::id(),

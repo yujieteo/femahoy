@@ -186,7 +186,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         return Ok(refuse(&message));
     }
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let mesh = fh_io::read_msh(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let mesh =
+        fh_io::read_msh(&text).map_err(|e| e.with_file(file.display().to_string()).to_string())?;
     let label = file
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
@@ -195,8 +196,11 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Err(message) => return Ok(refuse(&message)),
     };
     // The solver reads this text. Parse it here so that a bad input fails now.
-    if let Err(e) = fh_inp::parse(&inp) {
-        return Ok(refuse(&format!("model.inp.invalid: {e}")));
+    if let Err(e) = fh_inp::parse_all(&inp) {
+        return Ok(refuse(&format!(
+            "model.inp.invalid: {}",
+            fh_inp::join_errors(&e)
+        )));
     }
     let out = out.unwrap_or_else(|| file.with_extension("inp"));
     std::fs::write(&out, inp).map_err(|e| format!("{}: {e}", out.display()))?;
