@@ -391,6 +391,38 @@ fn pvd_path_outside_the_run_folder_is_rejected() {
     }
 }
 
+/// `GOOD` with this PVD text in place of its own.
+fn with_pvd(pvd: &str) -> String {
+    let own = GOOD.lines().find(|l| l.contains("results.pvd")).unwrap();
+    GOOD.replace(own, &format!("cat > results.pvd <<'EOF'\n{pvd}\nEOF"))
+}
+
+#[test]
+fn a_valid_pvd_with_single_quotes_and_comments_passes() {
+    let pvd = "<?xml version='1.0'?>\n<!-- not an entry: file=\"x.vtu\" -->\n\
+<VTKFile type='Collection' version='0.1'>\n<Collection units='m &amp; s'>\n\
+<DataSet timestep='1' part='0' file='step-1.vtu'/>\n</Collection>\n</VTKFile>";
+    let r = run("pvd-quotes", &with_pvd(pvd));
+    assert!(r.is_ok(), "{r:?}");
+}
+
+#[test]
+fn a_pvd_that_is_not_a_collection_is_rejected() {
+    let entry = "<DataSet timestep=\"1\" part=\"0\" file=\"step-1.vtu\"/>";
+    for pvd in [
+        "garbage file=\"step-1.vtu\"".to_string(),
+        format!("<VTKFile type=\"Collection\"><Collection>{entry}</Collection>"),
+        format!("<VTKFile type=\"UnstructuredGrid\"><Collection>{entry}</Collection></VTKFile>"),
+        format!("<VTKFile type=\"Collection\"><Collection>{entry}</VTKFile></Collection>"),
+        format!("<VTKFile type=\"Collection\"><Collection>x {entry}</Collection></VTKFile>"),
+        "<VTKFile type=\"Collection\"><Collection><DataSet file=\"step-1.vtu></Collection></VTKFile>"
+            .to_string(),
+    ] {
+        let e = run("pvd-bad", &with_pvd(&pvd)).unwrap_err();
+        assert!(e.contains("results.pvd is not a PVD collection"), "{pvd}: {e}");
+    }
+}
+
 fn run_in(dir: &Path, body: &str) -> Result<RunReport, String> {
     let exe = script(dir, body);
     SubprocessSolver::new(exe)

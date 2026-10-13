@@ -44,6 +44,7 @@
 //! Results from a solver that did not pass the validation suite are marked
 //! unvalidated.
 
+mod pvd;
 mod sys;
 
 use std::collections::BTreeMap;
@@ -659,18 +660,15 @@ fn check_summary(text: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
-fn check_pvd(run_dir: &Path, pvd: &Path) -> Result<(), ApiError> {
-    let text = read_result(pvd, PVD_FILE)?;
-    let listed: Vec<&str> = text
-        .split("file=\"")
-        .skip(1)
-        .filter_map(|r| r.split('"').next())
-        .collect();
+fn check_pvd(run_dir: &Path, path: &Path) -> Result<(), ApiError> {
+    let text = read_result(path, PVD_FILE)?;
+    let listed = pvd::data_set_files(&text)
+        .map_err(|e| ApiError(format!("{PVD_FILE} is not a PVD collection: {e}")))?;
     if listed.is_empty() {
         return fail(format!("{PVD_FILE} lists no VTU file"));
     }
     for f in listed {
-        if !inside(run_dir, f)?.is_file() {
+        if !inside(run_dir, &f)?.is_file() {
             return fail(format!("{PVD_FILE} lists {f}, but the file is missing"));
         }
     }
