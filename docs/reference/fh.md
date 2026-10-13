@@ -135,7 +135,9 @@ Sources: [validate.rs](../../crates/cli/src/validate.rs),
 `--root` defaults to `.`. The normal run loads case directories under `DIR/validation/cases`, sorted by directory name.
 `--convergence PATH` takes precedence over `--root`. It accepts a case directory or a directory of case directories.
 A directory run skips class N cases. A class N case named alone fails.
-Class R cannot run because the fixture has no mesh size.
+A class R case solves each mesh with boundary values from the exact field of the fixture.
+It reports one row, `rate`, with the observed rate, the expected rate, the band and the error of each mesh.
+The case fails if the error does not fall from one mesh to the next.
 The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 
 | Condition | Diagnostic or output | Exit |

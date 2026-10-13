@@ -108,17 +108,13 @@ pub fn check_n(computed: f64, reference: f64, rel_tol: f64, abs_tol: f64) -> Res
     }
 }
 
-/// Class R. The observed rate is the slope of log(error) against log(h)
-/// (least squares). It must be within `band` of the expected rate.
-pub fn check_r(h: &[f64], errors: &[f64], expected: f64, band: f64) -> Result<(), String> {
+/// The observed rate: the slope of log(error) against log(h), by least squares.
+pub fn observed_rate(h: &[f64], errors: &[f64]) -> Result<f64, String> {
     if h.len() != errors.len() || h.len() < 2 {
         return Err("need at least 2 matching (h, error) pairs".into());
     }
     if h.iter().chain(errors).any(|v| !v.is_finite() || *v <= 0.0) {
         return Err("h and errors must be positive and finite".into());
-    }
-    if !expected.is_finite() || !band.is_finite() || band < 0.0 {
-        return Err("expected rate must be finite, and band non-negative and finite".into());
     }
     let n = h.len() as f64;
     let (x, y): (Vec<f64>, Vec<f64>) = h.iter().zip(errors).map(|(a, e)| (a.ln(), e.ln())).unzip();
@@ -129,8 +125,21 @@ pub fn check_r(h: &[f64], errors: &[f64], expected: f64, band: f64) -> Result<()
     }
     let sxy: f64 = x.iter().zip(&y).map(|(a, b)| (a - mx) * (b - my)).sum();
     let rate = sxy / sxx;
+    if rate.is_finite() {
+        Ok(rate)
+    } else {
+        Err("observed rate must be finite".into())
+    }
+}
+
+/// Class R. The observed rate (see `observed_rate`) must be within `band` of the expected rate.
+pub fn check_r(h: &[f64], errors: &[f64], expected: f64, band: f64) -> Result<(), String> {
+    let rate = observed_rate(h, errors)?;
+    if !expected.is_finite() || !band.is_finite() || band < 0.0 {
+        return Err("expected rate must be finite, and band non-negative and finite".into());
+    }
     let diff = (rate - expected).abs();
-    if !rate.is_finite() || !diff.is_finite() {
+    if !diff.is_finite() {
         return Err("observed rate and difference must be finite".into());
     }
     if diff <= band {

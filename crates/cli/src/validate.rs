@@ -182,6 +182,14 @@ fn spec_problems(case: &Case) -> Vec<String> {
                 break;
             }
         }
+        if let Some(m) = &case.manufactured {
+            if model.nset(&m.boundary_set).is_none() {
+                out.push(format!(
+                    "mesh {name} has no node set `{}` for `boundary_set`",
+                    m.boundary_set
+                ));
+            }
+        }
         for r in &case.references {
             let q = &r.quantity;
             let (kind, found) = match q.field {

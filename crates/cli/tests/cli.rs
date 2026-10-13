@@ -125,6 +125,9 @@ fn validate_runs_every_case_through_the_solver() {
         "lame-cylinder",
         "lame-cylinder-c3d10",
         "lame-cylinder-c3d8i",
+        "mms-c3d10",
+        "mms-c3d8",
+        "mms-c3d8i",
         "patch-test",
         "patch-test-c3d10",
         "patch-test-c3d8i",
@@ -134,7 +137,10 @@ fn validate_runs_every_case_through_the_solver() {
             "{id} missing in {stdout}"
         );
     }
-    assert!(stdout.contains("10 cases: 10 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("13 cases: 13 pass, 0 fail"), "{stdout}");
+    // A class R case reports the observed rate and the errors of its meshes.
+    assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
+    assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("tip_deflection_z"), "{stdout}");
@@ -151,6 +157,40 @@ fn validate_exits_1_when_a_reference_is_wrong() {
     std::fs::write(&path, broken).unwrap();
     let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(1), "{}", text(out.stdout));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn validate_exits_1_when_a_class_r_rate_is_outside_the_band() {
+    let dir = copy_root("badrate");
+    let path = dir.join("validation/cases/mms-c3d8/case.toml");
+    let text_in = std::fs::read_to_string(&path).unwrap();
+    let broken = text_in.replacen("rate = 1.7", "rate = 4", 1);
+    assert_ne!(broken, text_in);
+    std::fs::write(&path, broken).unwrap();
+    let case = dir.join("validation/cases/mms-c3d8");
+    let out = fh(&["validate", "--convergence", case.to_str().unwrap()]);
+    let stdout = text(out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert!(stdout.contains("mms-c3d8\tR\t3 meshes\tfail"), "{stdout}");
+    assert!(text(out.stderr).contains("observed rate"), "stderr");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn validate_exits_1_when_the_class_r_boundary_set_is_missing() {
+    let dir = copy_root("badboundary");
+    let path = dir.join("validation/cases/mms-c3d10/case.toml");
+    let text_in = std::fs::read_to_string(&path).unwrap();
+    let broken = text_in.replacen("boundary_set = \"BOUNDARY\"", "boundary_set = \"NOPE\"", 1);
+    assert_ne!(broken, text_in);
+    std::fs::write(&path, broken).unwrap();
+    let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(out.stderr).contains("no node set `NOPE` for `boundary_set`"),
+        "stderr"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -208,7 +248,8 @@ fn convergence_on_the_case_folder_skips_class_n() {
         stdout.contains("bar-tension\tN\tskipped, one mesh"),
         "{stdout}"
     );
-    assert!(stdout.contains("10 cases: 6 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("mms-c3d10\tR\t3 meshes\tpass"), "{stdout}");
+    assert!(stdout.contains("13 cases: 9 pass, 0 fail"), "{stdout}");
 }
 
 #[test]

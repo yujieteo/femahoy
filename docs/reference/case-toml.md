@@ -41,13 +41,23 @@ Numbers can be TOML integers or floats. All numbers must be finite.
 | N | `abs_tol` | Absolute tolerance, 0 or more. |
 | R | `rate` | Expected convergence rate. Any finite number. |
 | R | `band` | Allowed difference from the expected rate, 0 or more. |
+| R | `mesh_size` | Array of positive numbers, one for each mesh, falling from coarse to fine. |
+| R | `boundary_set` | Name of the node set that gets the boundary values. Each mesh must hold it. |
+| R | `[exact]` | Table with `u1`, `u2` and `u3`: the exact displacement as text, see below. |
 
 Class L uses the last 3 mesh values for Richardson extrapolation.
 Its observed order must lie in the inclusive interval from `order_min` to `order_max`.
 Its comparison is `abs(limit - reference) <= estimate + reference_error * abs(reference)`.
 Class N uses `abs(computed - reference) <= rel_tol * abs(reference) + abs_tol`.
 The `check_r` function compares the slope of `log(error)` against `log(h)` with `rate`, within `band`.
-The case reader accepts class R, but `fh validate` cannot run it because the fixture has no mesh size.
+
+A class R case has no `[ref]` table and no `[quantity]` table. It needs at least 2 meshes.
+The meshes hold no step. The harness adds one step with a `*BOUNDARY` value for each node of `boundary_set`,
+taken from the exact field. The error of a mesh is the root mean square, over all nodes, of the distance between
+the computed displacement and the exact field. The observed rate is the slope of `log(error)` against `log(mesh_size)`.
+
+The exact field uses `x`, `y`, `z`, `pi`, numbers, `+ - * / ^`, brackets, and the functions
+`sin`, `cos`, `sinh`, `cosh`, `exp` and `sqrt`. The field must solve the elasticity equations with no body force.
 
 ## Quantity fields
 
