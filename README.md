@@ -46,7 +46,7 @@ The product is distributed as one `fh` binary, through Homebrew and as a direct 
 
 ## Design decisions
 
-This section lists the design decisions for femahoy. The full decision log, with rejected options and reversal rules, is in `DESIGN.md` section 17. The milestone list is in [docs/milestones.md](docs/milestones.md).
+This section lists the design decisions for femahoy. `DESIGN.md` section 17 holds decisions D-01 to D-10 only, with rejected options and reversal rules. The newer decisions in this section are not yet in `DESIGN.md`. The milestone list is in [docs/milestones.md](docs/milestones.md).
 
 ### Product scope
 
@@ -80,7 +80,7 @@ Plasticity, contact and large displacement are not built yet.
 
 - Text-to-CAD uses Python, with build123d recommended. STEP import goes through gmsh with OpenCASCADE. Reason: Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - The case TOML declares units. `fh` refuses on a units mismatch, and refuses a STEP file with no unit record. Reason: a wrong unit gives wrong results without any warning.
-- C3D10 (tet10) is the default element. C3D8 (hex8) is only for extruded parts. Reason: tetrahedra mesh any shape, and quadratic elements avoid the bending lock of plain hex8 (a test showed plain hex8 17 percent too stiff). Hex8 stays for extruded parts.
+- C3D10 (tet10) is the default element. C3D8 (hex8) is only for extruded parts. Reason: tetrahedra mesh any shape, and quadratic elements avoid the bending lock of plain hex8 (a test showed plain hex8 17 percent too small in deflection). Hex8 stays for extruded parts.
 
 ### External solvers (agreed 2026-10-13)
 
