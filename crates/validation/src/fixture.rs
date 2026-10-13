@@ -5,6 +5,8 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, Table};
 
+use crate::ModelSpec;
+
 /// The tolerance class of a case and its parameters.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Class {
@@ -129,6 +131,8 @@ pub struct Case {
     /// Input files, coarse to fine. Absolute or relative to the working directory like `dir`.
     pub meshes: Vec<PathBuf>,
     pub references: Vec<Reference>,
+    /// How to build a solver input from a `.msh` file (`fh model`). Optional.
+    pub model: Option<ModelSpec>,
 }
 
 /// A fixture error. It names the file and, when known, the line.
@@ -178,13 +182,13 @@ fn line_of(text: &str, offset: usize) -> usize {
 }
 
 /// The parsed text and its file, for errors with line numbers.
-struct FixtureReader<'a> {
-    file: PathBuf,
-    text: &'a str,
+pub(crate) struct FixtureReader<'a> {
+    pub(crate) file: PathBuf,
+    pub(crate) text: &'a str,
 }
 
 impl FixtureReader<'_> {
-    fn err(&self, item: Option<&Item>, message: String) -> FixtureError {
+    pub(crate) fn err(&self, item: Option<&Item>, message: String) -> FixtureError {
         FixtureError {
             file: self.file.clone(),
             line: item
@@ -194,13 +198,13 @@ impl FixtureReader<'_> {
         }
     }
 
-    fn get<'t>(&self, table: &'t Table, key: &str) -> Result<&'t Item, FixtureError> {
+    pub(crate) fn get<'t>(&self, table: &'t Table, key: &str) -> Result<&'t Item, FixtureError> {
         table
             .get(key)
             .ok_or_else(|| self.err(None, format!("missing key `{key}`")))
     }
 
-    fn string(&self, table: &Table, key: &str) -> Result<String, FixtureError> {
+    pub(crate) fn string(&self, table: &Table, key: &str) -> Result<String, FixtureError> {
         self.non_empty_string(self.get(table, key)?, key)
             .map(str::to_owned)
     }
@@ -211,7 +215,7 @@ impl FixtureReader<'_> {
             .ok_or_else(|| self.err(Some(item), format!("`{key}` must be a non-empty string")))
     }
 
-    fn number(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
+    pub(crate) fn number(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
         let item = self.get(table, key)?;
         item.as_float()
             .or_else(|| item.as_integer().map(|i| i as f64))
@@ -332,8 +336,9 @@ impl FixtureReader<'_> {
     }
 
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 18] = [
+        const KEYS: [&str; 19] = [
             "schema",
+            "model",
             "units",
             "quantity",
             "element_types",
@@ -541,6 +546,7 @@ impl FixtureReader<'_> {
                 ),
             ));
         }
+        let model = self.model(table)?;
         Ok(Case {
             id,
             dir: dir.to_owned(),
@@ -551,6 +557,7 @@ impl FixtureReader<'_> {
             element_types,
             meshes,
             references,
+            model,
         })
     }
 }

@@ -118,6 +118,7 @@ fn validate_runs_every_case_through_the_solver() {
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in [
+        "bar-tension",
         "cantilever",
         "cantilever-c3d10",
         "cantilever-c3d8",
@@ -133,7 +134,7 @@ fn validate_runs_every_case_through_the_solver() {
             "{id} missing in {stdout}"
         );
     }
-    assert!(stdout.contains("9 cases: 9 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("10 cases: 10 pass, 0 fail"), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("tip_deflection_z"), "{stdout}");
@@ -203,7 +204,11 @@ fn convergence_on_the_case_folder_skips_class_n() {
         stdout.contains("patch-test\tN\tskipped, one mesh"),
         "{stdout}"
     );
-    assert!(stdout.contains("9 cases: 6 pass, 0 fail"), "{stdout}");
+    assert!(
+        stdout.contains("bar-tension\tN\tskipped, one mesh"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("10 cases: 6 pass, 0 fail"), "{stdout}");
 }
 
 #[test]

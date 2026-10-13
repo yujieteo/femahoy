@@ -687,7 +687,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - **Rejected:** a CAD kernel or a STEP reader inside `fh`.
 - **Reverse if:** build123d or gmsh cannot write or read STEP on a supported platform.
-- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, a `.geo` template for gmsh, and `fh info` for the checks. Named regions are not built. `fh mesh` is built (D-18, D-19).
+- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, a `.geo` template for gmsh, and `fh info` for the checks. `fh model` turns the `.msh` file and the `[model]` table of the case into a solver input (case `bar-tension`). Named regions are not built. `fh mesh` is built (D-18, D-19).
 
 ### D-18 The case declares units, `fh` refuses a mismatch
 - **Decided by:** the captain.
@@ -695,7 +695,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A wrong unit gives wrong results without any warning.
 - **Rejected:** a default unit, a guessed unit, a warning in place of the refusal.
 - **Reverse if:** the captain allows a run with unknown units.
-- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`), no units (`unit.case.missing`) and the STEP unit faults of `fh info`. The result files and the TOON summary do not state the units yet.
+- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`), no units (`unit.case.missing`) and the STEP unit faults of `fh info`. `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). The result files and the TOON summary do not state the units yet.
 
 ### D-19 C3D10 is the default element
 - **Decided by:** the captain.
