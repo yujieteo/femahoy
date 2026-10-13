@@ -344,12 +344,20 @@ impl SubprocessSolver {
         }
         // Check the input before the folder changes: a new run clears the folder.
         let inp = fs::canonicalize(inp).map_err(|e| ApiError(format!("input file: {e}")))?;
+        // The solver starts in the run folder. A relative path with a folder must resolve from
+        // the folder of the caller. A bare name stays a name for the PATH search.
+        let exe = if self.exe.is_relative() && self.exe.components().count() > 1 {
+            std::path::absolute(&self.exe)
+                .map_err(|e| ApiError(format!("cannot start {}: {e}", self.exe.display())))?
+        } else {
+            self.exe.clone()
+        };
         let run_dir = prepare_run_dir(run_dir, restart, &inp)?;
         let open = |name: &str| {
             fs::File::create(run_dir.join(name)).map_err(|e| ApiError(format!("{name}: {e}")))
         };
         let limited = self.memory_limit != u64::MAX;
-        let mut cmd = Command::new(&self.exe);
+        let mut cmd = Command::new(&exe);
         cmd.arg(&inp).arg(&run_dir);
         if restart {
             cmd.arg("--restart");

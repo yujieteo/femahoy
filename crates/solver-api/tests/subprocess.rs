@@ -51,6 +51,31 @@ fn good_solver_passes() {
     assert!(!r.validated);
 }
 
+/// `to` as a path relative to the folder of the test process.
+fn relative_to_cwd(to: &Path) -> PathBuf {
+    let cwd = std::env::current_dir().unwrap();
+    let common = cwd
+        .components()
+        .zip(to.components())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let mut rel: PathBuf = cwd.components().skip(common).map(|_| "..").collect();
+    rel.extend(to.components().skip(common));
+    rel
+}
+
+#[test]
+fn a_relative_solver_path_resolves_from_the_caller_folder() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("fh-solver-api-relative-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let exe = relative_to_cwd(&script(&dir, GOOD));
+    assert!(exe.is_relative() && exe.is_file(), "{}", exe.display());
+    let r = SubprocessSolver::new(exe).run(&dir.join("a.inp"), &dir.join("run"));
+    assert!(r.is_ok(), "{r:?}");
+}
+
 #[test]
 fn missing_header_is_rejected() {
     let e = run(
