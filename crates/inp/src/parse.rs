@@ -531,6 +531,12 @@ impl Parser {
         }
         let mut ids = Vec::new();
         for d in &b.data {
+            if d.fields.len() != 1 {
+                return Err(b.error(
+                    d.line,
+                    "line needs 1 node number or 1 node set name, without a weight",
+                ));
+            }
             match self.target(b, d)? {
                 Target::Node(id) => ids.push(id),
                 Target::Set(s) => ids.extend(self.model.nset(&s).map_or(&[][..], |n| &n.ids)),

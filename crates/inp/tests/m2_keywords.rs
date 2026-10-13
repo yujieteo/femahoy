@@ -45,6 +45,19 @@ fn node_surface_takes_nodes_and_sets() {
 }
 
 #[test]
+fn a_surface_line_with_more_than_1_field_is_an_error() {
+    for data in ["1,2\n", "1,\n2\n", "TOP,1.0\n"] {
+        let e = err(&format!(
+            "*NSET, NSET=TOP\n5\n*SURFACE, TYPE=NODE, NAME=S\n{data}"
+        ));
+        assert!(
+            e.starts_with("line 22, *SURFACE") && e.contains("1 node"),
+            "{e}"
+        );
+    }
+}
+
+#[test]
 fn a_duplicate_surface_name_is_an_error() {
     // The solver takes the first surface of a name, so it would not see the second.
     let e = err("*SURFACE, TYPE=NODE, NAME=S\n1\n*SURFACE, TYPE=NODE, NAME=s\n2\n");
