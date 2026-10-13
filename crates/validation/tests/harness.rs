@@ -505,3 +505,135 @@ fn convergence_needs_a_mesh_sequence_and_reports_no_solver() {
         }
     }
 }
+
+#[test]
+fn class_n_rejects_infinite_tolerance() {
+    assert!(check_n(999.0, 1.0, f64::INFINITY, 0.0).is_err());
+}
+
+#[test]
+fn class_n_rejects_infinite_result() {
+    assert!(check_n(f64::INFINITY, 1.0, f64::INFINITY, 0.0).is_err());
+}
+
+#[test]
+fn class_l_rejects_infinite_reference_error() {
+    assert!(check_l(&[50.0, 14.0, 5.0], 2.0, 999.0, f64::INFINITY, (1.0, 3.0)).is_err());
+}
+
+#[test]
+fn richardson_rejects_nan_input() {
+    assert!(richardson(&[f64::NAN, 2.0, 1.0], 2.0).is_err());
+}
+
+#[test]
+fn schema_rejects_infinite_tolerance() {
+    let error = write_case(
+        &tmp("inf-tolerance"),
+        &body(1, "class = \"N\"\nrel_tol = inf\nabs_tol = 0"),
+    )
+    .unwrap_err();
+    assert!(error.message.contains("rel_tol"));
+    assert_eq!(error.line, Some(8));
+}
+
+#[test]
+fn public_checks_reject_invalid_numbers_and_negative_tolerances() {
+    let v = [50.0, 14.0, 5.0];
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        for index in 0..4 {
+            let mut args = [1.0, 1.0, 0.0, 0.0];
+            args[index] = bad;
+            assert!(check_n(args[0], args[1], args[2], args[3]).is_err());
+        }
+        for index in 0..v.len() {
+            let mut values = v;
+            values[index] = bad;
+            assert!(richardson(&values, 2.0).is_err());
+            assert!(check_l(&values, 2.0, 2.0, 0.0, (1.0, 3.0)).is_err());
+        }
+        assert!(richardson(&[bad, 50.0, 14.0, 5.0], 2.0).is_err());
+        assert!(richardson(&v, bad).is_err());
+        assert!(check_l(&v, 2.0, bad, 0.0, (1.0, 3.0)).is_err());
+        assert!(check_l(&v, 2.0, 2.0, bad, (1.0, 3.0)).is_err());
+        assert!(check_l(&v, 2.0, 2.0, 0.0, (bad, 3.0)).is_err());
+        assert!(check_l(&v, 2.0, 2.0, 0.0, (1.0, bad)).is_err());
+        assert!(check_r(&[bad, 0.5], &[1.0, 0.25], 2.0, 0.0).is_err());
+        assert!(check_r(&[1.0, 0.5], &[bad, 0.25], 2.0, 0.0).is_err());
+        assert!(check_r(&[1.0, 0.5], &[1.0, 0.25], bad, 0.0).is_err());
+        assert!(check_r(&[1.0, 0.5], &[1.0, 0.25], 2.0, bad).is_err());
+    }
+    assert!(check_n(1.0, 1.0, -1.0, 1.0).is_err());
+    assert!(check_n(1.0, 1.0, 1.0, -1.0).is_err());
+    assert!(check_l(&v, 2.0, 2.0, -0.1, (1.0, 3.0)).is_err());
+    assert!(check_l(&v, 2.0, 2.0, 0.0, (-1.0, 3.0)).is_err());
+    assert!(check_l(&v, 2.0, 2.0, 0.0, (3.0, 1.0)).is_err());
+    assert!(check_r(&[1.0, 0.5], &[1.0, 0.25], 2.0, -1.0).is_err());
+    for ratio in [-1.0, 0.0, 1.0] {
+        assert!(richardson(&v, ratio).is_err());
+    }
+    assert!(check_n(1.0, 1.0, 0.0, 0.0).is_ok());
+    assert!(check_r(&[1.0, 0.5], &[1.0, 0.25], 2.0, 0.0).is_ok());
+}
+
+#[test]
+fn public_checks_reject_non_finite_arithmetic() {
+    assert!(check_n(1.0, f64::MAX, 2.0, 0.0).is_err());
+    assert!(check_n(f64::MAX, -f64::MAX, 1.0, f64::MAX).is_err());
+    assert!(check_l(&[50.0, 14.0, 5.0], 2.0, f64::MAX, 2.0, (1.0, 3.0)).is_err());
+    assert!(richardson(&[1.0, 1.0, 1.0], 2.0).is_err());
+    assert!(richardson(&[f64::MAX, 0.0, -f64::MAX], 2.0).is_err());
+    assert!(richardson(&[1e308, 1.0, 1.0 - f64::EPSILON], 2.0).is_err());
+    assert!(richardson(&[f64::MAX, -1e308, -1.1e308], 2.0).is_err());
+    assert!(richardson(&[0.0, -1e308, -1.5e308], 2.0).is_err());
+}
+
+#[test]
+fn schema_rejects_non_finite_numbers_and_invalid_parameters() {
+    let dir = tmp("invalid-numbers");
+    let classes = [
+        (
+            1,
+            "class = \"N\"\nrel_tol = 0\nabs_tol = 0",
+            vec!["rel_tol", "abs_tol"],
+        ),
+        (
+            3,
+            "class = \"L\"\nratio = 2\nreference_error = 0\norder_min = 1\norder_max = 3",
+            vec!["ratio", "reference_error", "order_min", "order_max"],
+        ),
+        (2, "class = \"R\"\nrate = 2\nband = 0", vec!["rate", "band"]),
+    ];
+    let mut index = 0;
+    for (meshes, parameters, keys) in classes {
+        let valid = body(meshes, parameters);
+        assert!(write_case(&dir.join(format!("valid{meshes}")), &valid).is_ok());
+        for key in keys.iter().copied().chain(std::iter::once("q")) {
+            for bad in ["inf", "-inf", "nan", "-1"] {
+                if bad == "-1" && ["q", "rate"].contains(&key) {
+                    continue;
+                }
+                let mut lines: Vec<String> = valid.lines().map(str::to_owned).collect();
+                let line = lines
+                    .iter()
+                    .position(|s| s.starts_with(&format!("{key} =")))
+                    .unwrap();
+                lines[line] = format!("{key} = {bad}");
+                index += 1;
+                let error =
+                    write_case(&dir.join(format!("bad{index}")), &lines.join("\n")).unwrap_err();
+                assert!(error.message.contains(key), "{key}: {error}");
+                assert_eq!(error.line, Some(line + 1));
+            }
+        }
+        if meshes == 3 {
+            for ratio in ["0", "1"] {
+                assert!(write_case(
+                    &dir.join(format!("ratio{ratio}")),
+                    &valid.replace("ratio = 2", &format!("ratio = {ratio}"))
+                )
+                .is_err());
+            }
+        }
+    }
+}
