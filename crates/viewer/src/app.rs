@@ -40,7 +40,7 @@ impl ViewerApp {
         );
         if m.skipped_elements > 0 {
             text.push_str(&format!(
-                ", {} elements of an unsupported type not drawn",
+                ", {} elements not drawn (unsupported type or missing node)",
                 m.skipped_elements
             ));
         }
