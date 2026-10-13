@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use common::{assert_same, block_input, snapshot};
-use fh_core_solver::element::{small_strain, Material};
+use fh_core_solver::element::{Gradient, Material};
 use fh_core_solver::restart::{read_latest, Restart};
 use fh_core_solver::{
     input_hash, run_model, Formats, Input, MaterialFactory, Options, SolverError,
@@ -30,12 +30,12 @@ impl Material for Bilinear {
     }
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
         const C: [f64; 6] = [1.0, 1.0, 1.0, 0.5, 0.5, 0.5];
-        let eps = small_strain(f);
+        let eps = g.small_strain();
         let e = (0..6).map(|i| C[i] * eps[i] * eps[i]).sum::<f64>().sqrt();
         let (ey, k) = (0.01, 0.1);
         let kappa = old[0].max(e);

@@ -3,8 +3,8 @@
 //! and they fix no design decision.
 
 use fh_core_solver::element::{
-    elasticity, evaluate, mean_stress, pressure_load, small_strain, stiffness, volume,
-    ElementState, Evaluation, Kind, Material, Placement,
+    elasticity, evaluate, mean_stress, pressure_load, stiffness, volume, Elastic, ElementState,
+    Evaluation, Gradient, Kind, Material, Placement,
 };
 use fh_core_solver::SolverError;
 
@@ -299,6 +299,50 @@ fn a_curved_tet_face_gets_the_exact_nodal_forces() {
     assert!(bad.is_empty(), "{bad:#?}");
 }
 
+#[test]
+fn a_tiny_strain_keeps_its_stress_and_its_force() {
+    // A normal strain far below the machine epsilon with an exact stress of 1.
+    let c = unit_hex();
+    let u = field(&c, |x| [1e-17 * x[0], 0.0, 0.0]);
+    let s = mean_stress(Kind::C3D8, &c, &elasticity(1e17, 0.0), &u).unwrap();
+    let mut bad = Vec::new();
+    if (s[0] - 1.0).abs() > 1e-12 {
+        bad.push(format!("stress {s:?}, exact xx 1"));
+    }
+    // For an ordinary modulus and a tiny field, the internal force is K u.
+    let d = elasticity(1000.0, 0.3);
+    for kind in KINDS {
+        let c = geometry(kind);
+        let u = field(&c, |x| {
+            [x[0] * x[1], x[1] * x[2] - x[0], x[2] * x[0] + x[1]].map(|v| 1e-14 * v)
+        });
+        let ku = mat_vec(&stiffness(kind, &c, &d).unwrap(), &u);
+        let mut out = Evaluation::default();
+        let place = Placement {
+            start: &c,
+            disp: &u,
+        };
+        evaluate(
+            kind,
+            &place,
+            &Elastic { d },
+            &ElementState::default(),
+            &mut out,
+            false,
+        )
+        .unwrap();
+        let size = ku.iter().fold(0.0_f64, |m, v| m.max(v.abs()));
+        let err = ku
+            .iter()
+            .zip(&out.fint)
+            .fold(0.0_f64, |m, (a, b)| m.max((a - b).abs()));
+        if err > 1e-10 * size {
+            bad.push(format!("{kind:?}: |f - K u| = {err:e}, |K u| = {size:e}"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
 /// A material that gets stiffer with the strain: stress = strain³ + 1e-12 strain,
 /// with its exact tangent. Newton on the mode amplitudes converges slowly near 0.
 struct Cubic;
@@ -310,11 +354,11 @@ impl Material for Cubic {
 
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         _old: &[f64],
         _new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let e = small_strain(f);
+        let e = g.small_strain();
         let mut d = [[0.0; 6]; 6];
         for (i, row) in d.iter_mut().enumerate() {
             row[i] = 3.0 * e[i] * e[i] + 1e-12;

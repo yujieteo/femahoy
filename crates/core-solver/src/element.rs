@@ -96,16 +96,37 @@ impl Placement<'_> {
     }
 }
 
-/// Small strain `[xx, yy, zz, xy, yz, xz]` (engineering shear) from a deformation gradient.
-pub fn small_strain(f: &[[f64; 3]; 3]) -> [f64; 6] {
-    [
-        f[0][0] - 1.0,
-        f[1][1] - 1.0,
-        f[2][2] - 1.0,
-        f[0][1] + f[1][0],
-        f[1][2] + f[2][1],
-        f[0][2] + f[2][0],
-    ]
+/// The deformation gradient `F = I + h` of an integration point. It keeps the
+/// displacement gradient `h`, because `I + h` rounds away a normal strain smaller
+/// than the machine epsilon. Compute a strain from `h`, not from `f() - I`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Gradient {
+    /// The displacement gradient, `h[i][j] = d u_i / d X_j`.
+    pub h: [[f64; 3]; 3],
+}
+
+impl Gradient {
+    /// The deformation gradient `F = I + h`.
+    pub fn f(&self) -> [[f64; 3]; 3] {
+        let mut f = self.h;
+        for (i, fi) in f.iter_mut().enumerate() {
+            fi[i] += 1.0;
+        }
+        f
+    }
+
+    /// Small strain `[xx, yy, zz, xy, yz, xz]` (engineering shear).
+    pub fn small_strain(&self) -> [f64; 6] {
+        let h = &self.h;
+        [
+            h[0][0],
+            h[1][1],
+            h[2][2],
+            h[0][1] + h[1][0],
+            h[1][2] + h[2][1],
+            h[0][2] + h[2][0],
+        ]
+    }
 }
 
 /// Material law at an integration point. It is separate from the element and owns the
@@ -124,12 +145,12 @@ pub trait Material: Sync {
     }
 
     /// Stress `[xx, yy, zz, xy, yz, xz]` and the consistent tangent `d stress / d strain`
-    /// for the deformation gradient `f`. `old` is the committed state (`state_len`
+    /// for the deformation gradient `g`. `old` is the committed state (`state_len`
     /// numbers) and the call writes the trial state in `new`. An error means that the
     /// trial is not acceptable, and the step cuts the increment back.
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError>;
@@ -152,11 +173,11 @@ impl Elastic {
 impl Material for Elastic {
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         _old: &[f64],
         _new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let strain = small_strain(f);
+        let strain = g.small_strain();
         let mut stress = [0.0; 6];
         for (s, row) in stress.iter_mut().zip(&self.d) {
             *s = row.iter().zip(&strain).map(|(d, e)| d * e).sum();
@@ -500,12 +521,7 @@ struct Response {
 /// displacements, the incompatible part from the mode amplitudes. `eps` is the strain
 /// that the element feels (B-bar changes its volume part), and the gradient is
 /// corrected to carry the same volume strain.
-fn gradient<const M: usize>(
-    p: &Point<M>,
-    u: &[f64],
-    alpha: &[f64; 9],
-    eps: &[f64; 6],
-) -> [[f64; 3]; 3] {
+fn gradient<const M: usize>(p: &Point<M>, u: &[f64], alpha: &[f64; 9], eps: &[f64; 6]) -> Gradient {
     let mut h = [[0.0; 3]; 3];
     for a in 0..M / 3 {
         for (i, hi) in h.iter_mut().enumerate() {
@@ -524,11 +540,10 @@ fn gradient<const M: usize>(
         }
     }
     let shift = (eps[0] + eps[1] + eps[2] - (h[0][0] + h[1][1] + h[2][2])) / 3.0;
-    let mut f = h;
-    for (i, fi) in f.iter_mut().enumerate() {
-        fi[i] += 1.0 + shift;
+    for (i, hi) in h.iter_mut().enumerate() {
+        hi[i] += shift;
     }
-    f
+    Gradient { h }
 }
 
 fn run<const M: usize, Mt: Material + ?Sized>(
@@ -565,8 +580,8 @@ fn run<const M: usize, Mt: Material + ?Sized>(
             for (e, v) in eps.iter_mut().zip(ga) {
                 *e += v;
             }
-            let f = gradient(p, u, &alpha, &eps);
-            let (stress, c) = material.update(&f, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
+            let g = gradient(p, u, &alpha, &eps);
+            let (stress, c) = material.update(&g, &state.ip[i][..sl], &mut new_ip[i][..sl])?;
             resp[i] = Response { stress, tangent: c };
             if let Some(g) = &p.g {
                 // The size of the stress before the compatible strain and the mode strain

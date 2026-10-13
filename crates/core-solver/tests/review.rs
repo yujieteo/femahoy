@@ -5,7 +5,7 @@ mod common;
 
 use fh_core_solver::contribution::{Contribution, ContributionFactory};
 use fh_core_solver::element::{
-    evaluate, small_strain, Elastic, ElementState, Evaluation, Kind, Material, Placement,
+    evaluate, Elastic, ElementState, Evaluation, Gradient, Kind, Material, Placement,
 };
 use fh_core_solver::SolverError;
 use fh_core_solver::{
@@ -395,12 +395,12 @@ struct Cubic(Elastic);
 impl Material for Cubic {
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let strain = small_strain(f);
-        let (mut s, mut d) = self.0.update(f, old, new)?;
+        let strain = g.small_strain();
+        let (mut s, mut d) = self.0.update(g, old, new)?;
         let a = 2.0e6;
         let q: f64 = strain.iter().map(|e| e * e).sum();
         for i in 0..6 {

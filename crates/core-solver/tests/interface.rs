@@ -6,8 +6,7 @@ mod common;
 use std::sync::Mutex;
 
 use fh_core_solver::element::{
-    evaluate, pressure_load, small_strain, Elastic, ElementState, Evaluation, Kind, Material,
-    Placement,
+    evaluate, pressure_load, Elastic, ElementState, Evaluation, Gradient, Kind, Material, Placement,
 };
 use fh_core_solver::state::StateStore;
 use fh_core_solver::{
@@ -35,11 +34,11 @@ struct Probe(Mutex<Vec<[[f64; 3]; 3]>>);
 impl Material for Probe {
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         _old: &[f64],
         _new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        self.0.lock().unwrap().push(*f);
+        self.0.lock().unwrap().push(g.f());
         Ok(([0.0; 6], [[0.0; 6]; 6]))
     }
 }
@@ -84,17 +83,21 @@ fn the_material_gets_the_deformation_gradient_from_the_current_positions() {
 }
 
 #[test]
-fn elastic_has_no_state_and_small_strain_comes_from_f() {
+fn elastic_has_no_state_and_small_strain_comes_from_the_gradient() {
     let m = Elastic::new(1000.0, 0.3);
     assert_eq!(m.state_len(), 0);
     assert!(m.is_linear());
+    let g = Gradient {
+        h: [[0.001, 0.002, 0.0], [0.0, -0.002, 0.0], [0.0, 0.0, 0.0]],
+    };
     let f = [[1.001, 0.002, 0.0], [0.0, 0.998, 0.0], [0.0, 0.0, 1.0]];
-    let e = small_strain(&f);
+    assert_eq!(g.f(), f);
+    let e = g.small_strain();
     assert!((e[0] - 0.001).abs() < 1e-15);
     assert!((e[1] + 0.002).abs() < 1e-15);
     // Engineering shear: 2 * 0.5 * (0.002 + 0).
     assert!((e[3] - 0.002).abs() < 1e-15);
-    let (s, d) = m.update(&f, &[], &mut []).unwrap();
+    let (s, d) = m.update(&g, &[], &mut []).unwrap();
     for i in 0..6 {
         let want: f64 = (0..6).map(|j| d[i][j] * e[j]).sum();
         assert!((s[i] - want).abs() < 1e-12);
@@ -258,11 +261,11 @@ impl Material for Bilinear {
 
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let eps = small_strain(f);
+        let eps = g.small_strain();
         let e = (0..6).map(|i| C[i] * eps[i] * eps[i]).sum::<f64>().sqrt();
         if e - old[0] > self.max_jump {
             return Err(SolverError::new("the strain jump is too large"));
@@ -297,11 +300,11 @@ impl Material for ForcedNewton {
     }
     fn update(
         &self,
-        f: &[[f64; 3]; 3],
+        g: &Gradient,
         old: &[f64],
         new: &mut [f64],
     ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        self.0.update(f, old, new)
+        self.0.update(g, old, new)
     }
 }
 
