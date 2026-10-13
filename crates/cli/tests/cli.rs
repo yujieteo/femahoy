@@ -253,7 +253,7 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 fn validate_checks_each_quantity_against_the_meshes() {
     // The shipped cases pass (sets, steps and element types exist in every mesh).
     assert_eq!(fh(&["validate", "--root", &root()]).status.code(), Some(0));
-    let cases: [(&str, &str, &str, &str); 3] = [
+    let cases: [(&str, &str, &str, &str); 4] = [
         (
             "cantilever/case.toml",
             "set = \"tip\"",
@@ -271,6 +271,12 @@ fn validate_checks_each_quantity_against_the_meshes() {
             "[\"C3D8I\"]",
             "[\"C3D8\"]",
             "has element type C3D8I",
+        ),
+        (
+            "cantilever/case.toml",
+            "[\"C3D8I\"]",
+            "[\"C3D8I\", \"C3D10\"]",
+            "lists C3D10, but no mesh has that element type",
         ),
     ];
     for (i, (file, from, to, needle)) in cases.iter().enumerate() {

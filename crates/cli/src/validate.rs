@@ -154,6 +154,8 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
 /// parse, an element type that the case does not list, and a set or step that the mesh lacks.
 fn spec_problems(case: &Case) -> Vec<String> {
     let mut out = Vec::new();
+    // The element types of the meshes. `None` when a mesh does not parse.
+    let mut seen: Option<std::collections::HashSet<String>> = Some(Default::default());
     for mesh in &case.meshes {
         let name = mesh.display();
         let model = match std::fs::read_to_string(mesh)
@@ -163,9 +165,13 @@ fn spec_problems(case: &Case) -> Vec<String> {
             Ok(m) => m,
             Err(e) => {
                 out.push(format!("mesh {name}: {e}"));
+                seen = None;
                 continue;
             }
         };
+        if let Some(seen) = &mut seen {
+            seen.extend(model.elements.iter().map(|e| e.element_type.clone()));
+        }
         for el in &model.elements {
             if !case.element_types.contains(&el.element_type) {
                 out.push(format!(
@@ -197,6 +203,14 @@ fn spec_problems(case: &Case) -> Vec<String> {
                     q.step, r.name
                 ));
             }
+        }
+    }
+    // The case runs once for each listed type, thus each type needs a mesh.
+    for kind in &case.element_types {
+        if seen.as_ref().is_some_and(|s| !s.contains(kind)) {
+            out.push(format!(
+                "`element_types` lists {kind}, but no mesh has that element type"
+            ));
         }
     }
     out
