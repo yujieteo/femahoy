@@ -337,3 +337,20 @@ fn check_fails_when_a_fixture_directory_is_unreadable() {
     assert_eq!(code, Some(2), "{err}");
     assert!(err.contains("hidden"), "{err}");
 }
+
+#[test]
+fn convergence_checks_the_fixture_as_validate_does() {
+    let dir = copy_root("conv-spec");
+    let case = dir.join("validation/cases/cantilever");
+    let path = case.join("case.toml");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("[\"C3D8I\"]"));
+    std::fs::write(&path, text.replace("[\"C3D8I\"]", "[\"C3D8\"]")).unwrap();
+    for target in [case.clone(), dir.join("validation/cases")] {
+        let out = fh(&["validate", "--convergence", target.to_str().unwrap()]);
+        let err = text_of(out.stderr);
+        assert_eq!(out.status.code(), Some(1), "{}: {err}", target.display());
+        assert!(err.contains("has element type C3D8I"), "{err}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}

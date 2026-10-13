@@ -39,17 +39,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             return Ok(ExitCode::from(1));
         }
     };
-    let mut bad = false;
-    for case in &cases {
-        for problem in spec_problems(case) {
-            eprintln!(
-                "fh validate: {}: {problem}",
-                case.dir.join("case.toml").display()
-            );
-            bad = true;
-        }
-    }
-    if bad {
+    if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
     let solver = Subprocess::locate();
@@ -58,6 +48,21 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         .map(|c| (c, String::new(), run_case_with(c, &solver)))
         .collect();
     Ok(print_reports(&reports, reports.len()))
+}
+
+/// Print each problem of the fixtures of the cases. True when there is none.
+fn fixtures_ok(cases: &[Case]) -> bool {
+    let mut ok = true;
+    for case in cases {
+        for problem in spec_problems(case) {
+            eprintln!(
+                "fh validate: {}: {problem}",
+                case.dir.join("case.toml").display()
+            );
+            ok = false;
+        }
+    }
+    ok
 }
 
 /// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure.
@@ -121,6 +126,10 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
             return Ok(ExitCode::from(1));
         }
     };
+    // The same fixture checks as a validation run.
+    if !fixtures_ok(&cases) {
+        return Ok(ExitCode::from(1));
+    }
     let solver = Subprocess::locate();
     let mut reports: Vec<(&Case, String, Report)> = Vec::new();
     let mut skipped = Vec::new();
