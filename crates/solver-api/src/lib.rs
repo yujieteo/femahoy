@@ -594,6 +594,12 @@ fn prepare_run_dir(run_dir: &Path, restart: bool, inp: &Path) -> Result<PathBuf,
         if !marked {
             return fail("run folder has no earlier run to restart");
         }
+        // The summary marks a complete run. Only the restart can write a new one, so an old
+        // summary cannot pass as the result of the restart. The other files stay for the solver.
+        match fs::remove_file(dir.join(SUMMARY_FILE)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(err(e)),
+            _ => {}
+        }
         return Ok(dir);
     }
     if !empty && !marked {

@@ -275,6 +275,22 @@ fn stale_files_do_not_pass_a_new_run() {
 }
 
 #[test]
+fn stale_files_do_not_pass_a_restart() {
+    let dir = scratch("stale-restart");
+    let s = solver(&dir, GOOD);
+    let run = dir.join("run");
+    s.run(&dir.join("a.inp"), &run).unwrap();
+    // The restart prints the header and exits at once, so it writes no new summary.
+    let s2 = solver(&dir, "echo \"fh-solver-protocol 2\"");
+    let e = s2
+        .resume_with(&dir.join("a.inp"), &run, &CancelToken::new(), &mut |_| {})
+        .unwrap_err();
+    assert!(e.to_string().contains("summary.toon"), "{e}");
+    // The restart state and the earlier results stay for the solver.
+    assert!(run.join("restart.txt").is_file() && run.join("step-1.vtu").is_file());
+}
+
+#[test]
 fn run_folder_with_foreign_files_is_not_cleared() {
     let dir = scratch("foreign");
     let s = solver(&dir, GOOD);
