@@ -715,3 +715,26 @@ fn both_solvers_carry_a_load_so_small_that_its_square_is_0() {
         );
     }
 }
+
+#[test]
+fn a_very_long_or_a_very_short_link_keeps_its_equation() {
+    // The squared length overflows or underflows. The LINK lies along x, then along y.
+    for (node, c) in [("9,1e200,0,0\n", 0), ("9,1,1e-200,0\n", 1)] {
+        let model = cube(
+            node,
+            &format!(
+                "*MPC\nLINK,2,9\n*BOUNDARY\n{FIX}*STEP\n*STATIC\n*BOUNDARY\n9,1,3,0.1\n*END STEP\n"
+            ),
+        );
+        let sol = solve(&model).unwrap_or_else(|e| panic!("{node}: {e}"));
+        let u2 = u(&model, &sol, 0, 2);
+        assert!((u2[c] - 0.1).abs() < 1e-12, "{node}: u2 = {u2:?}");
+    }
+    // Finite coordinates, but the distance between them is not finite.
+    let model = cube(
+        "9,1.5e308,0,0\n10,-1.5e308,0,0\n",
+        &format!("*MPC\nLINK,9,10\n*BOUNDARY\n{FIX}*STEP\n*STATIC\n*END STEP\n"),
+    );
+    let e = solve(&model).unwrap_err().to_string();
+    assert!(e.contains("not finite"), "{e}");
+}
