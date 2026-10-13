@@ -108,7 +108,7 @@ impl Run {
             ("iterations", iterations.into()),
             ("wall_s", self.wall_s.into()),
         ];
-        let doc: Doc = start("fh.run", &self.header)
+        let doc: Doc = start("fh.run", &self.header, opts)
             .scalar("run_id", self.run_id.as_str())
             .scalar("solver", self.solver.as_str())
             .scalar("results", self.results.as_str())

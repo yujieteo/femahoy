@@ -2,7 +2,7 @@
 
 use crate::wrap::{Cell, Doc, Opts, Table};
 
-pub const VERSION: &str = "1.0.0";
+pub const VERSION: &str = "1.1.0";
 /// Rule R12: a `next` table has at most this many rows.
 pub const MAX_NEXT: usize = 3;
 
@@ -56,7 +56,7 @@ pub struct Header {
     pub status: Status,
 }
 
-pub(crate) fn start(schema: &str, h: &Header) -> Doc {
+pub(crate) fn start(schema: &str, h: &Header, opts: &Opts) -> Doc {
     Doc::new()
         .scalar("schema", schema)
         .scalar("version", VERSION)
@@ -64,6 +64,7 @@ pub(crate) fn start(schema: &str, h: &Header) -> Doc {
         .scalar("source_hash", h.source_hash.as_str())
         .scalar("units", h.units.as_str())
         .scalar("status", h.status.as_str())
+        .scalar("precision", opts.precision)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

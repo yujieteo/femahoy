@@ -1,6 +1,6 @@
 # femahoy: TOON Output Schema
 
-Status: agreed, version 1.0.0 of each schema. Implement in M1 (`fh`, `fh check`, `fh validate`) and later milestones (`fh run`, `fh results`, `fh solvers`).
+Status: agreed, version 1.1.0 of each schema. Implement in M1 (`fh`, `fh check`, `fh validate`) and later milestones (`fh run`, `fh results`, `fh solvers`).
 Scope: everything `fh` prints on stdout, and the summary file that subprocess solvers write.
 Rule source: our own rules, based on the AXI principles (Agent eXperience Interface, kunchenguid). Do not copy AXI text into the repo.
 
@@ -11,7 +11,7 @@ Rule source: our own rules, based on the AXI principles (Agent eXperience Interf
 | # | Rule |
 |---|---|
 | R1 | **Encoder.** Use the `toon-format` crate (MIT), pinned to an exact version, behind a wrapper in the `toon` crate. No other crate calls `toon-format` directly. |
-| R2 | **Header.** Every output starts with `schema`, `version`, `source`, `source_hash`, `units`, `status` (section 2.1). |
+| R2 | **Header.** Every output starts with `schema`, `version`, `source`, `source_hash`, `units`, `status`, `precision` (section 2.1). |
 | R3 | **TOON is not data.** TOON is for reading and decisions only. Validation, submodelling, plots, and the viewer read VTU files at full precision. Numbers have 4 significant figures by default. `--precision N` changes this. |
 | R4 | **Row limit.** A table shows at most 20 rows by default, ranked by the key stated for that table. `--rows N` changes the limit. No output prints per-node or per-element data for the whole model. |
 | R5 | **Field limit.** A table has at most 4 fields. This rule has no exceptions, including with `--full`. |
@@ -37,11 +37,12 @@ Rule source: our own rules, based on the AXI principles (Agent eXperience Interf
 
 ```toon
 schema: fh.check
-version: 1.0.0
+version: 1.1.0
 source: models/bracket.inp
 source_hash: 9f3c1a
 units: unspecified
 status: ok
+precision: 4
 ```
 
 | Key | Meaning |
@@ -52,6 +53,7 @@ status: ok
 | `source_hash` | Short content hash of `source`. An agent compares it to see whether a summary is out of date. |
 | `units` | Units as declared in the project, or `unspecified`. Abaqus-shaped input has no unit system. |
 | `status` | `ok`, `warning`, `error`, `running`, `failed` (meaning depends on the schema) |
+| `precision` | Significant figures of the numbers in this output (default 4, set by `--precision N`). TOON numbers are rounded. The exact values are in the VTU files (R3). Added in 1.1.0. |
 
 ### 2.2 Exit codes
 
@@ -109,11 +111,12 @@ Also the output of the `SessionStart` hook that `fh init` installs.
 
 ```toon
 schema: fh.status
-version: 1.0.0
+version: 1.1.0
 source: .
 source_hash: 4be0d1
 units: unspecified
 status: warning
+precision: 4
 totals:
   models: 2
   runs: 3
@@ -139,11 +142,12 @@ next[2]{cmd,why}:
 
 ```toon
 schema: fh.check
-version: 1.0.0
+version: 1.1.0
 source: models/bracket.inp
 source_hash: 9f3c1a
 units: unspecified
 status: error
+precision: 4
 totals:
   nodes: 48210
   elements: 30112
@@ -199,11 +203,12 @@ Pre-solve checks, reported as diagnostics:
 
 ```toon
 schema: fh.validate
-version: 1.0.0
+version: 1.1.0
 source: validation/cases
 source_hash: c01d9e
 units: unspecified
 status: failed
+precision: 4
 totals:
   cases: 13
   pass: 12
@@ -226,11 +231,12 @@ next[1]{cmd,why}:
 
 ```toon
 schema: fh.validate.case
-version: 1.0.0
+version: 1.1.0
 source: validation/cases/hertz-sphere
 source_hash: 5e2f10
 units: SI-mm
 status: failed
+precision: 4
 totals:
   quantities: 3
   fail: 1
@@ -254,11 +260,12 @@ Extra tables by class:
 
 ```toon
 schema: fh.run
-version: 1.0.0
+version: 1.1.0
 source: models/bracket.inp
 source_hash: 9f3c1a
 units: unspecified
 status: ok
+precision: 4
 run_id: r-0007
 solver: core
 results: results/bracket.pvd
@@ -316,11 +323,12 @@ No arguments:
 
 ```toon
 schema: fh.results
-version: 1.0.0
+version: 1.1.0
 source: results/bracket.pvd
 source_hash: 77ab02
 units: unspecified
 status: ok
+precision: 4
 at: integration_points
 totals:
   steps: 1
@@ -344,11 +352,12 @@ Query (`fh results --field S.MISES --set Part-1-1.ALL --step Step-1 --top 10`):
 
 ```toon
 schema: fh.results.query
-version: 1.0.0
+version: 1.1.0
 source: results/bracket.pvd
 source_hash: 77ab02
 units: unspecified
 status: ok
+precision: 4
 at: integration_points
 field: S.MISES
 set: Part-1-1.ALL
@@ -371,11 +380,12 @@ Flags: `--field`, `--set`, `--step`, `--top N`, `--bottom N`, `--at integration_
 
 ```toon
 schema: fh.solvers
-version: 1.0.0
+version: 1.1.0
 source: .
 source_hash: 4be0d1
 units: unspecified
 status: ok
+precision: 4
 totals:
   solvers: 2
   validated: 1

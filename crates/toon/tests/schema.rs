@@ -49,6 +49,7 @@ fn assert_rules(text: &str) {
         "source_hash",
         "units",
         "status",
+        "precision",
         "totals",
         "diagnostics",
         "next",
@@ -580,6 +581,21 @@ fn precision_sets_significant_figures() {
         })
         .unwrap();
     assert!(long.contains("wall_s: 123.4568\n"), "{long}");
+}
+
+#[test]
+fn header_states_precision_and_version() {
+    let r = sample_run();
+    let default = r.render(&Opts::default()).unwrap();
+    assert!(default.contains("version: 1.1.0\n"), "{default}");
+    assert!(default.contains("status: ok\nprecision: 4\n"), "{default}");
+    let long = r
+        .render(&Opts {
+            precision: 7,
+            ..Opts::default()
+        })
+        .unwrap();
+    assert!(long.contains("\nprecision: 7\n"), "{long}");
 }
 
 #[test]

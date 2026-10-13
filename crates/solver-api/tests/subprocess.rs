@@ -25,7 +25,7 @@ fn script(dir: &Path, body: &str) -> PathBuf {
     path
 }
 
-const SUMMARY: &str = "schema: fh.run\nversion: 1.0.0\nstatus: ok\n";
+const SUMMARY: &str = "schema: fh.run\nversion: 1.1.0\nstatus: ok\n";
 
 const GOOD: &str = r#"echo "fh-solver-protocol 2"
 echo "progress step=1/1 phase=solve fraction=0.5"
@@ -33,7 +33,7 @@ echo "restart restart.txt"
 echo '<VTKFile type="Collection"><Collection><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>' > results.pvd
 echo "<VTKFile/>" > step-1.vtu
 echo restart > restart.txt
-printf 'schema: fh.run\nversion: 1.0.0\nstatus: ok\n' > summary.toon"#;
+printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon"#;
 
 fn run(name: &str, body: &str) -> Result<RunReport, String> {
     let dir = scratch(name);

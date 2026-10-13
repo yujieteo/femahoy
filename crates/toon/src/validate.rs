@@ -52,7 +52,7 @@ impl Validate {
                 .cmp(&(b.status != CaseStatus::Fail))
                 .then_with(|| b.margin.total_cmp(&a.margin))
         });
-        let doc: Doc = start("fh.validate", &self.header).block("totals", totals);
+        let doc: Doc = start("fh.validate", &self.header, opts).block("totals", totals);
         let doc = tbl(
             doc,
             "cases",
@@ -124,7 +124,7 @@ impl ValidateCase {
             ("quantities", self.quantities.len().into()),
             ("fail", fails.into()),
         ];
-        let doc: Doc = start("fh.validate.case", &self.header).block("totals", totals);
+        let doc: Doc = start("fh.validate.case", &self.header, opts).block("totals", totals);
         let mut doc = tbl(
             doc,
             "quantities",

@@ -1,9 +1,10 @@
 schema: fh.validate.case
-version: 1.0.0
+version: 1.1.0
 source: validation/cases/hertz-sphere
 source_hash: 5e2f10
 units: SI-mm
 status: failed
+precision: 4
 totals:
   quantities: 3
   fail: 1
