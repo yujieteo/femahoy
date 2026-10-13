@@ -138,7 +138,14 @@ pub fn extract(grid: &Grid, q: &Quantity) -> Result<f64, String> {
     if picked.is_empty() {
         return Err(format!("set `{}` is empty", q.set));
     }
-    Ok(match q.op {
+    // f64::max and f64::min drop a NaN, so the check comes before the reduction.
+    if let Some(v) = picked.iter().find(|v| !v.is_finite()) {
+        return Err(format!(
+            "set `{}` has the value {v}, which is not finite",
+            q.set
+        ));
+    }
+    let value = match q.op {
         Op::Value if picked.len() == 1 => picked[0],
         Op::Value => {
             return Err(format!(
@@ -151,5 +158,49 @@ pub fn extract(grid: &Grid, q: &Quantity) -> Result<f64, String> {
         Op::Max => picked.iter().copied().fold(f64::NEG_INFINITY, f64::max),
         Op::Min => picked.iter().copied().fold(f64::INFINITY, f64::min),
         Op::Sum => picked.iter().sum(),
-    })
+    };
+    if !value.is_finite() {
+        return Err(format!("the {:?} of set `{}` is not finite", q.op, q.set));
+    }
+    Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A grid of points with a field U and a node set N, from the flags.
+    fn grid(u: Vec<f64>, flags: Vec<i32>) -> Grid {
+        Grid {
+            points: vec![[0.0; 3]; flags.len()],
+            point_data: vec![
+                fh_io::vtu::Field::f64("U", 3, u),
+                fh_io::vtu::Field::i32("NSET_N", flags),
+            ],
+            ..Grid::default()
+        }
+    }
+
+    fn ux(op: Op) -> Quantity {
+        Quantity {
+            set: "N".into(),
+            field: Field::U,
+            component: 1,
+            step: "LOAD".into(),
+            op,
+        }
+    }
+
+    #[test]
+    fn a_value_that_is_not_finite_is_an_error_for_every_op() {
+        let g = grid(vec![f64::NAN, 0.0, 0.0, 1.0, 0.0, 0.0], vec![1, 1]);
+        let passed: Vec<_> = [Op::Mean, Op::Max, Op::Min, Op::Sum]
+            .into_iter()
+            .filter_map(|op| extract(&g, &ux(op)).ok().map(|v| (op, v)))
+            .collect();
+        assert!(passed.is_empty(), "{passed:?}");
+        // Finite values with a sum that overflows.
+        let g = grid(vec![1e308, 0.0, 0.0, 1e308, 0.0, 0.0], vec![1, 1]);
+        assert!(extract(&g, &ux(Op::Sum)).is_err());
+    }
 }
