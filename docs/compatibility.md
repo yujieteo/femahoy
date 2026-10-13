@@ -44,3 +44,12 @@ M1 supports these keywords first:
 - `*EQUATION`
 - `*MPC`
 - `*DLOAD`
+
+## C3D8 mesh rule for bending
+
+C3D8 uses a B-bar formulation.
+With 1 element through the section, it is too soft in bending.
+Refinement along the beam alone does not remove this error.
+Use multiple elements through the section and check convergence.
+The C3D8 cantilever fixture uses 4 elements through each section axis.
+It checks axial refinement with the original beam reference and tolerances.
