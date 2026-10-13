@@ -1,11 +1,11 @@
 //! From gmsh to a solution: a block of 4 x 1 x 1 that gmsh meshes with extruded hexahedra
 //! (solved as C3D8) and with quadratic tetrahedra (C3D10). The test imports the .msh file,
 //! adds the material, the supports and the loads, solves, and compares the displacement of
-//! every node with the exact answer.
+//! every node and the resultant of the reactions with the exact answer.
 //!
 //! Both answers are polynomials that the elements hold exactly: a linear field (axial pull)
 //! for C3D8 and C3D10, and a quadratic field (pure bending) for C3D10. Thus the only error is
-//! rounding, and the tolerance is `TOL` of the largest displacement.
+//! rounding, and the tolerance is `TOL` of the largest displacement and of the resultant.
 //!
 //! Gmsh stays an external program (decision D-02). One test solves the stored meshes in
 //! `fixtures/msh`. The other test runs gmsh on the .geo scripts first, and it skips with a
@@ -24,7 +24,7 @@ const W: f64 = 1.0;
 const E: f64 = 1000.0;
 
 /// Relative tolerance. It covers only rounding: on the development machine the error is
-/// below 1e-13 of the largest displacement. The margin allows other machines and compilers.
+/// below 1e-13. The margin allows other machines and compilers.
 const TOL: f64 = 1e-9;
 
 fn fixture(name: &str) -> PathBuf {
@@ -76,13 +76,15 @@ const MATERIAL: &str = "*MATERIAL, NAME=M\n*ELASTIC\n1000., 0.\n\
 *SOLID SECTION, ELSET=BLOCK, MATERIAL=M\n*BOUNDARY\nFIX, 1, 3\n";
 
 /// Compare each node with `exact`. Returns the largest error, as a part of the largest
-/// displacement.
-fn compare(model: &Model, text: &str, exact: impl Fn([f64; 3]) -> [f64; 3]) -> f64 {
+/// displacement, and the position and the reaction force of each node of the mesh.
+type Reactions = Vec<([f64; 3], [f64; 3])>;
+fn compare(model: &Model, text: &str, exact: impl Fn([f64; 3]) -> [f64; 3]) -> (f64, Reactions) {
     let full = fh_inp::parse(text).unwrap_or_else(|e| panic!("{e}"));
     let s = solve(&full).unwrap_or_else(|e| panic!("{e}"));
-    let u = &s.steps.last().unwrap().displacement;
+    let r = s.steps.last().unwrap();
     let (mut err, mut max) = (0.0f64, 0.0f64);
-    for (n, ui) in full.nodes.iter().zip(u) {
+    let mut reactions = Vec::new();
+    for ((n, ui), rf) in full.nodes.iter().zip(&r.displacement).zip(&r.reaction) {
         if !model.nodes.iter().any(|m| m.id == n.id) {
             continue;
         }
@@ -91,13 +93,24 @@ fn compare(model: &Model, text: &str, exact: impl Fn([f64; 3]) -> [f64; 3]) -> f
             err = err.max((ui[d] - want[d]).abs());
             max = max.max(want[d].abs());
         }
+        reactions.push((n.xyz, *rf));
     }
-    err / max
+    (err / max, reactions)
+}
+
+/// The sum of `f(position) * reaction_x` over the nodes of the face x = `x`.
+fn face_sum(reactions: &Reactions, x: f64, f: impl Fn([f64; 3]) -> f64) -> f64 {
+    reactions
+        .iter()
+        .filter(|(p, _)| (p[0] - x).abs() < 1e-12)
+        .map(|(p, rf)| f(*p) * rf[0])
+        .sum()
 }
 
 /// The face x = 0 is fixed. The face x = L follows a reference node through a kinematic
 /// coupling, and a force F pulls the reference node along x. With Poisson's ratio 0 the
 /// exact answer is u_x = F x / (E W H), u_y = u_z = 0, and the tip moves F L / (E W H).
+/// The supports at x = 0 hold the force -F.
 fn axial(model: &Model, element_type: &str) -> f64 {
     let f = 10.0;
     let reference = model.nodes.iter().map(|n| n.id).max().unwrap() + 1;
@@ -115,13 +128,17 @@ fn axial(model: &Model, element_type: &str) -> f64 {
         (k * L - 0.04).abs() < 1e-15,
         "tip displacement F L / (E A) = 0.04"
     );
-    compare(model, &text, |p| [k * p[0], 0.0, 0.0])
+    let (err, reactions) = compare(model, &text, |p| [k * p[0], 0.0, 0.0]);
+    let held = face_sum(&reactions, 0.0, |_| 1.0);
+    err.max((held + f).abs() / f)
 }
 
 /// Pure bending: the face x = 0 is fixed, and each node of the face x = L gets
 /// u_x = -k L (y - H / 2). With Poisson's ratio 0 the exact answer is
 /// u_x = -k x (y - H / 2), u_y = k x^2 / 2, u_z = 0: the tip moves k L^2 / 2, as in beam
-/// theory. The field is quadratic, so C3D10 holds it exactly.
+/// theory. The field is quadratic, so C3D10 holds it exactly. The displacement does not
+/// depend on E, but the moment of the tip reactions does: the sum of
+/// reaction_x (y - H / 2) is -E I k, with I = W H^3 / 12.
 fn bending(model: &Model) -> f64 {
     let k = 0.01;
     let tip = &model.nsets.iter().find(|s| s.name == "TIP").unwrap().ids;
@@ -139,9 +156,12 @@ fn bending(model: &Model) -> f64 {
         (k * L * L / 2.0 - 0.08).abs() < 1e-15,
         "tip deflection k L^2 / 2 = 0.08"
     );
-    compare(model, &text, |p| {
+    let (err, reactions) = compare(model, &text, |p| {
         [-k * p[0] * (p[1] - H / 2.0), k * p[0] * p[0] / 2.0, 0.0]
-    })
+    });
+    let moment = -E * W * H.powi(3) / 12.0 * k;
+    let tip_moment = face_sum(&reactions, L, |p| p[1] - H / 2.0);
+    err.max((tip_moment - moment).abs() / moment.abs())
 }
 
 /// Solve both meshes and check the answers. The .msh texts come from gmsh.
@@ -155,7 +175,7 @@ fn check(hex_msh: &str, tet10_msh: &str) {
         ("C3D10 bending", bending(&tet)),
     ];
     eprintln!(
-        "{} hexahedra, {} tetrahedra; error / largest displacement: {errors:?}",
+        "{} hexahedra, {} tetrahedra; largest relative error (displacement or reaction): {errors:?}",
         hex.elements.len(),
         tet.elements.len()
     );
