@@ -178,6 +178,29 @@ impl FixtureReader<'_> {
         item.as_float()
             .or_else(|| item.as_integer().map(|i| i as f64))
             .ok_or_else(|| self.err(Some(item), format!("`{key}` must be a number")))
+            .and_then(|value| {
+                if value.is_finite() {
+                    Ok(value)
+                } else {
+                    Err(self.err(Some(item), format!("`{key}` must be finite")))
+                }
+            })
+    }
+
+    fn tolerance(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
+        let value = self.number(table, key)?;
+        if value < 0.0 {
+            return Err(self.err(table.get(key), format!("`{key}` must be non-negative")));
+        }
+        Ok(value)
+    }
+
+    fn ratio(&self, table: &Table) -> Result<f64, FixtureError> {
+        let value = self.number(table, "ratio")?;
+        if value <= 1.0 {
+            return Err(self.err(table.get("ratio"), "ratio must be above 1".into()));
+        }
+        Ok(value)
     }
 
     /// The `[quantity.<name>]` table of one reference.
@@ -399,6 +422,9 @@ impl FixtureReader<'_> {
                 .ok_or_else(|| {
                     self.err(Some(item), format!("reference `{name}` must be a number"))
                 })?;
+            if !value.is_finite() {
+                return Err(self.err(Some(item), format!("reference `{name}` must be finite")));
+            }
             references.push(Reference {
                 name: name.to_owned(),
                 value,
@@ -421,18 +447,18 @@ impl FixtureReader<'_> {
         let class_item = self.get(table, "class")?;
         let class = match class_name.as_str() {
             "L" => Class::L {
-                ratio: self.number(table, "ratio")?,
-                reference_error: self.number(table, "reference_error")?,
+                ratio: self.ratio(table)?,
+                reference_error: self.tolerance(table, "reference_error")?,
                 order_min: self.order(table, "order_min")?,
                 order_max: self.order(table, "order_max")?,
             },
             "N" => Class::N {
-                rel_tol: self.number(table, "rel_tol")?,
-                abs_tol: self.number(table, "abs_tol")?,
+                rel_tol: self.tolerance(table, "rel_tol")?,
+                abs_tol: self.tolerance(table, "abs_tol")?,
             },
             "R" => Class::R {
                 rate: self.number(table, "rate")?,
-                band: self.number(table, "band")?,
+                band: self.tolerance(table, "band")?,
             },
             other => {
                 return Err(self.err(
