@@ -40,32 +40,40 @@ fn check(grid: &Grid) -> Result<(), VtuError> {
                     f.name, f.components
                 ));
             }
-            if f.name.contains(char::is_whitespace) {
-                return bad(format!("field name `{}` has a space", f.name));
-            }
         }
     }
     Ok(())
 }
 
+/// A field name for the legacy format, where a space ends a name. A space, a `%`, a control
+/// character and a byte outside ASCII become `%XX`, the hexadecimal code of the byte. The VTK
+/// legacy reader decodes this form, so the name stays the same.
+fn encode(name: &str) -> String {
+    let mut s = String::with_capacity(name.len());
+    for b in name.bytes() {
+        if b.is_ascii_graphic() && b != b'%' {
+            s.push(char::from(b));
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
+}
+
 fn field(w: &mut impl Write, f: &Field) -> std::io::Result<()> {
+    let name = encode(&f.name);
     match &f.values {
         Values::I32(v) => {
-            writeln!(w, "SCALARS {} int 1\nLOOKUP_TABLE default", f.name)?;
+            writeln!(w, "SCALARS {name} int 1\nLOOKUP_TABLE default")?;
             for x in v {
                 writeln!(w, "{x}")?;
             }
         }
         Values::F64(v) => {
             match f.components {
-                1 => writeln!(w, "SCALARS {} double 1\nLOOKUP_TABLE default", f.name)?,
-                3 => writeln!(w, "VECTORS {} double", f.name)?,
-                c => writeln!(
-                    w,
-                    "FIELD FieldData 1\n{} {c} {} double",
-                    f.name,
-                    v.len() / c
-                )?,
+                1 => writeln!(w, "SCALARS {name} double 1\nLOOKUP_TABLE default")?,
+                3 => writeln!(w, "VECTORS {name} double")?,
+                c => writeln!(w, "FIELD FieldData 1\n{name} {c} {} double", v.len() / c)?,
             }
             for row in v.chunks(f.components) {
                 for (i, x) in row.iter().enumerate() {

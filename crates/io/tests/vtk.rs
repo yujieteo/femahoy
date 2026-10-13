@@ -87,3 +87,13 @@ fn a_field_of_the_wrong_length_is_refused() {
     let mut out = Vec::new();
     assert!(write_vtk_to(&g, "t", &mut out).is_err());
 }
+
+#[test]
+fn a_field_name_with_a_space_or_a_percent_sign_is_encoded() {
+    let mut g = cube();
+    g.point_data.push(Field::i32("NSET_FIXED FACE", vec![1; 8]));
+    g.cell_data.push(Field::f64("100% load\ttab", 1, vec![0.0]));
+    let t = text(&g);
+    assert!(t.contains("SCALARS NSET_FIXED%20FACE int 1\n"), "{t}");
+    assert!(t.contains("SCALARS 100%25%20load%09tab double 1\n"), "{t}");
+}

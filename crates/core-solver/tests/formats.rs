@@ -202,3 +202,20 @@ fn the_executable_takes_a_formats_option() {
     assert!(!d.join("step-1.txt").exists());
     assert_eq!(status(&["--formats", "hdf5"]), Some(2));
 }
+
+#[test]
+fn a_set_name_with_a_space_is_kept_in_the_vtu_and_encoded_in_the_vtk() {
+    let d = dir("space");
+    let model = fh_inp::parse(&fixture().replace("fixed", "fixed face")).unwrap();
+    let input = Input {
+        name: "input.inp",
+        hash: 1,
+    };
+    let options = Options::default();
+    run_model(&model, &input, &d, &options, false, &mut |_| {}, &|| false)
+        .unwrap_or_else(|e| panic!("{e}"));
+    let grid = read_vtu(&fs::read(d.join("step-1.vtu")).unwrap()).unwrap();
+    assert!(grid.point_field("NSET_FIXED FACE").is_some());
+    let vtk = fs::read_to_string(d.join("step-1.vtk")).unwrap();
+    assert!(vtk.contains("SCALARS NSET_FIXED%20FACE int 1\n"));
+}
