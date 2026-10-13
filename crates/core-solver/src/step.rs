@@ -217,8 +217,14 @@ fn for_elements<S: Sync>(
     Ok(())
 }
 
+/// The Euclidean norm. The values are divided by the largest one first, so that the squares
+/// cannot overflow: the norm of a finite vector is finite. A NaN gives NaN.
 fn norm(v: &[f64]) -> f64 {
-    v.iter().map(|x| x * x).sum::<f64>().sqrt()
+    let m = v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+    if m == 0.0 || m.is_infinite() {
+        return m;
+    }
+    m * v.iter().map(|x| (x / m) * (x / m)).sum::<f64>().sqrt()
 }
 
 /// A result with a value that is not finite is not a solution. The residual test does not
@@ -1016,9 +1022,10 @@ impl Run<'_> {
             let size = norm(&r);
             let scale = norm(&c.t.reduce(&sweep.fabs)).max(norm(&c.t.reduce(&f_ext)));
             let residual = if scale > 0.0 { size / scale } else { size };
-            if size.is_nan() {
+            // An infinite residual and scale would pass the test below as inf <= inf.
+            if !size.is_finite() || !scale.is_finite() {
                 return Err(Fail::Reject(SolverError::new(
-                    "the residual is not a number",
+                    "the residual or the force scale is not finite",
                 )));
             }
             if size <= opts.newton_tolerance * scale + 1e-30 {

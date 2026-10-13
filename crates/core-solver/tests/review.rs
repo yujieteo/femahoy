@@ -3,6 +3,7 @@
 
 mod common;
 
+use fh_core_solver::contribution::{Contribution, ContributionFactory};
 use fh_core_solver::element::{
     evaluate, small_strain, Elastic, ElementState, Evaluation, Kind, Material, Placement,
 };
@@ -579,4 +580,51 @@ fn a_result_that_is_not_finite_is_an_error_also_without_free_dofs() {
         ),
         Err(e) => assert!(e.to_string().contains("not finite"), "{e}"),
     }
+}
+
+/// A linear spring in x from node 2 to the ground. It makes the solver use Newton.
+struct Spring;
+
+impl Contribution for Spring {
+    fn name(&self) -> &str {
+        "spring"
+    }
+
+    fn groups(&self) -> Vec<Vec<u32>> {
+        vec![vec![2]]
+    }
+
+    fn evaluate(
+        &self,
+        _group: usize,
+        place: &Placement,
+        _old: &[f64],
+        out: &mut Evaluation,
+        tangent: bool,
+    ) -> Result<(), SolverError> {
+        out.fint[0] = place.disp[0];
+        out.fabs[0] = place.disp[0].abs();
+        if tangent {
+            out.k[0][0] = 1.0;
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn newton_does_not_accept_zero_displacement_under_a_large_force() {
+    // The squares of 1e200 overflow. An infinite residual then passed the test inf <= inf.
+    let model = cube(
+        "",
+        &format!("*STEP\n*STATIC\n*BOUNDARY\n{FIX}*CLOAD\n2,1,1e200\n*END STEP\n"),
+    );
+    let options = Options {
+        contributions: Some(ContributionFactory::new(|_| {
+            Ok(vec![Box::new(Spring) as Box<dyn Contribution>])
+        })),
+        ..Options::default()
+    };
+    let sol = solve_options(&model, &options).unwrap();
+    let x = u(&model, &sol, 0, 2)[0];
+    assert!(x > 1e190 && x.is_finite(), "u2x = {x}");
 }
