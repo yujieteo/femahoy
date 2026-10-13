@@ -33,7 +33,7 @@ fn stderr(out: &Output) -> String {
 
 /// The gmsh program that the real test uses, or `None` when it is not installed.
 fn real_gmsh() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("FH_GMSH") {
+    if let Some(p) = std::env::var_os("FH_GMSH").filter(|p| !p.is_empty()) {
         return Some(p.into());
     }
     let path = std::env::var_os("PATH")?;
