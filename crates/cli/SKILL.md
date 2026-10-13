@@ -1,33 +1,49 @@
 # cli skill
 
 ## Purpose
-- The `fh` command line. It works alone over SSH and tmux, with no GUI (DESIGN.md section 3).
-- It talks to a running daemon. It runs the solver directly when no daemon runs (DESIGN.md section 4.2).
-- Licence role: app. Line budget: 3k, tests included (DESIGN.md section 11).
+
+The `fh` binary checks models, runs external gmsh, checks units and meshes, and runs validation cases.
 
 ## Inputs and outputs
-- Input: command line arguments.
-- Implemented commands: `check`, `validate` (`fh validate [--root DIR] [--convergence PATH]`; fixture schema in `crates/validation/SCHEMA.md`), `info` (`fh info FILE.step|FILE.msh [--case DIR]`; unit and mesh checks, D-18).
-- Planned commands: `results`, `plot`, `serve`, `init`, `team`, `skills` (DESIGN.md sections 5 to 8).
-- `fh check <file.inp>` parses and checks a model. It prints a TOON summary (DESIGN.md section 6.1).
-- `fh results` prints TOON summaries. `fh plot` writes images (DESIGN.md section 8).
-- M0: `fh --help` works (DESIGN.md section 13). The exact help text is not yet decided.
-- Output format for each command beyond M0: not yet decided.
+
+- `fh check [--root DIR] [FILE.inp...]` prints text counts and errors, not TOON.
+- Without file arguments, `check` reads `.inp` files under `fixtures/` and `validation/cases/`.
+- `fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2]` writes MSH 4.1 ASCII.
+- Mesh options include `--size H`, `--scale S`, repeated `--set NAME=VALUE`, `--units SI-mm|SI-m`, `--timeout SECONDS`, and `--gmsh PATH`.
+- Mesh defaults are order 2, SI-mm, 300 seconds and the input path with a `.msh` extension.
+- `fh info FILE.step|FILE.msh [--case DIR]` also accepts `.stp`. It prints text.
+- STEP checks report units. With `--case`, they refuse a mismatch against `case.toml`.
+- MSH checks report counts, bounds, volume and minimum scaled Jacobian. They refuse empty solid meshes and nonpositive corner Jacobians.
+- `fh validate [--root DIR] [--convergence PATH]` uses `FH_SOLVE` or the adjacent `fh-solve` binary.
 
 ## Invariants the code must keep
+
+- `.geo` checks refuse `SystemCall`, `NonBlockingSystemCall`, `OnelabRun`, `Include`, and `Merge` without a plain `.msh` filename.
+- STEP mesh checks refuse missing, mixed or mismatched length units.
+- gmsh must be at least 4.8. The tested release line is 4.15.
+- Mesh runs fail on gmsh errors, timeout, unreadable output or output without supported volume elements.
+- `results`, `plot`, `serve`, `init`, `team` and `skills` are not implemented.
 - The binary is `fh`. Never `fea` (CLAUDE.md).
 - Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
-- The line budget is 3k lines, tests included (DESIGN.md section 11).
+- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
+
+- Do not describe planned commands as available. Do not imply that `mesh` checks Jacobian quality. Use `info` for that check.
 - Name the binary `fea`.
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 - Require a GUI for any command (DESIGN.md section 3).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
-- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
-- Command-level tests: not yet decided.
+
+Run `cargo check -p fh-cli` and `cargo test -p fh-cli`. `fh --help` lists available commands.
 
 ## Examples
-- `fh --help` prints the usage (DESIGN.md section 13, M0).
-- `fh check <file.inp>` checks a model and prints a TOON summary (DESIGN.md section 6.1).
+
+```sh
+fh check --root .
+fh mesh part.step --units SI-mm --order 2 -o part.msh
+fh info part.step --case validation/cases/cantilever
+fh info part.msh --case validation/cases/cantilever
+fh validate --root .
+```

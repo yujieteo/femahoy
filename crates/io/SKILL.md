@@ -1,29 +1,37 @@
 # io skill
 
 ## Purpose
-- gmsh `.msh` import. VTU and PVD write and read (DESIGN.md sections 6.2, 8 and 11).
-- Licence role: open API. Line budget: 5k, tests included (DESIGN.md section 11).
+
+Read gmsh meshes, scan STEP units, check mesh quality, and read or write result files.
 
 ## Inputs and outputs
-- Input: `.msh` files from gmsh, and `.inp` meshes from other tools (DESIGN.md section 6.2).
-- Output: one VTU file per step, plus one PVD collection file (DESIGN.md section 8).
-- ParaView opens the PVD file directly (DESIGN.md section 8).
+
+- `read_msh` accepts MSH 4.1 ASCII and returns `fh_inp::Model`.
+- Imported volume types are gmsh 5 (`C3D8I`) and 11 (`C3D10`).
+- `step_length_unit` scans text. `mesh_stats` reports bounds, volume, element counts and corner Jacobian quality.
+- `vtu` reads and writes VTU/PVD. `vtk` writes legacy VTK.
 
 ## Invariants the code must keep
-- Binary data is appended raw. Sets are stored as integer arrays (DESIGN.md section 8).
+
+- gmsh remains an external program.
+- VTU uses appended raw data with little-endian `UInt32` byte counts.
+- Float64 arrays hold fields. Int32 arrays hold sets and IDs.
+- STEP unit errors distinguish missing records from conflicting records.
 - Read and write run in Rust. No C library is used (DESIGN.md section 8).
-- The wasm viewer and the submodel interpolation read the same files (DESIGN.md section 8).
 - Line budget: 5k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
+
+- Do not imply that the STEP scanner imports geometry or that the mesh reader creates material and load definitions.
 - Link gmsh. gmsh is GPL. femahoy calls it only as an external program (DESIGN.md sections 6.2 and 11.1).
 - Bundle gmsh. The user installs gmsh (DESIGN.md section 6.2).
-- Add a mesher to this crate. femahoy has no mesher of its own (DESIGN.md section 6.2).
+- Add a mesher to this crate (DESIGN.md section 6.2).
 - Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
-- M1 done-when: `fh check` works on all fixtures, including the gmsh import (DESIGN.md section 13).
-- The M0 gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, and the `tokei` budget check (AGENTS.md section 6).
+
+Run `cargo check -p fh-io` and `cargo test -p fh-io`. Use `fh info` to check units and mesh quality.
 
 ## Examples
-- Not yet decided.
+
+`fh info part.msh` reports mesh quality. `fh info part.step --case validation/cases/cantilever` checks declared units.
