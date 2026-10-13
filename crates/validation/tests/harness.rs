@@ -376,6 +376,56 @@ fn schema_rejects_bad_fixtures_with_a_reason_and_a_line_when_known() {
 }
 
 #[test]
+fn schema_preserves_string_errors_and_class_error_order() {
+    let dir = tmp("reader-errors");
+    let valid = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0");
+    let cases = [
+        (
+            "set = \"s\"",
+            "set = 1",
+            "`set` must be a non-empty string",
+            Some(14),
+        ),
+        (
+            "field = \"U\"",
+            "field = \"\"",
+            "`field` must be a non-empty string",
+            Some(15),
+        ),
+        (
+            "op = \"mean\"",
+            "op = false",
+            "`op` must be a non-empty string",
+            Some(18),
+        ),
+        (
+            "class = \"N\"",
+            "class = \"\"",
+            "`class` must be a non-empty string",
+            Some(7),
+        ),
+        (
+            "class = \"N\"",
+            "class = \"Z\"",
+            "unknown class `Z`, expected L, N or R",
+            Some(7),
+        ),
+        (
+            "class = \"N\"",
+            "class = \"L\"",
+            "`rel_tol` does not belong to class L",
+            Some(8),
+        ),
+    ];
+    for (index, (old, new, message, line)) in cases.iter().enumerate() {
+        let error =
+            write_case(&dir.join(format!("c{index}")), &valid.replace(old, new)).unwrap_err();
+        assert_eq!(error.message, *message);
+        assert_eq!(error.line, *line);
+    }
+}
+
+#[test]
 fn shipped_cases_load_and_have_existing_inputs() {
     let cases = load_all(&root()).unwrap();
     let ids: Vec<_> = cases.iter().map(|c| c.id.as_str()).collect();
