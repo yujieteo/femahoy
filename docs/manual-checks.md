@@ -1,0 +1,71 @@
+# Manual platform checks
+
+GitHub Actions keeps the existing x86-64 Linux checks. It runs no macOS job, release build, emulator, memory test or convergence check.
+Run the scripts below from any directory. Each script uses the repository root and exits non-zero on a failure.
+
+## Apple Silicon macOS
+
+Install Rust with Cargo, rustfmt and clippy. Install the `aarch64-apple-darwin` Rust target.
+Install Python with build123d and a separate gmsh executable as described in [the CAD recipe](cad-recipe.md).
+The script does not install these tools.
+
+```sh
+rustup component add rustfmt clippy
+rustup target add aarch64-apple-darwin
+scripts/check-mac-e2e.sh
+```
+
+Set `PYTHON` to the Python executable of your build123d environment if necessary.
+Set `FH_GMSH` to a gmsh executable outside `PATH` if necessary.
+
+```sh
+PYTHON=/path/to/venv/bin/python FH_GMSH=/path/to/gmsh scripts/check-mac-e2e.sh
+```
+
+The script requires Apple Silicon macOS. It prints a short pass or fail table and stops at the first failure.
+It keeps logs, build files, the CAD mesh and results in the temporary directory that it prints.
+Remove that directory when you no longer need the evidence.
+
+The checks include:
+
+- Format, clippy and workspace tests for the aarch64 target.
+- Release builds of `fh` and `fh-solve`.
+- `fh validate` and `fh validate --convergence validation/cases` on the supplied cases.
+- The existing build123d bar recipe, STEP unit check, `fh mesh` and mesh quality check.
+- Separate solves of the patch-test, cantilever and coarse Lamé `.inp` fixtures, with stdin open until each solver exits.
+- Result status, PVD datasets, VTU mesh counts and field names, and nonempty text results.
+
+**Known gap:** the CAD mesh does not supply the solver input.
+The `.inp` fixtures supply separate models. The script states this gap in its output.
+These checks do not prove a complete CAD-to-solver path or the accuracy of a new CAD model.
+The validation cases check numerical results against their references.
+
+## x86-64 Linux without AVX
+
+Use an x86-64 Linux host with Cargo, a C compiler and `qemu-x86_64` user-mode emulation.
+On Ubuntu, install QEMU and the compiler with `sudo apt-get install qemu-user build-essential`.
+The Rust target is `x86_64-unknown-linux-gnu`.
+
+```sh
+rustup target add x86_64-unknown-linux-gnu
+scripts/check-no-avx.sh
+```
+
+The script first runs an AVX instruction under QEMU with the Nehalem CPU model.
+This probe must fail with SIGILL (exit code 132). A different exit code stops the check.
+Then the script builds release `fh` and `fh-solve` with these flags:
+
+```text
+-C target-cpu=x86-64 -C target-feature=+sse4.2,-avx,-avx2
+```
+
+It runs `fh validate` and every solver subprocess under the same Nehalem model.
+An illegal instruction or a failed validation case makes the script fail.
+The build uses a new temporary directory. The script removes that directory when it exits.
+
+On a Mac, use an amd64 Linux container with these tools and mount the repository inside it.
+Run the same script inside the container. The script does not install or start a container.
+
+Neither script measures the 1-million-element memory target. The Mac script includes the existing tests of results across thread counts.
+The full E3 byte comparison at 1, 2, 4 and 6 threads remains unchecked.
+The full CAD-to-solver path and the record of external CPU requirements also remain future manual work.
