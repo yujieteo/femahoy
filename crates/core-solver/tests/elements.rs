@@ -373,6 +373,22 @@ fn a_bad_pressure_input_is_an_error_not_a_panic() {
     assert!(bad.is_empty(), "{bad:#?}");
 }
 
+#[test]
+fn a_curved_tet_has_its_exact_volume() {
+    // Map the unit tet with x -> x + x² in each direction. The determinant is
+    // (1 + 2r)(1 + 2s)(1 + 2t), and its integral over the unit tet is 19/36.
+    let c: Vec<[f64; 3]> = tet([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        .into_iter()
+        .map(|p| p.map(|x| x + x * x))
+        .collect();
+    let v = volume(Kind::C3D10, &c).unwrap();
+    assert!(
+        (v - 19.0 / 36.0).abs() < 1e-14,
+        "volume {v}, exact {}",
+        19.0 / 36.0
+    );
+}
+
 /// A material that keeps 9 state numbers. The element keeps at most 8.
 struct NineStates;
 

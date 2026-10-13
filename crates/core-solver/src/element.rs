@@ -757,7 +757,29 @@ pub fn stiffness(
 pub fn volume(kind: Kind, coords: &[[f64; 3]]) -> Result<f64, SolverError> {
     check_nodes(kind, coords)?;
     Ok(match kind {
-        Kind::C3D10 => tet10_points(coords)?.iter().map(|p| p.w).sum(),
+        Kind::C3D10 => {
+            // The points of the stiffness check the element. The determinant of a curved
+            // C3D10 has degree 3, and the stiffness rule is exact only to degree 2. This
+            // 5-point rule is exact to degree 3: the centre with weight -4/5 and 4 points
+            // with weight 9/20, each times the reference volume 1/6.
+            tet10_points(coords)?;
+            let (a, b) = (0.5, 1.0 / 6.0);
+            let mut v = 0.0;
+            for (l, w) in [
+                ([0.25; 4], -0.8),
+                ([a, b, b, b], 0.45),
+                ([b, a, b, b], 0.45),
+                ([b, b, a, b], 0.45),
+                ([b, b, b, a], 0.45),
+            ] {
+                let (jinv, det) = inv3(&jacobian(coords, &tet_dn(l)));
+                check_det(det, &jinv, Kind::C3D10)?;
+                v += w * det / 6.0;
+            }
+            v
+        }
+        // The determinant of a hex8 has degree 2 in each direction. The 2-point rule is
+        // exact to degree 3.
         _ => hex8_points(kind, coords)?.iter().map(|p| p.w).sum(),
     })
 }
