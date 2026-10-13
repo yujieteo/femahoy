@@ -1,5 +1,4 @@
 use std::process::{Command, Output};
-
 const PLANNED: [&str; 6] = ["results", "plot", "serve", "init", "team", "skills"];
 
 fn solver_path() -> std::path::PathBuf {
