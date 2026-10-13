@@ -526,7 +526,12 @@ impl SubprocessSolver {
         while let Ok(line) = rx.recv_timeout(Duration::from_millis(200)) {
             let line = line?;
             if !header_seen {
-                header_seen = line == PROTOCOL_HEADER;
+                // The first line decides, as in the loop above. After a wrong first line
+                // the other lines are not events, and the checks below give the error.
+                if line != PROTOCOL_HEADER {
+                    break;
+                }
+                header_seen = true;
                 continue;
             }
             let event = Event::parse(&line);

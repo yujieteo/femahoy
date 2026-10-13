@@ -320,15 +320,25 @@ fn kill_group(pid: &str) {
         .status();
 }
 
+/// Shell lines that start `perl -e <code>` as the leader of its own process group, then wait
+/// until it is. The kill of the solver tree misses that process, and it keeps the stdout pipe.
+/// The code gets the pid of the solver in `$ENV{P}`. It must not contain a single quote.
+fn detached(dir: &Path, code: &str) -> String {
+    format!(
+        "P=$$ perl -e 'setpgrp(0, 0); open(my $f, \">\", \"{d}/detached\"); close($f); {code}' &\n\
+echo $! > {d}/detached.pid\n\
+while [ ! -e {d}/detached ]; do sleep 0.01; done",
+        d = dir.display()
+    )
+}
+
 #[test]
 fn a_process_outside_the_tree_cannot_hold_the_run_past_the_time_limit() {
     let dir = scratch("stray");
-    // The stray process leads its own process group, so the kill of the tree misses it.
-    // It keeps the stdout pipe and writes without end after the solver exits.
-    let stray = format!(
-        "perl -e 'setpgrp(0, 0); $| = 1; while (1) {{ print \"stray\\n\"; \
-select(undef, undef, undef, 0.05) }}' &\necho $! > {}/stray.pid",
-        dir.display()
+    // The stray process writes without end after the solver exits.
+    let stray = detached(
+        &dir,
+        "$| = 1; while (1) { print \"stray\\n\"; select(undef, undef, undef, 0.05) }",
     );
     let mut s = solver(&dir, &GOOD.replacen('\n', &format!("\n{stray}\n"), 1));
     s.timeout = Duration::from_secs(2);
@@ -339,12 +349,36 @@ select(undef, undef, undef, 0.05) }}' &\necho $! > {}/stray.pid",
     });
     let result = rx.recv_timeout(Duration::from_secs(10));
     // The end of the stray process also ends a run that waits for the pipe.
-    let pid = fs::read_to_string(dir.join("stray.pid")).unwrap_or_default();
+    let pid = fs::read_to_string(dir.join("detached.pid")).unwrap_or_default();
     kill_group(pid.trim());
     let e = result
         .expect("the run did not end at the time limit")
         .unwrap_err();
     assert!(e.to_string().contains("time limit"), "{e}");
+}
+
+#[test]
+fn a_wrong_first_line_after_the_exit_is_also_an_error() {
+    let dir = scratch("late-header");
+    // The process outside the tree writes the first stdout lines 50 ms after the solver
+    // exits, so the runner reads them in its last read. The solver writes no stdout.
+    let late = detached(
+        &dir,
+        "for (1..500) { last if getppid() != $ENV{P}; select(undef, undef, undef, 0.01) } \
+select(undef, undef, undef, 0.05); print \"hello\\nfh-solver-protocol 2\\n\"",
+    );
+    let files: Vec<&str> = GOOD.lines().filter(|l| l.contains(" > ")).collect();
+    let s = solver(&dir, &format!("{late}\n{}", files.join("\n")));
+    let r = s.run(&dir.join("a.inp"), &dir.join("run")).map(|_| ());
+    let pid = fs::read_to_string(dir.join("detached.pid")).unwrap_or_default();
+    kill_group(pid.trim());
+    let log = fs::read_to_string(dir.join("run/stdout.txt")).unwrap();
+    assert!(
+        log.starts_with("hello\n"),
+        "the last read did not see the lines: {log:?}"
+    );
+    let e = r.unwrap_err();
+    assert!(e.to_string().contains("does not speak protocol v2"), "{e}");
 }
 
 #[test]
