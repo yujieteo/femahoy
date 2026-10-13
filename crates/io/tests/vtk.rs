@@ -1,7 +1,7 @@
 //! Legacy VTK (ASCII unstructured grid) writer.
 
 use fh_io::vtk::write_vtk_to;
-use fh_io::vtu::{Field, Grid, VTK_HEXAHEDRON};
+use fh_io::vtu::{Field, Grid, Values, VTK_HEXAHEDRON};
 
 fn cube() -> Grid {
     let mut points = Vec::new();
@@ -112,4 +112,19 @@ fn a_cell_with_a_point_that_does_not_exist_is_refused() {
     g.cells[0][0] = 999;
     let mut out = Vec::new();
     assert!(write_vtk_to(&g, "t", &mut out).is_err());
+}
+
+#[test]
+fn an_integer_field_keeps_its_component_count() {
+    let mut g = cube();
+    g.point_data.push(Field {
+        name: "pairs".into(),
+        components: 2,
+        values: Values::I32((0..16).collect()),
+    });
+    let t = text(&g);
+    assert!(
+        t.contains("FIELD FieldData 1\npairs 2 8 int\n0 1\n2 3\n"),
+        "{t}"
+    );
 }

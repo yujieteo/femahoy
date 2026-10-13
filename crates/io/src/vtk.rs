@@ -61,33 +61,41 @@ fn encode(name: &str) -> String {
     s
 }
 
-fn field(w: &mut impl Write, f: &Field) -> std::io::Result<()> {
-    let name = encode(&f.name);
-    match &f.values {
-        Values::I32(v) => {
-            writeln!(w, "SCALARS {name} int 1\nLOOKUP_TABLE default")?;
-            for x in v {
-                writeln!(w, "{x}")?;
+/// One line for each point or cell, with its `c` values.
+fn rows<T: Copy, W: Write>(
+    w: &mut W,
+    v: &[T],
+    c: usize,
+    mut one: impl FnMut(&mut W, T) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    for row in v.chunks(c) {
+        for (i, x) in row.iter().enumerate() {
+            if i > 0 {
+                w.write_all(b" ")?;
             }
+            one(w, *x)?;
         }
-        Values::F64(v) => {
-            match f.components {
-                1 => writeln!(w, "SCALARS {name} double 1\nLOOKUP_TABLE default")?,
-                3 => writeln!(w, "VECTORS {name} double")?,
-                c => writeln!(w, "FIELD FieldData 1\n{name} {c} {} double", v.len() / c)?,
-            }
-            for row in v.chunks(f.components) {
-                for (i, x) in row.iter().enumerate() {
-                    if i > 0 {
-                        w.write_all(b" ")?;
-                    }
-                    real(w, *x)?;
-                }
-                w.write_all(b"\n")?;
-            }
-        }
+        w.write_all(b"\n")?;
     }
     Ok(())
+}
+
+fn field(w: &mut impl Write, f: &Field) -> std::io::Result<()> {
+    let name = encode(&f.name);
+    let (kind, len) = match &f.values {
+        Values::I32(v) => ("int", v.len()),
+        Values::F64(v) => ("double", v.len()),
+    };
+    // A FIELD array keeps any component count.
+    match (f.components, kind) {
+        (1, _) => writeln!(w, "SCALARS {name} {kind} 1\nLOOKUP_TABLE default")?,
+        (3, "double") => writeln!(w, "VECTORS {name} double")?,
+        (c, _) => writeln!(w, "FIELD FieldData 1\n{name} {c} {} {kind}", len / c)?,
+    }
+    match &f.values {
+        Values::I32(v) => rows(w, v, f.components, |w, x| write!(w, "{x}")),
+        Values::F64(v) => rows(w, v, f.components, real),
+    }
 }
 
 /// Write `grid` as a legacy VTK file. `title` is the second line of the file (at most 255
