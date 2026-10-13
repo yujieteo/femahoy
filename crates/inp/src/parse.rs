@@ -772,6 +772,9 @@ impl Parser {
 
     fn end_step(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
+        if let Some(d) = b.data.first() {
+            return Err(b.error(d.line, "keyword takes no data lines"));
+        }
         let step = self
             .open_step
             .take()
@@ -816,6 +819,14 @@ mod tests {
                 "{k}"
             );
         }
+    }
+
+    #[test]
+    fn a_data_line_after_end_step_is_an_error() {
+        assert_eq!(
+            err("*STEP\n*STATIC\n*END STEP\n99,unsupported\n"),
+            "line 4, *END STEP: keyword takes no data lines"
+        );
     }
 
     #[test]
