@@ -330,15 +330,24 @@ struct Header {
     offset: usize,
 }
 
+/// The appended data ends with this text, right after the last block.
+const FOOTER: &[u8] = b"\n</AppendedData>";
+
+/// The end of the block of one array in the appended data.
+fn block_end(data: &[u8], h: &Header) -> Result<usize, VtuError> {
+    let outside = || VtuError(format!("array {} lies outside the file", h.name));
+    let start = h.offset.checked_add(4).ok_or_else(outside)?;
+    let head = data.get(h.offset..start).ok_or_else(outside)?;
+    let len = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
+    start
+        .checked_add(len)
+        .filter(|end| *end <= data.len())
+        .ok_or_else(|| VtuError(format!("array {} is cut short", h.name)))
+}
+
 /// Read the block of one array from the appended data.
 fn block(data: &[u8], h: &Header) -> Result<Vec<u8>, VtuError> {
-    let head = data
-        .get(h.offset..h.offset + 4)
-        .ok_or_else(|| VtuError(format!("array {} lies outside the file", h.name)))?;
-    let len = u32::from_le_bytes([head[0], head[1], head[2], head[3]]) as usize;
-    data.get(h.offset + 4..h.offset + 4 + len)
-        .map(<[u8]>::to_vec)
-        .ok_or_else(|| VtuError(format!("array {} is cut short", h.name)))
+    Ok(data[h.offset + 4..block_end(data, h)?].to_vec())
 }
 
 fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, VtuError> {
@@ -412,6 +421,18 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
                     .ok_or_else(|| VtuError("DataArray has no offset".into()))?,
             });
         }
+    }
+    // The footer comes right after the last block. Thus a block that runs into the footer,
+    // a payload that is cut short, and a file without its closing tags are errors.
+    let mut end = 0;
+    for h in &headers {
+        end = end.max(block_end(data, h)?);
+    }
+    let rest = data[end..]
+        .strip_prefix(FOOTER)
+        .ok_or_else(|| VtuError("the appended data does not end after its last array".into()))?;
+    if rest.trim_ascii() != b"</VTKFile>" {
+        return err("the file does not end with </VTKFile>");
     }
     let find = |sec: &str, name: &str| {
         headers

@@ -62,6 +62,19 @@ fn truncated_file_is_an_error() {
 }
 
 #[test]
+fn a_payload_cut_short_before_the_footer_is_an_error() {
+    let bytes = write_vtu(&sample()).unwrap();
+    let footer = b"\n</AppendedData>\n</VTKFile>\n";
+    assert!(bytes.ends_with(footer));
+    let end = bytes.len() - footer.len();
+    for cut in [1, 8] {
+        let short = [&bytes[..end - cut], &bytes[end..]].concat();
+        assert!(read_vtu(&short).is_err(), "{cut} bytes cut");
+    }
+    assert!(read_vtu(&bytes[..end]).is_err(), "no closing tags");
+}
+
+#[test]
 fn field_names_with_special_characters_survive() {
     let mut g = sample();
     g.point_data.push(Field::f64("a<b&\"c\"", 1, vec![0.0; 8]));
