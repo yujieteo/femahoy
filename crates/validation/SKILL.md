@@ -19,10 +19,17 @@ Load case TOML files, measure solver results and compare them with declared refe
 - Class R checks a rate within a declared band.
 - Convergence over a case collection skips class N. A direct class N convergence request fails.
 - A failed case or unavailable solver makes `fh validate` fail.
+- Fixtures are data files, not prose (DESIGN.md section 10.4).
+- A failure blocks the merge. There is no override (DESIGN.md section 10.5).
+- Line budget: 6k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 
-Do not describe `no solver` as a successful validation result.
+- Do not describe `no solver` as a successful validation result.
+- Run Abaqus. No Abaqus licence is available (DESIGN.md section 10.1).
+- Add NAFEMS target values before the leader confirms the legal check (AGENTS.md section 4).
+- Weaken, skip or delete a validation case. Change a tolerance only with a written reason and leader approval (AGENTS.md section 4).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

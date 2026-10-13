@@ -16,10 +16,16 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 - Unsupported keywords and duplicate node IDs fail.
 - An open step needs `*END STEP`.
 - The parser does not declare units. Validation cases declare units in `case.toml`.
+- Each unsupported keyword fails with a clear error that names the keyword and the line number (DESIGN.md section 7.3).
+- Each difference from Abaqus is listed in `docs/compatibility.md`, and a test covers it (DESIGN.md section 7.4).
+- Line budget: 9k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 
-Do not describe an `.inp` writer or template mapper as available. The public API exports only the parser and model types.
+- Do not describe an `.inp` writer or template mapper as available. The public API exports only the parser and model types.
+- Copy text, `.inp` files, figures or numbers from Abaqus manuals (DESIGN.md section 10.1).
+- Add a Dassault Systèmes file to the repo (AGENTS.md section 4).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

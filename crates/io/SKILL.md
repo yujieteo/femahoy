@@ -17,10 +17,16 @@ Read gmsh meshes, scan STEP units, check mesh quality, and read or write result 
 - VTU uses appended raw data with little-endian `UInt32` byte counts.
 - Float64 arrays hold fields. Int32 arrays hold sets and IDs.
 - STEP unit errors distinguish missing records from conflicting records.
+- Read and write run in Rust. No C library is used (DESIGN.md section 8).
+- Line budget: 5k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 
-Do not imply that the STEP scanner imports geometry or that the mesh reader creates material and load definitions.
+- Do not imply that the STEP scanner imports geometry or that the mesh reader creates material and load definitions.
+- Link gmsh. gmsh is GPL. femahoy calls it only as an external program (DESIGN.md sections 6.2 and 11.1).
+- Bundle gmsh. The user installs gmsh (DESIGN.md section 6.2).
+- Add a mesher to this crate (DESIGN.md section 6.2).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

@@ -23,10 +23,16 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 - gmsh must be at least 4.8. The tested release line is 4.15.
 - Mesh runs fail on gmsh errors, timeout, unreadable output or output without supported volume elements.
 - `results`, `plot`, `serve`, `init`, `team` and `skills` are not implemented.
+- The binary is `fh`. Never `fea` (CLAUDE.md).
+- Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
+- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 
-Do not describe planned commands as available. Do not imply that `mesh` checks Jacobian quality. Use `info` for that check.
+- Do not describe planned commands as available. Do not imply that `mesh` checks Jacobian quality. Use `info` for that check.
+- Name the binary `fea`.
+- Require a GUI for any command (DESIGN.md section 3).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

@@ -18,10 +18,14 @@ Define the `Solver` trait, registry and subprocess protocol v2.
 - Defaults are a 600-second timeout, 5-second cancel grace and 85 percent of detected RAM.
 - The runner sends `cancel` through stdin and enforces limits on the process tree.
 - New subprocess solvers have `validated: false`.
+- Results from a solver that has not passed the validation suite are marked unvalidated (DESIGN.md section 9.2).
+- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 
-Do not accept a protocol v1 header or result paths outside the run folder.
+- Do not accept a protocol v1 header or result paths outside the run folder.
+- Mark results from an unvalidated solver as validated (DESIGN.md section 9.2).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

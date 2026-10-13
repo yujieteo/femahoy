@@ -17,10 +17,14 @@ Encode short agent summaries with schemas `fh.check`, `fh.run`, `fh.validate` an
 - Tables have at most 4 fields. The default row limit is 20.
 - Diagnostics put errors first. The `next` table has at most 3 rows.
 - Truncated tables report omitted rows with `_more`.
+- TOON holds summaries and query answers only. Full field data never goes into TOON (DESIGN.md section 8).
+- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 
-Do not treat rounded TOON values as exact field data or describe `fh results` as implemented.
+- Do not treat rounded TOON values as exact field data or describe `fh results` as implemented.
+- Write full field arrays into TOON (DESIGN.md section 8).
+- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 
