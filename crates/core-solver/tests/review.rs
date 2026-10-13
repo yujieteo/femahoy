@@ -561,3 +561,22 @@ fn conflicting_constraints_fail_at_each_scale_of_the_equation() {
         assert!(e.contains("conflicting constraints"), "k = {k}: {e}");
     }
 }
+
+#[test]
+fn a_result_that_is_not_finite_is_an_error_also_without_free_dofs() {
+    // Each dof has a prescribed value, so no system is solved. The values are finite, but
+    // the stress overflows.
+    let model = cube(
+        "",
+        &format!(
+            "*STEP\n*STATIC\n*BOUNDARY\n{FIX}2,1,3,1e306\n3,1,3,1e306\n6,1,3,1e306\n7,1,3,1e306\n*END STEP\n"
+        ),
+    );
+    match solve(&model) {
+        Ok(s) => panic!(
+            "solved with {} free dofs: stress {:?}",
+            s.summary.steps[0].free_dofs, s.steps[0].element_stress[0]
+        ),
+        Err(e) => assert!(e.to_string().contains("not finite"), "{e}"),
+    }
+}

@@ -221,6 +221,24 @@ fn norm(v: &[f64]) -> f64 {
     v.iter().map(|x| x * x).sum::<f64>().sqrt()
 }
 
+/// A result with a value that is not finite is not a solution. The residual test does not
+/// see it when no dof is free, or when the value comes from the recovery.
+fn check_finite(u: &[f64], f_ext: &[f64], sweep: &Sweep) -> Result<(), SolverError> {
+    let mut all = u
+        .iter()
+        .chain(f_ext)
+        .chain(&sweep.fint)
+        .chain(sweep.stress.iter().flatten())
+        .chain(sweep.ip_stress.iter().flatten());
+    if all.all(|x| x.is_finite()) {
+        Ok(())
+    } else {
+        Err(SolverError::new(
+            "the result has a value that is not finite: check the size of the loads, the prescribed values and the coordinates",
+        ))
+    }
+}
+
 /// The result of one increment that the loop accepts.
 struct Converged {
     u: Vec<f64>,
@@ -949,6 +967,7 @@ impl Run<'_> {
         // Reactions and stress from the element forces.
         observer.progress(idx, n_steps, "recover", 0.0);
         let sweep = self.sweep(observer, idx, "recover", true, &u, None, false)?;
+        check_finite(&u, &f, &sweep).map_err(Fail::Fatal)?;
         Ok(Converged {
             u,
             f_ext: f,
@@ -1003,6 +1022,7 @@ impl Run<'_> {
                 )));
             }
             if size <= opts.newton_tolerance * scale + 1e-30 {
+                check_finite(&u, &f_ext, &sweep).map_err(Fail::Reject)?;
                 return Ok(Converged {
                     u,
                     f_ext,
