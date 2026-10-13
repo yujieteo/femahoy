@@ -693,7 +693,7 @@ impl Parser {
         b.allow(&[])?;
         self.model_data(b)?;
         for d in &b.data {
-            let kind = match d.fields[0].as_str() {
+            let kind = match d.fields[0].to_uppercase().as_str() {
                 "TIE" => MpcKind::Tie,
                 "PIN" => MpcKind::Pin,
                 "LINK" => MpcKind::Link,
@@ -725,7 +725,7 @@ impl Parser {
             }
             let ty = d.fields[1].as_str();
             let face = ty
-                .strip_prefix('P')
+                .strip_prefix(['P', 'p'])
                 .and_then(|n| n.parse::<u8>().ok())
                 .ok_or_else(|| b.error(d.line, format!("unsupported load type {ty}")))?;
             if !(1..=6).contains(&face) {

@@ -202,6 +202,14 @@ fn mpc_types() {
 }
 
 #[test]
+fn mpc_and_pressure_types_ignore_case() {
+    let m = ok("*MPC\ntie, 1, 2\nPin, 3, 4\n*STEP\n*STATIC\n*DLOAD\nall, p3, 2.5\n*END STEP\n");
+    let kinds: Vec<_> = m.mpcs.iter().map(|x| x.kind).collect();
+    assert_eq!(kinds, [MpcKind::Tie, MpcKind::Pin]);
+    assert_eq!(m.steps[0].dloads[0].face, 3);
+}
+
+#[test]
 fn dload_pressure_on_face() {
     let m = ok("*STEP\n*STATIC\n*DLOAD\nALL, P3, 2.5\n1, P6, -1\n*END STEP\n");
     let d = &m.steps[0].dloads;
