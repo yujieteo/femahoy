@@ -125,6 +125,30 @@ fn the_count_line_of_an_equation_has_only_the_count() {
     );
 }
 
+/// Model data in each place after the first `*STEP` starts.
+const MODEL_DATA: [&str; 5] = [
+    "*EQUATION\n1\n1,1,1\n",
+    "*MPC\nTIE,1,2\n",
+    "*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n",
+    "*SOLID SECTION, ELSET=ALL, MATERIAL=M\n",
+    "*SURFACE, TYPE=NODE, NAME=T\n2\n",
+];
+
+#[test]
+fn model_data_inside_or_after_a_step_is_an_error() {
+    let surface = "*SURFACE, TYPE=NODE, NAME=S\n1\n";
+    for data in MODEL_DATA {
+        ok(&format!("{surface}{data}*STEP\n*STATIC\n*END STEP\n"));
+        for text in [
+            format!("{surface}*STEP\n*STATIC\n{data}*END STEP\n"),
+            format!("{surface}*STEP\n*STATIC\n*END STEP\n{data}"),
+        ] {
+            let e = err(&text);
+            assert!(e.contains("before the first *STEP"), "{text}\n{e}");
+        }
+    }
+}
+
 #[test]
 fn mpc_types() {
     let m = ok("*MPC\nTIE, 1, 2\nLINK, 3, 4\nBEAM, 5, 6\nPIN, 7, 8\n");

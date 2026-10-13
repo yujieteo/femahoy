@@ -30,6 +30,8 @@ struct Parser {
     element_ids: HashSet<u32>,
     open_step: Option<Step>,
     step_line: usize,
+    /// A `*STEP` came. Model data must come before it.
+    step_seen: bool,
     /// Index into `model.materials` of the material that is open.
     material: Option<usize>,
     /// A `*COUPLING` that still waits for `*KINEMATIC` or `*DISTRIBUTING`.
@@ -363,6 +365,7 @@ impl Parser {
             return Err(b.error(d.line, "keyword takes no data lines"));
         }
         self.step_line = b.line;
+        self.step_seen = true;
         self.open_step = Some(Step {
             name: b.value("NAME")?.map(str::to_owned),
             nlgeom,
@@ -473,8 +476,9 @@ impl Parser {
         }
     }
 
+    /// Model data applies to all steps, so it must come before the first step starts.
     fn model_data(&self, b: &Block) -> Result<(), ParseError> {
-        if self.open_step.is_some() {
+        if self.step_seen {
             return Err(b.error(b.line, "keyword must come before the first *STEP"));
         }
         Ok(())
@@ -482,6 +486,7 @@ impl Parser {
 
     fn solid_section(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["ELSET", "MATERIAL"])?;
+        self.model_data(b)?;
         let elset = b
             .value("ELSET")?
             .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
@@ -506,6 +511,7 @@ impl Parser {
 
     fn surface(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "NAME"])?;
+        self.model_data(b)?;
         match b.value("TYPE")? {
             Some("NODE") => {}
             Some(t) => return Err(b.error(b.line, format!("unsupported TYPE {t}"))),
