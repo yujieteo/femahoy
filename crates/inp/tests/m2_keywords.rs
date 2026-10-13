@@ -105,6 +105,27 @@ fn equation_errors() {
 }
 
 #[test]
+fn an_empty_equation_field_is_an_error_and_does_not_move_the_terms() {
+    // Without the empty field, the terms move: node 2 goes away and node 1 gets fixed.
+    let e = err("*EQUATION\n2\n1,1,,2,1,1,-1\n");
+    assert!(e.contains("needs 2 terms"), "{e}");
+    let e = err("*EQUATION\n2\n1,1,,2,1,-1\n");
+    assert!(
+        e.contains("line 21, *EQUATION") && e.contains("found ''"),
+        "{e}"
+    );
+}
+
+#[test]
+fn the_count_line_of_an_equation_has_only_the_count() {
+    let e = err("*EQUATION\n1,99\n1,1,1\n");
+    assert!(
+        e.contains("line 20, *EQUATION") && e.contains("number of terms"),
+        "{e}"
+    );
+}
+
+#[test]
 fn mpc_types() {
     let m = ok("*MPC\nTIE, 1, 2\nLINK, 3, 4\nBEAM, 5, 6\nPIN, 7, 8\n");
     let kinds: Vec<_> = m.mpcs.iter().map(|x| x.kind).collect();

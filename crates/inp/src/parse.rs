@@ -613,18 +613,18 @@ impl Parser {
             .data
             .first()
             .ok_or_else(|| b.error(b.line, "keyword needs data lines"))?;
+        if first.fields.len() != 1 {
+            return Err(b.error(first.line, "the first line gives only the number of terms"));
+        }
         let n = int(b, first, 0, "number of terms")? as usize;
         if n == 0 {
             return Err(b.error(first.line, "equation needs at least 1 term"));
         }
+        // Keep the empty fields: without them the next terms move to the wrong place.
+        // The value check then refuses each empty field.
         let fields: Vec<(usize, &String)> = b.data[1..]
             .iter()
-            .flat_map(|d| {
-                d.fields
-                    .iter()
-                    .filter(|f| !f.is_empty())
-                    .map(|f| (d.line, f))
-            })
+            .flat_map(|d| d.fields.iter().map(|f| (d.line, f)))
             .collect();
         if fields.len() != 3 * n {
             return Err(b.error(
