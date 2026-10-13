@@ -8,7 +8,7 @@ fh mesh part.step -o part.msh --order 2   # a mesh from gmsh
 fh view model.inp
 ```
 
-The viewer reads the `.inp` file with the `inp` crate. It draws `C3D4`, `C3D8` (also `C3D8R` and `C3D8I`) and `C3D10` elements. It skips other element types and shows their count in the status bar.
+The viewer reads the `.inp` file with the `inp` crate. It draws `C3D4`, `C3D8` (also `C3D8R` and `C3D8I`) and `C3D10` elements. It skips other element types and elements that name a missing node. The status bar shows the count.
 
 What you see:
 
