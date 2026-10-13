@@ -793,11 +793,18 @@ pub fn pressure_load(
         }
         Kind::C3D10 => {
             let nodes = tet_faces.get(f).ok_or_else(bad)?;
-            // 3-point rule on the triangle, quadratic shape functions.
-            for (l1, l2) in [
-                (1.0 / 6.0, 1.0 / 6.0),
-                (2.0 / 3.0, 1.0 / 6.0),
-                (1.0 / 6.0, 2.0 / 3.0),
+            // A quadratic shape function times the quadratic area vector of a curved face
+            // has degree 4. The symmetric 6-point rule on the triangle is exact to degree 4.
+            // Each weight includes the reference area 1/2.
+            let (a, wa) = (0.445_948_490_915_964_9, 0.111_690_794_839_005_7);
+            let (b, wb) = (0.091_576_213_509_770_74, 0.054_975_871_827_660_93);
+            for (l1, l2, w) in [
+                (a, a, wa),
+                (1.0 - 2.0 * a, a, wa),
+                (a, 1.0 - 2.0 * a, wa),
+                (b, b, wb),
+                (1.0 - 2.0 * b, b, wb),
+                (b, 1.0 - 2.0 * b, wb),
             ] {
                 let l = [1.0 - l1 - l2, l1, l2];
                 let n = [
@@ -829,7 +836,7 @@ pub fn pressure_load(
                 }
                 let nrm = cross(ta, tb);
                 for (i, &ln) in nodes.iter().enumerate() {
-                    out.push((ln, nrm.map(|c| p * n[i] * c / 6.0)));
+                    out.push((ln, nrm.map(|c| p * n[i] * c * w)));
                 }
             }
         }

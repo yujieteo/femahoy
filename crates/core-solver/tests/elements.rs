@@ -244,6 +244,61 @@ fn tet_pressure_pushes_into_the_body() {
     }
 }
 
+#[test]
+fn a_curved_tet_face_gets_the_exact_nodal_forces() {
+    // Map the unit tet with x -> x + x² in each direction. The quadratic element holds
+    // this map exactly. On face 1 (z = 0) the area vector is (0, 0, (1 + 2r)(1 + 2s)).
+    let c: Vec<[f64; 3]> = tet([[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+        .into_iter()
+        .map(|p| p.map(|x| x + x * x))
+        .collect();
+    let p = 2.0;
+    let loads = pressure_load(Kind::C3D10, &place(&c), 1, p).unwrap();
+    // The exact force of each face node, from a collapsed Gauss product rule. The rule is
+    // exact for this integrand (degree 5 or less in each direction).
+    let h = 0.6_f64.sqrt() / 2.0;
+    let gauss = [
+        (0.5 - h, 5.0 / 18.0),
+        (0.5, 8.0 / 18.0),
+        (0.5 + h, 5.0 / 18.0),
+    ];
+    let mut want = [0.0; 6];
+    for (a, wa) in gauss {
+        for (b, wb) in gauss {
+            let (r, s) = (a, (1.0 - a) * b);
+            let l = [1.0 - r - s, r, s];
+            let n = [
+                l[0] * (2.0 * l[0] - 1.0),
+                l[1] * (2.0 * l[1] - 1.0),
+                l[2] * (2.0 * l[2] - 1.0),
+                4.0 * l[0] * l[1],
+                4.0 * l[1] * l[2],
+                4.0 * l[2] * l[0],
+            ];
+            let w = wa * wb * (1.0 - a) * p * (1.0 + 2.0 * r) * (1.0 + 2.0 * s);
+            for (f, ni) in want.iter_mut().zip(n) {
+                *f += w * ni;
+            }
+        }
+    }
+    // The closed form for corner node 0 is -2/45 for each unit of pressure.
+    assert!((want[0] + p * 2.0 / 45.0).abs() < 1e-14, "{}", want[0]);
+    let mut bad = Vec::new();
+    for (node, w) in [0, 1, 2, 4, 5, 6].into_iter().zip(want) {
+        let got = total(
+            &loads
+                .iter()
+                .filter(|(n, _)| *n == node)
+                .copied()
+                .collect::<Vec<_>>(),
+        );
+        if (got[2] - w).abs() > 1e-13 || got[0].abs() > 1e-13 || got[1].abs() > 1e-13 {
+            bad.push(format!("node {node}: {got:?}, exact z {w}"));
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
+
 /// A material that gets stiffer with the strain: stress = strain³ + 1e-12 strain,
 /// with its exact tangent. Newton on the mode amplitudes converges slowly near 0.
 struct Cubic;
