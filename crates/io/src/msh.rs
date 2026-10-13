@@ -89,6 +89,14 @@ fn num<T: FromStr>(tokens: &[&str], i: usize, line: usize, what: &str) -> Result
     }
 }
 
+/// A node or element tag. It becomes a label of the model, and a label starts at 1.
+fn label(tokens: &[&str], i: usize, line: usize, what: &str) -> Result<u32> {
+    match num(tokens, i, line, what)? {
+        0 => fail(line, format!("{what} 0 is not valid, a tag starts at 1")),
+        id => Ok(id),
+    }
+}
+
 /// A coordinate. The Rust parser also accepts NaN, infinity and numbers that overflow.
 fn coordinate(tokens: &[&str], i: usize, line: usize, what: &str) -> Result<f64> {
     let v: f64 = num(tokens, i, line, what)?;
@@ -233,7 +241,7 @@ impl Reader {
             let mut ids = Vec::new();
             for _ in 0..n {
                 let (line, t) = l.next()?;
-                let id: u32 = num(&t, 0, line, "node tag")?;
+                let id = label(&t, 0, line, "node tag")?;
                 if !self.node_ids.insert(id) {
                     return fail(line, format!("node {id} is defined twice"));
                 }
@@ -275,7 +283,7 @@ impl Reader {
             }
             for _ in 0..n {
                 let (line, t) = l.next()?;
-                let id: u32 = num(&t, 0, line, "element tag")?;
+                let id = label(&t, 0, line, "element tag")?;
                 if t.len() != count + 1 {
                     return fail(
                         line,

@@ -90,3 +90,22 @@ fn a_coordinate_that_is_not_finite_is_an_error() {
     }
     assert!(bad.is_empty(), "{bad:#?}");
 }
+
+#[test]
+fn a_tag_of_zero_is_an_error() {
+    // Node and element tags become the labels of the model, and a label starts at 1.
+    let mut bad = Vec::new();
+    for (from, to, line) in [
+        ("0 1 0 1\n1\n0 0 0", "0 1 0 1\n0\n0 0 0", "line 19: "),
+        ("3 1 2 3 4 5 6 7 8", "0 1 2 3 4 5 6 7 8", "line 45: "),
+    ] {
+        let text = HEX.replace(from, to);
+        assert_ne!(text, HEX);
+        match read_msh(&text) {
+            Ok(_) => bad.push(format!("{to:?}: accepted")),
+            Err(e) if !e.to_string().starts_with(line) => bad.push(format!("{to:?}: {e}")),
+            Err(_) => {}
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
