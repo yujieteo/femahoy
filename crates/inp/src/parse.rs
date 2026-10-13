@@ -525,6 +525,10 @@ impl Parser {
         let name = b
             .value("NAME")?
             .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
+        // A coupling finds its surface by name, so a second surface of a name is lost.
+        if self.model.surfaces.iter().any(|s| s.name == name) {
+            return Err(b.error(b.line, format!("surface '{name}' is already defined")));
+        }
         let mut ids = Vec::new();
         for d in &b.data {
             match self.target(b, d)? {

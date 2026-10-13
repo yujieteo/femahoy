@@ -45,6 +45,16 @@ fn node_surface_takes_nodes_and_sets() {
 }
 
 #[test]
+fn a_duplicate_surface_name_is_an_error() {
+    // The solver takes the first surface of a name, so it would not see the second.
+    let e = err("*SURFACE, TYPE=NODE, NAME=S\n1\n*SURFACE, TYPE=NODE, NAME=s\n2\n");
+    assert!(
+        e.starts_with("line 21, *SURFACE") && e.contains("'S'"),
+        "{e}"
+    );
+}
+
+#[test]
 fn kinematic_coupling() {
     let m = ok("*SURFACE, TYPE=NODE, NAME=S\n1\n2\n\
 *COUPLING, CONSTRAINT NAME=C1, REF NODE=9, SURFACE=S\n*KINEMATIC\n1, 3\n");
