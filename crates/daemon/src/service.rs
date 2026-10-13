@@ -447,7 +447,7 @@ impl Shared {
                 (RunState::Cancelled, String::new())
             }
             Err(e) if e.is_cancelled() => (RunState::Interrupted, STOPPED.to_owned()),
-            Err(e) => (RunState::Failed, e.0),
+            Err(e) => (RunState::Failed, e.message),
         };
         self.finish(&mut inner, key, next, &message);
     }
