@@ -458,32 +458,25 @@ fn latest(d: &Path, hash: u64) -> Option<(usize, usize, bool)> {
         .map(|r| (r.step, r.number, r.complete))
 }
 
-/// Start `fh-solve` and send SIGKILL at the first moment when the name of a file in `d`
-/// ends with `suffix`. Returns that name, or `None` when the run ended first.
-fn kill_at_file(inp: &Path, d: &Path, restart: bool, suffix: &str) -> Option<String> {
-    let mut child = spawn(inp, d, restart);
-    let _hold = child.stdin.take();
-    let mut out = BufReader::new(child.stdout.take().unwrap());
-    let drain = std::thread::spawn(move || std::io::copy(&mut out, &mut std::io::sink()));
-    let found = loop {
-        let name = fs::read_dir(d).ok().and_then(|r| {
-            r.flatten()
-                .map(|e| e.file_name().to_string_lossy().to_string())
-                .find(|n| n.ends_with(suffix))
-        });
-        if name.is_some() {
-            child.kill().unwrap();
-            break name;
-        }
-        if child.try_wait().unwrap().is_some() {
-            break None;
-        }
-        std::thread::yield_now();
-    };
-    let status = child.wait().unwrap();
-    assert!(found.is_some() || status.success(), "the run failed");
-    drain.join().unwrap().unwrap();
-    found
+/// The test feature pauses the process after it opens this temporary file.
+/// SIGKILL then comes before the rename, regardless of the speed of the solver.
+fn kill_at_file(inp: &Path, d: &Path, restart: bool, file: &str) {
+    let mut c = Command::new(env!("CARGO_BIN_EXE_fh-solve"));
+    c.arg(inp).arg(d).args(["--formats", "vtu,vtk,text"]);
+    if restart {
+        c.arg("--restart");
+    }
+    let child = c
+        .env("FH_THREADS", "2")
+        .env("FH_TEST_PAUSE_WRITE", file)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .unwrap();
+    let killed = run_until(child, &mut |line| line == format!("test-write {file}"));
+    assert!(killed, "the run ended before the write of {file}");
+    assert!(d.join(file).exists(), "SIGKILL must leave {file}");
 }
 
 #[test]
@@ -491,30 +484,22 @@ fn sigkill_in_the_middle_of_three_writes_and_a_resume_give_the_same_bytes() {
     let (inp, base, want) = uninterrupted("sigkill-write");
     let hash = input_hash(&bar_of_4_steps());
     let d = base.join("killed");
-    // Three moments: the VTU file of step 2, a restart file (the resumed run writes its
-    // first one at the end of step 2 and syncs it to the disk), and the text file of step 4.
-    // The temporary file that is still there after the kill shows that the kill came
-    // between its creation and its rename. If the write ended first, kill again.
+    // Stop at file creation, before any rename. No scheduling delay can miss the write.
     let mut restart = false;
     let mut moments = Vec::new();
-    for suffix in ["step-2.vtu.tmp", "restart.fh.tmp", "step-4.txt.tmp"] {
-        let mut tries = 0;
-        loop {
-            tries += 1;
-            assert!(tries <= 5, "5 kills came after the write of {suffix} ended");
-            let before = latest(&d, hash);
-            let name = kill_at_file(&inp, &d, restart, suffix)
-                .unwrap_or_else(|| panic!("the run ended before the write of {suffix}"));
-            let left = d.join(&name).exists();
-            let after = latest(&d, hash);
-            restart = after.is_some();
-            if left {
-                moments.push((name, tries, before, after));
-                break;
-            }
-        }
+    for (file, point) in [
+        ("step-2.vtu.tmp", (0, 1, true)),
+        ("restart.fh.tmp", (0, 1, true)),
+        ("step-4.txt.tmp", (2, 1, true)),
+    ] {
+        let before = latest(&d, hash);
+        kill_at_file(&inp, &d, restart, file);
+        let after = latest(&d, hash);
+        assert_eq!(after, Some(point), "kill at {file}");
+        restart = after.is_some();
+        moments.push((file, before, after));
     }
-    eprintln!("kills (file, tries, restart point before, after): {moments:?}");
+    eprintln!("kills (file, restart point before, after): {moments:?}");
     run_until(spawn(&inp, &d, restart), &mut |_| false);
     assert_same(&want, &snapshot(&d));
 }

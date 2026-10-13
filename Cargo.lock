@@ -799,6 +799,7 @@ name = "fh-core-solver"
 version = "0.0.0"
 dependencies = [
  "faer",
+ "fh-core-solver",
  "fh-inp",
  "fh-io",
  "fh-solver-api",
