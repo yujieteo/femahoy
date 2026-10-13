@@ -116,11 +116,7 @@ fn json(cell: &Cell, precision: usize) -> JsonValue {
 }
 
 fn object(pairs: Vec<(String, JsonValue)>) -> JsonValue {
-    let mut v = JsonValue::Object(Default::default());
-    if let Some(map) = v.as_object_mut() {
-        map.extend(pairs);
-    }
-    v
+    JsonValue::Object(pairs.into_iter().collect())
 }
 
 /// A table with `N` fields. More than 4 fields fails to compile (rule R5).
@@ -149,9 +145,9 @@ impl<const N: usize> Table<N> {
     /// Take rows that are already in rank order. Keep the first `limit` rows
     /// and count the rest (rules R4 and R7).
     pub fn ranked(mut self, rows: impl IntoIterator<Item = [Cell; N]>, limit: usize) -> Self {
-        let all: Vec<_> = rows.into_iter().collect();
-        self.more = all.len().saturating_sub(limit);
-        self.rows = all.into_iter().take(limit).collect();
+        let mut rows = rows.into_iter().fuse();
+        self.rows = rows.by_ref().take(limit).collect();
+        self.more = rows.count();
         self
     }
 }
@@ -232,25 +228,23 @@ impl Doc {
                 } => {
                     if rows.is_empty() {
                         lines.push(format!("{name}[0]:"));
-                        if *more > 0 {
-                            let n = JsonValue::Number(Number::from(*more as u64));
-                            lines.push(one(&format!("{name}_more"), n)?);
-                        } else {
+                        if *more == 0 {
                             lines.push(one(
                                 &format!("{name}_note"),
                                 JsonValue::String(note.clone()),
                             )?);
                         }
-                        continue;
+                    } else {
+                        let objs = rows
+                            .iter()
+                            .map(|r| {
+                                let pairs =
+                                    fields.iter().cloned().zip(r.iter().map(|c| json(c, p)));
+                                object(pairs.collect())
+                            })
+                            .collect();
+                        lines.push(one(name, JsonValue::Array(objs))?);
                     }
-                    let objs = rows
-                        .iter()
-                        .map(|r| {
-                            let pairs = fields.iter().cloned().zip(r.iter().map(|c| json(c, p)));
-                            object(pairs.collect())
-                        })
-                        .collect();
-                    lines.push(one(name, JsonValue::Array(objs))?);
                     if *more > 0 {
                         let n = JsonValue::Number(Number::from(*more as u64));
                         lines.push(one(&format!("{name}_more"), n)?);
