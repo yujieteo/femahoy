@@ -99,6 +99,41 @@ fn a_huge_offset_or_count_is_an_error_not_a_panic() {
     assert!(write_vtu(&g).is_err());
 }
 
+/// The position of the length header of the block of array `name` in VTU bytes.
+fn block_at(bytes: &[u8], name: &str) -> usize {
+    let mark = b"<AppendedData encoding=\"raw\">\n_";
+    let start = bytes.windows(mark.len()).position(|w| w == mark).unwrap() + mark.len();
+    let xml = String::from_utf8_lossy(&bytes[..start]);
+    let key = format!("Name=\"{name}\"");
+    let tag = xml.split('<').find(|t| t.contains(&key)).unwrap();
+    let offset = tag
+        .split("offset=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    start + offset.parse::<usize>().unwrap()
+}
+
+#[test]
+fn a_field_with_the_wrong_number_of_values_is_an_error() {
+    // U has 24 values, 192 bytes. 193 bytes leave an incomplete value.
+    for len in [8_u32, 193] {
+        let mut b = write_vtu(&sample()).unwrap();
+        let at = block_at(&b, "U");
+        b[at..at + 4].copy_from_slice(&len.to_le_bytes());
+        assert!(read_vtu(&b).is_err(), "U with {len} bytes");
+    }
+    for bad in ["0", "x"] {
+        let b = with_xml(
+            "Name=\"U\" NumberOfComponents=\"3\"",
+            &format!("Name=\"U\" NumberOfComponents=\"{bad}\""),
+        );
+        assert!(read_vtu(&b).is_err(), "{bad} components");
+    }
+}
+
 #[test]
 fn field_names_with_special_characters_survive() {
     let mut g = sample();

@@ -350,6 +350,15 @@ fn block(data: &[u8], h: &Header) -> Result<Vec<u8>, VtuError> {
     Ok(data[h.offset + 4..block_end(data, h)?].to_vec())
 }
 
+/// A block that ends in part of a value is damaged.
+fn whole(h: &Header, raw: &[u8], width: usize) -> Result<(), VtuError> {
+    if raw.len().is_multiple_of(width) {
+        Ok(())
+    } else {
+        err(format!("array {} ends in an incomplete value", h.name))
+    }
+}
+
 fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, VtuError> {
     let width = match h.type_name.as_str() {
         "Int64" => 8,
@@ -357,6 +366,7 @@ fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, VtuError> {
         "UInt8" => 1,
         t => return err(format!("array {}: unsupported type {t}", h.name)),
     };
+    whole(h, raw, width)?;
     Ok(raw
         .chunks_exact(width)
         .map(|c| match width {
@@ -413,9 +423,12 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
                 section: section.clone(),
                 name: unescape(&get("Name").unwrap_or_default()),
                 type_name: get("type").unwrap_or_default(),
-                components: get("NumberOfComponents")
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or(1),
+                components: match get("NumberOfComponents") {
+                    None => 1,
+                    Some(v) => v.parse().ok().filter(|c| *c > 0).ok_or_else(|| {
+                        VtuError(format!("DataArray has a bad NumberOfComponents {v}"))
+                    })?,
+                },
                 offset: get("offset")
                     .and_then(|v| v.parse().ok())
                     .ok_or_else(|| VtuError("DataArray has no offset".into()))?,
@@ -446,7 +459,7 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
         return err("points must be Float64");
     }
     let raw = block(data, p)?;
-    let flat = floats(&raw);
+    let flat = floats(p, &raw)?;
     if n_points.checked_mul(3) != Some(flat.len()) {
         return err("point count does not match the Piece tag");
     }
@@ -479,10 +492,23 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     for h in headers.iter().filter(|h| h.section.ends_with("Data")) {
         let raw = block(data, h)?;
         let values = match h.type_name.as_str() {
-            "Float64" => Values::F64(floats(&raw)),
+            "Float64" => Values::F64(floats(h, &raw)?),
             "Int32" => Values::I32(ints(h, &raw)?.into_iter().map(|v| v as i32).collect()),
             t => return err(format!("array {}: unsupported type {t}", h.name)),
         };
+        let n = if h.section == "PointData" {
+            n_points
+        } else {
+            n_cells
+        };
+        if n.checked_mul(h.components) != Some(values.len()) {
+            return err(format!(
+                "array {} has {} values, not {n} x {}",
+                h.name,
+                values.len(),
+                h.components
+            ));
+        }
         let field = Field {
             name: h.name.clone(),
             components: h.components,
@@ -497,12 +523,14 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, VtuError> {
     Ok(grid)
 }
 
-fn floats(raw: &[u8]) -> Vec<f64> {
-    raw.as_chunks::<8>()
+fn floats(h: &Header, raw: &[u8]) -> Result<Vec<f64>, VtuError> {
+    whole(h, raw, 8)?;
+    Ok(raw
+        .as_chunks::<8>()
         .0
         .iter()
         .map(|c| f64::from_le_bytes(*c))
-        .collect()
+        .collect())
 }
 
 /// One entry of a PVD collection: the time value and the file name.
