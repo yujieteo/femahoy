@@ -8,7 +8,7 @@ use fh_core_solver::element::{
     evaluate, small_strain, Elastic, ElementState, Evaluation, Kind, Material, Placement,
 };
 use fh_core_solver::SolverError;
-use fh_core_solver::{solve, solve_options, Method, Options, Solution};
+use fh_core_solver::{estimate_bytes, solve, solve_options, Method, Options, Sizes, Solution};
 use fh_inp::{parse, Model};
 
 const CUBE: &str =
@@ -765,4 +765,30 @@ fn a_kinematic_coupling_turns_the_slave_rotations_with_the_reference() {
     // Nodes 6 and 7 have no rotation dofs, so the range 4 to 6 constrains nothing.
     let e = solve(&coupling("6\n7\n")).unwrap_err().to_string();
     assert!(e.contains("coupling C") && e.contains("4 to 6"), "{e}");
+}
+
+#[test]
+fn a_huge_thread_count_gives_the_result_of_1_thread() {
+    let model = block();
+    for method in [Method::Cholesky, Method::Pcg] {
+        let one = solve_options(&model, &options(method, 1)).unwrap();
+        for threads in [1 << 56, usize::MAX] {
+            let many = solve_options(&model, &options(method, threads))
+                .unwrap_or_else(|e| panic!("{method:?}, {threads} threads: {e}"));
+            assert_eq!(one.steps, many.steps, "{method:?}, {threads} threads");
+        }
+    }
+    let sizes = Sizes {
+        nodes: 8,
+        elements: 1,
+        dofs: 24,
+        nnz: 300,
+        graph_bytes: 0,
+        threads: usize::MAX,
+        iterative: false,
+        ip_stress: false,
+        state_bytes: 0,
+        slot_bytes: 0,
+    };
+    assert!(estimate_bytes(&sizes) > 0);
 }

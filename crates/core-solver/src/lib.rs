@@ -23,7 +23,7 @@ pub use output::{
 pub use system::{
     estimate_bytes, solve, solve_from, solve_options, solve_with, step_times, Formats, Increment,
     MaterialFactory, Method, Observer, Options, Resume, Sizes, Solution, StepInfo, StepResult,
-    Summary, CANCELLED, DIRECT_MAX_DOFS, RESIDUAL_LIMIT,
+    Summary, CANCELLED, DIRECT_MAX_DOFS, MAX_THREADS, RESIDUAL_LIMIT,
 };
 pub use text::TEXT_HEADER;
 
