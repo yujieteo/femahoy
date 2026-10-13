@@ -73,7 +73,7 @@ impl Check {
                 count(&self.diagnostics, Severity::Warning).into(),
             ),
         ];
-        let doc: Doc = start("fh.check", &self.header).block("totals", totals);
+        let doc: Doc = start("fh.check", &self.header, opts).block("totals", totals);
 
         let mut types: Vec<&ElementType> = self.element_types.iter().collect();
         types.sort_by_key(|e| std::cmp::Reverse(e.count));

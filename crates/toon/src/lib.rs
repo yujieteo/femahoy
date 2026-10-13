@@ -5,7 +5,11 @@
 //!
 //! A later `toon-format` release may change the output. The exact version pin
 //! and the snapshot tests guard against this. TOON is for agent reading only:
-//! VTU files hold the full-precision data (rule R3).
+//! VTU files hold the exact values (rule R3).
+//!
+//! TOON numbers are rounded to `precision` significant figures (default 4).
+//! Every output states this in its `precision` header key. The exact values
+//! are in the VTU files.
 //! Decision D-03, see DESIGN.md.
 //!
 //! The schema is experimental until a command uses it.

@@ -1,9 +1,10 @@
 schema: fh.validate
-version: 1.0.0
+version: 1.1.0
 source: validation/cases
 source_hash: c01d9e
 units: unspecified
 status: failed
+precision: 4
 totals:
   cases: 13
   pass: 12

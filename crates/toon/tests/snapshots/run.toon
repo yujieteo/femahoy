@@ -1,9 +1,10 @@
 schema: fh.run
-version: 1.0.0
+version: 1.1.0
 source: models/bracket.inp
 source_hash: 9f3c1a
 units: unspecified
 status: ok
+precision: 4
 run_id: r-0007
 solver: core
 results: results/bracket.pvd

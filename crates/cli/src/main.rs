@@ -18,6 +18,8 @@ fn usage() -> String {
          mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n\n\
+         TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
+         Exact values are in the VTU files.\n\n\
          planned subcommands:\n",
     );
     for name in PLANNED {

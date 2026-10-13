@@ -1,9 +1,10 @@
 schema: fh.check
-version: 1.0.0
+version: 1.1.0
 source: models/bracket.inp
 source_hash: 9f3c1a
 units: unspecified
 status: error
+precision: 4
 totals:
   nodes: 48210
   elements: 30112
