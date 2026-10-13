@@ -122,6 +122,7 @@ fn validate_runs_every_case_through_the_solver() {
         "cantilever",
         "cantilever-c3d10",
         "cantilever-c3d8",
+        "kirsch-plate-c3d10",
         "lame-cylinder",
         "lame-cylinder-c3d10",
         "lame-cylinder-c3d8i",
@@ -137,7 +138,7 @@ fn validate_runs_every_case_through_the_solver() {
             "{id} missing in {stdout}"
         );
     }
-    assert!(stdout.contains("13 cases: 13 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("14 cases: 14 pass, 0 fail"), "{stdout}");
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
@@ -231,7 +232,7 @@ fn convergence_on_the_case_folder_skips_class_n() {
         "{stdout}"
     );
     assert!(stdout.contains("mms-c3d10\tR\t3 meshes\tpass"), "{stdout}");
-    assert!(stdout.contains("13 cases: 9 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("14 cases: 10 pass, 0 fail"), "{stdout}");
 }
 
 #[test]
