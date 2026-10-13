@@ -205,6 +205,34 @@ fn validate_snapshot() {
     assert_rules(&text);
 }
 
+#[test]
+fn validate_ranks_failures_then_margins_and_keeps_ties_in_input_order() {
+    let v = Validate {
+        header: header("validation/cases", "hash", "unspecified", Status::Failed),
+        cases: vec![
+            case("pass-high", "L", CaseStatus::Pass, 0.9),
+            case("fail-low", "L", CaseStatus::Fail, 1.1),
+            case("skip", "L", CaseStatus::Skip, 0.9),
+            case("fail-high", "L", CaseStatus::Fail, 2.0),
+            case("pass-low", "L", CaseStatus::Pass, 0.1),
+            case("fail-tie", "L", CaseStatus::Fail, 1.1),
+        ],
+        diagnostics: vec![],
+        next: vec![],
+    };
+    let text = v.render(&rows(4)).unwrap();
+    let decoded: Value = toon_format::decode_strict(&text).unwrap();
+    let ids: Vec<_> = decoded["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|row| row["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["fail-high", "fail-low", "fail-tie", "pass-high"]);
+    assert_eq!(decoded["cases_more"], 2);
+    assert_rules(&text);
+}
+
 fn quantity(name: &str, value: f64, reference: f64, margin: f64) -> Quantity {
     Quantity {
         name: name.into(),
@@ -426,6 +454,45 @@ fn zero_row_limit_reports_the_rows_it_hid() {
         "{text}"
     );
     assert!(!text.contains("element_types_note"), "{text}");
+}
+
+#[test]
+fn ranked_replaces_rows_and_hidden_count() {
+    for limit in [0, 1, 3, usize::MAX] {
+        let table = Table::new("items", ["value"], "no items")
+            .ranked([["old".into()]; 1], 0)
+            .ranked((0..3u32).map(|n| [n.into()]), limit);
+        let text = Doc::new().table(table).encode(&Opts::default()).unwrap();
+        let decoded: Value = toon_format::decode_strict(&text).unwrap();
+        assert_eq!(decoded["items"].as_array().unwrap().len(), limit.min(3));
+        if limit < 3 {
+            assert_eq!(decoded["items_more"], 3 - limit);
+            assert!(decoded.get("items_note").is_none());
+        } else {
+            assert!(decoded.get("items_more").is_none());
+        }
+    }
+    let table = Table::new("items", ["value"], "no items")
+        .ranked([["old".into()]; 1], 0)
+        .ranked([], 1);
+    assert_eq!(
+        Doc::new().table(table).encode(&Opts::default()).unwrap(),
+        "items[0]:\nitems_note: no items\n"
+    );
+}
+
+#[test]
+fn ranked_stops_at_the_first_end_of_the_iterator() {
+    let mut n = 0u32;
+    let rows = std::iter::from_fn(move || {
+        n += 1;
+        (n != 2).then(|| [n.into()])
+    });
+    let table = Table::new("items", ["value"], "no items").ranked(rows, 3);
+    assert_eq!(
+        Doc::new().table(table).encode(&Opts::default()).unwrap(),
+        "items[1]{value}:\n  1\n"
+    );
 }
 
 #[test]

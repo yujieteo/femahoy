@@ -39,17 +39,18 @@ pub struct Validate {
 
 impl Validate {
     pub fn render(&self, opts: &Opts) -> Result<String, Error> {
-        let n = |s: CaseStatus| self.cases.iter().filter(|c| c.status == s).count();
+        let count = |status: CaseStatus| self.cases.iter().filter(|c| c.status == status).count();
         let totals = vec![
             ("cases", self.cases.len().into()),
-            ("pass", n(CaseStatus::Pass).into()),
-            ("fail", n(CaseStatus::Fail).into()),
-            ("skip", n(CaseStatus::Skip).into()),
+            ("pass", count(CaseStatus::Pass).into()),
+            ("fail", count(CaseStatus::Fail).into()),
+            ("skip", count(CaseStatus::Skip).into()),
         ];
         let mut cases: Vec<&CaseRow> = self.cases.iter().collect();
         cases.sort_by(|a, b| {
-            let failed = |c: &CaseRow| c.status != CaseStatus::Fail;
-            (failed(a), b.margin.total_cmp(&a.margin)).cmp(&(failed(b), std::cmp::Ordering::Equal))
+            (a.status != CaseStatus::Fail)
+                .cmp(&(b.status != CaseStatus::Fail))
+                .then_with(|| b.margin.total_cmp(&a.margin))
         });
         let doc: Doc = start("fh.validate", &self.header).block("totals", totals);
         let doc = tbl(

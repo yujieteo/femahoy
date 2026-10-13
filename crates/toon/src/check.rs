@@ -101,14 +101,14 @@ impl Check {
             },
         );
 
-        let mut mats: Vec<&MaterialRow> = self.materials.iter().collect();
-        mats.sort_by(|a, b| a.name.cmp(&b.name));
+        let mut materials: Vec<&MaterialRow> = self.materials.iter().collect();
+        materials.sort_by(|a, b| a.name.cmp(&b.name));
         let doc = tbl(
             doc,
             "materials",
             ["name", "behaviour", "used_by"],
             "no materials",
-            mats,
+            materials,
             opts.rows,
             |m| {
                 [
