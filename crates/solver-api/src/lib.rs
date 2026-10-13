@@ -518,10 +518,12 @@ impl SubprocessSolver {
             on_event(&event);
         }
         drop(reader);
+        // A cancel stops the run, also when the solver exits with code 0, or when the cancel
+        // comes as the solver ends.
+        if cancel_sent.is_some() || cancel.is_cancelled() {
+            return Err(ApiError::cancelled());
+        }
         if !status.success() {
-            if cancel_sent.is_some() {
-                return Err(ApiError::cancelled());
-            }
             return fail(format!(
                 "solver failed ({status}): {}",
                 stderr_tail(&run_dir.join("stderr.txt")).trim()

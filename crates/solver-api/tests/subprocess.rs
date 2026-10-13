@@ -174,6 +174,20 @@ exit 0"#,
 }
 
 #[test]
+fn a_cancel_is_not_a_success_when_the_solver_exits_0() {
+    // The solver writes complete results, reads the cancel line and exits 0, not 130.
+    let dir = scratch("cancel-exit-0");
+    let s = solver(&dir, &format!("{GOOD}\nread line\nexit 0"));
+    let token = CancelToken::new();
+    let e = s
+        .run_with(&dir.join("a.inp"), &dir.join("run"), &token, &mut |_| {
+            token.cancel()
+        })
+        .unwrap_err();
+    assert!(e.is_cancelled(), "{e}");
+}
+
+#[test]
 fn solver_that_ignores_cancel_is_killed_after_the_grace_time() {
     let dir = scratch("stubborn");
     let mut s = solver(&dir, "echo \"fh-solver-protocol 2\"\nsleep 30");
