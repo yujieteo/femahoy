@@ -300,11 +300,13 @@ fn time_limit_kills_the_whole_process_tree() {
     let mut s = solver(
         &dir,
         &format!(
-            "echo \"fh-solver-protocol 2\"\nsleep 30 &\necho $! > {}/grandchild.pid\nwait",
+            "sleep 30 &\necho $! > {}/grandchild.pid\necho \"fh-solver-protocol 2\"\nwait",
             dir.display()
         ),
     );
-    s.timeout = Duration::from_millis(500);
+    // The script must write the pid file before the time limit. With 500 ms, a loaded
+    // machine stopped it first. 2 s is still far below the 30 s of the grandchild.
+    s.timeout = Duration::from_secs(2);
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
     assert!(e.to_string().contains("time limit"), "{e}");
     let pid = fs::read_to_string(dir.join("grandchild.pid")).unwrap();
