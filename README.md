@@ -10,7 +10,7 @@ The input is `.inp` text, heavily inspired by Abaqus input conventions. Agent-fa
 
 ## Status
 
-Agreed design, before implementation. The name is provisional. The name depends on trademark, package-name and domain checks.
+Agreed design. M0, M1 and the M2 linear solver are on main. The roadmap and the status of each item are in `DESIGN.md` section 13 and [docs/milestones.md](docs/milestones.md). The name is provisional. The name depends on trademark, package-name and domain checks.
 
 ## Licence
 
@@ -33,8 +33,11 @@ Budgets are lines of Rust, tests included. The total cap is 85k lines.
 | `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | 7k |
 | `agents` | harness start, JSON stream parsing, skills install, role config | 4k |
 | `cli` | `fh` commands | 3k |
-| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | 15k |
+| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | 12k, provisional |
+| `solver-ccx` | CalculiX adapter: `ccx` input, process run, `.frd` reader, results (D-13) | 3k, provisional |
 | **Total** | | **85k** |
+
+The `viewer` and `solver-ccx` budgets are provisional until the budget review at the first user test (`DESIGN.md` section 11).
 
 ## Planned platforms
 
@@ -46,7 +49,7 @@ The product is distributed as one `fh` binary, through Homebrew and as a direct 
 
 ## Design decisions
 
-This section lists the design decisions for femahoy. `DESIGN.md` section 17 holds decisions D-01 to D-10 only, with rejected options and reversal rules. The newer decisions in this section are not yet in `DESIGN.md`. The milestone list is in [docs/milestones.md](docs/milestones.md).
+This section lists the design decisions for femahoy. `DESIGN.md` section 17 holds the decision log, D-01 to D-19, with rejected options and reversal rules. The roadmap is in `DESIGN.md` section 13, and the milestone status is in [docs/milestones.md](docs/milestones.md).
 
 ### Product scope
 
