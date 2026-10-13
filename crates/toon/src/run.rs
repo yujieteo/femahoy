@@ -91,6 +91,11 @@ pub struct Run {
 
 impl Run {
     pub fn render(&self, opts: &Opts) -> Result<String, Error> {
+        let iterations = self
+            .increments
+            .iter()
+            .try_fold(0u64, |total, i| total.checked_add(i.iters))
+            .ok_or_else(|| Error("iteration count overflow".into()))?;
         let cutbacks = self
             .increments
             .iter()
@@ -100,10 +105,7 @@ impl Run {
             ("steps", self.steps.len().into()),
             ("increments", self.increments.len().into()),
             ("cutbacks", cutbacks.into()),
-            (
-                "iterations",
-                self.increments.iter().map(|i| i.iters).sum::<u64>().into(),
-            ),
+            ("iterations", iterations.into()),
             ("wall_s", self.wall_s.into()),
         ];
         let doc: Doc = start("fh.run", &self.header)

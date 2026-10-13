@@ -38,7 +38,7 @@ impl Default for Opts {
 
 /// The encoder failed. This is a bug in `fh`, so the exit code is 3.
 #[derive(Debug)]
-pub struct Error(String);
+pub struct Error(pub(crate) String);
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -52,6 +52,7 @@ impl std::error::Error for Error {}
 #[derive(Clone, Debug, PartialEq)]
 pub enum Cell {
     Int(i64),
+    Uint(u64),
     Num(f64),
     /// A margin: below 1 is a pass, so rounding never lifts it to 1.
     Margin(f64),
@@ -75,7 +76,7 @@ impl From<f64> for Cell {
 }
 impl From<u64> for Cell {
     fn from(v: u64) -> Self {
-        Cell::Int(i64::try_from(v).unwrap_or(i64::MAX))
+        Cell::Uint(v)
     }
 }
 impl From<usize> for Cell {
@@ -106,6 +107,7 @@ fn json_num(x: f64) -> JsonValue {
 fn json(cell: &Cell, precision: usize) -> JsonValue {
     match cell {
         Cell::Int(i) => JsonValue::Number(Number::from(*i)),
+        Cell::Uint(i) => JsonValue::Number(Number::from(*i)),
         Cell::Text(t) => JsonValue::String(t.clone()),
         Cell::Margin(x) if *x < 1.0 => {
             let below = 1.0 - 10f64.powi(-(precision.max(1) as i32));
