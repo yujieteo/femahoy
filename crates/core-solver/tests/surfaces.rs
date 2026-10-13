@@ -28,7 +28,22 @@ fn coupling_on_an_element_face_equals_coupling_on_its_nodes() {
 }
 
 #[test]
-fn a_missing_surface_is_an_error() {
-    let m = parse(&format!("{CUBE}*SURFACE, TYPE=ELEMENT, NAME=T\nE, S4\n")).unwrap();
-    assert!(m.element_surface("S").is_none());
+fn a_coupling_on_a_missing_surface_is_an_error() {
+    let text = format!(
+        "{CUBE}*SURFACE, TYPE=ELEMENT, NAME=T\nE, S4\n*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n"
+    );
+    let e = parse(&text).unwrap_err();
+    assert!(e.to_string().contains("surface 'S' is not defined"), "{e}");
+}
+
+#[test]
+fn a_coupling_on_an_invalid_face_is_an_error() {
+    let text = format!(
+        "{CUBE}*SURFACE, TYPE=ELEMENT, NAME=S\nE, S9\n*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n\
+*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n*CLOAD\n9,1,100\n*END STEP\n"
+    );
+    match parse(&text) {
+        Err(_) => {}
+        Ok(m) => assert!(solve(&m).is_err()),
+    }
 }
