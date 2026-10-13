@@ -524,6 +524,7 @@ fn shipped_cases_load_and_have_existing_inputs() {
             "cantilever",
             "cantilever-c3d10",
             "cantilever-c3d8",
+            "kirsch-plate-c3d10",
             "lame-cylinder",
             "lame-cylinder-c3d10",
             "lame-cylinder-c3d8i",
