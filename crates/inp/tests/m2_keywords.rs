@@ -136,8 +136,24 @@ const MODEL_DATA: [&str; 5] = [
 
 #[test]
 fn model_data_inside_or_after_a_step_is_an_error() {
+    only_before_the_first_step(&MODEL_DATA);
+}
+
+#[test]
+fn mesh_and_material_data_inside_or_after_a_step_is_an_error() {
+    only_before_the_first_step(&[
+        "*NODE\n10,0,0,0\n",
+        "*ELEMENT, TYPE=C3D8\n2,1,2,3,4,5,6,7,8\n",
+        "*NSET, NSET=N\n1\n",
+        "*ELSET, ELSET=E\n1\n",
+        "*MATERIAL, NAME=Q\n*ELASTIC\n1000,0.3\n",
+    ]);
+}
+
+/// Each `data` passes before the first step and fails inside and after it.
+fn only_before_the_first_step(model_data: &[&str]) {
     let surface = "*SURFACE, TYPE=NODE, NAME=S\n1\n";
-    for data in MODEL_DATA {
+    for data in model_data {
         ok(&format!("{surface}{data}*STEP\n*STATIC\n*END STEP\n"));
         for text in [
             format!("{surface}*STEP\n*STATIC\n{data}*END STEP\n"),

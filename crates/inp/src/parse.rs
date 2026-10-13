@@ -133,6 +133,7 @@ impl Parser {
 
     fn node(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NSET"])?;
+        self.model_data(b)?;
         let mut ids = Vec::new();
         for d in &b.data {
             if d.fields.len() < 3 {
@@ -157,6 +158,7 @@ impl Parser {
 
     fn element(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "ELSET"])?;
+        self.model_data(b)?;
         let ty = b
             .value("TYPE")?
             .ok_or_else(|| b.error(b.line, "parameter TYPE is required"))?;
@@ -200,6 +202,7 @@ impl Parser {
 
     fn nset(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NSET", "GENERATE"])?;
+        self.model_data(b)?;
         let name = b
             .value("NSET")?
             .ok_or_else(|| b.error(b.line, "parameter NSET is required"))?;
@@ -210,6 +213,7 @@ impl Parser {
 
     fn elset(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["ELSET", "GENERATE"])?;
+        self.model_data(b)?;
         let name = b
             .value("ELSET")?
             .ok_or_else(|| b.error(b.line, "parameter ELSET is required"))?;
@@ -303,6 +307,7 @@ impl Parser {
 
     fn material(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["NAME"])?;
+        self.model_data(b)?;
         let name = b
             .value("NAME")?
             .ok_or_else(|| b.error(b.line, "parameter NAME is required"))?;
