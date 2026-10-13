@@ -89,6 +89,19 @@ fn num<T: FromStr>(tokens: &[&str], i: usize, line: usize, what: &str) -> Result
     }
 }
 
+/// A coordinate. The Rust parser also accepts NaN, infinity and numbers that overflow.
+fn coordinate(tokens: &[&str], i: usize, line: usize, what: &str) -> Result<f64> {
+    let v: f64 = num(tokens, i, line, what)?;
+    if v.is_finite() {
+        Ok(v)
+    } else {
+        fail(
+            line,
+            format!("{what} is not a finite number: {}", tokens[i]),
+        )
+    }
+}
+
 #[derive(Default)]
 struct Group {
     name: String,
@@ -229,9 +242,9 @@ impl Reader {
             for id in &ids {
                 let (line, t) = l.next()?;
                 let xyz = [
-                    num(&t, 0, line, "x")?,
-                    num(&t, 1, line, "y")?,
-                    num(&t, 2, line, "z")?,
+                    coordinate(&t, 0, line, "x")?,
+                    coordinate(&t, 1, line, "y")?,
+                    coordinate(&t, 2, line, "z")?,
                 ];
                 self.model.nodes.push(Node { id: *id, xyz });
             }

@@ -73,3 +73,20 @@ fn errors_name_the_line() {
     assert!(err(&junk).starts_with("line 20: "));
     assert!(err("").starts_with("line 1: "));
 }
+
+#[test]
+fn a_coordinate_that_is_not_finite_is_an_error() {
+    let mut bad = Vec::new();
+    for xyz in ["NaN 0 0", "0 inf 0", "0 0 -inf", "1e999 0 0"] {
+        let text = HEX.replace("0 0 0\n2 1 0 3", &format!("{xyz}\n2 1 0 3"));
+        assert_ne!(text, HEX);
+        match read_msh(&text) {
+            Ok(m) => bad.push(format!("{xyz}: accepted as {:?}", m.nodes[0].xyz)),
+            Err(e) if !e.to_string().starts_with("line 20: ") => {
+                bad.push(format!("{xyz}: {e}"));
+            }
+            Err(_) => {}
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}
