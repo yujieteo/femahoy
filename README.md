@@ -93,5 +93,6 @@ Plasticity, contact and large displacement are not built yet.
 
 ## Documents
 
+- [Quickstart](docs/quickstart.md): current STEP, mesh, solver and validation commands, with output from actual runs.
 - `DESIGN.md`: product design, architecture, solver scope and milestones.
 - `AGENTS.md`: rules for the agents that build femahoy.
