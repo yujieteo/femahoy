@@ -49,7 +49,7 @@ fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError>
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
     f.parse::<u32>().ok().filter(|&n| n > 0).ok_or_else(|| {
         b.error(
-            d.line,
+            d.line_of(i),
             format!("{what} must be a positive integer, found '{f}'"),
         )
     })
@@ -65,7 +65,7 @@ fn real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<f64, ParseError
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
     finite(f).ok_or_else(|| {
         b.error(
-            d.line,
+            d.line_of(i),
             format!("{what} must be a finite number, found '{f}'"),
         )
     })
@@ -84,7 +84,7 @@ fn dof(b: &Block, d: &DataLine, i: usize) -> Result<u8, ParseError> {
         Ok(n as u8)
     } else {
         Err(b.error(
-            d.line,
+            d.line_of(i),
             format!("degree of freedom must be 1 to 6, found {n}"),
         ))
     }
@@ -186,7 +186,7 @@ impl Parser {
             for k in 1..=count {
                 let n = int(b, d, k, "node id")?;
                 if !self.node_ids.contains(&n) {
-                    return Err(b.error(d.line, format!("node {n} is not defined")));
+                    return Err(b.error(d.line_of(k), format!("node {n} is not defined")));
                 }
                 nodes.push(n);
             }
@@ -659,7 +659,7 @@ impl Parser {
         // The value check then refuses each empty field.
         let fields: Vec<(usize, &String)> = b.data[1..]
             .iter()
-            .flat_map(|d| d.fields.iter().map(|f| (d.line, f)))
+            .flat_map(|d| d.fields.iter().enumerate().map(|(j, f)| (d.line_of(j), f)))
             .collect();
         if fields.len() != 3 * n {
             return Err(b.error(
@@ -669,10 +669,9 @@ impl Parser {
         }
         let mut terms = Vec::with_capacity(n);
         for t in fields.chunks(3) {
-            let line = t[0].0;
             let node = t[0].1.parse::<u32>().map_err(|_| {
                 b.error(
-                    line,
+                    t[0].0,
                     format!("node id must be a positive integer, found '{}'", t[0].1),
                 )
             })?;
@@ -683,18 +682,18 @@ impl Parser {
                 .filter(|d| (1..=6).contains(d))
                 .ok_or_else(|| {
                     b.error(
-                        line,
+                        t[1].0,
                         format!("degree of freedom must be 1 to 6, found '{}'", t[1].1),
                     )
                 })?;
             let coefficient = finite(t[2].1).ok_or_else(|| {
                 b.error(
-                    line,
+                    t[2].0,
                     format!("coefficient must be a finite number, found '{}'", t[2].1),
                 )
             })?;
             terms.push(EquationTerm {
-                node: self.known_node(b, line, node)?,
+                node: self.known_node(b, t[0].0, node)?,
                 dof,
                 coefficient,
             });
@@ -720,7 +719,7 @@ impl Parser {
             let mut nodes = Vec::new();
             for k in 1..3 {
                 let id = int(b, d, k, "node id")?;
-                nodes.push(self.known_node(b, d.line, id)?);
+                nodes.push(self.known_node(b, d.line_of(k), id)?);
             }
             self.model.mpcs.push(Mpc { kind, nodes });
         }
@@ -819,6 +818,41 @@ mod tests {
                 "{k}"
             );
         }
+    }
+
+    #[test]
+    fn an_error_on_a_continuation_line_names_that_line() {
+        let mut bad = Vec::new();
+        for (text, want) in [
+            // Line 13 is the second physical line of the record.
+            (
+                "*EQUATION\n2\n1,1,1,\n2,7,-1\n",
+                "line 13, *EQUATION: degree of freedom",
+            ),
+            (
+                "*EQUATION\n2\n1,1,1,\n2,1,x\n",
+                "line 13, *EQUATION: coefficient",
+            ),
+            (
+                "*EQUATION\n2\n1,1,1,\n99,1,-1\n",
+                "line 13, *EQUATION: node 99",
+            ),
+            (
+                "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,\n5,6,7,99\n",
+                "line 12, *ELEMENT: node 99",
+            ),
+            (
+                "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,\n5,6,7,x\n",
+                "line 12, *ELEMENT: node id",
+            ),
+            ("*NODE\n9,0,\n0,x\n", "line 12, *NODE: "),
+        ] {
+            let e = err(&format!("{MESH}{text}"));
+            if !e.starts_with(want) {
+                bad.push(format!("{text:?}: {e}"));
+            }
+        }
+        assert!(bad.is_empty(), "{bad:#?}");
     }
 
     #[test]
