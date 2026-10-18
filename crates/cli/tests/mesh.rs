@@ -148,7 +148,7 @@ fn the_case_units_are_used_and_checked_against_the_step_file() {
     let dir = scratch("case");
     let step = dir.join("a.step");
     std::fs::write(&step, METRE_STEP).unwrap();
-    let (mm, m) = (patch_case("SI-mm"), patch_case("SI-m"));
+    let (mm, m) = (unit_case("SI-mm"), unit_case("SI-m"));
     says(
         &fh_raw(&[p(&step), "--case", p(&mm)], no_gmsh()),
         "unit.step.mismatch",

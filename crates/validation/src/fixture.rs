@@ -5,35 +5,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, Table};
 
-use crate::expr::Expr;
 use crate::ModelSpec;
-
-/// The tolerance class of a case and its parameters.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Class {
-    /// Richardson over the meshes. `ratio` is the mesh size ratio. `reference_error` is relative.
-    /// The observed order must lie in `order_min..=order_max`.
-    L {
-        ratio: f64,
-        reference_error: f64,
-        order_min: f64,
-        order_max: f64,
-    },
-    /// A fixed tolerance on the one reference mesh.
-    N { rel_tol: f64, abs_tol: f64 },
-    /// An expected convergence rate and the allowed band.
-    R { rate: f64, band: f64 },
-}
-
-impl Class {
-    pub fn letter(&self) -> char {
-        match self {
-            Class::L { .. } => 'L',
-            Class::N { .. } => 'N',
-            Class::R { .. } => 'R',
-        }
-    }
-}
 
 /// The field of a measured quantity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,9 +48,6 @@ pub struct Reference {
     pub quantity: Quantity,
 }
 
-/// The element types a case may name.
-pub const ELEMENT_TYPES: [&str; 3] = ["C3D8", "C3D8I", "C3D10"];
-
 /// The unit system of a case (decision D-12, see DESIGN.md). The case declares it. `fh` never
 /// takes a unit from a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,21 +85,21 @@ impl Units {
 }
 
 /// The version of the fixture schema that this reader accepts.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Case {
     pub id: String,
     pub dir: PathBuf,
-    pub class: Class,
     /// The declared unit system. Every number in the case is in this system.
     pub units: Units,
     pub justification: String,
     pub derivation: PathBuf,
-    /// The element types of the meshes. The case runs once for each type (the meshes hold one).
-    pub element_types: Vec<String>,
-    /// Input files, coarse to fine. Absolute or relative to the working directory like `dir`.
-    pub meshes: Vec<PathBuf>,
+    /// The input file. Absolute or relative to the working directory like `dir`.
+    pub mesh: PathBuf,
+    /// Pass if `|computed - reference| <= rel_tol * |reference| + abs_tol`.
+    pub rel_tol: f64,
+    pub abs_tol: f64,
     pub references: Vec<Reference>,
     /// The solver program. `fh-solve-ccx` is the default and the only value now.
     pub solver: String,
@@ -140,20 +109,6 @@ pub struct Case {
     pub memory_limit_mib: Option<f64>,
     /// How to build a solver input from a `.msh` file (`fh model`). Optional.
     pub model: Option<ModelSpec>,
-    /// Class R only.
-    pub manufactured: Option<Manufactured>,
-}
-
-/// The manufactured solution of a class R case. The harness takes the boundary values from
-/// `exact`, solves with them, and measures the error of `U` against `exact` over all nodes.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Manufactured {
-    /// The mesh size of each mesh, in the order of `Case::meshes` (coarse to fine).
-    pub mesh_sizes: Vec<f64>,
-    /// The node set that gets the boundary values.
-    pub boundary_set: String,
-    /// The components of the exact displacement, as functions of `x`, `y` and `z`.
-    pub exact: [Expr; 3],
 }
 
 /// A fixture error. It names the file and, when known, the line.
@@ -176,18 +131,18 @@ impl fmt::Display for FixtureError {
 impl std::error::Error for FixtureError {}
 
 impl Case {
-    /// Load `<dir>/case.toml`. Each `mesh` file must exist.
+    /// Load `<dir>/case.toml`. The `mesh` file must exist.
     pub fn load(dir: &Path) -> Result<Case, FixtureError> {
         Case::read(dir, true)
     }
 
-    /// Load `<dir>/case.toml` without the check that each `mesh` file exists. `fh info`,
+    /// Load `<dir>/case.toml` without the check that the `mesh` file exists. `fh info`,
     /// `fh mesh` and `fh model` use it: the workflow makes the mesh files later.
     pub fn load_before_mesh(dir: &Path) -> Result<Case, FixtureError> {
         Case::read(dir, false)
     }
 
-    fn read(dir: &Path, need_meshes: bool) -> Result<Case, FixtureError> {
+    fn read(dir: &Path, need_mesh: bool) -> Result<Case, FixtureError> {
         let file = dir.join("case.toml");
         let text = std::fs::read_to_string(&file).map_err(|e| FixtureError {
             file: file.clone(),
@@ -202,7 +157,7 @@ impl Case {
         let reader = FixtureReader {
             file,
             text: &text,
-            need_meshes,
+            need_mesh,
         };
         reader.build(dir, doc.as_table())
     }
@@ -220,8 +175,8 @@ fn line_of(text: &str, offset: usize) -> usize {
 pub(crate) struct FixtureReader<'a> {
     pub(crate) file: PathBuf,
     pub(crate) text: &'a str,
-    /// Refuse a `mesh` entry whose file does not exist.
-    pub(crate) need_meshes: bool,
+    /// Refuse a `mesh` file that does not exist.
+    pub(crate) need_mesh: bool,
 }
 
 impl FixtureReader<'_> {
@@ -270,14 +225,6 @@ impl FixtureReader<'_> {
         let value = self.number(table, key)?;
         if value < 0.0 {
             return Err(self.err(table.get(key), format!("`{key}` must be non-negative")));
-        }
-        Ok(value)
-    }
-
-    fn ratio(&self, table: &Table) -> Result<f64, FixtureError> {
-        let value = self.number(table, "ratio")?;
-        if value <= 1.0 {
-            return Err(self.err(table.get("ratio"), "ratio must be above 1".into()));
         }
         Ok(value)
     }
@@ -362,16 +309,6 @@ impl FixtureReader<'_> {
         })
     }
 
-    /// An observed-order bound. It must be above 0.
-    fn order(&self, table: &Table, key: &str) -> Result<f64, FixtureError> {
-        let v = self.number(table, key)?;
-        if v > 0.0 {
-            Ok(v)
-        } else {
-            Err(self.err(table.get(key), format!("{key} must be above 0")))
-        }
-    }
-
     /// The `[ref]` table and the `[quantity.<name>]` table of each entry.
     fn references(&self, table: &Table) -> Result<Vec<Reference>, FixtureError> {
         let ref_item = table
@@ -413,54 +350,8 @@ impl FixtureReader<'_> {
         Ok(references)
     }
 
-    /// The keys of a class R case.
-    fn manufactured(&self, table: &Table, meshes: usize) -> Result<Manufactured, FixtureError> {
-        let sizes_item = self.get(table, "mesh_size")?;
-        let mut mesh_sizes = Vec::new();
-        for v in sizes_item.as_array().into_iter().flat_map(|a| a.iter()) {
-            let h = v
-                .as_float()
-                .or_else(|| v.as_integer().map(|i| i as f64))
-                .filter(|h| h.is_finite() && *h > 0.0)
-                .ok_or_else(|| {
-                    self.err(
-                        Some(sizes_item),
-                        "`mesh_size` must hold positive finite numbers".into(),
-                    )
-                })?;
-            mesh_sizes.push(h);
-        }
-        if mesh_sizes.len() != meshes || mesh_sizes.windows(2).any(|w| w[1] >= w[0]) {
-            return Err(self.err(
-                Some(sizes_item),
-                format!("`mesh_size` needs {meshes} values, one for each mesh, falling from coarse to fine"),
-            ));
-        }
-        let exact_item = self.get(table, "exact")?;
-        let exact_table = exact_item
-            .as_table_like()
-            .ok_or_else(|| self.err(Some(exact_item), "`exact` must be a table".into()))?;
-        for (k, i) in exact_table.iter() {
-            if !["u1", "u2", "u3"].contains(&k) {
-                return Err(self.err(Some(i), format!("unknown key `{k}` in `exact`")));
-            }
-        }
-        let component = |key: &str| -> Result<Expr, FixtureError> {
-            let item = exact_table.get(key).ok_or_else(|| {
-                self.err(Some(exact_item), format!("missing key `{key}` in `exact`"))
-            })?;
-            let text = self.non_empty_string(item, key)?;
-            Expr::parse(text).map_err(|e| self.err(Some(item), format!("`exact.{key}`: {e}")))
-        };
-        Ok(Manufactured {
-            mesh_sizes,
-            boundary_set: self.string(table, "boundary_set")?,
-            exact: [component("u1")?, component("u2")?, component("u3")?],
-        })
-    }
-
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 25] = [
+        const KEYS: [&str; 14] = [
             "schema",
             "solver",
             "time_limit_s",
@@ -468,58 +359,17 @@ impl FixtureReader<'_> {
             "model",
             "units",
             "quantity",
-            "element_types",
-            "order_min",
-            "order_max",
             "id",
-            "class",
             "justification",
             "derivation",
             "mesh",
             "ref",
-            "ratio",
-            "reference_error",
             "rel_tol",
             "abs_tol",
-            "rate",
-            "band",
-            "mesh_size",
-            "boundary_set",
-            "exact",
         ];
         for (k, item) in table.iter() {
             if !KEYS.contains(&k) {
                 return Err(self.err(Some(item), format!("unknown key `{k}`")));
-            }
-        }
-        // Only the keys of the declared class are allowed.
-        let class_name = self.string(table, "class")?;
-        let own: &[&str] = match class_name.as_str() {
-            "L" => &["ratio", "reference_error", "order_min", "order_max"],
-            "N" => &["rel_tol", "abs_tol"],
-            "R" => &["rate", "band", "mesh_size", "boundary_set", "exact"],
-            _ => &[],
-        };
-        for (k, item) in table.iter() {
-            let is_class_key = [
-                "ratio",
-                "reference_error",
-                "order_min",
-                "order_max",
-                "rel_tol",
-                "abs_tol",
-                "rate",
-                "band",
-                "mesh_size",
-                "boundary_set",
-                "exact",
-            ]
-            .contains(&k);
-            if is_class_key && !own.contains(&k) && !own.is_empty() {
-                return Err(self.err(
-                    Some(item),
-                    format!("`{k}` does not belong to class {class_name}"),
-                ));
             }
         }
         let version = self.get(table, "schema")?;
@@ -551,110 +401,15 @@ impl FixtureReader<'_> {
                 format!("derivation file {} not found", derivation.display()),
             ));
         }
-        let types_item = self.get(table, "element_types")?;
-        let mut element_types = Vec::new();
-        for v in types_item.as_array().into_iter().flat_map(|a| a.iter()) {
-            let t = v.as_str().filter(|t| !t.is_empty()).ok_or_else(|| {
-                self.err(
-                    Some(types_item),
-                    "`element_types` must be an array of strings".into(),
-                )
-            })?;
-            if !ELEMENT_TYPES.contains(&t) {
-                return Err(self.err(
-                    Some(types_item),
-                    format!(
-                        "unknown element type `{t}`, expected one of {}",
-                        ELEMENT_TYPES.join(", ")
-                    ),
-                ));
-            }
-            element_types.push(t.to_owned());
-        }
-        if element_types.is_empty() {
-            return Err(self.err(
-                Some(types_item),
-                "`element_types` must be a non-empty array of strings".into(),
-            ));
-        }
         let mesh_item = self.get(table, "mesh")?;
-        let list = mesh_item.as_array().ok_or_else(|| {
-            self.err(Some(mesh_item), "`mesh` must be an array of strings".into())
-        })?;
-        let mut meshes = Vec::new();
-        for v in list.iter() {
-            let name = v.as_str().ok_or_else(|| {
-                self.err(Some(mesh_item), "`mesh` must be an array of strings".into())
-            })?;
-            let path = dir.join(name);
-            if self.need_meshes && !path.is_file() {
-                return Err(self.err(Some(mesh_item), format!("mesh file {name} not found")));
-            }
-            meshes.push(path);
+        let name = self.non_empty_string(mesh_item, "mesh")?;
+        let mesh = dir.join(name);
+        if self.need_mesh && !mesh.is_file() {
+            return Err(self.err(Some(mesh_item), format!("mesh file {name} not found")));
         }
-        let is_r = class_name == "R";
-        let mut references = Vec::new();
-        if is_r {
-            // Class R measures the error of the whole field, so it has no point references.
-            for key in ["ref", "quantity"] {
-                if let Some(item) = table.get(key) {
-                    return Err(self.err(Some(item), format!("`{key}` does not belong to class R")));
-                }
-            }
-        } else {
-            references = self.references(table)?;
-        }
-        let class_item = self.get(table, "class")?;
-        let class = match class_name.as_str() {
-            "L" => Class::L {
-                ratio: self.ratio(table)?,
-                reference_error: self.tolerance(table, "reference_error")?,
-                order_min: self.order(table, "order_min")?,
-                order_max: self.order(table, "order_max")?,
-            },
-            "N" => Class::N {
-                rel_tol: self.tolerance(table, "rel_tol")?,
-                abs_tol: self.tolerance(table, "abs_tol")?,
-            },
-            "R" => Class::R {
-                rate: self.number(table, "rate")?,
-                band: self.tolerance(table, "band")?,
-            },
-            other => {
-                return Err(self.err(
-                    Some(class_item),
-                    format!("unknown class `{other}`, expected L, N or R"),
-                ))
-            }
-        };
-        if let Class::L {
-            order_min,
-            order_max,
-            ..
-        } = class
-        {
-            if order_min >= order_max {
-                return Err(self.err(
-                    table.get("order_min"),
-                    "order_min must be below order_max".into(),
-                ));
-            }
-        }
-        let (need, ok) = match class {
-            Class::L { .. } => ("at least 3", meshes.len() >= 3),
-            Class::N { .. } => ("exactly 1", meshes.len() == 1),
-            Class::R { .. } => ("at least 2", meshes.len() >= 2),
-        };
-        if !ok {
-            return Err(self.err(
-                Some(mesh_item),
-                format!(
-                    "class {} needs {need} `mesh` entries, found {}",
-                    class.letter(),
-                    meshes.len()
-                ),
-            ));
-        }
+        let references = self.references(table)?;
+        let rel_tol = self.tolerance(table, "rel_tol")?;
+        let abs_tol = self.tolerance(table, "abs_tol")?;
         let solver = match table.get("solver") {
             None => "fh-solve-ccx".to_owned(),
             Some(item) => match self.non_empty_string(item, "solver")? {
@@ -678,26 +433,20 @@ impl FixtureReader<'_> {
         };
         let (time_limit_s, memory_limit_mib) = (limit("time_limit_s")?, limit("memory_limit_mib")?);
         let model = self.model(table)?;
-        let manufactured = if is_r {
-            Some(self.manufactured(table, meshes.len())?)
-        } else {
-            None
-        };
         Ok(Case {
             id,
             dir: dir.to_owned(),
-            class,
             units,
             justification,
             derivation,
-            element_types,
-            meshes,
+            mesh,
+            rel_tol,
+            abs_tol,
             references,
             solver,
             time_limit_s,
             memory_limit_mib,
             model,
-            manufactured,
         })
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "fh-validation"
-description = "harness, tolerance classes, manufactured solutions"
+description = "validation harness and fixture schema"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,14 +1,12 @@
 # Uniaxial tension of a 100 x 20 x 10 mm bar, made from bar.step with `fh mesh` and `fh model`.
-# Class N: the displacement field is linear, so C3D10 reproduces it and the stress to round-off.
-schema = 2
+# The displacement field is linear, so C3D10 reproduces it and the stress to round-off.
+schema = 3
 id = "bar-tension"
 units = "SI-mm"
-class = "N"
-justification = "The prescribed end displacement gives a linear displacement field, which C3D10 represents exactly. No mesh error exists, so Richardson does not apply. The tolerance covers round-off in a sparse solve only."
+justification = "The prescribed end displacement gives a linear displacement field, which C3D10 represents exactly. No mesh error exists. The tolerance covers round-off in a sparse solve only."
 derivation = "derivation.md"
-element_types = ["C3D10"]
 # bar.inp is the output of: fh mesh bar.step --case . --size 8 -o bar.msh && fh model bar.msh --case . -o bar.inp
-mesh = ["bar.inp"]
+mesh = "bar.inp"
 rel_tol = 1e-6
 abs_tol = 1e-6
 

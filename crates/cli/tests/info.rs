@@ -23,7 +23,7 @@ fn info_step(dir: &Path, unit: &str) -> Output {
 }
 
 fn run_step(unit: &str, case_units: &str) -> Output {
-    info_step(&patch_case(case_units), unit)
+    info_step(&unit_case(case_units), unit)
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn a_missing_unit_record_is_refused() {
 
 #[test]
 fn a_case_without_units_is_refused() {
-    let dir = patch_case("SI-mm");
+    let dir = unit_case("SI-mm");
     let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
     std::fs::write(
         dir.join("case.toml"),
@@ -96,7 +96,7 @@ fn gmsh_recipe_gives_a_c3d10_bar_that_passes_the_gate() {
         .replace("@SIZE@", "5")
         .replace("@OUT@", "bar.msh");
     run_gmsh(&gmsh, &dir, "bar.geo", &geo);
-    let case = patch_case("SI-mm");
+    let case = unit_case("SI-mm");
     let out = fh(&["info", p(&dir.join("bar.step")), "--case", p(&case)]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let out = fh(&["info", p(&dir.join("bar.msh")), "--case", p(&case)]);
