@@ -16,7 +16,7 @@ Run CalculiX (`ccx`) as a protocol v2 solver: the executable `fh-solve-ccx` (D-1
 - Start `ccx` as a separate program only. Never link, bundle or copy `ccx` code. It is GPL.
 - The summary marks the results unvalidated.
 - Write each result file under a temporary name and rename it (D-09).
-- A `cancel` line or the end of stdin kills `ccx`, and the exit code is 130.
+- A `cancel` line kills `ccx`, and the exit code is 130. The end of stdin does the same when `FH_CANCEL_ON_EOF` is `1`.
 - A keyword outside the subset of `docs/ccx.md` is an error that names it.
 
 ## Forbidden actions

@@ -271,7 +271,7 @@ Command line: `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vt
   - `step N max_u=... max_mises=... max_rf=... free_dofs=... method=... iterations=...`: at the end of each step.
   - `stats dofs=... nnz=... pattern_builds=... estimate_bytes=... assemblies=... factorizations=... orphans=...` and `timing assemble=... factor=... solve=...` (seconds): at the end of the run.
   - The runner keeps any other line as a log line.
-- **stdin**: the line `cancel`, or the end of stdin, stops the run. The exit code is 130. The runner keeps the pipe open while the solver runs.
+- **stdin**: the line `cancel` stops the run. The end of stdin also stops it when `FH_CANCEL_ON_EOF` is `1`, which the runner sets. The exit code is 130. The runner keeps the pipe open while the solver runs.
 - **Restart**: `--restart` reads `restart.fh` in the run folder. It deletes the result files after the restart point, and continues from the last converged increment. It refuses an input file that changed.
 - **Run folder**: `step-N.*` for the last increment of step N, `step-N-inc-k.*` for the other increments, the PVD collection, `restart.fh`, and `summary.toon`.
 - **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.8). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics. A dof with no stiffness gives a warning with the code `SOL101`. The solver fixes that dof at zero.

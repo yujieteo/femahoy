@@ -202,8 +202,8 @@ The command keeps `C3D10` as the element. It accepts hex8 only for an extruded p
 fh model "$WORK/bar.msh" --case validation/cases/bar-tension -o "$WORK/bar.inp"
 ```
 
-Keep stdin open. End of stdin or a `cancel` line stops the solver.
-Run this command in the interactive terminal, without a pipe or input redirection.
+A `cancel` line on stdin stops the solver. The end of stdin does not stop it (`docs/solver-protocol.md`).
+You can run this command from a script or an agent shell.
 Use a new result directory for each run.
 
 ```sh

@@ -71,7 +71,7 @@ The cases in mm and in m give the same physical answer.
 
 `fh mesh` takes the unit from `--case` or from `--units`. It has no default unit (D-18).
 `fh validate` finds `fh-solve` through `FH_SOLVE`, or beside `fh`. `fh mesh` finds gmsh through `--gmsh`, `FH_GMSH`, then `PATH`.
-`fh-solve` reads stdin. End of stdin means cancel, so keep stdin open (`docs/solver-protocol.md`).
+`fh-solve` stops on a `cancel` line on stdin. The end of stdin stops it only when the runner sets `FH_CANCEL_ON_EOF=1` (`docs/solver-protocol.md`).
 
 ## File formats
 

@@ -28,9 +28,11 @@
 //! ## Cancel
 //!
 //! The runner writes the line `cancel` on the stdin of the solver. The solver
-//! stops at the next safe point and exits with a non-zero code. If stdin
-//! closes, the solver must also stop, because the runner is gone. The runner
-//! kills the solver after a grace period if it does not stop.
+//! stops at the next safe point and exits with a non-zero code. The runner sets
+//! [`CANCEL_ON_EOF`] to `1`. If stdin then closes, the solver must also stop,
+//! because the runner is gone. Without the variable, the end of stdin does not
+//! stop the solver, so one shell command with no input can solve a model. The
+//! runner kills the solver after a grace period if it does not stop.
 //!
 //! ## Limits
 //!
@@ -73,6 +75,8 @@ pub const RUN_MARKER: &str = ".fh-run";
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 /// Time that a solver has to stop after a cancel.
 pub const CANCEL_GRACE: Duration = Duration::from_secs(5);
+/// The runner sets this environment variable to `1`. The solver then stops at the end of stdin.
+pub const CANCEL_ON_EOF: &str = "FH_CANCEL_ON_EOF";
 
 /// Stable diagnostic codes of the runner. `docs/diagnostics.md` lists them.
 pub mod code {
@@ -267,6 +271,37 @@ impl CancelToken {
     }
 }
 
+/// For a solver executable: read stdin in a thread, and set the returned flag at a `cancel`
+/// line, or at the end of stdin when [`CANCEL_ON_EOF`] is `1`.
+pub fn watch_stdin() -> Arc<AtomicBool> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = cancel.clone();
+    let on_eof = std::env::var(CANCEL_ON_EOF).is_ok_and(|v| v == "1");
+    std::thread::spawn(move || {
+        // Read in blocks and keep only the start of each line, so a stream with no
+        // line ends (for example /dev/zero) cannot use memory without limit.
+        let mut stdin = std::io::stdin().lock();
+        let (mut block, mut line) = ([0u8; 4096], Vec::<u8>::new());
+        while let Ok(n @ 1..) = stdin.read(&mut block) {
+            for &b in &block[..n] {
+                if b == b'\n' {
+                    if line.trim_ascii() == b"cancel" {
+                        flag.store(true, Ordering::Relaxed);
+                        return;
+                    }
+                    line.clear();
+                } else if line.len() < 64 {
+                    line.push(b);
+                }
+            }
+        }
+        if on_eof {
+            flag.store(true, Ordering::Relaxed);
+        }
+    });
+    cancel
+}
+
 /// A trusted solver that runs inside the process.
 pub trait Solver {
     fn name(&self) -> &str;
@@ -429,6 +464,7 @@ impl SubprocessSolver {
             cmd.arg("--restart");
         }
         cmd.current_dir(&run_dir)
+            .env(CANCEL_ON_EOF, "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(open("stderr.txt")?);
