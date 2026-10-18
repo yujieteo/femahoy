@@ -1,0 +1,17 @@
+[package]
+name = "fh-solver-ccx"
+description = "CalculiX adapter: ccx input writer, process run, .frd reader, results as VTU, PVD and TOON"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+fh-inp = { path = "../inp" }
+fh-io = { path = "../io" }
+fh-solver-api = { path = "../solver-api" }
+fh-toon = { path = "../toon" }
+
+[[bin]]
+name = "fh-solve-ccx"
+path = "src/main.rs"

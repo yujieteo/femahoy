@@ -880,6 +880,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fh-solver-ccx"
+version = "0.0.0"
+dependencies = [
+ "fh-inp",
+ "fh-io",
+ "fh-solver-api",
+ "fh-toon",
+]
+
+[[package]]
 name = "fh-toon"
 version = "0.0.0"
 dependencies = [
