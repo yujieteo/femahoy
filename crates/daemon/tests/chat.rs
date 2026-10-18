@@ -11,7 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use fh_daemon::{new_request_id, Client, Config, Daemon, Error, Message, RunState};
+use fh_daemon::{new_request_id, Client, Config, Daemon, Error, Message, Options, RunState};
 use fh_solver_api::SubprocessSolver;
 
 const SOLVER: &str = r#"#!/bin/sh
@@ -87,7 +87,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         state_dir: state.clone(),
         solver: SubprocessSolver::new(dir.join("solver.sh")),
     };
-    let daemon = Daemon::start(config, 0).unwrap();
+    let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     let c = daemon.client();
     let token = daemon.token().to_owned();
 
