@@ -18,7 +18,7 @@ use fh_io::vtu::{read_vtu, write_pvd_units, write_vtu_to, Field, Grid, PvdEntry}
 use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
 use fh_toon as toon;
 
-use crate::restart::{read_latest, Restart};
+use crate::restart::{read_latest, Restart, NEWEST as RESTART_FILE};
 use crate::system::{solve_from, CANCELLED};
 use crate::text::write_text;
 use crate::{
