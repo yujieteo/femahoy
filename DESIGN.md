@@ -700,7 +700,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 ### D-19 C3D10 is the default element
 - **Decided by:** the captain.
 - **Choice:** `C3D10` (tet10) is the default element. Hex8 (`C3D8I`, `C3D8`) is only for extruded parts.
-- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending lock of plain hex8. In a test, plain hex8 gave a deflection 17 percent too small.
+- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the cantilever case with 1 element through the section, plain hex8 (`C3D8`, B-bar) gave 0.35 times the beam deflection with 4 elements along the beam, and 2.07 times with 32 elements. The mesh rule is in `docs/compatibility.md`.
 - **Rejected:** hex8 as the default element.
 - **Reverse if:** the `C3D10` workload test (section 13, E2) shows that typical tet10 models do not fit D-06.
 - **Built:** the `C3D10` element is on main (M2, PR 10). The M2b recipe makes `C3D10` meshes from CAD. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). `fh info` and `fh mesh` refuse a hex8 mesh that is not one extrusion (`crates/cli/src/rules.rs`).

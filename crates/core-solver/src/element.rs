@@ -24,8 +24,9 @@ use crate::SolverError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// Hex8 with B-bar (selective reduced integration of the volume strain).
-    /// Plain `C3D8` is soft in bending on coarse meshes. This is expected.
+    /// Hex8 with B-bar (Hughes 1980): each point uses the element mean of the volume
+    /// strain. With 1 element through a section in bending, long elements are too stiff
+    /// and short elements are too soft. See the mesh rule in `docs/compatibility.md`.
     C3D8,
     /// Hex8 with incompatible modes.
     C3D8I,

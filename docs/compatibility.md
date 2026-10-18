@@ -48,9 +48,51 @@ M1 supports these keywords first:
 
 ## C3D8 mesh rule for bending
 
-C3D8 uses a B-bar formulation.
-With 1 element through the section, it is too soft in bending.
-Refinement along the beam alone does not remove this error.
-Use multiple elements through the section and check convergence.
-The C3D8 cantilever fixture uses 4 elements through each section axis.
+`C3D8` uses the B-bar method (Hughes 1980). Each integration point uses the element mean of the volume strain.
+With 1 element through the depth of a section in bending, the result depends on the element length and does not converge to the beam value.
+
+### Rule
+
+1. Do not use 1 `C3D8` element through the depth of a section in bending.
+2. Use at least 4 `C3D8` elements through the depth and 4 across the width.
+3. Make the element length along the bending span 0.5 to 1 times the element depth.
+4. Check convergence with refinement in all 3 directions, not along the span only.
+5. For a thin extruded part in bending, use `C3D8I`. With box-shaped elements, 1 `C3D8I` element through the depth gives 0.96 to 0.99 times the beam value.
+
+### Data
+
+The table gives the tip deflection of a cantilever divided by the Timoshenko beam value (shear factor 5/6).
+The cantilever has the length 8, a 1 x 1 section, a fixed end and a tip force. Poisson's ratio is 0.3.
+The 3D fixed end makes the converged value about 0.99 times the beam value.
+
+| Mesh (along, width, depth) | Element length / element depth | `C3D8` | `C3D8I` |
+|---|---:|---:|---:|
+| 4 x 1 x 1 | 2 | 0.50 | 0.96 |
+| 8 x 1 x 1 | 1 | 1.19 | 0.98 |
+| 16 x 1 x 1 | 0.5 | 1.83 | 0.99 |
+| 64 x 1 x 1 | 0.125 | 2.20 | 0.99 |
+| 16 x 2 x 2 | 1 | 0.97 | 0.98 |
+| 32 x 2 x 2 | 0.5 | 1.05 | 0.99 |
+| 32 x 1 x 4 | 1 | 0.97 | 0.99 |
+| 16 x 4 x 4 | 2 | 0.92 | 0.98 |
+| 32 x 4 x 4 | 1 | 0.98 | 0.99 |
+| 64 x 4 x 4 | 0.5 | 1.00 | 0.99 |
+
+### Cause
+
+The element review (task T9) found no defect. The `C3D8` stiffness is equal to the Hughes form of B-bar to a relative difference of 1e-15.
+With 1 element through the depth, 2 effects control the bending stiffness:
+
+- **Long elements are too stiff.** The 2 x 2 x 2 points see an in-plane shear strain that is not in the beam (shear locking). It adds `mu (a / h)^2` to the bending modulus, with element length `a`, depth `h` and shear modulus `mu`.
+- **Short elements are too soft.** In bending, the volume strain changes linearly through the depth. Its element mean is 0, so B-bar removes the volumetric stiffness. The bending modulus becomes `4 mu (1 + r) / (4 + 3 r)` with `r = (width / depth)^2`. For a square section and Poisson's ratio 0.3, this is 0.44 times Young's modulus. Thus the bending deflection goes to 2.26 times the beam value, or about 2.23 times with the 3D fixed end.
+
+A fully integrated hex8 has the opposite limit. In a probe with 64 elements along the span and 1 through the section, it stayed too stiff, at 0.86 times the beam value.
+`C3D8I` has incompatible modes that represent the pure bending field of a box-shaped element exactly.
+
+Tests:
+
+- `crates/core-solver/tests/elements.rs`: `hex8_stiffness_has_6_zero_modes_and_no_negative_mode`, `hex8_bending_energy_matches_the_formulation` and `c3d8_pressure_is_the_bulk_modulus_times_the_volume_change`.
+- `crates/core-solver/tests/beam.rs`: `one_c3d8_through_the_section_follows_the_b_bar_model`.
+
+The `C3D8` cantilever fixture (`validation/cases/cantilever-c3d8`) uses 4 elements through each section axis.
 It checks axial refinement with the original beam reference and tolerances.
