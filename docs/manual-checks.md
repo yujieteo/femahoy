@@ -1,6 +1,6 @@
 # Manual platform checks
 
-GitHub Actions keeps the existing x86-64 Linux checks. It runs no macOS job, release build, emulator, memory test or convergence check.
+GitHub Actions runs the x86-64 Linux checks and an aarch64 macOS job that builds the workspace and runs the workspace tests. It runs no release build, emulator, memory test, convergence check or CAD mesh check.
 Run the scripts below from any directory. Each script uses the repository root and exits non-zero on a failure.
 
 ## Apple Silicon macOS
