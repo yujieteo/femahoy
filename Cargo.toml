@@ -9,7 +9,6 @@ members = [
     "crates/solver-ccx",
     "crates/validation",
     "crates/daemon",
-    "crates/agents",
     "crates/cli",
     "crates/viewer",
 ]
