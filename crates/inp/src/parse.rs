@@ -1,6 +1,6 @@
 //! Build the typed model from keyword blocks.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::error::code;
 use crate::lexer::{lex, Block, DataLine};
@@ -47,32 +47,6 @@ pub fn parse_all(text: &str) -> Result<Model, Vec<ParseError>> {
     if let Err(e) = p.close_coupling() {
         errors.push(e);
     }
-    if let Some(open) = &p.part {
-        errors.push(ParseError::new(
-            code::INCOMPLETE,
-            open.line,
-            Some("PART"),
-            "part has no *END PART",
-        ));
-    }
-    if let Some(line) = p.assembly {
-        errors.push(ParseError::new(
-            code::INCOMPLETE,
-            line,
-            Some("ASSEMBLY"),
-            "assembly has no *END ASSEMBLY",
-        ));
-    }
-    for (line, material) in &p.section_materials {
-        if p.model.material(material).is_none() {
-            errors.push(ParseError::new(
-                code::UNDEFINED,
-                *line,
-                Some("INSTANCE"),
-                format!("material '{material}' is not defined"),
-            ));
-        }
-    }
     if errors.is_empty() {
         Ok(p.model)
     } else {
@@ -95,25 +69,6 @@ struct Parser {
     material: Option<usize>,
     /// A `*COUPLING` that still waits for `*KINEMATIC` or `*DISTRIBUTING`.
     open_coupling: Option<PendingCoupling>,
-    /// The `*PART` that is open. Its data goes to a separate model.
-    part: Option<OpenPart>,
-    /// Finished parts, by name.
-    parts: HashMap<String, Model>,
-    /// Line of the `*ASSEMBLY` that is open.
-    assembly: Option<usize>,
-    /// The `*INSTANCE` that is open.
-    instance_open: bool,
-    /// Per instance: part label to global id, for nodes and for elements.
-    instance_ids: Vec<(HashMap<u32, u32>, HashMap<u32, u32>)>,
-    /// Materials named by part sections. The check waits for the whole file.
-    section_materials: Vec<(usize, String)>,
-}
-
-/// The model data that was current when a `*PART` opened.
-struct OpenPart {
-    line: usize,
-    name: String,
-    outer: (Model, HashSet<u32>, HashSet<u32>),
 }
 
 struct PendingCoupling {
@@ -175,7 +130,7 @@ fn element_nodes(element_type: &str) -> Option<usize> {
     match element_type {
         "C3D4" => Some(4),
         "C3D8" | "C3D8I" => Some(8),
-        "C3D10" | "C3D10M" => Some(10),
+        "C3D10" => Some(10),
         _ => None,
     }
 }
@@ -188,9 +143,6 @@ impl Parser {
         }
         if b.keyword != "KINEMATIC" && b.keyword != "DISTRIBUTING" {
             self.close_coupling()?;
-        }
-        if let Some(r) = self.structure(b) {
-            return r;
         }
         match b.keyword.as_str() {
             "NODE" => self.node(b),
@@ -216,303 +168,15 @@ impl Parser {
             "EQUATION" => self.equation(b),
             "MPC" => self.mpc(b),
             "END STEP" => self.end_step(b),
+            "PART" | "END PART" | "ASSEMBLY" | "END ASSEMBLY" | "INSTANCE" | "END INSTANCE" => {
+                Err(b.error(
+                    code::UNSUPPORTED_KEYWORD,
+                    b.line,
+                    "parts and assemblies are not supported; write a flat model",
+                ))
+            }
             _ => Err(b.error(code::UNSUPPORTED_KEYWORD, b.line, "unsupported keyword")),
         }
-    }
-
-    /// Handle the part and assembly keywords. Return `None` for any other keyword
-    /// that is allowed in the current context.
-    fn structure(&mut self, b: &Block) -> Option<Result<(), ParseError>> {
-        match b.keyword.as_str() {
-            "PART" => return Some(self.part(b)),
-            "END PART" => return Some(self.end_part(b)),
-            "ASSEMBLY" => return Some(self.assembly(b)),
-            "END ASSEMBLY" => return Some(self.end_assembly(b)),
-            "INSTANCE" => return Some(self.instance(b)),
-            "END INSTANCE" => return Some(self.end_instance(b)),
-            _ => {}
-        }
-        let allowed: &[&str] = if self.instance_open {
-            &[]
-        } else if self.part.is_some() {
-            &["NODE", "ELEMENT", "NSET", "ELSET", "SOLID SECTION"]
-        } else if self.assembly.is_some() {
-            &["NSET", "ELSET"]
-        } else {
-            return None;
-        };
-        if allowed.contains(&b.keyword.as_str()) {
-            return None;
-        }
-        let place = if self.instance_open {
-            "*INSTANCE"
-        } else if self.part.is_some() {
-            "*PART"
-        } else {
-            "*ASSEMBLY"
-        };
-        Some(Err(b.error(
-            code::OUT_OF_PLACE,
-            b.line,
-            format!("keyword is not allowed in {place}"),
-        )))
-    }
-
-    fn part(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["NAME"])?;
-        if self.open_step.is_some() || self.part.is_some() || self.assembly.is_some() {
-            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword is not allowed here"));
-        }
-        let name = b.value("NAME")?.ok_or_else(|| {
-            b.error(
-                code::MISSING_PARAMETER,
-                b.line,
-                "parameter NAME is required",
-            )
-        })?;
-        if self.parts.contains_key(name) {
-            return Err(b.error(
-                code::DUPLICATE,
-                b.line,
-                format!("part {name} is defined twice"),
-            ));
-        }
-        if let Some(d) = b.data.first() {
-            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
-        }
-        let outer = (
-            std::mem::take(&mut self.model),
-            std::mem::take(&mut self.node_ids),
-            std::mem::take(&mut self.element_ids),
-        );
-        self.part = Some(OpenPart {
-            line: b.line,
-            name: name.to_owned(),
-            outer,
-        });
-        Ok(())
-    }
-
-    fn end_part(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&[])?;
-        let open = self
-            .part
-            .take()
-            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "no open *PART"))?;
-        let (model, node_ids, element_ids) = open.outer;
-        let part = std::mem::replace(&mut self.model, model);
-        self.node_ids = node_ids;
-        self.element_ids = element_ids;
-        self.parts.insert(open.name, part);
-        Ok(())
-    }
-
-    fn assembly(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["NAME"])?;
-        if self.open_step.is_some() || self.part.is_some() || self.assembly.is_some() {
-            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword is not allowed here"));
-        }
-        if !self.model.instances.is_empty() {
-            return Err(b.error(
-                code::DUPLICATE,
-                b.line,
-                "the model has one *ASSEMBLY at most",
-            ));
-        }
-        if let Some(d) = b.data.first() {
-            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
-        }
-        self.assembly = Some(b.line);
-        Ok(())
-    }
-
-    fn end_assembly(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&[])?;
-        if self.instance_open {
-            return Err(b.error(code::BAD_DATA_LINE, b.line, "instance has no *END INSTANCE"));
-        }
-        self.assembly
-            .take()
-            .map(|_| ())
-            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "no open *ASSEMBLY"))
-    }
-
-    /// Copy a part into the model. Global ids follow the highest id in use.
-    /// Part sets get the name `INSTANCE.SET`.
-    fn instance(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["NAME", "PART"])?;
-        if self.assembly.is_none() || self.instance_open {
-            return Err(b.error(
-                code::OUT_OF_PLACE,
-                b.line,
-                "keyword needs an open *ASSEMBLY",
-            ));
-        }
-        let name = b.value("NAME")?.ok_or_else(|| {
-            b.error(
-                code::MISSING_PARAMETER,
-                b.line,
-                "parameter NAME is required",
-            )
-        })?;
-        let part_name = b.value("PART")?.ok_or_else(|| {
-            b.error(
-                code::MISSING_PARAMETER,
-                b.line,
-                "parameter PART is required",
-            )
-        })?;
-        let part = self
-            .parts
-            .get(part_name)
-            .ok_or_else(|| {
-                b.error(
-                    code::UNDEFINED,
-                    b.line,
-                    format!("part '{part_name}' is not defined"),
-                )
-            })?
-            .clone();
-        if self.model.instances.iter().any(|i| i.name == name) {
-            return Err(b.error(
-                code::DUPLICATE,
-                b.line,
-                format!("instance {name} is defined twice"),
-            ));
-        }
-        let mut shift = [0.0; 3];
-        if let Some(d) = b.data.first() {
-            if b.data.len() > 1 || d.fields.len() > 3 {
-                return Err(b.error(
-                    code::UNSUPPORTED_VALUE,
-                    d.line,
-                    "only a translation of up to 3 values is supported",
-                ));
-            }
-            for (k, c) in shift.iter_mut().enumerate().take(d.fields.len()) {
-                *c = real(b, d, k, "translation")?;
-            }
-        }
-        let index = self.model.instances.len();
-        let mut nodes = HashMap::new();
-        let mut elements = HashMap::new();
-        let first = self.node_ids.iter().max().map_or(1, |m| m + 1);
-        for (next, n) in (first..).zip(&part.nodes) {
-            nodes.insert(n.id, next);
-            self.node_ids.insert(next);
-            let xyz = [0, 1, 2].map(|k| n.xyz[k] + shift[k]);
-            self.model.nodes.push(Node { id: next, xyz });
-            let origin = Origin {
-                instance: index,
-                label: n.id,
-            };
-            self.model.node_origin.insert(next, origin);
-        }
-        let first = self.element_ids.iter().max().map_or(1, |m| m + 1);
-        for (next, e) in (first..).zip(&part.elements) {
-            elements.insert(e.id, next);
-            self.element_ids.insert(next);
-            self.model.elements.push(Element {
-                id: next,
-                element_type: e.element_type.clone(),
-                nodes: e.nodes.iter().map(|n| nodes[n]).collect(),
-            });
-            let origin = Origin {
-                instance: index,
-                label: e.id,
-            };
-            self.model.element_origin.insert(next, origin);
-        }
-        for s in &part.nsets {
-            let ids = s.ids.iter().map(|n| nodes[n]).collect();
-            self.add_nset(&format!("{name}.{}", s.name), ids);
-        }
-        for s in &part.elsets {
-            let ids = s.ids.iter().map(|e| elements[e]).collect();
-            self.add_elset(&format!("{name}.{}", s.name), ids);
-        }
-        for s in &part.sections {
-            self.section_materials.push((b.line, s.material.clone()));
-            self.model.sections.push(SolidSection {
-                elset: format!("{name}.{}", s.elset),
-                material: s.material.clone(),
-            });
-        }
-        self.model.instances.push(Instance {
-            name: name.to_owned(),
-            part: part_name.to_owned(),
-        });
-        self.instance_ids.push((nodes, elements));
-        self.instance_open = true;
-        Ok(())
-    }
-
-    fn end_instance(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&[])?;
-        if !std::mem::take(&mut self.instance_open) {
-            return Err(b.error(code::OUT_OF_PLACE, b.line, "no open *INSTANCE"));
-        }
-        Ok(())
-    }
-
-    /// Global ids for the part labels in the data lines of an assembly `*NSET`
-    /// or `*ELSET` with the parameter `INSTANCE`.
-    fn instance_members(&self, b: &Block, nodes: bool) -> Result<Vec<u32>, ParseError> {
-        let name = b.value("INSTANCE")?.unwrap_or_default();
-        let index = self
-            .model
-            .instances
-            .iter()
-            .position(|i| i.name == name)
-            .ok_or_else(|| {
-                b.error(
-                    code::UNDEFINED,
-                    b.line,
-                    format!("instance '{name}' is not defined"),
-                )
-            })?;
-        let (kind, map) = if nodes {
-            ("node", &self.instance_ids[index].0)
-        } else {
-            ("element", &self.instance_ids[index].1)
-        };
-        let generate = b.param("GENERATE").is_some();
-        let mut out = Vec::new();
-        for d in &b.data {
-            let mut labels = Vec::new();
-            if generate {
-                let start = int(b, d, 0, "first id")?;
-                let end = int(b, d, 1, "last id")?;
-                let step = if d.fields.len() > 2 {
-                    int(b, d, 2, "increment")?
-                } else {
-                    1
-                };
-                if step == 0 || end < start {
-                    return Err(b.error(
-                        code::INVALID_VALUE,
-                        d.line,
-                        "GENERATE needs first <= last and increment > 0",
-                    ));
-                }
-                labels.extend((start..=end).step_by(step as usize));
-            } else {
-                for k in (0..d.fields.len()).filter(|&k| !d.fields[k].is_empty()) {
-                    labels.push(int(b, d, k, "id")?);
-                }
-            }
-            for label in labels {
-                let id = map.get(&label).ok_or_else(|| {
-                    b.error(
-                        code::UNDEFINED,
-                        d.line,
-                        format!("{kind} {label} is not defined in instance {name}"),
-                    )
-                })?;
-                out.push(*id);
-            }
-        }
-        Ok(out)
     }
 
     fn node(&mut self, b: &Block) -> Result<(), ParseError> {
@@ -617,7 +281,7 @@ impl Parser {
     }
 
     fn nset(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["NSET", "GENERATE", "INSTANCE"])?;
+        b.allow(&["NSET", "GENERATE"])?;
         self.model_data(b)?;
         let name = b.value("NSET")?.ok_or_else(|| {
             b.error(
@@ -626,13 +290,13 @@ impl Parser {
                 "parameter NSET is required",
             )
         })?;
-        let ids = self.members(b, true)?;
+        let ids = self.set_members(b, true)?;
         self.add_nset(name, ids);
         Ok(())
     }
 
     fn elset(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["ELSET", "GENERATE", "INSTANCE"])?;
+        b.allow(&["ELSET", "GENERATE"])?;
         self.model_data(b)?;
         let name = b.value("ELSET")?.ok_or_else(|| {
             b.error(
@@ -641,23 +305,9 @@ impl Parser {
                 "parameter ELSET is required",
             )
         })?;
-        let ids = self.members(b, false)?;
+        let ids = self.set_members(b, false)?;
         self.add_elset(name, ids);
         Ok(())
-    }
-
-    fn members(&self, b: &Block, nodes: bool) -> Result<Vec<u32>, ParseError> {
-        if b.param("INSTANCE").is_none() {
-            return self.set_members(b, nodes);
-        }
-        if self.assembly.is_none() {
-            return Err(b.error(
-                code::OUT_OF_PLACE,
-                b.line,
-                "parameter INSTANCE needs an open *ASSEMBLY",
-            ));
-        }
-        self.instance_members(b, nodes)
     }
 
     /// Members of a set from the data lines: ids, names of earlier sets, or
@@ -1001,9 +651,6 @@ impl Parser {
             return Ok(Target::Node(id));
         }
         let name = f.to_uppercase();
-        if let Some(id) = self.instance_node(&name) {
-            return Ok(Target::Node(id));
-        }
         if name.is_empty() || self.model.nset(&name).is_none() {
             return Err(b.error(
                 code::UNDEFINED,
@@ -1012,14 +659,6 @@ impl Parser {
             ));
         }
         Ok(Target::Set(name))
-    }
-
-    /// The global id for `INSTANCE.LABEL`.
-    fn instance_node(&self, text: &str) -> Option<u32> {
-        let (inst, label) = text.rsplit_once('.')?;
-        let label = label.parse::<u32>().ok()?;
-        let index = self.model.instances.iter().position(|i| i.name == inst)?;
-        self.instance_ids[index].0.get(&label).copied()
     }
 
     fn boundary(&mut self, b: &Block) -> Result<(), ParseError> {
@@ -1130,7 +769,7 @@ impl Parser {
                 format!("element set '{elset}' is not defined"),
             ));
         }
-        if self.part.is_none() && self.model.material(material).is_none() {
+        if self.model.material(material).is_none() {
             return Err(b.error(
                 code::UNDEFINED,
                 b.line,
@@ -1255,7 +894,7 @@ impl Parser {
             };
             for id in ids {
                 let max = match types.get(&id).copied() {
-                    Some("C3D10" | "C3D10M") => 4,
+                    Some("C3D10") => 4,
                     _ => 6,
                 };
                 if !(1..=max).contains(&face) {
@@ -1733,11 +1372,12 @@ mod tests {
             err(&missing),
             "line 11, *ELEMENT: node 99 is not defined (INP009)"
         );
-        let ty = format!("{MESH}*ELEMENT, TYPE=S4R\n");
-        assert_eq!(
-            err(&ty),
-            "line 10, *ELEMENT: unsupported element type S4R (INP005)"
-        );
+        for ty in ["S4R", "C3D10M"] {
+            assert_eq!(
+                err(&format!("{MESH}*ELEMENT, TYPE={ty}\n")),
+                format!("line 10, *ELEMENT: unsupported element type {ty} (INP005)")
+            );
+        }
     }
 
     #[test]

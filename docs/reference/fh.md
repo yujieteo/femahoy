@@ -9,7 +9,6 @@ The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --hel
 | Invocation | Output | Exit |
 |---|---|---:|
 | `fh`, `fh -h`, `fh --help` | Usage and command list on stdout. | 0 |
-| `fh results`, `plot`, `init`, `team`, or `skills` | `fh COMMAND: not implemented` and usage on stderr. | 2 |
 | Unknown command or invalid top-level arguments | `fh: unknown argument: ARGUMENTS` and usage on stderr. | 2 |
 
 A command error returned to the dispatcher prints `fh COMMAND: MESSAGE` on stderr and exits with 2.

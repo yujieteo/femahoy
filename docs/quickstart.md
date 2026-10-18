@@ -336,4 +336,4 @@ These results apply to the supplied validation cases, not to a new model.
 
 ## What is not built yet
 
-`fh --help` lists `results`, `plot`, `init`, `team` and `skills` as not implemented.
+`fh` has no `results`, `plot`, `init`, `team` or `skills` command yet.

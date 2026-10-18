@@ -9,7 +9,7 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 - `parse(&str)` returns `Model` or `ParseError` with a line and keyword.
 - The subset includes nodes, elements, sets, elastic materials, solid sections, static steps, boundaries, concentrated loads and distributed loads.
 - Node surfaces, couplings, equations and MPCs are supported.
-- The parser accepts `C3D8`, `C3D8I`, `C3D10` and `C3D10M`. Parser acceptance does not imply solver support.
+- The parser accepts `C3D4`, `C3D8`, `C3D8I` and `C3D10`. Parser acceptance does not imply solver support.
 
 ## Invariants the code must keep
 

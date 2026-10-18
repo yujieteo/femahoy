@@ -13,7 +13,7 @@ Solve solid models with `C3D8`, `C3D8I` and `C3D10`. The crate includes linear a
 
 ## Invariants the code must keep
 
-- `element::Kind` accepts only `C3D8`, `C3D8I` and `C3D10`. The parser accepts `C3D10M`, but this solver rejects it.
+- `element::Kind` accepts only `C3D8`, `C3D8I` and `C3D10`. The parser accepts `C3D4`, but this solver rejects it.
 - Each element needs a material through `*SOLID SECTION`.
 - A rejected Newton increment discards trial state before a cutback.
 - TOON defaults to 4 significant figures. The `precision` header states the setting. VTU files retain exact values.

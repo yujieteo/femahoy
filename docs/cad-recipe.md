@@ -45,4 +45,4 @@ The cases `validation/cases/bar-pressure` (mm) and `validation/cases/bar-pressur
 `cargo test -p fh-cli --test info` runs the recipe with gmsh and skips this test when gmsh is not on the `PATH`.
 `cargo test -p fh-cli --test mesh --test model` runs `fh mesh` and `fh model` with gmsh, and skips those tests when gmsh is not found.
 Set `FH_GMSH` to use another gmsh program. The tests use STEP files from gmsh or from the repository, so they need no Python.
-`scripts/check-workflow.sh` runs the full path with build123d and gmsh (`docs/workflow-lock.md`).
+`scripts/check-workflow.sh` runs the full path with build123d and gmsh.

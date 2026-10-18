@@ -11,12 +11,8 @@ mod validate;
 
 use std::process::ExitCode;
 
-/// Subcommands planned in DESIGN.md section 13 and not implemented yet.
-const PLANNED: &[&str] = &["results", "plot", "init", "team", "skills"];
-
-fn usage() -> String {
-    let mut text = String::from(
-        "usage: fh [-h | --help] <command>\n\ncommands:\n  \
+fn usage() -> &'static str {
+    "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          check     parse .inp files (fh check [--root DIR] [FILE.inp...])\n  \
          mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
          model     write a solver input from a .msh file and the case (fh model FILE.msh --case DIR [-o OUT.inp])\n  \
@@ -25,13 +21,7 @@ fn usage() -> String {
          run       solve a model or a case on the daemon and open the results in the browser (fh run MODEL.inp|CASE_DIR|--example NAME [--preview])\n  \
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n\n\
                   TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
-         Exact values are in the VTU files.\n\n\
-         planned subcommands:\n",
-    );
-    for name in PLANNED {
-        text.push_str(&format!("  {name:<10}not implemented\n"));
-    }
-    text
+         Exact values are in the VTU files.\n"
 }
 
 fn main() -> ExitCode {
@@ -50,11 +40,7 @@ fn main() -> ExitCode {
         Some("run") => run::run(&args[1..]),
         Some("serve") => fh_daemon::serve(&args[1..], measure::Subprocess::locate().exe),
         _ => {
-            if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {
-                eprintln!("fh {}: not implemented", args[0]);
-            } else {
-                eprintln!("fh: unknown argument: {}", args.join(" "));
-            }
+            eprintln!("fh: unknown argument: {}", args.join(" "));
             eprint!("{}", usage());
             return ExitCode::from(2);
         }

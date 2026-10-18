@@ -132,7 +132,7 @@ Rules:
 ### 6.1 Input
 
 - `.inp` is the native input format.
-- The internal model is Abaqus-shaped: parts, assembly, instances, nodes, elements, sets, surfaces, materials, sections, steps, loads, boundary conditions, interactions, and constraints mirror the keyword structure.
+- The internal model is Abaqus-shaped and flat: nodes, elements, sets, surfaces, materials, sections, steps, loads, boundary conditions, interactions, and constraints mirror the keyword structure.
 - `fh check <file.inp>` parses and checks a model, then prints a TOON summary.
 
 ### 6.2 Meshes
@@ -189,7 +189,7 @@ For imported input, the `TYPE=` on `*ELEMENT` sets the element. For models that 
 Scope: every keyword the validation cases need, in priority order. Any other keyword fails with a clear error that names the keyword and the line number.
 
 Starting list:
-- **Structure:** `*HEADING`, `*INCLUDE`, `*PART`, `*END PART`, `*ASSEMBLY`, `*INSTANCE`, `*END INSTANCE`, `*END ASSEMBLY`
+- **Structure:** `*HEADING`, `*INCLUDE`. The model is flat. `*PART`, `*ASSEMBLY` and `*INSTANCE` fail with a clear error.
 - **Mesh and sets:** `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*SURFACE`
 - **Material and section:** `*MATERIAL`, `*ELASTIC`, `*PLASTIC`, `*DENSITY`, `*SOLID SECTION`
 - **Steps and loads:** `*STEP` (with `NLGEOM`), `*STATIC`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*END STEP`

@@ -56,7 +56,7 @@ When a later step has a load on the same set, its value replaces the value of th
 
 ## Result files
 
-The viewer reads `results.pvd` and the `step-N.vtu` files that it names (`docs/workflow-lock.md`). Each step must have the mesh of the first step and a displacement field `U` with 3 components. The viewer refuses the results and shows the cause when a file is bad:
+The viewer reads `results.pvd` and the `step-N.vtu` files that it names (`docs/quickstart.md`). Each step must have the mesh of the first step and a displacement field `U` with 3 components. The viewer refuses the results and shows the cause when a file is bad:
 
 | Code | Cause |
 |---|---|
