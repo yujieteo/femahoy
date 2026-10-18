@@ -45,6 +45,16 @@ On success the solver writes these files in the run folder, and exits with code 
 Each PVD path must be relative, must not contain `..`, and must stay inside the run folder.
 On failure the solver exits with a non-zero code and prints the reason on stderr.
 
+## Result contract
+
+`fh validate` reads these arrays in each VTU file. `fh-solve` and `fh-solve-ccx` use the same code (`fh_io::result`) for the ids, the set flags and the rule for `S`.
+
+- `NODE_ID` on the points and `ELEMENT_ID` on the cells, in model order.
+- `NSET_<name>` on the points and `ELSET_<name>` on the cells, one for each set of the model. The value is 1 for a member of the set and 0 for all other entries.
+- `U` and `RF` on the points.
+- `S` on the cells, in the order `[xx, yy, zz, xy, yz, xz]`. `S` is the volume mean of the integration point stress. The weight of each point is its integration weight times its Jacobian determinant.
+- `MISES` on the cells, from `S`.
+
 ## Limits
 
 - The default time limit is 10 minutes.
