@@ -79,7 +79,7 @@ The message names the file, for example `step-2.vtu: not found (results.file.mis
    scripts/build-viewer.sh
    ```
 
-   The script needs the Rust target `wasm32-unknown-unknown` and `wasm-bindgen-cli` at the version of `wasm-bindgen` in `Cargo.lock` (0.2.129). It writes `fh_viewer.js` and `fh_viewer_bg.wasm` to `target/release/viewer`, the folder beside `fh`.
+   The script needs the Rust target `wasm32-unknown-unknown` and `wasm-bindgen-cli` at the version of `wasm-bindgen` in `Cargo.lock` (0.2.129). It writes `fh_viewer.js` and `fh_viewer_bg.wasm` to `release/viewer` in the cargo target folder (`$CARGO_TARGET_DIR` or `target`), the folder beside `fh`.
 
 2. Start the daemon with `fh serve`. It finds the viewer in `$FH_VIEWER`, else in the `viewer` folder beside `fh`.
 3. Open the address that `fh serve` prints, `http://127.0.0.1:PORT/?token=TOKEN`.
