@@ -14,16 +14,10 @@
 //!
 //! The schema is experimental until a command uses it.
 
-mod check;
 mod common;
 mod run;
-mod validate;
 mod wrap;
 
-pub use check::{Check, ElementType, MaterialRow, QualityRow, SetRow, StepRow};
-pub use common::{Diag, ExitCode, Header, Next, Severity, Status, MAX_NEXT, VERSION};
-pub use run::{ContactRow, Failure, IncResult, Increment, Residual, Run, RunStep, Worst};
-pub use validate::{
-    CaseRow, CaseStatus, Quantity, Rate, Refinement, Tolerance, Validate, ValidateCase,
-};
-pub use wrap::{Cell, Delim, Doc, Error, Opts, Table, MAX_FIELDS};
+pub use common::{Diag, Header, Next, Severity, Status, MAX_NEXT, VERSION};
+pub use run::{IncResult, Increment, Run, RunStep};
+pub use wrap::{Cell, Doc, Error, Opts, Table, MAX_FIELDS};

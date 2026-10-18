@@ -1,4 +1,4 @@
-//! Common blocks: header, diagnostics, next steps and exit codes (schema section 2).
+//! Common blocks: header, diagnostics and next steps (schema section 2).
 
 use crate::wrap::{Cell, Doc, Opts, Table};
 
@@ -23,26 +23,6 @@ impl Status {
             Status::Error => "error",
             Status::Running => "running",
             Status::Failed => "failed",
-        }
-    }
-}
-
-/// Process exit codes (schema section 2.2).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ExitCode {
-    Success,
-    Failure,
-    Usage,
-    Internal,
-}
-
-impl ExitCode {
-    pub fn code(self) -> i32 {
-        match self {
-            ExitCode::Success => 0,
-            ExitCode::Failure => 1,
-            ExitCode::Usage => 2,
-            ExitCode::Internal => 3,
         }
     }
 }
@@ -95,10 +75,6 @@ pub struct Diag {
 pub struct Next {
     pub cmd: String,
     pub why: String,
-}
-
-pub(crate) fn count(diags: &[Diag], s: Severity) -> usize {
-    diags.iter().filter(|d| d.severity == s).count()
 }
 
 /// A table from a list of items, in the order given (rules R4, R7 and R8).

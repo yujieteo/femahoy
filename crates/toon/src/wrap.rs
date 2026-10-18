@@ -9,21 +9,12 @@ use toon_format::{encode_object, Delimiter, EncodeOptions};
 /// Rule R5: a table has at most this many fields.
 pub const MAX_FIELDS: usize = 4;
 
-/// Delimiter between table cells (rule R13). Comma is the default.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Delim {
-    #[default]
-    Comma,
-    Tab,
-}
-
-/// Output options: `--rows`, `--precision` and `--delim`.
+/// Output options: `--rows` and `--precision`.
 /// Decision D-03, see DESIGN.md: `precision` defaults to 4 significant figures.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Opts {
     pub rows: usize,
     pub precision: usize,
-    pub delim: Delim,
 }
 
 impl Default for Opts {
@@ -31,7 +22,6 @@ impl Default for Opts {
         Self {
             rows: 20,
             precision: 4,
-            delim: Delim::Comma,
         }
     }
 }
@@ -54,8 +44,6 @@ pub enum Cell {
     Int(i64),
     Uint(u64),
     Num(f64),
-    /// A margin: below 1 is a pass, so rounding never lifts it to 1.
-    Margin(f64),
     Text(String),
 }
 
@@ -109,11 +97,7 @@ fn json(cell: &Cell, precision: usize) -> JsonValue {
         Cell::Int(i) => JsonValue::Number(Number::from(*i)),
         Cell::Uint(i) => JsonValue::Number(Number::from(*i)),
         Cell::Text(t) => JsonValue::String(t.clone()),
-        Cell::Margin(x) if *x < 1.0 => {
-            let below = 1.0 - 10f64.powi(-(precision.max(1) as i32));
-            json_num(round_sig(*x, precision).min(round_sig(below, precision)))
-        }
-        Cell::Num(x) | Cell::Margin(x) => json_num(round_sig(*x, precision)),
+        Cell::Num(x) => json_num(round_sig(*x, precision)),
     }
 }
 
@@ -203,11 +187,7 @@ impl Doc {
 
     /// Encode the document with `toon-format`.
     pub fn encode(&self, opts: &Opts) -> Result<String, Error> {
-        let delimiter = match opts.delim {
-            Delim::Comma => Delimiter::Comma,
-            Delim::Tab => Delimiter::Tab,
-        };
-        let eo = EncodeOptions::new().with_delimiter(delimiter);
+        let eo = EncodeOptions::new().with_delimiter(Delimiter::Comma);
         let one = |key: &str, value: JsonValue| {
             encode_object(object(vec![(key.to_string(), value)]), &eo)
                 .map_err(|e| Error(e.to_string()))

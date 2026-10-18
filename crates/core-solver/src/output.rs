@@ -26,9 +26,6 @@ use crate::{
     Summary,
 };
 
-/// Name of the restart file in the run folder.
-pub const RESTART_FILE: &str = "restart.fh";
-
 /// Diagnostic code of a dof that no element reaches. The solver fixes it at zero.
 pub const ORPHAN_CODE: &str = "SOL101";
 
@@ -109,9 +106,7 @@ fn max_norm(v: &[[f64; 3]]) -> f64 {
 /// FNV-1a hash of the input text. The restart file keeps it, so that a
 /// restart with a changed input is refused.
 pub fn input_hash(text: &str) -> u64 {
-    text.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
-        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
+    crate::restart::fnv64(text.as_bytes())
 }
 
 /// One row of the increment table of the summary: an accepted increment or a cutback.
@@ -601,8 +596,6 @@ fn summary_toon(
         wall_s: wall,
         steps,
         increments,
-        contact: None,
-        failure: None,
         diagnostics,
         next: Vec::new(),
     };
