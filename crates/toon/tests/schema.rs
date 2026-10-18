@@ -131,7 +131,7 @@ fn sample_run() -> Run {
         }],
         increments: results.iter().map(|&(n, i, r)| inc(n, i, r)).collect(),
         diagnostics: vec![],
-        next: vec![next("fh results", "see extremes and reactions")],
+        next: vec![next("fh validate", "check the solver against the validation cases")],
     }
 }
 

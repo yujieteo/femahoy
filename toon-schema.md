@@ -278,7 +278,7 @@ increments_more: 7
 contact[1]{pair,closed,max_pen,force}:
   CP-1,214,2.1e-4,1520
 next[1]{cmd,why}:
-  fh results,see extremes and reactions
+  fh validate,check the solver against the validation cases
 ```
 
 Wait rule:
