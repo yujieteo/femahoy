@@ -98,4 +98,4 @@ Refusal codes in the path: `unit.step.missing`, `unit.step.conflict`, `unit.step
 
 ## Open lock items
 
-The lock is not complete. U1 is open (`docs/milestones.md`).
+The lock is reached (2026-10-18). U1 is done (`docs/milestones.md`).

@@ -50,8 +50,8 @@ The worker opened the pages in a headless browser (`chrome-devtools-axi`). It us
 | 5 | Friction | At 1280 × 800 the first view cuts the bar at the edge of the side panel. | Fit the model to the 3D view area. |
 | 6 | Friction | The quickstart shows a short `fh validate` table with `pass` lines. The real output is a long table of computed values, references and tolerances. Only the last line, `16 cases: 16 pass, 0 fail`, matches. | Change the excerpt or add a short mode. |
 | 7 | Friction | The run folder of `fh run bar.inp` holds the file `input.inp` and the run id `out` in `summary.toon`, not the names of the user file. | Keep the user file name in `summary.toon`. |
-| 8 | Not tested | Drag to orbit and scroll to zoom. The headless browser tool sent no real mouse events. | The captain run can test this. |
-| 9 | Not tested | The ParaView step. This Mac has no ParaView. | The captain run can test this. |
+| 8 | Not tested | Drag to orbit and scroll to zoom. The headless browser tool sent no real mouse events. | The captain run did not test this. It stays untested after the close. |
+| 9 | Not tested | The ParaView step. This Mac has no ParaView. | The captain run did not test this. It stays untested after the close. |
 | 10 | Not tested | A missing tool at install. Rust, `wasm-bindgen-cli` and gmsh were all present. | Run the install on a clean machine. |
 
 The worker found no wrong doc text that stopped the run, so it changed no doc text except the link to this file in `docs/milestones.md`.
@@ -61,22 +61,39 @@ The README line "`fh run` ... opens the results in the browser" held. Extra inst
 
 | Item | Value |
 |---|---|
-| Date | |
-| Machine | |
-| Tools | |
+| Date | 2026-10-18 |
+| Machine | macOS arm64 (Apple M5). The captain cloned main (`fc8672c`) at 20:53. |
+| Tools | Not recorded. |
+| Own-model part | Not done. The captain did not do sections 1 to 7 of `docs/quickstart.md`. |
 
 ### Steps
 
 | # | Command | Time | Result |
 |---|---|---|---|
-| | | | |
+| 1 | `scripts/install.sh` (default prefix) | About 6 min (20:53 to about 20:59) | Passed with no help. |
+| 2 | `fh run --example bar-pressure` | About 20:59 | Passed. It solved the example and opened the browser. |
+| 3 | Own-model part of the quickstart | | Not done. |
+
+The captain also ran `cargo build`. It failed. That command is not part of the install, and the docs do not ask the user to run it.
 
 ### Problems
 
 | # | Kind | Problem | Follow-up |
 |---|---|---|---|
-| | | | |
+| 1 | Unverified note | `cargo build` failed. The captain did not keep the error text. The likely cause is that `~/.cargo/bin` is not on `PATH` in the terminal (`zsh: command not found: cargo`). `scripts/install.sh` finds cargo in `~/.cargo/bin` by itself. | None. The captain accepts this point as it is. |
+
+### Captain notes
+
+The captain's words, word for word:
+
+> Yes it work without help, it opened a browser, I did not do the quickstart, what is the point? Also it failed cargo build.
+
+> These steps are annoying, ultimately I will ask an LLM to do it anyway, close U1 and it is OK
+
+### Finding
+
+The captain prefers that an LLM does the workflow steps ("ultimately I will ask an LLM to do it anyway"). This record adds no fix for it.
 
 ## Summary
 
-Open until the captain run is recorded.
+U1 is closed on 2026-10-18. The worker run did the full workflow from the docs, and all steps passed. The captain run did the install and the example. The captain decided to close U1 with these 2 runs and the notes above, and accepts the `cargo build` point as it is.
