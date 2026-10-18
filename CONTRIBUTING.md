@@ -39,4 +39,3 @@ A rejection from the reviewer blocks the merge.
 ## Licence
 
 The code is licensed under AGPL-3.0.
-A commercial licence needs no CLA text yet.

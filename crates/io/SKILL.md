@@ -9,7 +9,7 @@ Read gmsh meshes, scan STEP units, check mesh quality, and read or write result 
 - `read_msh` accepts MSH 4.1 ASCII and returns `fh_inp::Model`.
 - Imported volume types are gmsh 5 (`C3D8I`) and 11 (`C3D10`).
 - `step_length_unit` scans text. `mesh_stats` reports bounds, volume, element counts and corner Jacobian quality.
-- `vtu` reads and writes VTU/PVD. `vtk` writes legacy VTK.
+- `vtu` reads and writes VTU/PVD.
 
 ## Invariants the code must keep
 

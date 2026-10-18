@@ -20,7 +20,7 @@ The leader chooses the model for each task.
 1. One task per branch and worktree.
 2. One roadmap item per task. List each changed crate in the hand-back.
 3. Read the crate's `SKILL.md` before you write code in that crate.
-4. Do not add a dependency unless the leader approves it. Every dependency must be under MIT, Apache-2.0, BSD, ISC, Zlib, or a similar permissive licence. The commercial licence (`DESIGN.md` section 2) needs this. Never link GPL or AGPL code.
+4. Do not add a dependency unless the leader approves it. Every dependency must be under MIT, Apache-2.0, BSD, ISC, Zlib, or a similar permissive licence. A later sale (`DESIGN.md` section 2) needs this. Never link GPL or AGPL code.
 5. Keep the code small. Delete code that is not needed. Prefer a deletion to an addition.
 6. The roadmap is in `docs/milestones.md`. The order of the work is in `DESIGN.md` section 13.
 

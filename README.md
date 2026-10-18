@@ -22,7 +22,7 @@ For your own model, give `fh run` an `.inp` file or a case folder (`case.toml` a
 
 The engine is the `fh` command-line program. The main interface is a visual chat. A 3D viewport is beside the chat.
 
-The chat plans the work and gives tasks to teammates. The user interface shows each teammate while it runs.
+The chat has 1 focused agent. It plans and does the work.
 
 The input is `.inp` text, heavily inspired by Abaqus input conventions. Agent-facing output is TOON. Results are VTU files, so ParaView can open them.
 
@@ -30,18 +30,16 @@ The solver is CalculiX (`ccx`), through the `fh-solve-ccx` adapter. The owner re
 
 ## Status
 
-The roadmap and the status of each item are in [docs/milestones.md](docs/milestones.md). The name is provisional. The name depends on trademark, package-name and domain checks.
+The roadmap and the status of each item are in [docs/milestones.md](docs/milestones.md).
 
 ## Licence
 
 The code is licensed under AGPL-3.0.
 
-A commercial licence is for sale to companies that cannot accept AGPL.
-
 ## Documents
 
 - [Quickstart](docs/quickstart.md): the install, `fh run`, and the STEP, mesh, solver and validation commands, with output from actual runs.
-- `DESIGN.md`: product design, architecture, crates, solver scope and the decision log (section 17).
+- `DESIGN.md`: product design, architecture, crates, solver scope and the decision log (section 15).
 - `AGENTS.md`: rules for the agents that build femahoy.
 - [Input keywords and element types](docs/reference/inp.md): accepted input and solver limits.
 - [`fh` commands](docs/reference/fh.md): diagnostics and exit codes.

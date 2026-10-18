@@ -1,6 +1,6 @@
 [package]
 name = "fh-viewer"
-description = "eframe app, wgpu mesh and contour renderer, teammate tree"
+description = "eframe app, wgpu mesh and contour renderer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

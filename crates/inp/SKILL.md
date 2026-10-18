@@ -21,7 +21,7 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 
 ## Forbidden actions
 
-- Do not describe an `.inp` writer or template mapper as available. The public API exports only the parser and model types.
+- Do not describe an `.inp` writer as available. The public API exports only the parser and model types.
 
 ## Validation hooks it must pass
 

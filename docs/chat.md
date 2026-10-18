@@ -129,20 +129,15 @@ The fake takes a second message during its work, and the test solves a run that 
 `crates/daemon/tests/viewer.rs` checks the revision route: the bytes, the token and the `Origin` rules, and each refusal. It also checks the layout of the page: the chat on the left of the model view, and no file from the network.
 `crates/viewer/src/preview.rs` checks the preview data: the faces and the outline of each region, the area, the total force, the direction of each arrow and each label. It also checks that the labels of a run move with its results.
 
-## M4: the first slice and the open rest
+## M4: the first slice
 
 The first slice of M4 is the M4 exit test: from 1 chat request, 1 agent builds and solves a cantilever model, and every action shows as an `fh` command.
 
 | Item | Status |
 |---|---|
-| 1 agent in headless mode in the chat, with the login of the user (connection path 1) | Built |
+| 1 agent in headless mode in the chat, with the login of the user | Built |
 | Each action of the agent in the chat, and the results in the viewer | Built |
 | The supports and the loads in the viewer before each solve, and a question when they are not clear | Built |
 | The labels of the supports and the loads on the results | Built |
 | A message to the agent during its work, and the status of the work | Built |
 | Fake agent with a recorded event stream in the tests | Built |
-| Connection path 2: the API key of the user in the environment of the agent | Open |
-| More agents in panes, and the tree of the agents | Open |
-| `femahoy.toml` (the harness and the model of each agent) | Open |
-| `fh init` installs the skills | Open |
-| Codex as the agent (`codex exec --json`) | Open |

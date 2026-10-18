@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate has the result viewer (`docs/viewer.md`): one eframe app for the browser (wasm), in the center of the page of `fh serve`. The page itself, with the chat and the list of the runs, is HTML in `crates/daemon` (`src/page.html`). The page calls `start` and `Viewer::open` of `web.rs`. The teammate tree is not built.
+The crate has the result viewer (`docs/viewer.md`): one eframe app for the browser (wasm), in the center of the page of `fh serve`. The page itself, with the chat and the list of the runs, is HTML in `crates/daemon` (`src/page.html`). The page calls `start` and `Viewer::open` of `web.rs`.
 
 ## Inputs and outputs
 
@@ -18,7 +18,6 @@ The crate has the result viewer (`docs/viewer.md`): one eframe app for the brows
 
 ## Forbidden actions
 
-- Do not describe the teammate tree as available.
 - Hold an API key in the browser (DESIGN.md section 4.1).
 
 ## Validation hooks it must pass

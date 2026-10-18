@@ -1,6 +1,6 @@
 # femahoy: TOON Output Schema
 
-Status: agreed, version 1.1.0 of each schema. Implement in M1 (`fh`, `fh check`, `fh validate`) and later milestones (`fh run`, `fh results`, `fh solvers`).
+Status: agreed, version 1.1.0 of each schema. Implement in M1 (`fh`, `fh check`, `fh validate`) and later milestones (`fh run`, `fh solvers`).
 Scope: everything `fh` prints on stdout, and the summary file that subprocess solvers write.
 Rule source: our own rules, based on the AXI principles (Agent eXperience Interface, kunchenguid). Do not copy AXI text into the repo.
 
@@ -24,7 +24,7 @@ Rule source: our own rules, based on the AXI principles (Agent eXperience Interf
 | R12 | **Next steps.** Every output ends with a `next` table of at most 3 rows: `{cmd,why}`. Each `cmd` can run as it is. |
 | R13 | **Delimiter.** Comma by default. `--delim tab` is available. Measure the token counts of comma and tab on real outputs in M1, and change the default only if tab is clearly better. |
 | R14 | **No prompts.** `fh` never asks for input. Unknown flags fail with exit code 2. |
-| R15 | **Idempotent.** `fh init` is safe to run again. `fh run` with an unchanged `source_hash` reuses the results unless `--force` is given. |
+| R15 | **Idempotent.** `fh run` with an unchanged `source_hash` reuses the results unless `--force` is given. |
 | R16 | **Content first.** `fh` with no arguments prints `fh.status` (section 3.1). `fh --help` and `fh <cmd> --help` print short help text. |
 | R17 | **Progress.** Progress goes to stderr, and only when stderr is a terminal. Stdout carries only the final TOON. |
 | R18 | **Versioning.** Each schema has its own semantic version. Adding a field or a table is a minor change. Renaming or removing one is a major change. Snapshot tests on every schema protect the names. |
@@ -107,8 +107,6 @@ next[2]{cmd,why}:
 
 ### 3.1 `fh.status` (`fh` with no arguments)
 
-Also the output of the `SessionStart` hook that `fh init` installs.
-
 ```toon
 schema: fh.status
 version: 1.1.0
@@ -122,12 +120,9 @@ totals:
   runs: 3
   validation_pass: 12
   validation_fail: 1
-  teammates_active: 1
 models[2]{file,check,last_run,run_status}:
   models/bracket.inp,ok,r-0007,converged
   models/clip.inp,error,none,none
-teammates[1]{name,role,state,task}:
-  t-2,modeler,working,mesh clip with gmsh
 next[2]{cmd,why}:
   fh check models/clip.inp,clip.inp has errors
   fh validate,one validation case fails
@@ -136,7 +131,6 @@ next[2]{cmd,why}:
 | Table | Rank |
 |---|---|
 | `models{file,check,last_run,run_status}` | Errors first, then by most recent run |
-| `teammates{name,role,state,task}` | Blocked first, then working, then done |
 
 ### 3.2 `fh.check`
 
@@ -317,66 +311,7 @@ worst_more: 3
 - `worst` lists the 5 nodes with the largest residual force.
 - `next` gives the likely fix: a smaller first increment, a constraint check, or a contact surface check.
 
-### 3.6 `fh.results`
-
-No arguments:
-
-```toon
-schema: fh.results
-version: 1.1.0
-source: results/bracket.pvd
-source_hash: 77ab02
-units: unspecified
-status: ok
-precision: 4
-at: integration_points
-totals:
-  steps: 1
-  equilibrium_error: 3.1e-7
-extremes[3]{field,value,at,step}:
-  S.MISES,412.6,Part-1-1.E1822,Step-1
-  U.MAG,0.842,Part-1-1.N3310,Step-1
-  CPRESS,96.3,Part-1-1.N2207,Step-1
-reactions[1]{set,rf1,rf2,rf3}:
-  Part-1-1.FIXED,0,-1520,0
-next[1]{cmd,why}:
-  fh results --field S.MISES --set Part-1-1.ALL --top 10,see highest stresses
-```
-
-- `extremes` lists the fields present: `U.MAG` and `S.MISES` always, `PEEQ` if plastic, `CPRESS` if contact.
-- `reactions` has one row per boundary-condition set.
-- `equilibrium_error` = |applied load + total reaction| / |applied load|. A large value means the solve is wrong.
-- `at` in the header: `integration_points` (default) or `nodes` (with `--at nodes`, extrapolated and averaged).
-
-Query (`fh results --field S.MISES --set Part-1-1.ALL --step Step-1 --top 10`):
-
-```toon
-schema: fh.results.query
-version: 1.1.0
-source: results/bracket.pvd
-source_hash: 77ab02
-units: unspecified
-status: ok
-precision: 4
-at: integration_points
-field: S.MISES
-set: Part-1-1.ALL
-step: Step-1
-totals:
-  matched: 30112
-  max: 412.6
-  min: 0.31
-rows[2]{label,value}:
-  E1822,412.6
-  E1823,398.1
-rows_more: 8
-next[1]{cmd,why}:
-  fh results --field S.MISES --set Part-1-1.ALL --at nodes --top 10,compare averaged nodal values
-```
-
-Flags: `--field`, `--set`, `--step`, `--top N`, `--bottom N`, `--at integration_points|nodes`. No query language.
-
-### 3.7 `fh.solvers`
+### 3.6 `fh.solvers`
 
 ```toon
 schema: fh.solvers
@@ -396,7 +331,7 @@ next[1]{cmd,why}:
   fh validate --solver my-explicit,validate the user solver
 ```
 
-### 3.8 Subprocess solver summary
+### 3.7 Subprocess solver summary
 
 A subprocess solver writes VTU and PVD results and an `fh.run` summary file (section 3.5) next to them. `solver` in the header is its registered name. `fh` checks the summary against this schema. A summary that fails the check makes the run `status: failed` with a `SOL` diagnostic.
 
@@ -430,5 +365,3 @@ Abaqus output names with a component suffix.
 | Item | When |
 |---|---|
 | Comma or tab default (R13), measured on real outputs | M1 |
-| Codex startup hook support (for the `SessionStart` equivalent) | M4 |
-| Threshold filter (`--above`, `--below`) for queries | When agents need it |

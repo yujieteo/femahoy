@@ -19,7 +19,7 @@ The runner supports protocol v2 only.
    A `progress` line with a bad step or a fraction outside 0 to 1 is a log line.
 3. Any other line is a log line. A line longer than 64 KiB is an error and the runner stops the solver.
 
-`fh-solve-ccx` (`docs/ccx.md`) writes only the first line. It also takes `--formats vtu`. The runner does not pass this option.
+`fh-solve-ccx` (`docs/ccx.md`) writes only the first line.
 
 ## Cancel
 
@@ -34,7 +34,7 @@ If the solver is still alive after 5 seconds, the runner kills the whole process
 On success the solver writes these files in the run folder, and exits with code 0:
 
 - `results.pvd` and each result file that it lists.
-- `summary.toon`, a TOON document with the first line `schema: fh.run` and a `status:` line (schema in the TOON schema document, sections 3.5 and 3.8).
+- `summary.toon`, a TOON document with the first line `schema: fh.run` and a `status:` line (schema in the TOON schema document, sections 3.5 and 3.7).
 
 Each PVD path must be relative, must not contain `..`, and must stay inside the run folder.
 On failure the solver exits with a non-zero code and prints the reason on stderr.
@@ -56,8 +56,8 @@ On failure the solver exits with a non-zero code and prints the reason on stderr
 - A validation case can set its own limits with `time_limit_s` and `memory_limit_mib`.
 - The error at a limit tells the user to use a coarser mesh. A solver that a signal stops, with no error text, gets the same advice, because a full memory is the usual cause.
 - The runner starts the solver in its own process group, and kills the whole group on a timeout, a memory limit or a cancel.
-- The memory check sums the resident memory of the whole group (Linux: `/proc`, macOS: `ps`, Windows: the process).
-- Linux: the runner also sets a hard address space limit (limit + 256 MiB). Windows: a job object with a process memory limit.
+- The memory check sums the memory of the whole group (Linux: the resident memory from `/proc`, macOS: the physical footprint).
+- Linux: the runner also sets a hard address space limit (limit + 256 MiB).
 - macOS has no hard limit that the kernel enforces. Only the probe applies.
 - If the probe fails, the runner stops the solver with an error.
 

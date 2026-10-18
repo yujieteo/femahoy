@@ -1,6 +1,6 @@
 [package]
 name = "fh-inp"
-description = "`.inp` reader and writer, Abaqus-shaped model, template mapping"
+description = "`.inp` reader and Abaqus-shaped model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

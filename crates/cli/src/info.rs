@@ -1,5 +1,5 @@
 //! `fh info FILE [--case DIR]`: unit and mesh checks for a STEP file or a `.msh` file.
-//! Decisions D-12 and D-14, see DESIGN.md.
+//! Decisions D-18 and D-19, see DESIGN.md.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;

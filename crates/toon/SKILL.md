@@ -21,7 +21,7 @@ Encode short agent summaries with schema `fh.run`. The other schemas of `toon-sc
 
 ## Forbidden actions
 
-- Do not treat rounded TOON values as exact field data or describe `fh results` as implemented.
+- Do not treat rounded TOON values as exact field data.
 - Write full field arrays into TOON (DESIGN.md section 8).
 
 ## Validation hooks it must pass
