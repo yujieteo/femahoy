@@ -18,7 +18,12 @@ fn state_dir(name: &str) -> PathBuf {
 }
 
 fn args(state: &Path) -> Vec<String> {
-    vec!["--state".into(), state.display().to_string()]
+    vec![
+        "--state".into(),
+        state.display().to_string(),
+        "--panes".into(),
+        "pty".into(),
+    ]
 }
 
 /// Wait for `daemon.info` and read the port and the token.

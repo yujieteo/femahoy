@@ -532,7 +532,16 @@ impl Service {
             .write(true)
             .open(dir.join(LOCK_FILE))
             .map_err(err)?;
-        match lock.try_lock() {
+        // A child that another thread spawns gets a copy of each open file until its exec
+        // closes the copy, so the lock of a stopped service in this process can stay for
+        // some milliseconds. Try again for a short time before the refusal.
+        let end = Instant::now() + Duration::from_secs(1);
+        let mut locked = lock.try_lock();
+        while matches!(locked, Err(TryLockError::WouldBlock)) && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(10));
+            locked = lock.try_lock();
+        }
+        match locked {
             Ok(()) => {}
             Err(TryLockError::WouldBlock) => {
                 return Err(Error::new(

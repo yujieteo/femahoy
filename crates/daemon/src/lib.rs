@@ -13,6 +13,9 @@
 //!   [`EVENT_QUEUE`] events in memory and an event log of at most [`EVENT_LOG`] bytes.
 //!   Clients read events by sequence number, so a slow client never grows a queue.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
+//! - **Terminals and panes.** The daemon owns the PTY of each terminal of the sidebar
+//!   (`pty`) and the pane backend (`panes`): herdr when it is installed (`herdr`), else plain
+//!   PTYs. The browser shows a terminal over a WebSocket (`ws`, `screen`, `docs/terminal.md`).
 //!
 //! The solve path stays the existing subprocess protocol v2 (`fh-solve`, DESIGN.md
 //! section 9.3). The contract only starts it, cancels it and keeps the record.
@@ -33,20 +36,29 @@
 
 mod client;
 mod contract;
+mod herdr;
 mod http;
+mod json;
+mod panes;
+mod pty;
+pub mod screen;
 mod serve;
 mod service;
+mod ws;
 
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use client::{new_request_id, Client};
+pub use client::{new_request_id, Client, TermSocket};
 pub use contract::{
     valid_project, valid_request, valid_run, Ack, Command, Error, Event, Events, Message, Outcome,
     RunRecord, RunState, CONTRACT,
 };
+pub use herdr::{Herdr, ALLOWED as HERDR_COMMANDS};
+pub use panes::{BackendStatus, Key, Pane, PaneBackend, PaneSpec};
+use pty::find_program;
 pub use serve::{serve, serve_until};
 pub use service::{
     Config, Service, EVENT_BATCH, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_ACKS, MAX_QUEUED,
@@ -89,9 +101,84 @@ fn write_private(path: &Path, text: &str) -> Result<(), Error> {
     std::fs::rename(&tmp, path).map_err(err)
 }
 
-/// A running daemon: the run service and its HTTP transport on 127.0.0.1.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PaneChoice {
+    Auto,
+    Herdr,
+    /// test never calls the herdr of the machine by accident.
+    #[default]
+    Pty,
+}
+
+#[derive(Clone, Debug)]
+pub struct Options {
+    pub viewer: Option<PathBuf>,
+    pub panes: PaneChoice,
+    pub herdr_session: String,
+    pub herdr_program: Option<PathBuf>,
+    pub shell: Option<Vec<String>>,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            viewer: None,
+            panes: PaneChoice::default(),
+            herdr_session: "femahoy".into(),
+            herdr_program: None,
+            shell: None,
+        }
+    }
+}
+
+fn sidebar(o: &Options) -> Result<panes::Sidebar, Error> {
+    let shell = o
+        .shell
+        .clone()
+        .unwrap_or_else(|| match std::env::var("SHELL") {
+            Ok(sh) if find_program(&sh).is_some() => vec![sh, "-l".into()],
+            _ => vec!["/bin/sh".into()],
+        });
+    herdr::check_session(&o.herdr_session)?;
+    let terminals = Arc::new(pty::Terminals::default());
+    let program = o.herdr_program.clone().or_else(|| find_program("herdr"));
+    let herdr = match (o.panes, program) {
+        (PaneChoice::Pty, _) | (PaneChoice::Auto, None) => None,
+        (PaneChoice::Herdr, None) => {
+            return Err(Error::new(
+                400,
+                "pane.herdr.absent",
+                "herdr is not on PATH; install herdr, or use --panes pty",
+            ))
+        }
+        (choice, Some(program)) => {
+            let h = Herdr::new(program, &o.herdr_session)?;
+            match (h.status(), choice) {
+                (Ok(_), _) => Some(h),
+                (Err(_), PaneChoice::Auto) => None,
+                (Err(e), _) => return Err(e),
+            }
+        }
+    };
+    let panes: Box<dyn PaneBackend> = match &herdr {
+        Some(h) => Box::new(herdr::HerdrPanes(h.clone())),
+        None => Box::new(panes::PtyPanes {
+            terminals: terminals.clone(),
+            shell: shell.clone(),
+        }),
+    };
+    Ok(panes::Sidebar {
+        terminals,
+        panes,
+        herdr,
+        shell,
+        open_lock: Default::default(),
+    })
+}
+
 pub struct Daemon {
     service: Arc<Service>,
+    sidebar: Arc<panes::Sidebar>,
     server: http::Server,
     token: String,
     info: PathBuf,
@@ -110,11 +197,30 @@ impl Daemon {
         port: u16,
         viewer: Option<PathBuf>,
     ) -> Result<Daemon, Error> {
+        let options = Options {
+            viewer,
+            ..Options::default()
+        };
+        Daemon::start_with_options(config, port, options)
+    }
+
+    pub fn start_with_options(
+        config: Config,
+        port: u16,
+        options: Options,
+    ) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
+        let sidebar = Arc::new(sidebar(&options)?);
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32);
-        let server = http::Server::start(service.clone(), port, token.clone(), viewer)
-            .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
+        let server = http::Server::start(
+            service.clone(),
+            sidebar.clone(),
+            port,
+            token.clone(),
+            options.viewer,
+        )
+        .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
         let mut m = Message::new();
         m.set("port", server.port());
         m.set("token", &token);
@@ -123,6 +229,7 @@ impl Daemon {
         write_private(&info, &m.to_text())?;
         Ok(Daemon {
             service,
+            sidebar,
             server,
             token,
             info,
@@ -141,12 +248,15 @@ impl Daemon {
         &self.service
     }
 
+    pub fn panes(&self) -> &dyn PaneBackend {
+        &*self.sidebar.panes
+    }
+
     /// A client with the token of this daemon.
     pub fn client(&self) -> Client {
         Client::new(self.port(), &self.token)
     }
 
-    /// Stop the daemon. Its runs end as `interrupted` (see the crate documentation).
     pub fn stop(self) {}
 }
 
@@ -154,6 +264,7 @@ impl Drop for Daemon {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.info);
         self.server.stop();
+        self.sidebar.terminals.close_all();
         self.service.stop();
     }
 }

@@ -2,24 +2,26 @@
 
 ## Purpose
 
-The crate has the result viewer (`docs/viewer.md`): one eframe app for the native window (`fh view`) and for the browser (wasm, the page of `fh serve`). The terminal widget, the chat panel and the teammate tree are not built.
+The crate has the result viewer (`docs/viewer.md`): one eframe app for the native window (`fh view`) and for the browser (wasm, the page of `fh serve`). In the browser, the page also has the terminal sidebar (`docs/terminal.md`): `terminal.rs` is the terminal widget and `sidebar.rs` holds the tabs and the panes. The chat panel and the teammate tree are not built.
 
 ## Inputs and outputs
 
 - Input: an `.inp` model (mesh only), or a run folder with `results.pvd` and `step-N.vtu`. The browser gets the same files from the daemon (`web.rs`).
 - Output: a 3D view with the mesh, the outlines, the deformed shape, one contour field and a step selector.
+- The terminal widget reads the screens of the daemon in the protocol `fh.term.v1` and sends the keys, the paste, the mouse and the size. The sidebar reads and changes the terminals and the panes through the `Remote` trait.
 
 ## Invariants the code must keep
 
-- `mesh`, `results`, `view` and `camera` have no GPU or file types, so their tests run with no window.
+- `mesh`, `results`, `view`, `camera`, `terminal` and `sidebar` have no GPU or file types, so their tests run with no window.
 - The contour values and the deformed positions come from the result files with no change other than `x + scale * U`.
-- The browser sends the token only in the `Authorization` header, to its own origin.
+- The browser sends the token only to its own origin: in the `Authorization` header, and in the WebSocket subprotocol `fh.token.<token>`.
 - Line budget: 12k lines, tests included (DESIGN.md section 11).
-- Wrap `alacritty_terminal` behind our own interface and pin an exact version (DESIGN.md section 11.1).
+- The viewer does not use `alacritty_terminal`. The daemon runs the terminal emulator (`crates/daemon/src/pty.rs`) and the viewer only draws its screens.
+- The sidebar reads the panes from the daemon, never from herdr directly (DESIGN.md section 4.3).
 
 ## Forbidden actions
 
-- Do not describe the terminal widget, the chat panel or the teammate tree as available.
+- Do not describe the chat panel or the teammate tree as available.
 - Hold an API key in the browser (DESIGN.md section 4.1).
 - Bundle herdr (DESIGN.md section 4.3).
 - Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).

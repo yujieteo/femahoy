@@ -10,6 +10,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::contract::{Ack, Error, Events, Message, RunRecord, RunState};
+use crate::screen::{PROTOCOL, TOKEN_PROTOCOL};
+use crate::ws::{self, Incoming, WsError};
 use crate::{random_hex, INFO_FILE};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -172,6 +174,69 @@ impl Client {
             .collect()
     }
 
+    pub fn attach(&self, id: &str, token_in_protocol: bool) -> Result<TermSocket, Error> {
+        let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
+        let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(transport)?;
+        stream
+            .set_read_timeout(Some(READ_TIMEOUT))
+            .map_err(transport)?;
+        let key = ws::base64(&random_hex(8).into_bytes()[..16]);
+        let (auth, protocols) = match token_in_protocol {
+            true => (
+                String::new(),
+                format!("{PROTOCOL}, {TOKEN_PROTOCOL}{}", self.token),
+            ),
+            false => (
+                format!("Authorization: Bearer {}\r\n", self.token),
+                PROTOCOL.into(),
+            ),
+        };
+        let origin = self.origin.as_ref().map(|o| format!("Origin: {o}\r\n"));
+        write!(
+            stream,
+            "GET /api/v1/terminals/{id}/ws HTTP/1.1\r\nHost: 127.0.0.1:{}\r\n{auth}{}\
+             Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n\
+             Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Protocol: {protocols}\r\n\r\n",
+            self.port,
+            origin.unwrap_or_default()
+        )
+        .map_err(transport)?;
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") && head.len() < 16 << 10 {
+            let mut b = [0u8];
+            stream.read_exact(&mut b).map_err(transport)?;
+            head.push(b[0]);
+        }
+        let head = String::from_utf8_lossy(&head).to_lowercase();
+        if !head.starts_with("http/1.1 101 ") {
+            let status = head
+                .split(' ')
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let mut body = String::new();
+            let _ = stream.take(MAX_ANSWER).read_to_string(&mut body);
+            let m = Message::parse(&body).unwrap_or_default();
+            let code = m.get("error").unwrap_or("http.error");
+            return Err(Error::new(
+                status,
+                code,
+                m.get("message").unwrap_or_default(),
+            ));
+        }
+        let accept = format!(
+            "sec-websocket-accept: {}",
+            ws::accept_key(&key).to_lowercase()
+        );
+        let protocol = format!("sec-websocket-protocol: {PROTOCOL}\r\n");
+        if !head.contains(&accept) || !head.contains(&protocol) {
+            return Err(transport(
+                "the WebSocket answer has a bad accept key or subprotocol",
+            ));
+        }
+        Ok(TermSocket { stream, data: None })
+    }
+
     /// The events after `since`. The daemon waits up to `wait` for a new event.
     pub fn events(
         &self,
@@ -185,5 +250,46 @@ impl Client {
             wait.as_millis()
         );
         Events::from_message(&self.send("GET", &path, None, wait)?)
+    }
+}
+
+pub struct TermSocket {
+    stream: TcpStream,
+    data: Option<Vec<u8>>,
+}
+
+impl TermSocket {
+    pub fn send(&mut self, message: &[u8]) -> Result<(), Error> {
+        let b = random_hex(4).into_bytes();
+        let mask = [b[0], b[1], b[2], b[3]];
+        ws::write_frame(&mut self.stream, ws::OP_BINARY, message, Some(mask)).map_err(transport)
+    }
+
+    pub fn recv(&mut self) -> Result<Vec<u8>, Error> {
+        loop {
+            match ws::read_message(&mut self.stream, false, &mut self.data) {
+                Ok(Incoming::Binary(m)) => return Ok(m),
+                Ok(Incoming::Ping(p)) => {
+                    ws::write_frame(&mut self.stream, ws::OP_PONG, &p, Some([1, 2, 3, 4]))
+                        .map_err(transport)?;
+                }
+                Ok(Incoming::Pong) => {}
+                Ok(Incoming::Close(code)) => {
+                    let code = code.map_or("none".into(), |c| c.to_string());
+                    return Err(Error::new(0, "ws.closed", code));
+                }
+                Err(WsError::Io(e)) => return Err(transport(e)),
+                Err(e) => return Err(transport(e)),
+            }
+        }
+    }
+
+    pub fn close(mut self) {
+        let _ = ws::write_frame(
+            &mut self.stream,
+            ws::OP_CLOSE,
+            &ws::close_payload(1000),
+            Some([0; 4]),
+        );
     }
 }

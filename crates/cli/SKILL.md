@@ -19,7 +19,7 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 - STEP checks report units. With `--case`, they refuse a mismatch against `case.toml`.
 - MSH checks report counts, bounds, volume and minimum scaled Jacobian. They refuse empty solid meshes and nonpositive corner Jacobians.
 - `fh validate [--root DIR] [--convergence PATH]` uses `FH_SOLVE` or the adjacent `fh-solve` binary.
-- `fh serve [--state DIR] [--port N]` calls `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
+- `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH]` calls `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
 
 ## Invariants the code must keep
 

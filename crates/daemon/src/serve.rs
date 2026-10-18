@@ -1,8 +1,11 @@
-//! `fh serve [--state DIR] [--port N]`: run the daemon until a stop signal. The daemon listens
-//! on 127.0.0.1 only, and no option changes the address. It makes a random token at each
-//! start and writes the port and the token to `DIR/daemon.info` (mode 0600). Each request
-//! must carry the token, and a request from a page of another `Origin` fails (`http` module).
-//! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
+//! `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME]
+//! [--herdr PATH]`: run the daemon until a stop signal. The daemon listens on 127.0.0.1
+//! only, and no option changes the address. It makes a random token at each start and
+//! writes the port and the token to `DIR/daemon.info` (mode 0600). Each request must carry
+//! the token, and a request from a page of another `Origin` fails (`http` module).
+//! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`, with
+//! the terminal sidebar. The pane backend is herdr when herdr answers, else plain PTYs
+//! (`--panes auto`). herdr calls use the session `--herdr-session` (default `femahoy`).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -11,9 +14,10 @@ use std::time::Duration;
 
 use fh_solver_api::SubprocessSolver;
 
-use crate::{Config, Daemon};
+use crate::{Config, Daemon, Options, PaneChoice};
 
-const USAGE: &str = "usage: fh serve [--state DIR] [--port N]";
+const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] \
+                     [--herdr-session NAME] [--herdr PATH]";
 
 /// Run `fh serve` with the arguments after `serve`, until SIGINT, SIGTERM or SIGHUP.
 /// `solver` is the protocol v2 solver, for example `fh-solve`.
@@ -31,6 +35,10 @@ pub fn serve_until(
 ) -> Result<ExitCode, String> {
     let mut state = None;
     let mut port = 0;
+    let mut options = Options {
+        panes: PaneChoice::Auto,
+        ..Options::default()
+    };
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         let mut value = || {
@@ -44,6 +52,16 @@ pub fn serve_until(
                     .parse()
                     .map_err(|_| format!("--port needs a number from 0 to 65535\n{USAGE}"))?
             }
+            "--panes" => {
+                options.panes = match value()?.as_str() {
+                    "auto" => PaneChoice::Auto,
+                    "herdr" => PaneChoice::Herdr,
+                    "pty" => PaneChoice::Pty,
+                    v => return Err(format!("--panes is auto, herdr or pty, not {v}\n{USAGE}")),
+                }
+            }
+            "--herdr-session" => options.herdr_session = value()?.clone(),
+            "--herdr" => options.herdr_program = Some(PathBuf::from(value()?)),
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
         }
     }
@@ -54,8 +72,9 @@ pub fn serve_until(
         state_dir: state_dir.clone(),
         solver: SubprocessSolver::new(solver),
     };
-    let viewer = viewer_dir();
-    let daemon = match Daemon::start_with_viewer(config, port, viewer.clone()) {
+    options.viewer = viewer_dir();
+    let viewer = options.viewer.clone();
+    let daemon = match Daemon::start_with_options(config, port, options) {
         Ok(daemon) => daemon,
         Err(e) => {
             let dir = state_dir.display();
@@ -74,6 +93,16 @@ pub fn serve_until(
             "fh serve: the wasm viewer is not built (scripts/build-viewer.sh), so the page \
              shows only an error"
         ),
+    }
+    let panes = daemon.panes().status();
+    match (&panes.session, panes.running) {
+        (Some(s), true) => println!("fh serve: panes herdr, session {s} ({})", panes.detail),
+        (Some(s), false) => println!(
+            "fh serve: panes herdr, session {s} ({}). The session is not running: open \
+             Herdr in the terminal sidebar to start it.",
+            panes.detail
+        ),
+        (None, _) => println!("fh serve: panes pty ({})", panes.detail),
     }
     println!(
         "fh serve: state folder {}. Stop with Ctrl+C.",

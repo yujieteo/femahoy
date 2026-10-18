@@ -8,6 +8,11 @@
 //! 3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`,
 //!    such as the CLI, needs only the token. Only `GET /`, the page of the daemon, can also
 //!    take the token as `?token=<token>`, because a browser that opens a link sends no header.
+//!    Only the WebSocket route of a terminal can also take the token as the subprotocol item
+//!    `fh.token.<token>`, because a browser cannot set a header on a WebSocket.
+//!
+//! The terminal and pane routes have the same rules. A terminal is a real shell on this
+//! machine, so these rules are its only way in.
 //!
 //! The daemon sends no CORS header, so a page of another origin cannot read an answer.
 //! Each answer has `Referrer-Policy: no-referrer`, so the page never sends its address with
@@ -28,6 +33,18 @@
 //! | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 //! | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events |
 //! | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
+//! | `GET /api/v1/terminals` | | `panes`, `herdr`; one item `<t> <kind> <state> <title>` for each terminal |
+//! | `POST /api/v1/terminals` | `kind` (`shell` or `herdr`) | terminal record |
+//! | `GET /api/v1/terminals/<t>` | | terminal record |
+//! | `GET /api/v1/terminals/<t>/text?lines=N` | | one item for each line of text |
+//! | `POST /api/v1/terminals/<t>/close` | | terminal record |
+//! | `GET /api/v1/terminals/<t>/ws` | | WebSocket upgrade, subprotocol `fh.term.v1` (`docs/terminal.md`) |
+//! | `GET /api/v1/panes` | | `backend`, `session`, `running`, `detail`; one item `<pane> <state> <t or -> <title>` for each pane |
+//! | `POST /api/v1/panes` | `title`, optional `cwd`, `command` | pane record |
+//! | `GET /api/v1/panes/<pane>` | | pane record |
+//! | `GET /api/v1/panes/<pane>/text?lines=N` | | one item for each line of text |
+//! | `POST /api/v1/panes/<pane>/send` | optional `text`, `keys` (names, space between) | |
+//! | `POST /api/v1/panes/<pane>/close` | | |
 //!
 //! The page has no secret in it. Its script reads the token from the page address and
 //! fetches the viewer and the results with the `Authorization` header, so only `GET /`
@@ -45,13 +62,18 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::contract::{Error, Message};
+use crate::panes::{valid_pane, Key, Pane, PaneSpec, Sidebar};
+use crate::pty::{Terminal, HISTORY};
+use crate::screen::{PROTOCOL, TOKEN_PROTOCOL};
 use crate::service::Service;
+use crate::ws;
 
 const MAX_HEAD: usize = 16 << 10;
 const MAX_HEADERS: usize = 64;
 const MAX_BODY: usize = 16 << 10;
 /// The most connections at the same time. Each one has a thread.
 const MAX_CONNECTIONS: usize = 32;
+const MAX_SOCKETS: usize = 16;
 /// The longest time that a client can take to send its request.
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
 /// The page of the daemon. `NONCE` is the nonce of its script. The script loads the wasm
@@ -111,6 +133,15 @@ enum Reply {
     Page(String),
     /// File bytes and their content type.
     Bytes(&'static str, Vec<u8>),
+    Upgrade(Arc<Terminal>, String),
+}
+
+struct Ctx {
+    service: Arc<Service>,
+    sidebar: Arc<Sidebar>,
+    viewer: Option<PathBuf>,
+    token: String,
+    sockets: AtomicUsize,
 }
 
 pub(crate) struct Server {
@@ -123,13 +154,20 @@ impl Server {
     /// `viewer` is the folder with the wasm viewer files, or `None` when it is not built.
     pub(crate) fn start(
         service: Arc<Service>,
+        sidebar: Arc<Sidebar>,
         port: u16,
         token: String,
         viewer: Option<PathBuf>,
     ) -> io::Result<Server> {
-        let viewer = Arc::new(viewer);
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
         let port = listener.local_addr()?.port();
+        let ctx = Arc::new(Ctx {
+            service,
+            sidebar,
+            viewer,
+            token,
+            sockets: AtomicUsize::new(0),
+        });
         let stop = Arc::new(AtomicBool::new(false));
         let active = Arc::new(AtomicUsize::new(0));
         let flag = stop.clone();
@@ -144,19 +182,27 @@ impl Server {
                 if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     active.fetch_sub(1, Ordering::SeqCst);
                     let busy = Error::new(503, "daemon.busy", "too many connections");
-                    let _ = respond(&mut stream, Err(busy));
+                    let _ = respond(&mut stream, Err(busy), port);
                     continue;
                 }
-                let (service, token, active) = (service.clone(), token.clone(), active.clone());
-                let viewer = viewer.clone();
+                let (ctx, active) = (ctx.clone(), active.clone());
                 std::thread::spawn(move || {
                     let answer = read_request(&mut stream).and_then(|req| {
-                        authorize(&req, port, &token)?;
-                        route(&service, viewer.as_ref().as_deref(), &req)
+                        authorize(&req, port, &ctx.token)?;
+                        match req.socket_terminal() {
+                            Some(t) => upgrade(&ctx, &req, t),
+                            None => route(&ctx, &req),
+                        }
                     });
-                    // A client that has gone, such as a closed browser tab, gets no answer.
-                    // This changes no run.
-                    let _ = respond(&mut stream, answer);
+                    match answer {
+                        Ok(Reply::Upgrade(t, accept)) => {
+                            if switch(&mut stream, &accept).is_ok() {
+                                ws::attach(stream, t);
+                            }
+                            ctx.sockets.fetch_sub(1, Ordering::SeqCst);
+                        }
+                        answer => drop(respond(&mut stream, answer, port)),
+                    }
                     active.fetch_sub(1, Ordering::SeqCst);
                 });
             }
@@ -206,6 +252,18 @@ impl Request {
 
     fn is_page(&self) -> bool {
         self.method == "GET" && self.path == "/"
+    }
+
+    fn socket_terminal(&self) -> Option<&str> {
+        let s: Vec<&str> = self.path.split('/').collect();
+        match (self.method.as_str(), &s[..]) {
+            ("GET", ["", "api", "v1", "terminals", t, "ws"]) => Some(t),
+            _ => None,
+        }
+    }
+
+    fn words(&self, name: &str) -> impl Iterator<Item = &str> {
+        self.header(name).unwrap_or("").split(',').map(str::trim)
     }
 
     fn query_number(&self, key: &str) -> Result<u64, Error> {
@@ -259,7 +317,16 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, Error> {
             return Err(Error::bad("http.invalid", "bad header line"));
         };
         let name = name.trim().to_ascii_lowercase();
-        let unique = ["host", "origin", "authorization", "content-length"];
+        let unique = [
+            "host",
+            "origin",
+            "authorization",
+            "content-length",
+            "upgrade",
+            "sec-websocket-key",
+            "sec-websocket-protocol",
+            "sec-websocket-version",
+        ];
         if headers.len() == MAX_HEADERS
             || (unique.contains(&name.as_str()) && headers.iter().any(|(n, _)| *n == name))
         {
@@ -321,6 +388,9 @@ fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Error> {
     let given = match req.header("authorization") {
         Some(v) => v.strip_prefix("Bearer "),
         None if req.is_page() => req.query_value("token"),
+        None if req.socket_terminal().is_some() => req
+            .words("sec-websocket-protocol")
+            .find_map(|w| w.strip_prefix(TOKEN_PROTOCOL)),
         None => None,
     };
     let Some(given) = given else {
@@ -359,15 +429,161 @@ fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Error> {
     Ok(Reply::Bytes(kind, bytes))
 }
 
-fn route(service: &Service, viewer: Option<&Path>, req: &Request) -> Result<Reply, Error> {
+fn upgrade(ctx: &Ctx, req: &Request, id: &str) -> Result<Reply, Error> {
+    let bad = |why: &str| Err(Error::bad("ws.invalid", why));
+    let has = |name: &str, word: &str| req.words(name).any(|w| w.eq_ignore_ascii_case(word));
+    if !has("upgrade", "websocket") || !has("connection", "upgrade") {
+        return bad("send a WebSocket upgrade (Upgrade: websocket, Connection: Upgrade)");
+    }
+    if req.header("sec-websocket-version") != Some("13") {
+        return bad("send Sec-WebSocket-Version: 13");
+    }
+    let Some(key) = req.header("sec-websocket-key").filter(|k| ws::valid_key(k)) else {
+        return bad("send a Sec-WebSocket-Key of 16 bytes in base64");
+    };
+    if !req.words("sec-websocket-protocol").any(|w| w == PROTOCOL) {
+        return bad("ask for the subprotocol fh.term.v1");
+    }
+    let t = ctx.sidebar.terminals.get(id)?;
+    if ctx.sockets.fetch_add(1, Ordering::SeqCst) >= MAX_SOCKETS {
+        ctx.sockets.fetch_sub(1, Ordering::SeqCst);
+        return Err(Error::new(
+            503,
+            "term.busy",
+            format!("{MAX_SOCKETS} terminal connections are open"),
+        ));
+    }
+    Ok(Reply::Upgrade(t, ws::accept_key(key)))
+}
+
+fn switch(stream: &mut TcpStream, accept: &str) -> io::Result<()> {
+    write!(
+        stream,
+        "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
+         Sec-WebSocket-Accept: {accept}\r\nSec-WebSocket-Protocol: {PROTOCOL}\r\n\r\n"
+    )?;
+    stream.flush()
+}
+
+fn terminal_record(m: &mut Message, t: &Terminal) {
+    let info = t.info();
+    m.set("terminal", &info.id);
+    m.set("kind", info.kind.name());
+    m.set("state", info.state);
+    m.set("title", &info.title);
+    if let Some(code) = info.exit {
+        m.set("exit", code);
+    }
+}
+
+fn pane_record(m: &mut Message, p: &Pane) {
+    m.set("pane", &p.id);
+    m.set("state", &p.state);
+    m.set("terminal", p.terminal.as_deref().unwrap_or("-"));
+    m.set("title", &p.title);
+}
+
+fn text_lines(req: &Request) -> Result<usize, Error> {
+    Ok(match req.query_number("lines")? {
+        0 => 50,
+        n => (n as usize).min(HISTORY),
+    })
+}
+
+fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     if req.is_page() {
         return Ok(Reply::Page(crate::random_hex(16)));
     }
+    let (service, sidebar) = (&ctx.service, &ctx.sidebar);
     let segments: Vec<&str> = req.path.split('/').collect();
     let body = || Message::parse(&req.body);
     let mut m = Message::new();
+    let pane = |p: &str| match valid_pane(p) {
+        true => Ok(()),
+        false => Err(Error::new(404, "pane.unknown", format!("no pane {p:?}"))),
+    };
     match (req.method.as_str(), &segments[..]) {
-        ("GET", ["", "viewer", name]) => return viewer_file(viewer, name),
+        ("GET", ["", "viewer", name]) => return viewer_file(ctx.viewer.as_deref(), name),
+        ("GET", ["", "api", "v1", "terminals"]) => {
+            m.set(
+                "panes",
+                if sidebar.herdr.is_some() {
+                    "herdr"
+                } else {
+                    "pty"
+                },
+            );
+            m.set("herdr", sidebar.herdr.as_ref().map_or("-", |h| h.session()));
+            m.items = sidebar
+                .terminals
+                .list()
+                .iter()
+                .map(|t| t.info())
+                .map(|i| format!("{} {} {} {}", i.id, i.kind.name(), i.state, i.title))
+                .collect();
+        }
+        ("POST", ["", "api", "v1", "terminals"]) => {
+            terminal_record(&mut m, &*sidebar.open(body()?.need("kind")?)?);
+        }
+        ("GET", ["", "api", "v1", "terminals", t]) => {
+            terminal_record(&mut m, &*sidebar.terminals.get(t)?);
+        }
+        ("GET", ["", "api", "v1", "terminals", t, "text"]) => {
+            let text = sidebar.terminals.get(t)?.text(text_lines(req)?);
+            m.items = text.lines().map(str::to_owned).collect();
+        }
+        ("POST", ["", "api", "v1", "terminals", t, "close"]) => {
+            let terminal = sidebar.terminals.get(t)?;
+            sidebar.terminals.close(t)?;
+            terminal_record(&mut m, &terminal);
+        }
+        ("GET", ["", "api", "v1", "panes"]) => {
+            let status = sidebar.panes.status();
+            m.set("backend", status.kind);
+            m.set("session", status.session.as_deref().unwrap_or("-"));
+            m.set("running", if status.running { "yes" } else { "no" });
+            m.set("detail", &status.detail);
+            if status.running {
+                m.items = sidebar
+                    .panes
+                    .list()?
+                    .iter()
+                    .map(|p| {
+                        let t = p.terminal.as_deref().unwrap_or("-");
+                        format!("{} {} {t} {}", p.id, p.state, p.title)
+                    })
+                    .collect();
+            }
+        }
+        ("POST", ["", "api", "v1", "panes"]) => {
+            let b = body()?;
+            let spec = PaneSpec {
+                title: b.need("title")?.to_owned(),
+                cwd: b.get("cwd").map(PathBuf::from),
+                command: b.get("command").map(str::to_owned),
+            };
+            pane_record(&mut m, &sidebar.panes.open(&spec)?);
+        }
+        ("GET", ["", "api", "v1", "panes", p]) => {
+            pane(p)?;
+            pane_record(&mut m, &sidebar.panes.get(p)?);
+        }
+        ("GET", ["", "api", "v1", "panes", p, "text"]) => {
+            pane(p)?;
+            let text = sidebar.panes.read(p, text_lines(req)?)?;
+            m.items = text.lines().map(str::to_owned).collect();
+        }
+        ("POST", ["", "api", "v1", "panes", p, "send"]) => {
+            pane(p)?;
+            let b = body()?;
+            let keys = b.get("keys").unwrap_or("").split_whitespace();
+            let keys = keys.map(Key::parse).collect::<Result<Vec<_>, _>>()?;
+            sidebar.panes.send(p, b.get("text").unwrap_or(""), &keys)?;
+        }
+        ("POST", ["", "api", "v1", "panes", p, "close"]) => {
+            pane(p)?;
+            sidebar.panes.close(p)?;
+        }
         ("GET", ["", "api", "v1", "projects", p, "runs", r, "files", name]) => {
             return Ok(Reply::Bytes(
                 "application/octet-stream",
@@ -425,7 +641,7 @@ fn route(service: &Service, viewer: Option<&Path>, req: &Request) -> Result<Repl
     Ok(Reply::Message(m))
 }
 
-fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<()> {
+fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>, port: u16) -> io::Result<()> {
     let text = "text/plain; charset=utf-8";
     let api_policy = "default-src 'none'; frame-ancestors 'none'".to_owned();
     let (status, kind, body, policy) = match answer {
@@ -434,9 +650,10 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<(
             200,
             "text/html; charset=utf-8",
             PAGE.replace("NONCE", &nonce).into_bytes(),
-            page_policy(&nonce),
+            page_policy(&nonce, port),
         ),
         Ok(Reply::Bytes(kind, bytes)) => (200, kind, bytes, api_policy),
+        Ok(Reply::Upgrade(..)) => unreachable!("the connection thread switches the protocol"),
         Err(e) => {
             let mut m = Message::new();
             m.set("error", &e.code);
@@ -453,7 +670,9 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<(
         409 => "Conflict",
         413 => "Payload Too Large",
         431 => "Request Header Fields Too Large",
+        502 => "Bad Gateway",
         503 => "Service Unavailable",
+        504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
     write!(
@@ -470,12 +689,10 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<(
 }
 
 /// The content security policy of the page: its own script (by nonce), inline styles (egui
-/// sets style attributes), the
-/// viewer module from a `blob:` address, wasm, and fetches to its own origin only.
-fn page_policy(nonce: &str) -> String {
+fn page_policy(nonce: &str, port: u16) -> String {
     format!(
         "default-src 'none'; script-src 'nonce-{nonce}' blob: 'wasm-unsafe-eval'; \
-         style-src 'unsafe-inline'; connect-src 'self'; \
+         style-src 'unsafe-inline'; connect-src 'self' ws://127.0.0.1:{port}; \
          frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     )
 }
