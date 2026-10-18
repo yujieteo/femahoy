@@ -1,0 +1,78 @@
+** femahoy M2 fixture: 3 bars, one model.
+** Each bar is a unit cube of C3D8I, E = 1000, nu = 0.3. Bars I1 and I2 sit end to end
+** along x (I2 is moved by 1) and *MPC TIE joins their touching faces. Bar I3 is moved
+** by 5 in y and has no link to the others. Each bar has the support of a tension bar.
+** Pull 100 on the end face of I2 and 50 on the end face of I3. The exact solution is a
+** uniform tension in each bar: sxx = 100 in I1 and I2, sxx = 50 in I3, with
+** u = (0.1 x, -0.03 y, -0.03 z) over I1 and I2, and u = (0.05 x, -0.015 (y - 5), -0.015 z) in I3.
+** Bar k has the nodes 8 (k - 1) + 1 to 8 k, the element k and the sets Ik.
+*MATERIAL, NAME=M
+*ELASTIC
+1000, 0.3
+*NODE, NSET=I1
+1, 0, 0, 0
+2, 1, 0, 0
+3, 1, 1, 0
+4, 0, 1, 0
+5, 0, 0, 1
+6, 1, 0, 1
+7, 1, 1, 1
+8, 0, 1, 1
+*ELEMENT, TYPE=C3D8I, ELSET=I1
+1, 1, 2, 3, 4, 5, 6, 7, 8
+*SOLID SECTION, ELSET=I1, MATERIAL=M
+*NODE, NSET=I2
+9, 1, 0, 0
+10, 2, 0, 0
+11, 2, 1, 0
+12, 1, 1, 0
+13, 1, 0, 1
+14, 2, 0, 1
+15, 2, 1, 1
+16, 1, 1, 1
+*ELEMENT, TYPE=C3D8I, ELSET=I2
+2, 9, 10, 11, 12, 13, 14, 15, 16
+*SOLID SECTION, ELSET=I2, MATERIAL=M
+*NODE, NSET=I3
+17, 0, 5, 0
+18, 1, 5, 0
+19, 1, 6, 0
+20, 0, 6, 0
+21, 0, 5, 1
+22, 1, 5, 1
+23, 1, 6, 1
+24, 0, 6, 1
+*ELEMENT, TYPE=C3D8I, ELSET=I3
+3, 17, 18, 19, 20, 21, 22, 23, 24
+*SOLID SECTION, ELSET=I3, MATERIAL=M
+** The faces x = 1: nodes 2, 3, 6, 7 of I1 are nodes 9, 12, 13, 16 of I2.
+*MPC
+TIE, 2, 9
+TIE, 3, 12
+TIE, 6, 13
+TIE, 7, 16
+*BOUNDARY
+1, 1, 3
+4, 1, 1
+5, 1, 1
+8, 1, 1
+2, 3, 3
+3, 3, 3
+17, 1, 3
+20, 1, 1
+21, 1, 1
+24, 1, 1
+18, 3, 3
+19, 3, 3
+*STEP, NAME=PULL
+*STATIC
+*CLOAD
+10, 1, 25
+11, 1, 25
+14, 1, 25
+15, 1, 25
+18, 1, 12.5
+19, 1, 12.5
+22, 1, 12.5
+23, 1, 12.5
+*END STEP

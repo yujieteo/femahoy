@@ -319,15 +319,19 @@ fn mpc_beam_carries_an_axial_load_into_the_body_and_the_reactions_balance() {
 }
 
 #[test]
-fn three_instances_of_one_part_solve_to_the_exact_field_of_each_instance() {
-    // I1 and I2 are in series through *MPC TIE and carry 100. I3 is alone and carries 50.
-    let model = fixture("m2-instances.inp");
+fn three_bars_solve_to_the_exact_field_of_each_bar() {
+    // Bars I1 and I2 are in series through *MPC TIE and carry 100. I3 is alone and carries 50.
+    let model = fixture("m2-three-bars.inp");
     assert_eq!((model.nodes.len(), model.elements.len()), (24, 3));
-    assert_eq!(model.instances.len(), 3);
     let sol = solve(&model).unwrap_or_else(|e| panic!("{e}"));
     let step = &sol.steps[0];
-    let name = |id: u32| model.node_instance(id).unwrap().0.name.as_str();
-    // The two linked faces are the same points of space, so the tie joins instances.
+    let name = |id: u32| {
+        ["I1", "I2", "I3"]
+            .into_iter()
+            .find(|s| model.nset(s).unwrap().ids.contains(&id))
+            .unwrap()
+    };
+    // The two linked faces are the same points of space, so the tie joins the bars.
     for (a, b) in [(2, 9), (3, 12), (6, 13), (7, 16)] {
         assert_eq!((name(a), name(b)), ("I1", "I2"));
     }
@@ -338,7 +342,7 @@ fn three_instances_of_one_part_solve_to_the_exact_field_of_each_instance() {
             "I1" => (0, [0.1 * x, -0.03 * y, -0.03 * z]),
             "I2" => (1, [0.1 * x, -0.03 * y, -0.03 * z]),
             "I3" => (2, [0.05 * x, -0.015 * (y - 5.0), -0.015 * z]),
-            other => panic!("node {} is in instance {other}", node.id),
+            other => panic!("node {} is in bar {other}", node.id),
         };
         count[k] += 1;
         let got = step.displacement[i];
@@ -353,11 +357,10 @@ fn three_instances_of_one_part_solve_to_the_exact_field_of_each_instance() {
         assert_eq!(step.rotation[i], [0.0; 3], "node {}", node.id);
     }
     assert_eq!(count, [8, 8, 8]);
-    // One element per instance. The stress is uniform tension: 100, 100 and 50.
+    // One element per bar. The stress is uniform tension: 100, 100 and 50.
     for (id, sxx) in [(1, 100.0), (2, 100.0), (3, 50.0)] {
         let s = step.element_stress[model.elements.iter().position(|e| e.id == id).unwrap()];
-        let inst = model.element_instance(id).unwrap().0;
-        assert_eq!(inst.name, format!("I{id}"));
+        assert_eq!(model.elset(&format!("I{id}")).unwrap().ids, [id]);
         assert!((s[0] - sxx).abs() < 1e-8 * sxx, "element {id}: {s:?}");
         for c in 1..6 {
             assert!(s[c].abs() < 1e-8 * sxx, "element {id}: {s:?}");

@@ -71,7 +71,7 @@ fn temperatures(out: &mut String, keyword: &str, list: &[Temperature]) {
     }
 }
 
-/// The `ccx` input for `model`. The parser has already flattened `*PART` and `*INSTANCE`.
+/// The `ccx` input for `model`.
 /// Anything outside the linear subset is an error that names the keyword.
 fn ccx_input(model: &Model) -> Result<String, String> {
     let unsupported = [
