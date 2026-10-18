@@ -105,6 +105,39 @@ step = "LOAD"
 op = "value"
 ```
 
+## Model and thermal materials
+
+The optional `[model]` table supplies the inputs to `fh model`.
+The existing `[model.material]` table applies one material to every solid element.
+For several materials, use `[[model.material]]` for each material, with these fields:
+
+| Field | Rule |
+|---|---|
+| `name` | Unique name. Start with a letter. Use letters, digits and `_`. `ALL` is reserved. |
+| `youngs_modulus` | Positive number in the case units. |
+| `poissons_ratio` | Number above -1 and below 0.5. |
+| `expansion` | Optional linear thermal expansion coefficient in 1/K. Required with `temperature_change`. |
+| `box` | Optional `[x0, y0, z0, x1, y1, z1]` volume box with positive extents. Required for each of several materials. |
+
+`fh mesh` fragments the STEP bodies to make a shared interface.
+It assigns each volume inside a material box to the physical group of that material name.
+Each solid element must belong to exactly one material group.
+A material group name cannot equal a node set name or a surface region name.
+`fh model` writes an element set and a solid section for each material group.
+
+`model.temperature_change` is an optional finite number in K.
+The initial temperature is 0 at every node. The final temperature equals the change.
+`fh model` writes `*EXPANSION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE` and `*TEMPERATURE`.
+The native solver refuses thermal input. Use the CalculiX adapter.
+The top-level `solver = "fh-solve-ccx"` selects the adapter for `fh validate`.
+For `fh run`, set `FH_SOLVE` before the private daemon starts.
+
+A `[[model.set]]` can use `point = [x, y, z]` instead of `axis` and `at`.
+The point selector uses the default tolerance of 1e-6 of the largest mesh extent.
+It refuses `axis`, `at` or `tol` with `point`.
+The point must coincide with an existing mesh node. An empty selection fails.
+See [warpage-strip](../../validation/cases/warpage-strip/case.toml) for a complete case.
+
 ## Errors and maintenance
 
 Fixture errors name the file and, when available, its line: `FILE:LINE: MESSAGE` or `FILE: MESSAGE`.

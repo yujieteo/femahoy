@@ -42,8 +42,8 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 | Key | Meaning |
 |---|---|
 | `model.step` | Step name. Default `LOAD`. |
-| `model.material` | `name`, `youngs_modulus`, `poissons_ratio` (isotropic, in the case units). |
-| `[[model.set]]` | `name`, `axis` (`x`, `y` or `z`), `at`, optional `tol`. The set holds the nodes within `tol` of that plane. The default `tol` is 1e-6 of the largest bounding box side. `ALL` is reserved. |
+| `model.material` | `name`, `youngs_modulus`, `poissons_ratio` (isotropic, in the case units). Optional `expansion` (1/K) and `box` (6 coordinates). Use `[[model.material]]` for several materials, each with a volume box. |
+| `[[model.set]]` | `name`, `axis` (`x`, `y` or `z`), `at`, optional `tol`. Alternatively, `name` and `point = [x, y, z]` select an existing node. The set holds the nodes within `tol` of that plane. The default `tol` is 1e-6 of the largest bounding box side. `ALL` is reserved. |
 | `[[model.region]]` | `name`, then `axis` (`x`, `y` or `z`) and `at`, or `box = [x0, y0, z0, x1, y1, z1]`. A named group of faces of the part: the faces on the plane, or the faces fully inside the box. `fh mesh` makes a gmsh physical surface of the name. `fh model` writes a node set and an element-face surface of the name. The name starts with a letter and holds only letters, digits and `_`. Names are unique among sets and regions. `ALL` and `SOLID` are reserved. |
 | `[[model.boundary]]` | `set` (a set or a region), `first_dof`, optional `last_dof`, optional `value` (default 0). At least 1 is needed. |
 | `[[model.cload]]` | `set` (a set or a region), `dof`, `per_node`. The force acts on each node of the set. It is not a total force. |
@@ -62,6 +62,10 @@ Each `[ref]` entry has a `[quantity.<name>]` table with the same name. A case ne
 | `op` | `"value"` (the set holds one entity), `"mean"`, `"max"`, `"min"` or `"sum"`. |
 
 `fh validate` checks that every mesh holds the set and the step. A quantity without a `[ref]` entry is an error. A `[ref]` entry without a quantity is an error.
+
+`model.temperature_change` sets a uniform temperature change from 0. Each thermal material needs `expansion`.
+Material boxes select physical volume groups. Each element needs exactly one material.
+The full rules are in [case-toml.md](../../docs/reference/case-toml.md).
 
 ## Example
 

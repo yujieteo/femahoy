@@ -74,3 +74,20 @@ Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
 |---|---|---|---|
 | `bimetal-strip` | u3 at `P20` (mm) | -1.53425e-1 | -1.5342466e-1, pass |
 | `bimetal-strip` | u1 at `P20` (mm) | 1.80548e-2 | 1.8054795e-2, pass |
+
+## Public warpage workflow
+
+`validation/cases/warpage-strip` uses build123d bodies, STEP, gmsh physical volume groups, `fh model` and `fh run`.
+The case has 2 materials, thermal expansion, and a uniform temperature change of 100 K.
+The reference is the published bilayer solution of Lubarda and Lubarda, equations 2.5 to 2.7.
+The [derivation](../validation/cases/warpage-strip/derivation.md) gives the source, inputs and measured results at 2 mesh sizes.
+
+```sh
+cargo build -p fh-cli -p fh-core-solver -p fh-solver-ccx
+FH_CCX=/path/to/ccx fh-python scripts/check-warpage.py /tmp/warpage-proof
+```
+
+The check sets `FH_SOLVE` to the adjacent `fh-solve-ccx` before it starts each private daemon.
+It reads VTU output, compares warpage with the analytical reference, and checks that the native solver refuses thermal input.
+The fine mesh gives -0.6126606 mm against -0.6136986301 mm, a difference of 0.169143% within the 1% tolerance.
+`fh validate` also checks the committed coarse mesh through `solver = "fh-solve-ccx"`.

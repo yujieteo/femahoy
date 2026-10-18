@@ -128,13 +128,14 @@ fn validate_runs_every_case_through_the_solver() {
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     if ccx_found() {
         assert!(stdout.contains("bimetal-strip\tN\tpass"), "{stdout}");
-        assert!(stdout.contains("17 cases: 17 pass, 0 fail"), "{stdout}");
+        assert!(stdout.contains("warpage-strip\tN\tpass"), "{stdout}");
+        assert!(stdout.contains("18 cases: 18 pass, 0 fail"), "{stdout}");
     } else {
         assert!(
             stdout.contains("bimetal-strip\tN\tskipped, no ccx"),
             "{stdout}"
         );
-        assert!(stdout.contains("17 cases: 16 pass, 0 fail"), "{stdout}");
+        assert!(stdout.contains("18 cases: 16 pass, 0 fail"), "{stdout}");
     }
     for id in [
         "bar-pressure",
@@ -184,7 +185,7 @@ fn without_ccx_a_ccx_case_is_skipped_and_the_other_cases_still_fail() {
         "{stdout}"
     );
     assert!(stdout.contains("patch-test\tN\tfail"), "{stdout}");
-    assert!(stdout.contains("17 cases: 15 pass, 1 fail"), "{stdout}");
+    assert!(stdout.contains("18 cases: 15 pass, 1 fail"), "{stdout}");
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -266,7 +267,7 @@ fn convergence_on_the_case_folder_skips_class_n() {
         "bar-tension\tN\tskipped, one mesh",
         "mms-c3d10\tR\t3 meshes\tpass",
         "bimetal-strip\tN\tskipped, one mesh",
-        "17 cases: 10 pass, 0 fail",
+        "18 cases: 10 pass, 0 fail",
     ] {
         assert!(stdout.contains(row), "{stdout}");
     }

@@ -536,7 +536,8 @@ fn shipped_cases_load_and_have_existing_inputs() {
             "mms-c3d8i",
             "patch-test",
             "patch-test-c3d10",
-            "patch-test-c3d8i"
+            "patch-test-c3d8i",
+            "warpage-strip"
         ]
     );
     for c in &cases {
@@ -839,6 +840,52 @@ fn the_model_table_is_read() {
         .unwrap()
         .model
         .is_none());
+}
+
+#[test]
+fn thermal_materials_and_a_point_support_are_checked() {
+    let valid = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0");
+    let thermal = format!(
+        "{valid}\n[model]\ntemperature_change = -100\n{}",
+        MODEL
+            .replace("[model.material]", "[[model.material]]")
+            .replace(
+                "name = \"M\"",
+                "name = \"M\"\nexpansion = 1e-5\nbox = [0, 0, 0, 1, 1, 1]"
+            )
+            .replace("axis = \"z\"\nat = 1.5", "point = [0, 0, 0]")
+    );
+    let case = write_case(&tmp("thermal-ok"), &thermal).unwrap();
+    let model = case.model.unwrap();
+    assert_eq!(model.temperature_change, Some(-100.0));
+    assert_eq!(model.materials[0].expansion, Some(1e-5));
+    assert_eq!(model.sets[0].point, Some([0.0; 3]));
+    for (from, to, message) in [
+        ("expansion = 1e-5", "", "needs expansion"),
+        (
+            "box = [0, 0, 0, 1, 1, 1]",
+            "box = [0, 0, 0, 0, 1, 1]",
+            "positive extents",
+        ),
+        (
+            "point = [0, 0, 0]",
+            "point = [0, 0]",
+            "3 finite coordinates",
+        ),
+        (
+            "point = [0, 0, 0]",
+            "point = [0, 0, 0]\naxis = \"x\"",
+            "point cannot use",
+        ),
+        (
+            "name = \"M\"",
+            "name = \"M;Exit\"",
+            "material name is invalid",
+        ),
+    ] {
+        let error = write_case(&tmp("thermal-bad"), &thermal.replace(from, to)).unwrap_err();
+        assert!(error.message.contains(message), "{error}");
+    }
 }
 
 #[test]

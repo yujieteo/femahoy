@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_validation::{Case, RegionSpec, Select, Units};
+use fh_validation::{Case, MaterialSpec, RegionSpec, Select, Units};
 
 use crate::rules;
 
@@ -192,13 +192,13 @@ because gmsh would run a shell command or another file"
 
 /// The units of the run and the regions of the case. D-18: the case or `--units` declares
 /// the units, and there is no default. `Err` holds a refusal code and text.
-fn declared(o: &Options) -> Result<(Units, Vec<RegionSpec>), String> {
+fn declared(o: &Options) -> Result<(Units, Vec<RegionSpec>, Vec<MaterialSpec>), String> {
     let case = o.case.as_deref().map(Case::load_before_mesh).transpose();
     let case = case.map_err(|e| e.to_string())?;
     let from_case = case.as_ref().map(|c| c.units);
-    let regions = case
+    let (regions, materials) = case
         .and_then(|c| c.model)
-        .map_or_else(Vec::new, |m| m.regions);
+        .map_or_else(|| (Vec::new(), Vec::new()), |m| (m.regions, m.materials));
     let units = match (from_case, o.units) {
         (Some(c), Some(u)) if c != u => Err(format!(
             "unit.case.conflict: the case declares {}, but --units says {}",
@@ -210,15 +210,32 @@ fn declared(o: &Options) -> Result<(Units, Vec<RegionSpec>), String> {
             "unit.case.missing: the run has no units. Give --case DIR or --units SI-mm|SI-m".into(),
         ),
     }?;
-    Ok((units, regions))
+    Ok((units, regions, materials))
 }
 
-/// The physical groups of the fixed script contract (M2b): the group `SOLID` holds every
-/// volume, and each region of the case is a surface group of its name. A region holds the
+/// Physical volume groups select the material boxes, or SOLID for the single material.
+/// Each surface region has its own group. A region holds the
 /// faces of the part that lie fully inside its plane or box, within a millionth of the
 /// diagonal of the part.
-fn groups_script(regions: &[RegionSpec]) -> String {
-    let mut s = String::from("fh_v[] = Volume{:};\nPhysical Volume(\"SOLID\") = fh_v[];\n");
+fn groups_script(regions: &[RegionSpec], materials: &[MaterialSpec]) -> String {
+    let mut s = String::new();
+    let selected = materials.iter().any(|m| m.bounds.is_some());
+    if selected {
+        // Fragment the touching bodies so both layers share every interface node.
+        s.push_str("BooleanFragments{ Volume{:}; Delete; }{}\n");
+        for m in materials {
+            if let Some(b) = m.bounds {
+                let bounds = b.map(|x| format!("{x:?}"));
+                let lo = bounds[..3].iter().map(|x| format!("{x}-1e-7"));
+                let hi = bounds[3..].iter().map(|x| format!("{x}+1e-7"));
+                let coords = lo.chain(hi).collect::<Vec<_>>().join(", ");
+                s.push_str(&format!("fh_m[] = Volume In BoundingBox{{{coords}}};\nPhysical Volume(\"{}\") = fh_m[];\n", m.name));
+            }
+        }
+        s.push_str("fh_v[] = Volume{:};\n");
+    } else {
+        s.push_str("fh_v[] = Volume{:};\nPhysical Volume(\"SOLID\") = fh_v[];\n");
+    }
     if regions.is_empty() {
         return s;
     }
@@ -371,7 +388,7 @@ fn run_dir() -> Result<PathBuf, String> {
 
 /// What a run makes, or a failure text.
 fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
-    let (units, regions) = declared(o)?;
+    let (units, regions, materials) = declared(o)?;
     let input = std::path::absolute(&o.input).map_err(|e| e.to_string())?;
     let output = std::path::absolute(&o.output).map_err(|e| e.to_string())?;
     let extension = input
@@ -392,7 +409,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
                 "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
                 units.gmsh_length(),
                 quote_ok(&input)?,
-                groups_script(&regions)
+                groups_script(&regions, &materials)
             );
             std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
             wrapper
@@ -467,6 +484,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
     rules::hex_needs_extrusion(model)?;
     rules::volumes_are_named(&mesh)?;
+    rules::material_groups(&mesh, &materials)?;
     for r in &regions {
         rules::region_surface(&mesh, &r.name)?;
     }

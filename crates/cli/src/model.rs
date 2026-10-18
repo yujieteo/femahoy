@@ -118,15 +118,20 @@ fn write_inp(
         let ids: Vec<u32> = model
             .nodes
             .iter()
-            .filter(|n| (n.xyz[s.axis] - s.at).abs() <= tol)
+            .filter(|n| match s.point {
+                Some(b) => (0..3).all(|k| (n.xyz[k] - b[k]).abs() <= tol),
+                None => (n.xyz[s.axis] - s.at).abs() <= tol,
+            })
             .map(|n| n.id)
             .collect();
         if ids.is_empty() {
+            let selection = match s.point {
+                Some(point) => format!("point {point:?}"),
+                None => format!("plane {} = {}", ["x", "y", "z"][s.axis], s.at),
+            };
             return Err(format!(
-                "model.set.empty: set {} (plane {} = {}, tolerance {tol:e}) holds no node",
-                s.name,
-                ["x", "y", "z"][s.axis],
-                s.at
+                "model.set.empty: set {} ({selection}, tolerance {tol:e}) holds no node",
+                s.name
             ));
         }
         let _ = writeln!(out, "*NSET, NSET={}", s.name);
@@ -142,11 +147,42 @@ fn write_inp(
             let _ = writeln!(out, "{element}, S{face}");
         }
     }
-    let m = &spec.material;
-    let _ = write!(
+    crate::rules::material_groups(mesh, &spec.materials)?;
+    for m in &spec.materials {
+        let _ = writeln!(
+            out,
+            "*MATERIAL, NAME={}\n*ELASTIC\n{:?}, {:?}",
+            m.name, m.youngs_modulus, m.poissons_ratio
+        );
+        if let Some(alpha) = m.expansion {
+            let _ = writeln!(out, "*EXPANSION\n{alpha:?}");
+        }
+        let group = if m.bounds.is_some() {
+            m.name.as_str()
+        } else {
+            "ALL"
+        };
+        if group != "ALL" {
+            let _ = writeln!(out, "*ELSET, ELSET={group}");
+            id_lines(
+                &mut out,
+                &model.elset(group).expect("checked material group").ids,
+            );
+        }
+        let _ = writeln!(out, "*SOLID SECTION, ELSET={group}, MATERIAL={}", m.name);
+    }
+    if spec.temperature_change.is_some() {
+        out.push_str("*NSET, NSET=ALL\n");
+        id_lines(
+            &mut out,
+            &model.nodes.iter().map(|n| n.id).collect::<Vec<_>>(),
+        );
+        out.push_str("*INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 0.0\n");
+    }
+    let _ = writeln!(
         out,
-        "*MATERIAL, NAME={0}\n*ELASTIC\n{1:?}, {2:?}\n*SOLID SECTION, ELSET=ALL, MATERIAL={0}\n*STEP, NAME={3}\n*STATIC\n1.0, 1.0\n*BOUNDARY\n",
-        m.name, m.youngs_modulus, m.poissons_ratio, spec.step
+        "*STEP, NAME={}\n*STATIC\n1.0, 1.0\n*BOUNDARY",
+        spec.step
     );
     for b in &spec.boundaries {
         let _ = writeln!(
@@ -166,6 +202,9 @@ fn write_inp(
         for d in &spec.dsloads {
             let _ = writeln!(out, "{}, P, {:?}", d.surface, d.pressure);
         }
+    }
+    if let Some(delta) = spec.temperature_change {
+        let _ = writeln!(out, "*TEMPERATURE\nALL, {delta:?}");
     }
     out.push_str("*END STEP\n");
     Ok(out)
