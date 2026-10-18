@@ -645,11 +645,11 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reverse if:** `ccx` cannot pass the C1 stage, or its licence or input format changes.
 - **Built:** in part. Stage C1 built `solver-ccx` for linear static (`docs/ccx.md`). Contact and the penalty rule come in stage C2.
 
-### D-14 `ccx` serves M6 to M9 first
+### D-14 `ccx` serves M6 and M7 first
 - **Decided by:** the captain.
-- **Choice:** The built-in solver gets the M5 Newton work. `ccx` gives the M6 to M9 capabilities first (stage C2) and cross-checks the built-in results. The built-in M6 to M9 milestones stay on the roadmap.
+- **Choice:** The built-in solver gets the M5 Newton work. `ccx` gives the M6 and M7 capabilities first (stage C2) and cross-checks the built-in results. The built-in M6 and M7 milestones stay on the roadmap.
 - **Reason:** Nonlinear features arrive early, and `ccx` cross-checks the built-in results.
-- **Rejected:** M6 to M9 in the built-in solver before users get these capabilities.
+- **Rejected:** M6 and M7 in the built-in solver before users get these capabilities.
 - **Reverse if:** `ccx` fails the C2 case of a capability. Then the built-in milestone for that capability comes first.
 - **Built:** not yet. Stage C1 does not wait for the workflow lock (D-21).
 
@@ -740,4 +740,4 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
   4. U1 uses the browser viewer. ParaView is optional.
   5. M8 and M9 are not in the track 2 tables or in the scope of C2. The "not now" list (section 7.1, D-25) holds them.
 - **Reason:** These requirements blocked the focus work and a shared Mac cannot prove them.
-- **Built:** the text of section 13, D-16 and `docs/milestones.md` changed.
+- **Built:** the text of section 13, D-14, D-16 and `docs/milestones.md` changed.
