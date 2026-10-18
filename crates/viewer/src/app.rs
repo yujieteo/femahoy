@@ -1,7 +1,8 @@
 //! The eframe app: a viewport, a results panel, a status bar and the mouse controls, on the
 //! page of `fh serve`. The chat panel is on the left of the viewport. Before a solve, the
 //! viewport shows the model with its supports and loads: the faces of each set in a colour,
-//! an arrow for each load and the set names.
+//! an arrow for each load and a label for each set.
+//! The results show the same labels and arrows, with the outline of the faces of each set.
 
 use std::sync::{Arc, Mutex};
 
@@ -18,8 +19,8 @@ use crate::view::{self, Contour, ViewState};
 
 /// What the viewer shows.
 pub enum Content {
-    /// The results of a run.
-    Results(Box<Results>),
+    /// The results of a run, and the supports and loads of its input or why there are none.
+    Results(Box<Results>, Result<Box<Preview>, String>),
     /// The model of a solver input with its supports and loads, before the solve.
     Preview(Box<Preview>),
     /// The runs with results that the page can open: a label and a page address each.
@@ -35,8 +36,15 @@ pub type ContentSlot = Arc<Mutex<Option<Content>>>;
 
 /// The results of a run with their view state, or a model before the solve.
 enum Body {
-    Results(Box<Results>, ViewState),
+    Results(Box<Results>, ViewState, Loads),
     Preview(Box<Preview>),
+}
+
+/// The supports and loads of the input of a run.
+struct Loads {
+    preview: Result<Box<Preview>, String>,
+    /// The results have the mesh of the input, so the labels move with the deformed shape.
+    same_mesh: bool,
 }
 
 struct Shown {
@@ -57,6 +65,8 @@ pub struct ViewerApp {
     /// The chat with the leader: only on the page of `fh serve`.
     chat: Option<Chat>,
     chat_open: bool,
+    /// Show the labels and the arrows of the supports and loads on the model.
+    labels: bool,
 }
 
 impl ViewerApp {
@@ -75,6 +85,7 @@ impl ViewerApp {
             slot,
             chat: None,
             chat_open: true,
+            labels: true,
         };
         app.set_content(content);
         app
@@ -90,9 +101,10 @@ impl ViewerApp {
             self.runs = None;
         }
         let body = match content {
-            Content::Results(r) => {
+            Content::Results(r, preview) => {
                 let view = ViewState::new(&r);
-                Body::Results(r, view)
+                let same_mesh = preview.as_ref().is_ok_and(|p| p.matches(&r.mesh));
+                Body::Results(r, view, Loads { preview, same_mesh })
             }
             Content::Preview(p) => Body::Preview(p),
             Content::Runs(links) => {
@@ -156,7 +168,7 @@ impl ViewerApp {
 impl Shown {
     fn mesh(&self) -> &RenderMesh {
         match &self.body {
-            Body::Results(r, _) => &r.mesh,
+            Body::Results(r, ..) => &r.mesh,
             Body::Preview(p) => &p.mesh,
         }
     }
@@ -165,7 +177,7 @@ impl Shown {
     fn refresh(&mut self) {
         self.version += 1;
         let geometry = match &self.body {
-            Body::Results(r, v) => v.geometry(r, self.version),
+            Body::Results(r, v, _) => v.geometry(r, self.version),
             Body::Preview(p) => Geometry {
                 version: self.version,
                 positions: Vec::new(),
@@ -178,7 +190,7 @@ impl Shown {
     /// The draw parameters of the body: the contour, the colours and the ghost outline.
     fn frame(&self) -> (bool, Option<[[f32; 3]; BANDS]>, bool) {
         match &self.body {
-            Body::Results(r, v) => (
+            Body::Results(r, v, _) => (
                 matches!(v.contour(r), Contour::On { .. }),
                 None,
                 v.deformed && v.ghost,
@@ -188,25 +200,77 @@ impl Shown {
     }
 
     /// The panel of the body. Returns true when the view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui) -> bool {
+    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool) -> bool {
         match &mut self.body {
-            Body::Results(r, v) => results_panel(ui, r, v),
+            Body::Results(r, v, loads) => {
+                let changed = results_panel(ui, r, v);
+                loads_panel(ui, loads, labels);
+                changed
+            }
             Body::Preview(p) => {
-                preview_panel(ui, p);
+                preview_panel(ui, p, labels);
                 false
+            }
+        }
+    }
+
+    /// The supports and loads on top of the model, with the positions of the drawn mesh.
+    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+        let eye = self.camera.eye();
+        match &self.body {
+            Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
+            Body::Results(_, _, loads) => {
+                let Ok(p) = &loads.preview else { return };
+                let positions = match (&self.geometry, loads.same_mesh) {
+                    (Some(g), true) => &g.positions,
+                    _ => &p.mesh.positions,
+                };
+                loads_overlay(painter, rect, m, eye, p, positions, true);
             }
         }
     }
 }
 
+fn kind_text(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Support => "support",
+        Kind::Load => "load",
+        Kind::Temperature => "temperature",
+    }
+}
+
+/// The supports and loads of a run under its results: a switch and the label of each set.
+fn loads_panel(ui: &mut egui::Ui, loads: &Loads, labels: &mut bool) {
+    ui.separator();
+    ui.strong("Supports and loads");
+    let p = match &loads.preview {
+        Ok(p) => p,
+        Err(e) => {
+            ui.weak(format!("Not available: {e}"));
+            return;
+        }
+    };
+    ui.checkbox(labels, "Show them on the model");
+    for item in &p.items {
+        ui.horizontal(|ui| {
+            swatch(ui, COLORS[item.color]);
+            ui.label(&item.label);
+        });
+    }
+    if !loads.same_mesh {
+        ui.weak("They show on the undeformed shape: the results mesh is not the input mesh.");
+    }
+}
+
 /// The supports and loads with their colours and their texts.
-fn preview_panel(ui: &mut egui::Ui, p: &Preview) {
+fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
     ui.heading("Supports and loads");
     ui.label(format!(
         "{}: the input of the solve, before the solve.",
         p.title
     ));
     ui.label(format!("Units: {}", p.units));
+    ui.checkbox(labels, "Show the labels and the arrows");
     if p.items.is_empty() {
         let error = ui.visuals().error_fg_color;
         ui.colored_label(error, "The input has no support and no load.");
@@ -215,16 +279,13 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview) {
         ui.separator();
         ui.horizontal(|ui| {
             swatch(ui, COLORS[item.color]);
-            ui.strong(&item.name);
-            ui.weak(match item.kind {
-                Kind::Support => "support",
-                Kind::Load => "load",
-            });
+            ui.strong(&item.label);
+            ui.weak(kind_text(item.kind));
         });
         for line in p.describe(item) {
             ui.label(line);
         }
-        if item.triangles.is_empty() {
+        if item.triangles.is_empty() && item.kind != Kind::Temperature {
             let error = ui.visuals().error_fg_color;
             ui.colored_label(error, "No surface face has all of its nodes in this set.");
         }
@@ -233,8 +294,18 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview) {
     ui.weak("Each arrow shows the direction of the total force of a load.");
 }
 
-/// The names of the sets and an arrow for each load, on top of the model.
-fn preview_overlay(painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, p: &Preview) {
+/// The supports and loads on top of the model: with `outline`, the outline of the faces of
+/// each set, then an arrow for each load and a label for each set. `positions` are the
+/// positions of the mesh of the preview as drawn, for example deformed.
+fn loads_overlay(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    m: &camera::Mat4,
+    eye: [f32; 3],
+    p: &Preview,
+    positions: &[[f32; 3]],
+    outline: bool,
+) {
     let screen = |x: [f32; 3]| {
         let c = camera::transform(m, x);
         (c[3] > 1e-6).then(|| {
@@ -245,11 +316,33 @@ fn preview_overlay(painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, 
             )
         })
     };
+    for item in p.items.iter().filter(|_| outline) {
+        let color = rgb(COLORS[item.color]);
+        for &([a, b], normal) in &item.outline {
+            let (Some(&pa), Some(&pb)) = (positions.get(a as usize), positions.get(b as usize))
+            else {
+                continue;
+            };
+            let (Some(sa), Some(sb)) = (screen(pa), screen(pb)) else {
+                continue;
+            };
+            // An edge of a face that looks away from the eye is behind the part: a thin line.
+            let front = (0..3).map(|k| normal[k] * (eye[k] - pa[k])).sum::<f32>() > 0.0;
+            if front {
+                painter.line_segment([sa, sb], egui::Stroke::new(4.0, egui::Color32::BLACK));
+                painter.line_segment([sa, sb], egui::Stroke::new(2.5, color));
+            } else {
+                painter.line_segment([sa, sb], egui::Stroke::new(1.0, color.gamma_multiply(0.5)));
+            }
+        }
+    }
     for item in &p.items {
         let color = rgb(COLORS[item.color]);
-        let mut at = screen(item.center.map(|x| x as f32));
+        let shift = p.shift(item, positions);
+        let moved = |x: [f32; 3]| screen(std::array::from_fn(|k| x[k] + shift[k]));
+        let mut at = moved(item.center.map(|x| x as f32));
         if let Some((tail, head)) = p.arrow(item) {
-            if let (Some(a), Some(b)) = (screen(tail), screen(head)) {
+            if let (Some(a), Some(b)) = (moved(tail), moved(head)) {
                 painter.arrow(a, b - a, egui::Stroke::new(5.0, egui::Color32::BLACK));
                 painter.arrow(a, b - a, egui::Stroke::new(3.0, color));
                 at = Some(a);
@@ -263,7 +356,7 @@ fn preview_overlay(painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, 
             egui::Color32::WHITE
         };
         let font = egui::FontId::proportional(14.0);
-        let galley = painter.layout_no_wrap(item.name.clone(), font, text);
+        let galley = painter.layout_no_wrap(item.label.clone(), font, text);
         let place =
             egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
         painter.rect_filled(place.expand(3.0), 3.0, color);
@@ -471,7 +564,7 @@ impl eframe::App for ViewerApp {
                 .min_size(250.0)
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        if shown.panel(ui) {
+                        if shown.panel(ui, &mut self.labels) {
                             shown.refresh();
                         }
                     });
@@ -533,8 +626,8 @@ impl eframe::App for ViewerApp {
                     geometry: shown.geometry.clone(),
                 },
             ));
-            if let Body::Preview(p) = &shown.body {
-                preview_overlay(&ui.painter_at(rect), rect, &view_proj, p);
+            if self.labels {
+                shown.overlay(&ui.painter_at(rect), rect, &view_proj);
             }
         });
     }

@@ -55,11 +55,21 @@ The viewer shows:
 
 - the faces of each support in a blue, teal, violet or green colour, and the faces of each load in a red, orange, magenta or yellow colour. The other faces are grey.
 - 1 arrow for each load, in the direction of the total force of the load. The arrow of a push ends on the face. The arrow of a pull or a shear starts on the face.
-- the region name of `case.toml` at each arrow and at each support.
-- a list with each region: its actions (for example `U1 to U3 = 0` or `pressure 1 MPa`), its number of nodes, its area and its total force.
+- a label for each region: the region name of `case.toml` and what acts on it. The label of a load is at the tail of its arrow.
+- a list with each region: its label, its actions (for example `U1 to U3 = 0` or `pressure 1 MPa`), its number of nodes, its area and its total force.
+
+| Region | Label |
+|---|---|
+| A support | the fixed degrees of freedom, for example `FIXED: ux uy uz` or `PIN: uy uz`. A set value shows as `ux = 0.1 mm`. |
+| A force on nodes (`cload`) | the total force and its direction, for example `P1: 2700 N, -y`. A direction that is not on an axis shows as a unit vector. |
+| A pressure (`dsload`) | the pressure, for example `TOP: 1 MPa pressure`. The arrow shows the direction. |
+| A temperature (a CalculiX case) | `ALL: temperature 0 to 100`, at the middle of the part. It has no arrow. |
 
 The page reads the solver input, not `case.toml`. Thus it shows the faces that the solver gets.
 A region that has no face shows a warning in the list.
+
+The results of a run show the same labels and arrows, and the outline of the faces of each region. The page gets the input from the revision in the run record. The labels move with the deformed shape.
+To hide the labels and the arrows, clear `Show them on the model` under `Supports and loads` in the results panel, or `Show the labels and the arrows` in the panel before the solve.
 
 The agent has 1 rule for the supports and the loads (`crates/daemon/src/agent.md`):
 
@@ -100,7 +110,7 @@ The daemon keeps the last 4000 entries in memory. A new daemon starts with an em
 `crates/daemon/tests/chat.rs` runs a fake agent that prints a recorded event stream (`crates/daemon/tests/data/agent-*.jsonl`). No test calls a real LLM.
 The test does a preview before the solve. It checks that the `show` entry comes before the `open` entry, and that the run solves the shown revision.
 `crates/daemon/tests/viewer.rs` checks the revision route: the bytes, the token and the `Origin` rules, and each refusal.
-`crates/viewer/src/preview.rs` checks the preview data: the faces of each region, the area, the total force and the direction of each arrow.
+`crates/viewer/src/preview.rs` checks the preview data: the faces and the outline of each region, the area, the total force, the direction of each arrow and each label. It also checks that the labels of a run move with its results.
 `crates/viewer/src/chat.rs` tests the panel with a fake daemon.
 
 ## M4: the first slice and the open rest
@@ -112,6 +122,7 @@ The first slice of M4 is the M4 exit test: from 1 chat request, 1 agent builds a
 | 1 agent in headless mode in the chat, with the login of the user (connection path 1) | Built |
 | Each action of the agent in the chat, and the results in the viewer | Built |
 | The supports and the loads in the viewer before each solve, and a question when they are not clear | Built |
+| The labels of the supports and the loads on the results | Built |
 | Fake agent with a recorded event stream in the tests | Built |
 | Connection path 2: the API key of the user in the environment of the agent | Open |
 | More agents in panes, and the tree of the agents | Open |

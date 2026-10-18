@@ -1,11 +1,11 @@
-//! The model before the solve (`docs/chat.md`): the surface faces of each support and each
-//! load of a solver input, the direction and the total of each load, and the set names.
-//! The input is the fixed revision that the run solves, so the page shows what the solver
-//! gets.
+//! The supports and loads of a solver input (`docs/chat.md`): the surface faces of each
+//! support and each load, the direction and the total of each load, and a label for each set.
+//! The page shows them before the solve and on the results. The input is the fixed revision
+//! that the run solves, so the page shows what the solver gets.
 //!
 //! Plain functions with no GPU types, so unit tests run without a window.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use fh_inp::{Model, Target};
 
@@ -34,6 +34,8 @@ const ARROW: f32 = 0.35;
 pub enum Kind {
     Support,
     Load,
+    /// A temperature of the nodes (`*INITIAL CONDITIONS`, `*TEMPERATURE`): no face, no arrow.
+    Temperature,
 }
 
 /// The supports or the loads on one set of the input.
@@ -45,10 +47,16 @@ pub struct Item {
     /// One text for each data line of the input, with its values as they are in the input,
     /// for example `U1 to U3 = 0`.
     pub actions: Vec<String>,
+    /// The text on the model: the name and what acts on the set, for example
+    /// `FIXED: ux uy uz` or `P1: 2700 N, -y`.
+    pub label: String,
     /// The slot of the colour in `COLORS`.
     pub color: usize,
     /// The surface triangles of the set: indices into `mesh.triangles`.
     pub triangles: Vec<u32>,
+    /// The outline of the triangles: each edge (2 positions of the mesh) with the outward
+    /// normal of its triangle.
+    pub outline: Vec<([u32; 2], [f32; 3])>,
     pub nodes: usize,
     /// The area of the triangles.
     pub area: f64,
@@ -85,6 +93,12 @@ struct Draft {
     /// The node sets of the faces of each element of a surface, by element index.
     faces: HashMap<u32, Vec<HashSet<u32>>>,
     pressure: f64,
+    /// The force on each node of a load, for each degree of freedom.
+    cload: BTreeMap<u8, f64>,
+    /// The value of each fixed degree of freedom of a support.
+    fixed: BTreeMap<u8, f64>,
+    /// The initial temperature and the temperature at the end of the step.
+    temperature: [Option<f64>; 2],
 }
 
 fn dofs(first: u8, last: u8) -> String {
@@ -96,6 +110,60 @@ fn dofs(first: u8, last: u8) -> String {
         format!("{} to {}", name(first), name(last))
     } else {
         name(first)
+    }
+}
+
+/// A value and its unit, or the value alone when there is no unit.
+fn with_unit(value: String, unit: &str) -> String {
+    if unit.is_empty() {
+        value
+    } else {
+        format!("{value} {unit}")
+    }
+}
+
+/// The fixed degrees of freedom of a support, for example `ux uy uz` or `uy, uz = 0.1 mm`.
+fn fixed_text(fixed: &BTreeMap<u8, f64>, length_unit: &str) -> String {
+    let name = |d: u8| match d {
+        1..=3 => (
+            ["ux", "uy", "uz"][usize::from(d) - 1].to_owned(),
+            length_unit,
+        ),
+        _ => (format!("dof {d}"), ""),
+    };
+    let zero = fixed.iter().filter(|(_, &v)| v == 0.0);
+    let zero: Vec<String> = zero.map(|(&d, _)| name(d).0).collect();
+    let set = fixed.iter().filter(|(_, &v)| v != 0.0).map(|(&d, &v)| {
+        let (name, unit) = name(d);
+        format!("{name} = {}", with_unit(v.to_string(), unit))
+    });
+    let words = Some(zero.join(" ")).filter(|z| !z.is_empty());
+    words.into_iter().chain(set).collect::<Vec<_>>().join(", ")
+}
+
+/// A value with 4 significant digits and no zeros at the end, for a label.
+fn short(v: f64) -> String {
+    let s = format_value(v);
+    match s.contains('.') && !s.contains(['e', 'E']) {
+        true => s.trim_end_matches('0').trim_end_matches('.').to_owned(),
+        false => s,
+    }
+}
+
+/// The direction of a force: an axis, for example `-y`, or else the unit vector.
+fn direction(f: [f64; 3]) -> String {
+    let size = length(f);
+    let axes: Vec<usize> = (0..3).filter(|&k| f[k].abs() > 1e-9 * size).collect();
+    match axes[..] {
+        [k] => format!(
+            "{}{}",
+            if f[k] < 0.0 { "-" } else { "+" },
+            ["x", "y", "z"][k]
+        ),
+        _ => {
+            let u = f.map(|x| short(x / size));
+            format!("({}, {}, {})", u[0], u[1], u[2])
+        }
     }
 }
 
@@ -111,8 +179,8 @@ fn length(a: [f64; 3]) -> f64 {
     dot(a, a).sqrt()
 }
 
-/// Read the supports (`*BOUNDARY`) and the loads (`*CLOAD`, `*DSLOAD`) of a model, and the
-/// surface triangles of each set.
+/// Read the supports (`*BOUNDARY`), the loads (`*CLOAD`, `*DSLOAD`) and the temperatures of a
+/// model, and the surface triangles of each set.
 pub fn build(model: &Model, units: &str) -> Preview {
     let mesh = mesh::build(model);
     let index: HashMap<u32, u32> = model
@@ -145,8 +213,10 @@ pub fn build(model: &Model, units: &str) -> Preview {
                 name: name.to_owned(),
                 kind,
                 actions: Vec::new(),
+                label: String::new(),
                 color: 0,
                 triangles: Vec::new(),
+                outline: Vec::new(),
                 nodes: 0,
                 area: 0.0,
                 center: [0.0; 3],
@@ -157,6 +227,9 @@ pub fn build(model: &Model, units: &str) -> Preview {
             nodes: HashSet::new(),
             faces: HashMap::new(),
             pressure: 0.0,
+            cload: BTreeMap::new(),
+            fixed: BTreeMap::new(),
+            temperature: [None; 2],
         };
         let faces = model.element_surface(name).filter(|_| surface);
         for &(id, face) in faces.map_or(&[][..], |s| &s.faces) {
@@ -200,12 +273,20 @@ pub fn build(model: &Model, units: &str) -> Preview {
         unit(units, Quantity::Stress),
         unit(units, Quantity::Force),
     );
-    let steps = || model.steps.iter();
-    for b in model
-        .boundaries
-        .iter()
-        .chain(steps().flat_map(|s| &s.boundaries))
-    {
+    // A later line for the same set (and degree of freedom) replaces the value of an earlier
+    // line, as a load of a later step replaces the load of an earlier step. With more than 1
+    // step, each action names its step.
+    let tag = |k: usize| match model.steps.len() {
+        0 | 1 => String::new(),
+        _ => match &model.steps[k].name {
+            Some(name) => format!("{name}: "),
+            None => format!("step {}: ", k + 1),
+        },
+    };
+    let steps = || model.steps.iter().enumerate();
+    let boundaries = model.boundaries.iter().map(|b| (String::new(), b));
+    let in_steps = steps().flat_map(|(k, s)| s.boundaries.iter().map(move |b| (tag(k), b)));
+    for (tag, b) in boundaries.chain(in_steps) {
         let (name, nodes) = nodes_of(&b.target);
         let i = draft(&mut drafts, &name, Kind::Support, false);
         let value = if b.value == 0.0 {
@@ -213,19 +294,20 @@ pub fn build(model: &Model, units: &str) -> Preview {
         } else {
             format!("{} {length_unit}", b.value)
         };
+        let dofs = dofs(b.first_dof, b.last_dof);
         drafts[i]
             .item
             .actions
-            .push(format!("{} = {value}", dofs(b.first_dof, b.last_dof)));
+            .push(format!("{tag}{dofs} = {value}"));
+        for d in b.first_dof..=b.last_dof.max(b.first_dof) {
+            drafts[i].fixed.insert(d, b.value);
+        }
         drafts[i].nodes = nodes;
     }
-    for c in steps().flat_map(|s| &s.cloads) {
+    for (tag, c) in steps().flat_map(|(k, s)| s.cloads.iter().map(move |c| (tag(k), c))) {
         let (name, nodes) = nodes_of(&c.target);
         let i = draft(&mut drafts, &name, Kind::Load, false);
         let n = nodes.len();
-        if (1..=3).contains(&c.dof) {
-            drafts[i].item.force[usize::from(c.dof) - 1] += c.magnitude * n as f64;
-        }
         let on = if n == 1 {
             "1 node".to_owned()
         } else {
@@ -235,17 +317,34 @@ pub fn build(model: &Model, units: &str) -> Preview {
         drafts[i]
             .item
             .actions
-            .push(format!("F{dof} = {m} {force} on {on}"));
+            .push(format!("{tag}F{dof} = {m} {force} on {on}"));
+        drafts[i].cload.insert(dof, m);
         drafts[i].nodes = nodes;
     }
-    for d in steps().flat_map(|s| &s.dsloads) {
+    for (tag, d) in steps().flat_map(|(k, s)| s.dsloads.iter().map(move |d| (tag(k), d))) {
         let i = draft(&mut drafts, &d.surface, Kind::Load, true);
-        drafts[i].pressure += d.pressure;
         let p = d.pressure;
+        drafts[i].pressure = p;
         drafts[i]
             .item
             .actions
-            .push(format!("pressure {p} {stress}"));
+            .push(format!("{tag}pressure {p} {stress}"));
+    }
+    let initial = model
+        .initial_temperatures
+        .iter()
+        .map(|t| (String::new(), t, 0));
+    let end = steps().flat_map(|(k, s)| s.temperatures.iter().map(move |t| (tag(k), t, 1)));
+    for (tag, t, at) in initial.chain(end) {
+        let (name, nodes) = nodes_of(&t.target);
+        let i = draft(&mut drafts, &name, Kind::Temperature, false);
+        let v = t.value;
+        drafts[i].item.actions.push(match at {
+            0 => format!("initial temperature {v}"),
+            _ => format!("{tag}temperature {v} at the end of the step"),
+        });
+        drafts[i].temperature[at] = Some(v);
+        drafts[i].nodes = nodes;
     }
 
     let points: Vec<[f64; 3]> = model.nodes.iter().map(|n| n.xyz).collect();
@@ -264,7 +363,12 @@ pub fn build(model: &Model, units: &str) -> Preview {
         .into_iter()
         .map(|mut d| {
             let mut weighted = [0.0; 3];
+            // Each edge of the triangles: the number of triangles and the normal of the last.
+            let mut edges: BTreeMap<[u32; 2], (usize, [f32; 3])> = BTreeMap::new();
             for (t, tri) in mesh.triangles.iter().enumerate() {
+                if d.item.kind == Kind::Temperature {
+                    break;
+                }
                 let nodes = tri.map(|p| mesh.source_node[p as usize]);
                 let cell = mesh.triangle_cell[t];
                 let inside = match d.surface {
@@ -286,6 +390,12 @@ pub fn build(model: &Model, units: &str) -> Preview {
                 if dot(area, sub(centroids[cell as usize], a)) > 0.0 {
                     area = area.map(|x| -x);
                 }
+                let normal = area.map(|x| (x / length(area)) as f32);
+                for k in 0..3 {
+                    let (a, b) = (tri[k], tri[(k + 1) % 3]);
+                    let edge = edges.entry([a.min(b), a.max(b)]).or_default();
+                    *edge = (edge.0 + 1, normal);
+                }
                 let it = &mut d.item;
                 it.triangles.push(t as u32);
                 it.area += length(area);
@@ -295,6 +405,14 @@ pub fn build(model: &Model, units: &str) -> Preview {
                 });
             }
             let it = &mut d.item;
+            it.outline = edges
+                .into_iter()
+                .filter(|(_, (n, _))| *n == 1)
+                .map(|(e, (_, normal))| (e, normal))
+                .collect();
+            for (&dof, &m) in d.cload.iter().filter(|(&dof, _)| (1..=3).contains(&dof)) {
+                it.force[usize::from(dof) - 1] += m * d.nodes.len() as f64;
+            }
             // Positive pressure pushes into the body, against the outward normal.
             (0..3).for_each(|k| it.force[k] -= d.pressure * it.outward[k]);
             it.nodes = d.nodes.len();
@@ -309,11 +427,26 @@ pub fn build(model: &Model, units: &str) -> Preview {
             } else {
                 [0.0; 3]
             };
+            let size = length(it.force);
+            let text = match (it.kind, d.temperature) {
+                (Kind::Support, _) => fixed_text(&d.fixed, length_unit),
+                (Kind::Load, _) if d.surface => {
+                    format!("{} pressure", with_unit(d.pressure.to_string(), stress))
+                }
+                (Kind::Load, _) if size > 0.0 => {
+                    format!("{}, {}", with_unit(short(size), force), direction(it.force))
+                }
+                (Kind::Load, _) => with_unit("0".into(), force),
+                (Kind::Temperature, [Some(a), Some(b)]) => format!("temperature {a} to {b}"),
+                (Kind::Temperature, [Some(a), None]) => format!("initial temperature {a}"),
+                (Kind::Temperature, [_, b]) => format!("temperature {}", b.unwrap_or(0.0)),
+            };
+            it.label = format!("{}: {text}", it.name);
             let count = match it.kind {
                 Kind::Support => &mut supports,
-                Kind::Load => &mut loads,
+                _ => &mut loads,
             };
-            it.color = 1 + 4 * usize::from(it.kind == Kind::Load) + *count % 4;
+            it.color = 1 + 4 * usize::from(it.kind != Kind::Support) + *count % 4;
             *count += 1;
             d.item
         })
@@ -367,6 +500,41 @@ impl Preview {
         })
     }
 
+    /// The mean move of the triangle corners of an item from the mesh positions to
+    /// `positions`, for example the deformed positions of the results. Zero when the item
+    /// has no triangle.
+    pub fn shift(&self, item: &Item, positions: &[[f32; 3]]) -> [f32; 3] {
+        let corners = item
+            .triangles
+            .iter()
+            .flat_map(|&t| self.mesh.triangles[t as usize]);
+        let (mut sum, mut n) = ([0.0f64; 3], 0usize);
+        for q in corners {
+            let (Some(a), Some(b)) = (
+                self.mesh.positions.get(q as usize),
+                positions.get(q as usize),
+            ) else {
+                continue;
+            };
+            (0..3).for_each(|k| sum[k] += f64::from(b[k] - a[k]));
+            n += 1;
+        }
+        sum.map(|x| (x / n.max(1) as f64) as f32)
+    }
+
+    /// True when `mesh` (for example the mesh of the results) has the positions and the
+    /// triangles of the mesh of the input, so that the positions of one apply to the other.
+    pub fn matches(&self, mesh: &RenderMesh) -> bool {
+        let m = &self.mesh;
+        let tolerance = m.bounds.map_or(0.0, |b| b.radius()) * 1e-5;
+        m.triangles == mesh.triangles
+            && m.positions.len() == mesh.positions.len()
+            && m.positions
+                .iter()
+                .zip(&mesh.positions)
+                .all(|(a, b)| (0..3).all(|k| (a[k] - b[k]).abs() <= tolerance))
+    }
+
     /// The text of an item for the legend: what the input does, the size of the set, and
     /// the total force of a load.
     pub fn describe(&self, item: &Item) -> Vec<String> {
@@ -374,7 +542,10 @@ impl Preview {
         let force = unit(&self.units, Quantity::Force);
         let mut lines = item.actions.clone();
         let area = format_value(item.area);
-        lines.push(format!("{} nodes, area {area} {length}2", item.nodes));
+        lines.push(match item.kind {
+            Kind::Temperature => format!("{} nodes", item.nodes),
+            _ => format!("{} nodes, area {area} {length}2", item.nodes),
+        });
         if item.kind == Kind::Load {
             let f = item.force.map(format_value);
             lines.push(format!(
@@ -447,6 +618,16 @@ mod tests {
         }
         assert_eq!(p.items[0].actions, ["U1 = 0"]);
         assert_eq!(p.items[3].actions, ["pressure -100 MPa"]);
+        let labels: Vec<&str> = p.items.iter().map(|i| i.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "SUPPORT: ux",
+                "SYM_Y: uy",
+                "SYM_Z: uz",
+                "LOAD: -100 MPa pressure"
+            ]
+        );
         // The colours: 3 support colours, then the first load colour.
         let colors: Vec<usize> = p.items.iter().map(|i| i.color).collect();
         assert_eq!(colors, [1, 2, 3, 5]);
@@ -474,20 +655,26 @@ mod tests {
         );
     }
 
+    /// 2 hex elements: x 0 to 2, y and z 0 to 1, the set FIXED at x = 0 and the surface TOP
+    /// (S2, z = 1).
+    const TWO_HEX: &str = "** units: SI-mm\n*NODE\n\
+        1, 0, 0, 0\n2, 1, 0, 0\n3, 1, 1, 0\n4, 0, 1, 0\n\
+        5, 0, 0, 1\n6, 1, 0, 1\n7, 1, 1, 1\n8, 0, 1, 1\n\
+        9, 2, 0, 0\n10, 2, 1, 0\n11, 2, 0, 1\n12, 2, 1, 1\n\
+        *ELEMENT, TYPE=C3D8\n1, 1, 2, 3, 4, 5, 6, 7, 8\n2, 2, 9, 10, 3, 6, 11, 12, 7\n\
+        *NSET, NSET=FIXED\n1, 4, 5, 8\n\
+        *SURFACE, TYPE=ELEMENT, NAME=TOP\n1, S2\n2, S2\n";
+
     #[test]
     fn a_push_and_a_node_force_point_into_the_part() {
         // 2 hex elements: x 0 to 2, y and z 0 to 1. A pressure of 3 on the top faces (S2,
         // z = 1), a force of -5 in z on each node of the end x = 2, and a support at x = 0.
-        let text = "** units: SI-mm\n*NODE\n\
-            1, 0, 0, 0\n2, 1, 0, 0\n3, 1, 1, 0\n4, 0, 1, 0\n\
-            5, 0, 0, 1\n6, 1, 0, 1\n7, 1, 1, 1\n8, 0, 1, 1\n\
-            9, 2, 0, 0\n10, 2, 1, 0\n11, 2, 0, 1\n12, 2, 1, 1\n\
-            *ELEMENT, TYPE=C3D8\n1, 1, 2, 3, 4, 5, 6, 7, 8\n2, 2, 9, 10, 3, 6, 11, 12, 7\n\
-            *NSET, NSET=FIXED\n1, 4, 5, 8\n*NSET, NSET=TIP\n9, 10, 11, 12\n\
-            *SURFACE, TYPE=ELEMENT, NAME=TOP\n1, S2\n2, S2\n\
+        let text = format!(
+            "{TWO_HEX}*NSET, NSET=TIP\n9, 10, 11, 12\n\
             *STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n\
-            *CLOAD\nTIP, 3, -5.0\n*DSLOAD\nTOP, P, 3.0\n*END STEP\n";
-        let p = build(&fh_inp::parse(text).unwrap(), &units(text));
+            *CLOAD\nTIP, 3, -5.0\n*DSLOAD\nTOP, P, 3.0\n*END STEP\n"
+        );
+        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
         let [fixed, tip, top] = &p.items[..] else {
             panic!("{:?}", p.items);
         };
@@ -497,6 +684,9 @@ mod tests {
         assert_eq!(tip.triangles, on_plane(&p, 0, 2.0));
         assert_eq!(top.triangles, on_plane(&p, 2, 1.0));
         assert_eq!(tip.actions, ["F3 = -5 N on each of 4 nodes"]);
+        assert_eq!(fixed.label, "FIXED: ux uy uz");
+        assert_eq!(tip.label, "TIP: 20 N, -z");
+        assert_eq!(top.label, "TOP: 3 MPa pressure");
         assert!(close(tip.force, [0.0, 0.0, -20.0]), "{:?}", tip.force);
         // 3 MPa pushes down on 2 mm2 of the top face.
         assert!(close(top.force, [0.0, 0.0, -6.0]), "{:?}", top.force);
@@ -507,5 +697,123 @@ mod tests {
         let (tail, head) = p.arrow(tip).unwrap();
         assert_eq!(tail, [2.0, 0.5, 0.5]);
         assert!(head[2] < 0.5 && head[0] == 2.0, "{head:?}");
+    }
+
+    #[test]
+    fn each_label_gives_the_set_and_what_acts_on_it() {
+        // A pin, a set displacement of 1 node, a node force in -y, a node force at an angle,
+        // a pressure and a temperature change.
+        let text = format!(
+            "{TWO_HEX}*NSET, NSET=PIN\n9, 10\n*NSET, NSET=P1\n11, 12\n*NSET, NSET=P2\n11\n\
+            *NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12\n\
+            *INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 0.0\n\
+            *STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\nPIN, 2, 3\n9, 1, 1, 0.1\n\
+            *CLOAD\nP1, 2, -1350.0\nP2, 1, 3.0\nP2, 3, 4.0\n*DSLOAD\nTOP, P, 1.0\n\
+            *TEMPERATURE\nALL, 100.0\n*END STEP\n"
+        );
+        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let labels: Vec<(&str, Kind, usize)> = p
+            .items
+            .iter()
+            .map(|i| (i.label.as_str(), i.kind, i.color))
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                ("FIXED: ux uy uz", Kind::Support, 1),
+                ("PIN: uy uz", Kind::Support, 2),
+                ("node 9: ux = 0.1 mm", Kind::Support, 3),
+                ("P1: 2700 N, -y", Kind::Load, 5),
+                ("P2: 5 N, (0.6, 0, 0.8)", Kind::Load, 6),
+                ("TOP: 1 MPa pressure", Kind::Load, 7),
+                ("ALL: temperature 0 to 100", Kind::Temperature, 8),
+            ]
+        );
+        // A temperature acts on the body: no face, no arrow, and the label at the middle.
+        let all = &p.items[6];
+        assert!(all.triangles.is_empty() && all.outline.is_empty());
+        assert_eq!(p.arrow(all), None);
+        assert!(close(all.center, [1.0, 0.5, 0.5]), "{:?}", all.center);
+        assert_eq!(
+            p.describe(all),
+            [
+                "initial temperature 0",
+                "temperature 100 at the end of the step",
+                "12 nodes"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_outline_of_a_set_is_the_edge_of_its_faces() {
+        let text = format!(
+            "{TWO_HEX}*STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n*DSLOAD\nTOP, P, 1.0\n*END STEP\n"
+        );
+        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let [fixed, top] = &p.items[..] else {
+            panic!("{:?}", p.items);
+        };
+        // The end x = 0 is 1 square: 4 edges. The top is 2 squares: 6 edges.
+        for (item, edges, normal) in [(fixed, 4, [-1.0, 0.0, 0.0]), (top, 6, [0.0, 0.0, 1.0])] {
+            assert_eq!(item.outline.len(), edges, "{}", item.name);
+            for &(e, n) in &item.outline {
+                assert_eq!(n, normal, "{}", item.name);
+                let ends = e.map(|q| p.mesh.positions[q as usize]);
+                assert!(ends[0] != ends[1], "{}: {e:?}", item.name);
+            }
+        }
+        // On the results mesh, the labels move with the mean move of the faces.
+        let moved: Vec<[f32; 3]> = p
+            .mesh
+            .positions
+            .iter()
+            .map(|x| [x[0], x[1], x[2] + 0.5])
+            .collect();
+        assert_eq!(p.shift(top, &moved), [0.0, 0.0, 0.5]);
+        assert_eq!(p.shift(top, &p.mesh.positions), [0.0; 3]);
+        assert!(p.matches(&p.mesh));
+        let mut other = p.mesh.clone();
+        other.positions[0][0] += 0.1;
+        assert!(!p.matches(&other));
+    }
+
+    #[test]
+    fn the_labels_of_a_run_move_with_its_results() {
+        // fixtures/results/cantilever-2step: the results and the input that made them. Step 2
+        // replaces the tip load of step 1 with a load 2 times as large.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/results/cantilever-2step");
+        let text = std::fs::read_to_string(dir.join("cantilever-2step.inp")).unwrap();
+        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let [fixed, tip] = &p.items[..] else {
+            panic!("{:?}", p.items);
+        };
+        assert_eq!(fixed.label, "FIXED: ux uy uz");
+        assert_eq!(tip.label, "TIP: 2 N, -z");
+        assert_eq!(
+            tip.actions,
+            [
+                "TIP-LOAD: F3 = -0.25 N on each of 4 nodes",
+                "DOUBLE-LOAD: F3 = -0.5 N on each of 4 nodes"
+            ]
+        );
+        let r = crate::load_run(&dir).unwrap();
+        assert!(p.matches(&r.mesh));
+        // The label of the tip moves down with the tip, by the mean displacement of its face.
+        let step = &r.steps[1];
+        let deformed = crate::results::deformed_positions(&r.mesh, step, 1.0);
+        let shift = p.shift(tip, &deformed);
+        let tip_uz: Vec<f64> = tip
+            .triangles
+            .iter()
+            .flat_map(|&t| p.mesh.triangles[t as usize])
+            .map(|q| step.displacement[r.mesh.source_node[q as usize] as usize][2])
+            .collect();
+        let (lo, hi) = tip_uz
+            .iter()
+            .fold((f64::MAX, f64::MIN), |(lo, hi), &u| (lo.min(u), hi.max(u)));
+        assert!(hi < 0.0, "{tip_uz:?}");
+        let z = f64::from(shift[2]);
+        assert!(lo - 1e-6 <= z && z <= hi + 1e-6, "{shift:?} {lo} {hi}");
     }
 }
