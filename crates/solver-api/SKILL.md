@@ -15,7 +15,7 @@ Define subprocess protocol v2 and its runner (`SubprocessSolver`).
 
 - A fresh run clears only an empty folder or a folder with the `.fh-run` marker.
 - Result paths must stay inside the run folder.
-- Defaults are a 600-second timeout, 5-second cancel grace and 85 percent of detected RAM.
+- Defaults are no time limit, a 5-second cancel grace and 85 percent of detected RAM.
 - The runner sends `cancel` through stdin and enforces limits on the process tree.
 - New subprocess solvers have `validated: false`.
 - Results from a solver that has not passed the validation suite are marked unvalidated (DESIGN.md section 9.2).

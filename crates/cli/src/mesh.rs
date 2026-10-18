@@ -28,7 +28,8 @@ struct Options {
     numbers: Vec<(String, f64)>,
     case: Option<PathBuf>,
     units: Option<Units>,
-    timeout: Duration,
+    /// `None` means no limit: a large model can mesh for hours.
+    timeout: Option<Duration>,
     gmsh: Option<PathBuf>,
 }
 
@@ -55,7 +56,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         numbers: Vec::new(),
         case: None,
         units: None,
-        timeout: Duration::from_secs(300),
+        timeout: None,
         gmsh: None,
     };
     let mut output: Option<PathBuf> = None;
@@ -96,8 +97,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--case" => o.case = Some(it.next().ok_or("--case needs a directory")?.into()),
             "--timeout" => {
                 let seconds = number("--timeout", it.next())?;
-                o.timeout = Duration::try_from_secs_f64(seconds)
-                    .map_err(|_| "--timeout is too large".to_string())?;
+                o.timeout = Some(
+                    Duration::try_from_secs_f64(seconds)
+                        .map_err(|_| "--timeout is too large".to_string())?,
+                );
             }
             "--gmsh" => o.gmsh = Some(it.next().ok_or("--gmsh needs a path")?.into()),
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
@@ -311,13 +314,13 @@ struct Finished {
     stderr: String,
 }
 
-/// Run a command in `dir` with a time limit. Kill it on expiry.
+/// Run a command in `dir`, with a time limit when `limit` is set. Kill it on expiry.
 /// The output goes to files, so a full pipe cannot block the child.
 fn run_limited(
     gmsh: &Path,
     args: &[String],
     dir: &Path,
-    limit: Duration,
+    limit: Option<Duration>,
 ) -> Result<Finished, String> {
     let open = |name: &str| std::fs::File::create(dir.join(name)).map_err(|e| e.to_string());
     let mut child = Command::new(gmsh)
@@ -332,18 +335,18 @@ fn run_limited(
         .map_err(|e| format!("cannot start gmsh ({}): {e}", gmsh.display()))?;
     let start = Instant::now();
     let status = loop {
-        match child.try_wait().map_err(|e| e.to_string())? {
-            Some(status) => break status,
-            None if start.elapsed() >= limit => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!(
-                    "gmsh timed out after {} seconds and was stopped",
-                    limit.as_secs_f64()
-                ));
-            }
-            None => std::thread::sleep(Duration::from_millis(20)),
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            break status;
         }
+        if let Some(limit) = limit.filter(|l| start.elapsed() >= *l) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "gmsh timed out after {} seconds and was stopped",
+                limit.as_secs_f64()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(20));
     };
     let read = |name: &str| {
         String::from_utf8_lossy(&std::fs::read(dir.join(name)).unwrap_or_default()).into_owned()
@@ -418,7 +421,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     };
     let gmsh = find_gmsh(o.gmsh.as_deref())?;
 
-    let probe = run_limited(&gmsh, &["-version".into()], dir, Duration::from_secs(30))?;
+    let probe = run_limited(
+        &gmsh,
+        &["-version".into()],
+        dir,
+        Some(Duration::from_secs(30)),
+    )?;
     let version = probe.stdout.trim().to_string();
     let parsed = version_of(&version)
         .ok_or_else(|| format!("cannot read the gmsh version from `{version}`"))?;
@@ -575,6 +583,16 @@ mod tests {
         assert!(check_step("DATA;ENDSEC;", Units::SiMm)
             .unwrap_err()
             .starts_with("unit.step.missing"));
+    }
+
+    #[test]
+    fn gmsh_has_a_time_limit_only_with_the_timeout_option() {
+        let args = |a: &[&str]| parse_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        assert_eq!(args(&["a.geo"]).unwrap().timeout, None);
+        assert_eq!(
+            args(&["a.geo", "--timeout", "2"]).unwrap().timeout,
+            Some(Duration::from_secs(2))
+        );
     }
 
     #[test]

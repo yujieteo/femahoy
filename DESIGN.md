@@ -221,7 +221,7 @@ Users can use the open `inp`, `io`, and `toon` crates in their own solvers.
 ### 9.2 Limits for subprocess solvers
 
 - Each run has its own working folder.
-- Each run has a time limit and a memory limit.
+- Each run has a memory limit. A time limit applies only when the case or an option sets one.
 - Results from a solver that has not passed the validation suite are marked **unvalidated**.
 - Later: an OS sandbox (Landlock on Linux, `sandbox-exec` on macOS) with no network access and write access to the run folder only.
 
@@ -238,7 +238,7 @@ Command line: `<solver> <input.inp> <run-dir> [--formats LIST]`. `fh-solve-ccx` 
 - **stdin**: the line `cancel` stops the run. The end of stdin also stops it when `FH_CANCEL_ON_EOF` is `1`, which the runner sets. The exit code is 130. The runner keeps the pipe open while the solver runs.
 - **Run folder**: `step-N.vtu` for the last increment of step N, the PVD collection and `summary.toon`. `fh-solve-ccx` also keeps the `ccx` files in `ccx/`.
 - **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.8). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics.
-- **Limits**: the runner stops the whole process group at the time limit or at the memory limit. It reads the memory use of the group with an operating system probe (Linux, macOS and Windows). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
+- **Limits**: the runner stops the whole process group at the memory limit, and at the time limit when the case or an option sets one. It reads the memory use of the group with an operating system probe (Linux, macOS and Windows). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
 
 
 ---

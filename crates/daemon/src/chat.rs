@@ -29,7 +29,7 @@
 
 use std::collections::{HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -41,6 +41,9 @@ use crate::service::Service;
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
 const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep";
+/// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
+/// 2 minutes by default, and a solve of a large model can take hours.
+const BASH_TIMEOUT_MS: &str = "86400000";
 /// The most entries that the daemon keeps. An older entry goes first.
 const MAX_ENTRIES: usize = 4000;
 /// The most characters of one tool result in an entry.
@@ -227,31 +230,8 @@ impl Chat {
             .ok()
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| "claude".into());
-        let mut cmd = Command::new(&program);
-        // The messages go on stdin, so that no text of the person is read as an option.
-        cmd.args(["-p", "--input-format", "stream-json"])
-            .args(["--output-format", "stream-json", "--verbose"])
-            .args([
-                "--replay-user-messages",
-                "--append-system-prompt",
-                INSTRUCTIONS,
-                "--allowedTools",
-                TOOLS,
-            ]);
-        if let Some(session) = &log.session {
-            cmd.args(["--resume", session]);
-        }
-        let mut path = std::env::current_exe()
-            .ok()
-            .and_then(|e| Some(vec![e.parent()?.to_path_buf()]))
-            .unwrap_or_default();
-        path.extend(std::env::split_paths(
-            &std::env::var_os("PATH").unwrap_or_default(),
-        ));
+        let mut cmd = agent_command(&program, &self.state_dir, log.session.as_deref());
         cmd.current_dir(&dir)
-            .env("FH_STATE", &self.state_dir)
-            .env("FH_NO_OPEN", "1")
-            .env("PATH", std::env::join_paths(path).unwrap_or_default())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -485,6 +465,37 @@ fn entries(event: &Json) -> Vec<(String, String)> {
     out
 }
 
+/// The agent command with its arguments and its environment.
+fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Command {
+    let mut cmd = Command::new(program);
+    // The messages go on stdin, so that no text of the person is read as an option.
+    cmd.args(["-p", "--input-format", "stream-json"])
+        .args(["--output-format", "stream-json", "--verbose"])
+        .args([
+            "--replay-user-messages",
+            "--append-system-prompt",
+            INSTRUCTIONS,
+            "--allowedTools",
+            TOOLS,
+        ]);
+    if let Some(session) = session {
+        cmd.args(["--resume", session]);
+    }
+    let mut path = std::env::current_exe()
+        .ok()
+        .and_then(|e| Some(vec![e.parent()?.to_path_buf()]))
+        .unwrap_or_default();
+    path.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    cmd.env("FH_STATE", state_dir)
+        .env("FH_NO_OPEN", "1")
+        .env("PATH", std::env::join_paths(path).unwrap_or_default())
+        .env("BASH_DEFAULT_TIMEOUT_MS", BASH_TIMEOUT_MS)
+        .env("BASH_MAX_TIMEOUT_MS", BASH_TIMEOUT_MS);
+    cmd
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -522,6 +533,18 @@ mod tests {
         assert_eq!(kinds(init), [pair("note", "agent m in /s/chat")]);
         let hook = r#"{"type":"system","subtype":"hook_started"}"#;
         assert!(kinds(hook).is_empty());
+    }
+
+    #[test]
+    fn a_bash_command_of_the_agent_can_run_for_24_hours() {
+        let cmd = agent_command("claude", Path::new("/s"), None);
+        let env: Vec<_> = cmd.get_envs().collect();
+        for name in ["BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS"] {
+            assert!(
+                env.contains(&(name.as_ref(), Some("86400000".as_ref()))),
+                "{name}: {env:?}"
+            );
+        }
     }
 
     #[test]

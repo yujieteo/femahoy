@@ -29,7 +29,7 @@ These fields are optional. They set the limits of each solve of the case in `fh 
 
 | Field | Type | Accepted value or rule |
 |---|---|---|
-| `time_limit_s` | Number above 0 | The time limit in seconds. The default is the limit of the runner, 600 s. |
+| `time_limit_s` | Number above 0 | The time limit in seconds. The default is no time limit. |
 | `memory_limit_mib` | Number above 0 | The memory limit in MiB. The default is the limit of the runner, 85% of the RAM. |
 
 At a limit, the runner stops the solver, and the case row is `cannot run: REASON` with the limit.

@@ -37,7 +37,7 @@ impl Subprocess {
     pub fn for_case(case: &Case) -> Self {
         let mut s = Subprocess::locate();
         if let Some(t) = case.time_limit_s {
-            s.solver.timeout = Duration::from_secs_f64(t);
+            s.solver.timeout = Some(Duration::from_secs_f64(t));
         }
         if let Some(mib) = case.memory_limit_mib {
             s.solver.memory_limit = (mib * f64::from(1 << 20)) as u64;

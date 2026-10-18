@@ -63,7 +63,7 @@ It runs external gmsh for a 3D mesh in `msh41` format, then reads the result.
 | `--scale` | No value by default. Positive finite number, sent as gmsh `-clscale`. |
 | `--set` | Repeatable. Name uses ASCII letters, digits, `_`, or `.`. Value is finite. Sent as `-setnumber`. |
 | `--units` | `SI-mm`. Also accepts `SI-m`. STEP units must match. |
-| `--timeout` | 300 seconds. Positive finite duration. The version probe has a separate 30-second limit. |
+| `--timeout` | No limit by default. Positive finite duration. The version probe has a separate 30-second limit. |
 | `--gmsh` | Overrides discovery. Otherwise use non-empty `FH_GMSH`, then a file on `PATH`, then the macOS app path. |
 
 For a STEP file, `fh mesh` writes the gmsh script (the fixed script contract of M2b).

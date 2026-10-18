@@ -66,8 +66,6 @@ pub const SUMMARY_FILE: &str = "summary.toon";
 /// The runner puts this file in a run folder that it made. It clears only a
 /// folder that has the file.
 pub const RUN_MARKER: &str = ".fh-run";
-/// Default time limit for a subprocess run.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
 /// Time that a solver has to stop after a cancel.
 pub const CANCEL_GRACE: Duration = Duration::from_secs(5);
 /// The runner sets this environment variable to `1`. The solver then stops at the end of stdin.
@@ -293,7 +291,8 @@ pub fn default_memory_limit() -> u64 {
 #[derive(Debug, Clone)]
 pub struct SubprocessSolver {
     pub exe: PathBuf,
-    pub timeout: Duration,
+    /// Time limit of a run. `None` means no limit: a large model can solve for hours.
+    pub timeout: Option<Duration>,
     /// Limit for the solver tree in bytes: physical footprint on macOS, resident elsewhere.
     /// `u64::MAX` means no limit.
     pub memory_limit: u64,
@@ -316,12 +315,12 @@ const MAX_RESULT_FILE: u64 = 16 << 20;
 const STDERR_TAIL: u64 = 64 << 10;
 
 impl SubprocessSolver {
-    /// A new subprocess solver. It is unvalidated until the suite passes. The
-    /// time limit is provisional. The memory limit is 85 % of the machine RAM.
+    /// A new subprocess solver. It is unvalidated until the suite passes. It has
+    /// no time limit. The memory limit is 85 % of the machine RAM.
     pub fn new(exe: impl Into<PathBuf>) -> Self {
         SubprocessSolver {
             exe: exe.into(),
-            timeout: DEFAULT_TIMEOUT,
+            timeout: None,
             memory_limit: default_memory_limit(),
             cancel_grace: CANCEL_GRACE,
             validated: false,
@@ -482,8 +481,8 @@ impl SubprocessSolver {
             if cancel_sent.is_some_and(|t| t.elapsed() > self.cancel_grace) {
                 return stop(&mut tree, ApiError::cancelled());
             }
-            if start.elapsed() > self.timeout {
-                return stop(&mut tree, self.time_limit());
+            if let Some(t) = self.timeout.filter(|t| start.elapsed() > *t) {
+                return stop(&mut tree, Self::time_limit(t));
             }
             if limited && last_probe.elapsed() >= PROBE_EVERY {
                 last_probe = Instant::now();
@@ -547,8 +546,8 @@ impl SubprocessSolver {
             if cancel.is_cancelled() {
                 break;
             }
-            if start.elapsed() > self.timeout {
-                return Err(self.time_limit());
+            if let Some(t) = self.timeout.filter(|t| start.elapsed() > *t) {
+                return Err(Self::time_limit(t));
             }
         }
         drop(reader);
@@ -579,12 +578,12 @@ impl SubprocessSolver {
         })
     }
 
-    fn time_limit(&self) -> ApiError {
+    fn time_limit(limit: Duration) -> ApiError {
         ApiError::new(
             code::TIME_LIMIT,
             format!(
                 "solver stopped after the time limit of {} s. {SMALLER}",
-                self.timeout.as_secs_f64()
+                limit.as_secs_f64()
             ),
         )
     }

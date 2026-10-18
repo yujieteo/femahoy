@@ -104,11 +104,16 @@ fn listed_file_must_exist() {
 }
 
 #[test]
+fn a_new_solver_has_no_time_limit() {
+    assert_eq!(SubprocessSolver::new("solver").timeout, None);
+}
+
+#[test]
 fn time_limit_kills_the_solver() {
     let dir = scratch("slow");
     let exe = script(&dir, "sleep 30");
     let mut s = SubprocessSolver::new(exe);
-    s.timeout = Duration::from_millis(200);
+    s.timeout = Some(Duration::from_millis(200));
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
     assert_eq!(e.code, fh_solver_api::code::TIME_LIMIT);
     assert!(e.message.contains("time limit of 0.2 s"), "{e}");
@@ -320,7 +325,7 @@ fn time_limit_kills_the_whole_process_tree() {
     );
     // The script must write the pid file before the time limit. With 500 ms, a loaded
     // machine stopped it first. 2 s is still far below the 30 s of the grandchild.
-    s.timeout = Duration::from_secs(2);
+    s.timeout = Some(Duration::from_secs(2));
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
     assert!(e.to_string().contains("time limit"), "{e}");
     let pid = fs::read_to_string(dir.join("grandchild.pid")).unwrap();
@@ -357,7 +362,7 @@ fn a_process_outside_the_tree_cannot_hold_the_run_past_the_time_limit() {
         "$| = 1; while (1) { print \"stray\\n\"; select(undef, undef, undef, 0.05) }",
     );
     let mut s = solver(&dir, &GOOD.replacen('\n', &format!("\n{stray}\n"), 1));
-    s.timeout = Duration::from_secs(2);
+    s.timeout = Some(Duration::from_secs(2));
     let (tx, rx) = std::sync::mpsc::channel();
     let d = dir.clone();
     std::thread::spawn(move || {
@@ -569,7 +574,7 @@ fn run_flood(s: SubprocessSolver, dir: &Path, cancel: bool) -> (bool, String) {
 fn a_stream_of_events_cannot_delay_the_time_limit() {
     let dir = scratch("flood-time");
     let mut s = solver(&dir, FLOOD);
-    s.timeout = Duration::from_millis(500);
+    s.timeout = Some(Duration::from_millis(500));
     let (_, e) = run_flood(s, &dir, false);
     assert!(e.contains("time limit"), "{e}");
 }
@@ -606,7 +611,7 @@ fn a_long_stdout_line_is_refused_and_stops_the_solver() {
         &dir,
         "echo \"fh-solver-protocol 2\"\nhead -c 16777216 /dev/zero\nsleep 30",
     );
-    s.timeout = Duration::from_secs(3);
+    s.timeout = Some(Duration::from_secs(3));
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
     assert!(e.to_string().contains("stdout line longer than"), "{e}");
 }
