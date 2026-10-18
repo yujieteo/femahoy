@@ -160,7 +160,7 @@ impl Chat {
             // The drop closes stdin, and the agent starts.
             let _ = stdin.write_all(text.as_bytes());
         }
-        let (out, err) = (child.stdout.take(), child.stderr.take());
+        let (out, err, pid) = (child.stdout.take(), child.stderr.take(), child.id());
         log.agent = Some(child);
         log.seen = self.succeeded();
         drop(log);
@@ -182,7 +182,7 @@ impl Chat {
         }
         if let Some(out) = out {
             let chat = self.clone();
-            std::thread::spawn(move || chat.follow(out));
+            std::thread::spawn(move || chat.follow(out, pid));
         }
         Ok(())
     }
@@ -219,7 +219,7 @@ impl Chat {
     }
 
     /// Read the event stream of the agent until it ends.
-    fn follow(&self, out: impl Read) {
+    fn follow(&self, out: impl Read, pid: u32) {
         let mut ended = false;
         for line in BufReader::new(out).lines() {
             let Ok(line) = line else { break };
@@ -254,10 +254,14 @@ impl Chat {
         // Wait for the exit with no lock, so that a read of the chat does not wait.
         let code = loop {
             let mut log = self.lock();
-            match log.agent.as_mut().map(Child::try_wait) {
-                Some(Ok(None)) => {}
-                Some(Ok(Some(code))) => break Some(code),
-                _ => break None,
+            match log.agent.as_mut() {
+                Some(child) if child.id() == pid => match child.try_wait() {
+                    Ok(None) => {}
+                    Ok(Some(code)) => break Some(code),
+                    Err(_) => break None,
+                },
+                Some(_) => return,
+                None => break None,
             }
             drop(log);
             std::thread::sleep(std::time::Duration::from_millis(50));
