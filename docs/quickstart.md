@@ -15,8 +15,8 @@ fh run --example bar-pressure
 
 ### The install
 
-`scripts/install.sh` builds `fh`, `fh-solve`, `fh-solve-ccx` and the browser viewer (release builds).
-It copies `fh`, `fh-solve`, `fh-solve-ccx` and the folder `viewer` to `~/.local/bin`.
+`scripts/install.sh` builds `fh`, `fh-solve-ccx` and the browser viewer (release builds).
+It copies `fh`, `fh-solve-ccx` and the folder `viewer` to `~/.local/bin`.
 Use `--prefix DIR` for another folder.
 It also uses uv to make a Python 3.12 environment with build123d 0.13.0 in `~/.local/share/femahoy/venv` (`$XDG_DATA_HOME/femahoy/venv` when you set `XDG_DATA_HOME`).
 Use `--venv DIR` for another folder.
@@ -37,6 +37,7 @@ Before the build, the script checks these tools:
 If a tool is missing, the script shows all the missing tools with their install commands, and builds nothing.
 The script installs no tool itself. uv downloads Python 3.12 and build123d.
 It also tells you when gmsh is missing (`brew install gmsh`), because `fh run` needs gmsh for a STEP file.
+It also tells you when CalculiX (`ccx`) is missing. Each solve needs `ccx`: see [the CalculiX adapter](ccx.md).
 At the end, it shows the installed files and the next command.
 If the folder is not on `PATH`, the next command has the full path, and the script shows the line to add to your shell start file.
 
@@ -59,13 +60,18 @@ fh run: started a daemon for STATE (log STATE/daemon.log)
 fh run: mesh: fh mesh STATE/examples/bar-pressure/bar.step --case STATE/examples/bar-pressure -o STATE/cases/bar-pressure-22e4b0ed090220c2/bar.msh --size 8
 nodes	844
 elements	373
-fh run: project p-1115b5370dd95116 (STATE/cases/bar-pressure-22e4b0ed090220c2), run-000001
+fh run: project p-e6ab6e16fb490ff2 (STATE/cases/bar-pressure-84b9974e194acc67), run-000001
+  queued
   running
-  step 1 max_u=4.7726070210919874e-2 max_mises=1.0000000000000375e2 max_rf=1.0185185185184826e3 free_dofs=2145 method=cholesky iterations=0
   succeeded
-fh run: run-000001 succeeded in 0.35 s
-fh run: results in STATE/projects/p-1115b5370dd95116/runs/run-000001/out
-fh run: page http://127.0.0.1:53513/?token=TOKEN&project=p-1115b5370dd95116&run=run-000001
+fh run: run-000001 succeeded in 0.11 s
+fh run: results in STATE/projects/p-e6ab6e16fb490ff2/runs/run-000001/out
+fh run: summary.toon:
+  ...
+  status: ok
+  ...
+  solver: "ccx 2.23, unvalidated"
+fh run: page http://127.0.0.1:53513/?token=TOKEN&project=p-e6ab6e16fb490ff2&run=run-000001
 fh run: opened run-000001 in the browser
 fh run: the daemon stays alive for the browser. Stop it with: fh serve --stop
 ```
@@ -97,7 +103,8 @@ The sections below do the same steps one at a time.
 ## 1. Prepare the programs
 
 Run these commands from the repository root in an interactive terminal.
-`scripts/install.sh` (see [Start](#start)) puts `fh`, `fh-solve`, `fh-solve-ccx` and `fh-python` on `PATH`.
+`scripts/install.sh` (see [Start](#start)) puts `fh`, `fh-solve-ccx` and `fh-python` on `PATH`.
+The solve step needs CalculiX (`ccx`, [the CalculiX adapter](ccx.md)).
 The CAD step uses `fh-python`, the Python with build123d that the install makes.
 The mesh step needs an external gmsh executable.
 
@@ -176,7 +183,7 @@ For `.msh` input, `--case` supplies unit labels. It does not verify a unit recor
 
 ## 4. Write the solver input and run the solver
 
-`fh-solve` reads `.inp`, not `.msh` or case TOML.
+`fh-solve-ccx` reads `.inp`, not `.msh` or case TOML.
 `fh model` writes the `.inp` file from the mesh and the `[model]` table of a case.
 The [bar-tension case](../validation/cases/bar-tension/case.toml) has that table.
 It holds the material, node sets on coordinate planes, boundary conditions and loads.
@@ -208,23 +215,18 @@ You can run this command from a script or an agent shell.
 Use a new result directory for each run.
 
 ```sh
-fh-solve "$WORK/bar.inp" "$WORK/run-bar" --formats text,vtu
+fh-solve-ccx "$WORK/bar.inp" "$WORK/run-bar"
 ```
 
 The bar has a prescribed end displacement of 0.1 mm. The exact von Mises stress is 210 MPa.
-Output excerpt (the `max_u` value includes the Poisson contraction at the corner):
-
-```text
-fh-solver-protocol 2
-step 1 max_u=1.0022474744293448e-1 max_mises=2.1000000000001194e2 max_rf=1.881077767473042e3 free_dofs=5318 method=cholesky iterations=0
-```
+The solver prints only the line `fh-solver-protocol 2`. Section 5 reads the results.
+The `ccx` files are in `$WORK/run-bar/ccx`.
 
 ## 5. Read the results
 
 ```sh
 cat "$WORK/run-bar/summary.toon"
 cat "$WORK/run-bar/results.pvd"
-head -n 9 "$WORK/run-bar/step-1.txt"
 head -n 25 "$WORK/run-bar/step-1.vtu"
 ```
 
@@ -237,7 +239,8 @@ source: bar.inp
 units: SI-mm
 status: ok
 precision: 4
-solver: core
+run_id: run-bar
+solver: "ccx 2.23, unvalidated"
 results: results.pvd
 ```
 
@@ -279,7 +282,7 @@ Give `fh mesh` the case with `--case`, so that it makes a gmsh physical surface 
 ```sh
 fh mesh "$WORK/bar.step" --case validation/cases/bar-pressure --size 8 -o "$WORK/press.msh"
 fh model "$WORK/press.msh" --case validation/cases/bar-pressure -o "$WORK/press.inp"
-fh-solve "$WORK/press.inp" "$WORK/run-press" --formats text,vtu
+fh-solve-ccx "$WORK/press.inp" "$WORK/run-press"
 ```
 
 Output excerpt of `fh mesh` (element-face counts of each region):
@@ -299,11 +302,7 @@ surface	SYM_Z	88
 LOAD, P, -100.0
 ```
 
-The exact stress is 100 MPa. Output excerpt of `fh-solve`:
-
-```text
-step 1 max_u=4.7726070210919874e-2 max_mises=1.0000000000000375e2 max_rf=1.0185185185184826e3 free_dofs=2145 method=cholesky iterations=0
-```
+The exact stress is 100 MPa. `fh validate` checks it (section 7).
 
 `fh run validation/cases/bar-pressure --size 8` does these 3 steps in one command (see [Your own model](#your-own-model)).
 
@@ -313,7 +312,8 @@ The [bar-pressure-m case](../validation/cases/bar-pressure-m/case.toml) is the s
 ## 7. Run validation
 
 Run this command from the repository root.
-`fh validate` locates `fh-solve` beside `fh`, or through `FH_SOLVE`.
+`fh validate` locates `fh-solve-ccx` beside `fh` or on `PATH`, or through `FH_SOLVE`.
+If `ccx` does not start, `fh validate` stops with exit code 1 and tells how to install it.
 
 ```sh
 fh validate
@@ -325,10 +325,10 @@ Output excerpt:
 bar-pressure    N       pass
 bar-pressure-m  N       pass
 bar-tension     N       pass
-cantilever      L       pass
+bimetal-strip   N       pass
 ...
-patch-test-c3d8i        N       pass
-16 cases: 16 pass, 0 fail
+warpage-thick-copper    N       pass
+19 cases: 19 pass, 0 fail
 ```
 
 The full output compares computed values with references, tolerances and margins.

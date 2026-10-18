@@ -2,21 +2,24 @@
 
 `fh-solve-ccx` runs CalculiX as a protocol v2 solver (D-13). femahoy never bundles or links `ccx`, because it is GPL. You install it.
 
+`fh-solve-ccx` is the only solver of femahoy. The owner removed the native solver `fh-solve` on 2026-10-19 (D-29). An own solver is a main advantage later, but not now. Main commit `08a97c2` has the native solver.
+
 ## Get `ccx`
 
 - Nix (macOS, Linux): `nix build nixpkgs#calculix-ccx -o ccx`, then `export FH_CCX=$PWD/ccx/bin/ccx`.
 - Debian, Ubuntu: `apt install calculix-ccx`. This puts `ccx` on PATH.
 
 The adapter uses `$FH_CCX`. If `FH_CCX` is not set, it uses `ccx` on PATH.
+If `ccx` does not start, each solve and `fh validate` stop with an error that refers to this page.
 
 ## Run
 
 ```
-fh-solve-ccx model.inp run-dir                                # one run
-FH_SOLVE=$PWD/target/release/fh-solve-ccx fh validate          # the validation suite through ccx
+fh-solve-ccx model.inp run-dir    # one run
+fh validate                       # the validation suite through ccx
 ```
 
-The run folder gets `results.pvd`, `step-N.vtu` and `summary.toon`, as with `fh-solve`. The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.log`) are in `run-dir/ccx`.
+The run folder gets `results.pvd`, `step-N.vtu` and `summary.toon` (`docs/solver-protocol.md`). The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.log`) are in `run-dir/ccx`.
 U and RF come from `job.frd`. The stress comes from the integration points in `job.dat` (`*EL PRINT`).
 The summary says `solver: "ccx <version>, unvalidated"`.
 
@@ -29,7 +32,7 @@ Changes for `ccx`:
 
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
 - Each step is one linear increment. The adapter ignores the `*STATIC` data line.
-- The element stress `S` is the volume mean of the `ccx` integration point stress, as in `fh-solve` (`docs/solver-protocol.md`, "Result contract").
+- The element stress `S` is the volume mean of the `ccx` integration point stress (`docs/solver-protocol.md`, "Result contract").
 - Each number in `job.inp` has 20 characters or fewer, because `ccx` reads only the first 20 characters of a number.
   A longer number lost the end of its exponent with no error. For example, `-1.33027879758290e-17` became -0.133.
 - Before `ccx` starts, the adapter checks the supports of each step. They must hold the 6 rigid motions of each connected part of the mesh.
@@ -51,7 +54,6 @@ The runner adds the time limit and the memory limit (`docs/solver-protocol.md`, 
 
 ## Thermal strain
 
-Only the adapter solves thermal strain. `fh-solve` refuses `*EXPANSION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE` and `*TEMPERATURE` with an error that names the keyword.
 The adapter writes these keywords to `job.inp` with the same data, so `ccx` gives them the CalculiX meaning:
 
 - `*EXPANSION`: the thermal strain is alpha (T - T0), with T0 the initial temperature of the node.
@@ -59,9 +61,8 @@ The adapter writes these keywords to `job.inp` with the same data, so `ccx` give
 - `*TEMPERATURE`: the temperature at the end of the step. A node with no value in a step keeps its last temperature.
 
 A model with several materials needs one `*SOLID SECTION` for each element set.
-The case `validation/cases/bimetal-strip` has the key `solver = "fh-solve-ccx"`, so `fh validate` runs it with `fh-solve-ccx`.
-If `ccx` does not start, `fh validate` skips the case and shows `skipped, no ccx`. The other cases decide the exit code. Any other error of `fh-solve-ccx` or `ccx` is a failure.
-`fh run` also runs such a case with `fh-solve-ccx`. It finds `fh-solve-ccx` beside `fh`, else on `PATH`. You do not set `FH_SOLVE`.
+`fh validate` runs each case with `fh-solve-ccx`. If `ccx` does not start, `fh validate` stops with exit code 1 before the first case. A run where no case ran does not pass.
+`fh run` finds `fh-solve-ccx` beside `fh`, else on `PATH`. You do not set `FH_SOLVE`.
 If `fh-solve-ccx` is not there, `fh run` stops with `run.solver.missing`. Then run `scripts/install.sh`, which puts `fh-solve-ccx` beside `fh`.
 
 ## Limits
@@ -73,7 +74,7 @@ If `fh-solve-ccx` is not there, `fh run` stops with `run.solver.missing`. Then r
 ## Record of stage C1 (2026-10-18)
 
 Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
-`FH_SOLVE=fh-solve-ccx fh validate`: 16 of 16 cases pass. The tolerances are the same as for `fh-solve`.
+`FH_SOLVE=fh-solve-ccx fh validate`: 16 of 16 cases pass. The tolerances are the same as for the native solver `fh-solve`, which D-29 removed later.
 
 | Case | Quantity | `ccx` | `fh-solve` | Reference |
 |---|---|---|---|---|
@@ -95,6 +96,11 @@ Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
 | `bimetal-strip` | u3 at `P20` (mm) | -1.53425e-1 | -1.5342466e-1, pass |
 | `bimetal-strip` | u1 at `P20` (mm) | 1.80548e-2 | 1.8054795e-2, pass |
 
+## Record of the native solver removal (2026-10-19)
+
+Tested `ccx`: 2.23, on macOS aarch64.
+`fh validate` runs each case through `fh-solve-ccx`: 19 of 19 cases pass. The tolerances did not change.
+
 ## Public warpage workflow
 
 `validation/cases/warpage-strip` uses build123d bodies, STEP, gmsh physical volume groups, `fh model` and `fh run`.
@@ -103,14 +109,14 @@ The reference is the published bilayer solution of Lubarda and Lubarda, equation
 The [derivation](../validation/cases/warpage-strip/derivation.md) gives the source, inputs and measured results at 2 mesh sizes.
 
 ```sh
-cargo build -p fh-cli -p fh-core-solver -p fh-solver-ccx
+cargo build -p fh-cli -p fh-solver-ccx
 FH_CCX=/path/to/ccx fh-python scripts/check-warpage.py /tmp/warpage-proof
 ```
 
 The check sets `FH_SOLVE` to the adjacent `fh-solve-ccx` before it starts each private daemon.
-It reads VTU output, compares warpage with the analytical reference, and checks that the native solver refuses thermal input.
+It reads VTU output and compares warpage with the analytical reference.
 The fine mesh gives -0.6126606 mm against -0.6136986301 mm, a difference of 0.169143% within the 1% tolerance.
-`fh validate` also checks the committed coarse mesh through `solver = "fh-solve-ccx"`.
+`fh validate` also checks the committed coarse mesh.
 
 ## Measured warpage use case
 
@@ -122,7 +128,7 @@ The case uses the materials of the paper and a temperature change of 40 K.
 The [derivation](../validation/cases/warpage-thick-copper/derivation.md) gives the inputs, the 12% tolerance and the results at 3 mesh sizes.
 
 ```sh
-cargo build -p fh-cli -p fh-core-solver -p fh-solver-ccx
+cargo build -p fh-cli -p fh-solver-ccx
 FH_CCX=/path/to/ccx fh-python scripts/check-warpage-copper.py /tmp/warpage-copper-proof
 ```
 

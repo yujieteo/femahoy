@@ -31,5 +31,5 @@ The error of a mesh is the root mean square, over all nodes, of `|u_h - u|`. The
 (`jitter = 0.08`), so the cells are not parallelepipeds. The `C3D10` meshes split each cube into 6 tetrahedra with
 straight edges. The `C3D8` and `C3D8I` meshes hold the same hexahedra and differ in the element type only.
 
-`crates/core-solver/tests/convergence.rs` uses the same field and the same meshes. Its errors for the 3 meshes are the same
-as the errors in `fh validate`.
+The native solver had a test with the same field and the same meshes (`crates/core-solver/tests/convergence.rs` at main
+commit `08a97c2`). The owner removed that solver on 2026-10-19. `fh validate` now solves the meshes with `fh-solve-ccx`.

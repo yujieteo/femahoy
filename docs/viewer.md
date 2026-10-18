@@ -104,4 +104,4 @@ The code is in `crates/viewer`:
 | `app.rs` | the eframe app of the model view: the viewport, the results panel and the status bar |
 | `web.rs` | the browser entry point: `start`, `Viewer::open`, `font` and the HTTP requests (wasm only) |
 
-`mesh.rs`, `results.rs`, `view.rs` and `camera.rs` have no GPU types and have unit tests. The tests read `fixtures/results/cantilever-2step` (2 steps of `fh-solve` output) and compare each displacement and each stress value with the text results of the same run.
+`mesh.rs`, `results.rs`, `view.rs` and `camera.rs` have no GPU types and have unit tests. The tests read `fixtures/results/cantilever-2step` (2 steps of output of the native solver `fh-solve`, which main commit `08a97c2` has) and compare each displacement and each stress value with the text results of the same run.

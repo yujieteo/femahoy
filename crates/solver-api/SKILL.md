@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Define the `Solver` trait, registry and subprocess protocol v2.
+Define subprocess protocol v2 and its runner (`SubprocessSolver`).
 
 ## Inputs and outputs
 
-- Start a solver with `exe INPUT.inp RUN_DIR`. Add `--restart` to resume a run.
+- Start a solver with `exe INPUT.inp RUN_DIR`.
 - The first stdout line must be `fh-solver-protocol 2`.
 - The solver writes `results.pvd`, its listed VTU files and `summary.toon` with schema `fh.run`.
-- Stdout events include `progress`, `estimate` and `restart`. Other lines are logs.
+- Stdout events are `progress` and `estimate`. Other lines are logs.
 
 ## Invariants the code must keep
 
@@ -27,7 +27,7 @@ Define the `Solver` trait, registry and subprocess protocol v2.
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-solver-api` and `cargo test -p fh-solver-api`. Protocol tests check subprocess results, limits, cancellation and restart.
+Run `cargo check -p fh-solver-api` and `cargo test -p fh-solver-api`. Protocol tests check subprocess results, limits and cancellation.
 
 ## Examples
 

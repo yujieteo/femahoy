@@ -16,7 +16,7 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 - The **input** is Abaqus-shaped `.inp` text.
 - **Agent-facing output** is TOON.
 - **Results** are VTU files, so ParaView can open them.
-- The **core solver** is validated end to end against analytical references.
+- The **solver** is CalculiX (`ccx`). The `fh-solve-ccx` adapter runs it (D-13). Each validation case passes against its reference.
 - Users and their agents can build their own solvers and input templates on the same crates.
 
 Description rule: say the product is "heavily inspired by Abaqus input conventions". Never use "Abaqus" as a product name or in a product name.
@@ -61,9 +61,9 @@ Rule: the page shows only what helps the work: the chat, the run in the viewport
                          fh serve (daemon)
              +-----------+-----------+-----------+
              |  solver   |  agents   |  files    |
-             | (in-proc  | (Claude   | (project, |
-             |  or sub-  |  Code,    |  results) |
-             |  process) |  Codex)   |           |
+             | (sub-     | (Claude   | (project, |
+             |  process) |  Code,    |  results) |
+             |           |  Codex)   |           |
              +-----------+-----------+-----------+
 ```
 
@@ -80,7 +80,7 @@ Rule: the page shows only what helps the work: the chat, the run in the viewport
 
 - **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the Inter font (D-28).
 - **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls. The native UI is removed (D-20).
-- **`fh` CLI:** talks to a running daemon, or runs the solver directly when no daemon runs.
+- **`fh` CLI:** talks to a running daemon, or runs the solver program directly when no daemon runs.
 
 ### 4.3 Pane backend
 
@@ -151,19 +151,11 @@ Rules:
 
 ## 7. Solver
 
-### 7.1 Core capabilities
+### 7.1 Solver now
 
-The native solver gets these capabilities in the later milestones (section 13), except the items on the "not now" list below.
+The solver is CalculiX (`ccx`). The `fh-solve-ccx` adapter runs it as a separate program (D-12, D-13). The user installs `ccx` (`docs/ccx.md`). Each solve and `fh validate` stop with an error that tells how to install it when `ccx` is not there.
 
-| Capability | Method |
-|---|---|
-| Static analysis (implicit, general) | Abaqus-style static step |
-| Linear algebra | `faer`, sparse Cholesky for small systems, Jacobi-preconditioned conjugate gradients (PCG) for large ones. The switch rule is in section 11.2. |
-| Constraints | DOF elimination with a master-slave transformation. The matrix stays symmetric positive definite. |
-| Nonlinear solution | Newton-Raphson, load stepping, automatic cutback |
-| Contact | Frictionless normal contact, active-set loop, augmented Lagrange, node-to-surface |
-| Plasticity | J2 with isotropic hardening, hypoelastic-plastic, corotational stress rate, updated Lagrangian |
-| Large displacement | `NLGEOM=YES` through the deformation gradient F, which is passed to the material. The exact finite-strain formulation (corotational or other) is chosen in M6. |
+The owner removed the native solver `fh-solve` on 2026-10-19 (D-29). An own solver is a main advantage later, but not now. Main commit `08a97c2` has its code and its design: the linear static solver, the Newton nonlinear path, restart, the sparse Cholesky and the Jacobi PCG solver.
 
 Not now: element birth and death (`*MODEL CHANGE`, M8) and submodelling (M9).
 
@@ -175,12 +167,6 @@ Not now: element birth and death (`*MODEL CHANGE`, M8) and submodelling (M9).
 | `C3D8` | Hex8 with selective reduced integration (B-bar), for plasticity and near-incompressible flow. |
 | `C3D10` | Default tet10. |
 | `C3D10M` | Modified tet10 for contact surfaces. Corner-node forces stay correct under pressure. |
-
-Element API: `element::evaluate` is a pure function on fixed-size arrays. It takes the node positions (`Placement`: start position plus displacement), a `Material` and the committed state of the element. It writes the internal force, the consistent tangent, the stress at each integration point and the trial state into an `Evaluation`. It does not allocate.
-
-- The element gives each integration point its deformation gradient F. The material returns the stress, the tangent and its new state. Elements know no material constants.
-- The material owns the state of each integration point (`Material::state_len` numbers, zero for elastic). The internal dofs of `C3D8I` are element state.
-- `StateStore` keeps a committed copy and a trial copy of all state, in one flat array for each copy (struct-of-arrays layout).
 
 For imported input, the `TYPE=` on `*ELEMENT` sets the element. For models that femahoy agents create, use `C3D10` (D-19). Use `C3D8I` only for extruded parts, and the others only when the task needs them.
 
@@ -204,36 +190,16 @@ Starting list:
 - `docs/compatibility.md` lists every difference. A test covers each difference.
 - Tests use our own `.inp` files. No Abaqus manual files go in the repo (section 10.1).
 
-### 7.5 Steps, increments and later analysis types
-
-The step code (`core-solver/src/step.rs`) has one increment loop for all analysis types (D-10).
-
-- A step is a list of increments. The load factor runs from 0 to 1. Loads and prescribed values ramp from their values at the start of the step to the values of the step.
-- Each increment builds its constraint transform from the prescribed values at its load factor. A transform with the same map keeps the matrix and the factor. A transform with the same structure keeps the pattern and the solver, and builds the slot map again. Any other transform gets a new pattern.
-- **Linear fallback:** when all materials are linear and the model has no contribution, a step is one increment. The solver assembles and factors once for each constraint map. No Newton code runs.
-- **Newton path:** all other models. `*STATIC` gives the first, minimum and maximum increment. Each Newton iteration builds the residual and the tangent in one sweep. A converged increment commits the trial state. A failed increment drops the trial state, and the solver tries a smaller increment (cutback). An increment fails when Newton does not converge, or when a material or a contribution rejects the trial.
-- **Sweep:** one call of a pure kernel for each element and each contribution group. Threads compute chunks of 256 entries. One thread adds the chunks in entry order, so the result is bit-identical for any thread count.
-- A converged increment writes its result files and, when it is due, the restart file (section 9.3).
-
-How the later milestones plug in:
-
-| Milestone | Interface that exists in M2 | What the milestone adds | What stays |
-|---|---|---|---|
-| M5 Nonlinear solver | The Newton path, the cutback and the state store. Tests use a test material with state. | `C3D10M`, the nonlinear fixtures, and a test that a linear case gives the same result in both paths. | The increment loop and the restart file. |
-| M6 Plasticity | `Material` with `state_len() > 0` and `is_linear() == false`. `update` gets F and the committed state. It returns the stress, the tangent and the trial state. An error cuts the increment back. | The J2 return map in a new `Material`. | The element code. Elements pass F and do not know the material law. |
-| M6 Contact | `Contribution`: groups of nodes, a state for each group, and `evaluate`, which returns the force and the tangent of a group at the current positions. The groups are extra entries after the elements, so the node graph, the pattern and the slot map include them. The restart file keeps their state. | The contact search, the augmented Lagrange update and the change of the groups. A change of the groups at an increment builds the node graph and the pattern again, as a change of the constraint structure does. In M2 the groups are fixed for a run. | The step loop and the assembly. |
-| M7 Large displacement | `Placement` holds the start position and the displacement. The element computes F from them. Pressure loads use the current positions. | The geometric stiffness and the finite-strain stress measure in the element kernel, and the material update for large strain. | The material interface and the Newton loop. |
-
 ---
 
 ## 8. Results and postprocessing
 
-- **Results files:** the solver writes VTU with a PVD file for each converged increment. The files of the last increment of step N are `step-N.*`, and the files of the other increments are `step-N-inc-k.*`. Plain text and legacy VTK are off by default, because they are large. `fh-solve --formats text,vtu,vtk` selects the formats, and `--formats all` selects all 3. `fh run` writes the default only.
+- **Results files:** the solver writes one VTU file for each step (`step-N.vtu`) and a PVD collection. `fh-solve-ccx` writes VTU only. The `fh-io` crate can also write plain text and legacy VTK, for solvers that need them.
   - **Plain text** (`step-N.txt`): first line `fh-results 1`, a header (units note, step, step name, time, stress order), then three tables: one row for each node (`U1 U2 U3 RF1 RF2 RF3`, and `UR1 UR2 UR3` when the model has rotations), one row for each element (`S11 S22 S33 S12 S23 S13 MISES`, volume average), and one row for each integration point (`element_id ip S11 ... MISES`). Reals use the shortest text that reads back to the same value. The model has no unit system, so the units line says that all values are in the units of the input file.
   - **VTU** (`step-N.vtu`): binary data appended raw. Sets are integer arrays. femahoy writes and reads these files in Rust, with no C library. There is no compression, because that needs a new dependency and costs time on a slow CPU.
   - **Legacy VTK** (`step-N.vtk`): ASCII `UNSTRUCTURED_GRID`, version 3.0. It has the same mesh and fields as the VTU file.
-  - A PVD collection file lists the first grid format that is on (VTU, else VTK, else text). The text file is for people and scripts, and ParaView cannot read it.
-  - Every writer takes one array at a time from a buffered file and makes no copy of a field. The solver result of the step stays in memory while the files are written. The integration point stress (48 bytes for each point) is the largest array and is kept only when the text format is on. Switch the text format off for models of millions of elements (about 1.5 GB of text for 1M `C3D8` elements).
+  - The PVD collection file lists the grid files. The text file is for people and scripts, and ParaView cannot read it.
+  - Every writer takes one array at a time from a buffered file and makes no copy of a field.
 - ParaView opens the PVD file directly.
 - The wasm viewer and the submodel interpolation read the same files.
 - **TOON** is used only for summaries and queries that agents ask for (for example, "maximum Mises stress in set X, step 2"). Full field data never goes into TOON.
@@ -248,8 +214,7 @@ How the later milestones plug in:
 
 | Interface | For | How it works |
 |---|---|---|
-| `Solver` trait | Trusted Rust solvers | A crate implements the trait and registers by name. The core solver is the reference implementation. |
-| Subprocess protocol | Agent-written or untrusted solvers | An executable takes an `.inp` file path and a run folder, and writes result files plus a TOON summary. The protocol is versioned (version 2, section 9.3). |
+| Subprocess protocol | Every solver: `fh-solve-ccx`, and agent-written or untrusted solvers | An executable takes an `.inp` file path and a run folder, and writes result files plus a TOON summary. The protocol is versioned (version 2, section 9.3). |
 
 Users can use the open `inp`, `io`, and `toon` crates in their own solvers.
 
@@ -264,19 +229,15 @@ The agents themselves run under the harness's own permission system.
 
 ### 9.3 Subprocess protocol, version 2
 
-Command line: `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vtk] [--restart-every N] [--restart-minutes T]`. The environment variable `FH_THREADS` sets the number of threads for the element work and the PCG solve (default: all cores). The results are bit-identical for any count.
+Command line: `<solver> <input.inp> <run-dir> [--formats LIST]`. `fh-solve-ccx` accepts only `--formats vtu`. The protocol text is in `docs/solver-protocol.md`.
 
 - **stdout** is line based. The first line is `fh-solver-protocol 2`. Then these event lines:
-  - `estimate bytes=N`: the memory estimate of section 11.2, before the work starts.
+  - `estimate bytes=N`: the memory estimate of the solver, before the work starts.
   - `progress step=i/n phase=<name> fraction=<0..1>`: about 20 lines for each phase.
-  - `restart restart.fh`: after each write of the restart file. The solver writes it at the end of each step, after every N converged increments (`--restart-every`, default 1), and when T minutes have passed since the last write (`--restart-minutes`). The file holds the last converged increment, its state and the hash of the input.
-  - `step N max_u=... max_mises=... max_rf=... free_dofs=... method=... iterations=...`: at the end of each step.
-  - `stats dofs=... nnz=... pattern_builds=... estimate_bytes=... assemblies=... factorizations=... orphans=...` and `timing assemble=... factor=... solve=...` (seconds): at the end of the run.
   - The runner keeps any other line as a log line.
 - **stdin**: the line `cancel` stops the run. The end of stdin also stops it when `FH_CANCEL_ON_EOF` is `1`, which the runner sets. The exit code is 130. The runner keeps the pipe open while the solver runs.
-- **Restart**: `--restart` reads `restart.fh` in the run folder. It deletes the result files after the restart point, and continues from the last converged increment. It refuses an input file that changed.
-- **Run folder**: `step-N.*` for the last increment of step N, `step-N-inc-k.*` for the other increments, the PVD collection, `restart.fh`, and `summary.toon`.
-- **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.8). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics. A dof with no stiffness gives a warning with the code `SOL101`. The solver fixes that dof at zero.
+- **Run folder**: `step-N.vtu` for the last increment of step N, the PVD collection and `summary.toon`. `fh-solve-ccx` also keeps the `ccx` files in `ccx/`.
+- **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.8). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics.
 - **Limits**: the runner stops the whole process group at the time limit or at the memory limit. It reads the memory use of the group with an operating system probe (Linux, macOS and Windows). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
 
 
@@ -321,7 +282,7 @@ Contact cases compare integrated values: total contact force, contact area or ra
 ### 10.5 Gate
 
 - `fh validate` runs the suite and reports pass or fail per case.
-- A change to the core solver merges only if the full suite passes, and a convergence check passes for each changed element or contact path.
+- A change to a solver or its adapter merges only if the full suite passes, and a convergence check passes for each changed element or contact path.
 - A failure blocks the merge. There is no override.
 
 ---
@@ -335,8 +296,7 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | `inp` | `.inp` reader and writer, Abaqus-shaped model, template mapping | open API |
 | `io` | gmsh `.msh` import, VTU and PVD write and read | open API |
 | `toon` | agent-facing summaries and queries | open API |
-| `solver-api` | `Solver` trait, subprocess protocol, registry | open API |
-| `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core |
+| `solver-api` | subprocess protocol v2 and its runner | open API |
 | `validation` | harness, tolerance classes, manufactured solutions | validated core |
 | `daemon` | HTTP server, token auth, process supervision, chat agent, the page (HTML chat) | app |
 | `agents` | harness start, JSON stream parsing, skills install, role config | app |
@@ -348,65 +308,19 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 
 | Dependency | Use | Note |
 |---|---|---|
-| `faer` | sparse linear algebra | pure Rust |
+| CalculiX (`ccx`) | solver | External program. Never linked (GPL). |
 | `eframe` / `egui` / `wgpu` | 3D viewport and its controls, wasm | |
 | Inter | font of the page and the viewer | SIL Open Font License 1.1. In `crates/viewer/fonts`, with its licence. |
 | gmsh | meshing | External program. Never linked (GPL). |
 
 ---
 
-### 11.2 Target machine, memory and the solver switch
+### 11.2 Target machine and memory
 
-**Target machine:** 16 GB RAM, 4 to 6 cores, a hard disk or a slow SSD. Input files are small. Results files are not: write them in pieces.
+**Target machine:** 16 GB RAM, 4 to 6 cores, a hard disk or a slow SSD (D-06). Input files are small. Results files are not: write them in pieces.
 
-Requirements:
-
-1. A model of 1M `C3D8` elements (about 3.1M dofs) solves inside 16 GB. Measured peak memory footprint: 6 063 MiB, or 5.9 GiB (below).
-2. If the matrix does not fit, the iterative solver is used. Its memory is about the size of the matrix. The out-of-core scheme is not needed so far, and is not built.
-3. The default memory limit of a run is 85 percent of the RAM of the machine.
-
-**Assembly:** the sparse pattern is built once from the node adjacency of the elements and the contribution groups (no triplets of the whole model). A slot map holds, for each element, the position in the matrix values of each entry of its lower triangle. Values are added in place through the slot map, with no search. The pattern stays across steps and Newton iterations, and is rebuilt only when the constraint structure changes (section 7.5). Element work runs in chunks of 256 entries on all threads. The main thread adds the chunks in entry order, so the matrix is bit-identical for any thread count.
-
-**Switch rule (`Method::Auto`):** use sparse Cholesky when the reduced system has at most 60 000 free dofs, else PCG with a Jacobi preconditioner (relative residual 1e-10). Reason: Cholesky memory grows as n^1.35 (about 400 bytes times n^1.35) and its time grows faster. PCG memory is linear.
-
-**PCG on threads:** the PCG solve runs on `FH_THREADS` threads. The rows are cut into fixed blocks of 1024 rows, and each thread owns a run of whole blocks. Each row of the matrix product has one owner and adds its terms in column order. Each dot product is a sum for each block, and the threads add the block sums in block order. Thus the result is bit-identical for any thread count. The matrix keeps only its lower triangle. For the product, the PCG solver keeps a row copy of the strict lower triangle (12 bytes for each entry).
-
-**Memory estimate** (bytes, printed as `estimate bytes=` before the work starts), with N nodes, E elements, n dofs, nnz stored matrix entries, T threads:
-
-    model    = 40 N + 130 E
-    mesh     = 45 E + 30 (N + E) + graph + 8 N
-    matrix   = 12 nnz + 4 n
-    slots    = sum over elements of (4 m (m + 1) / 2 + 8), m = element dofs
-    state    = 4 * (bytes of one copy of the state)
-    vectors  = 24 n + 48 n + (72 n + 12 (nnz - n) + 12 n + 4 if PCG, else 24 n)
-    factor   = 400 n^1.35                      (Cholesky only)
-    results  = 72 N + 56 E + 120 N + 70 E + (384 E if text format)
-    chunks   = min(T * 256, E) * size_of(Evaluation)
-    estimate = 1.35 * (model + mesh + matrix + slots + state + vectors + factor + results + chunks)
-
-The factor 1.35 covers allocator slack and the input text. The measured peak memory footprint of the PCG runs below is 1.03 to 1.10 times the sum.
-
-**Measurements** (2026-10-13, release build, all 3 result formats). Machine: Apple M5 chip with 10 cores (4 performance cores and 6 efficiency cores), 16 GB RAM, macOS 27.0.1 (build 26A434), aarch64. The peak is the peak memory footprint from `/usr/bin/time -l`. The resident set size leaves out compressed pages, so it can be lower than the footprint. The machine ran other work at the same time (load average 2 before the runs), so the times change from run to run. For example, an earlier run of the 1M model took 129 s (1 thread) and 59 s (10 threads) for the solve.
-
-| Model | Elements | Free dofs | Method | Threads | Peak | Assemble | Factor | Solve | Wall time |
-|---|---|---|---|---|---|---|---|---|---|
-| Cantilever and Lamé case meshes (8 meshes) | 4 to 512 | 48 to 2 176 | Cholesky | 1 or 10 | 1.7 to 12 MiB | at most 3.1 ms | at most 3.0 ms | at most 0.1 ms | 10 to 20 ms (the first run: 0.30 s, a cold start) |
-| `C3D8` box 100x40x25, one tip load | 100 000 | 319 800 | PCG, 656 iterations | 1 | 578 MiB | 0.58 s | 0.02 s | 8.9 s | 10.4 s |
-| same | 100 000 | 319 800 | PCG, 656 iterations | 10 | 599 MiB | 0.18 s | 0.03 s | 2.0 s | 3.2 s |
-| `C3D8` box 100x100x100, one tip load | 1 000 000 | 3 060 300 | PCG | 1 | 6 046 MiB | 6.3 s | 0.58 s | 146 s | 164 s |
-| same | 1 000 000 | 3 060 300 | PCG | 10 | 6 063 MiB | 3.2 s | 0.51 s | 68 s | 83 s |
-
-For PCG, "Factor" is the row copy and the preconditioner. The PCG solve is bound by memory bandwidth, so 10 threads give 4.3 times the speed at 100k elements and 2.2 times at 1M elements. The results of 1 thread and 10 threads are bit-identical (all result files of the 100k run compared). The test `crates/core-solver/tests/threads.rs` compares the result files and the restart files of 1, 2, 4 and all threads, for PCG and for Cholesky.
-
-For the 1M-element model the estimate is 7 442 MiB (7.3 GiB) against a measured peak of 6 063 MiB (5.9 GiB). All files of the run (3 formats, PVD, restart file and summary) take 2.28 GB. The memory numbers do not depend on the CPU.
-
-Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip load, 10 cores, peak is the resident set size):
-
-| Elements | Free dofs | Method | Peak | Wall time |
-|---|---|---|---|---|
-| 8 000 | 26 460 | Cholesky | 349 MiB | 1.0 s |
-| 27 000 | 86 490 | Cholesky | 1 754 MiB | 11.5 s |
-| 27 000 | 86 490 | PCG | 106 MiB | 0.7 s |
+- The default memory limit of a run is 85 percent of the RAM of the machine. The runner stops a solver at this limit (section 9.3).
+- The native solver solved a model of 1M `C3D8` elements in 5.9 GiB. Section 11.2 of `DESIGN.md` at main commit `08a97c2` has the measurements. The workflow benchmark records (B1) will measure `ccx` on this machine.
 
 ---
 
@@ -428,13 +342,12 @@ Order of the work (D-27):
 1. **Now: the basic LLM workflow (M4).** The user asks the chat for a model. The leader builds the CAD, meshes it, solves it and shows the results. The user sees each step in the page of `fh serve`. One focused agent is the default. The user can add more agents later. Every action shows as an `fh` command.
 2. **Now: CalculiX for thermal strain, several materials and warpage (C3).**
 3. **Now: the workflow benchmark records (B1).** They measure the workflow from the request to the results.
-4. **Later:** the native nonlinear solver (M5 to M7), the other CalculiX capabilities (C2), the Windows platform (M11) and the second user test.
+4. **Later:** an own solver (D-29), the other CalculiX capabilities (C2), the Windows platform (M11) and the second user test.
 
 Rules:
 
 - An item starts when the items in its **Needs** column are done. Items that do not need each other can run at the same time.
 - A milestone with stages is done only when all its stages pass.
-- A capability that `ccx` gives (D-14) does not close the native milestone for that capability.
 - The captain can change the order at any time.
 
 Later, with no milestone yet: a mesher of our own (D-15). The managed LLM tier starts after the second user test.
@@ -513,7 +426,8 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Rejected:** HDF5, Exodus.
 - **Reverse if:** a model is too big for these formats, or a customer needs one of the rejected formats.
 - **Update:** the captain decided on 2026-10-18 to change the default. A run of 1M `C3D8` elements wrote 2.28 GB with all 3 formats, and the text file was about 1.5 GB of that. The text writer also kept about 384 bytes for each element in memory. The 3 formats stay (decided 2026-10-13, for compatibility).
-- **Built:** M2 (PR 10). `fh-solve --formats` selects a subset. The default is VTU with PVD (2026-10-18).
+- **Built:** M2 (PR 10). `fh-solve --formats` selected a subset. The default was VTU with PVD (2026-10-18).
+- **Update:** D-29 removed `fh-solve` on 2026-10-19. `fh-solve-ccx` writes VTU with PVD only. The `fh-io` writers for plain text and legacy VTK stay.
 
 ### D-05 Model input stays Abaqus-style `.inp`, TOML holds only case metadata
 - **Decided by:** the captain.
@@ -529,7 +443,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** This is the machine of the expected user.
 - **Rejected:** solvers that need more than 16 GB or fast disk swap.
 - **Reverse if:** the captain changes the target machine.
-- **Built:** M2 (PR 10): the memory estimate, the solver switch rule and the parallel PCG. The 1M-element run is measured in section 11.2. E1 and M2.6 test it. The workflow benchmark records (B1) measure it.
+- **Built:** M2 (PR 10) built the memory estimate, the solver switch rule and the parallel PCG in the native solver. D-29 removed them on 2026-10-19. The runner keeps the default memory limit (section 11.2). The workflow benchmark records (B1) will measure `ccx` on the target machine.
 
 ### D-07 Code builds and passes on aarch64
 - **Decided by:** the captain.
@@ -546,7 +460,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** The test machine has a Metal GPU.
 - **Rejected:** CUDA-only design.
 - **Reverse if:** no GPU backend is ever needed.
-- **Built:** the interfaces only (M2): the `LinearSolver` and `Assemble` traits name no device, and the state store uses a struct-of-arrays layout. No GPU code exists.
+- **Built:** no GPU code exists. D-29 removed the M2 interfaces with the native solver.
 
 ### D-09 Restart is safe against partial files
 - **Decided by:** the captain.
@@ -555,6 +469,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Rejected:** write in place, trust any file that exists.
 - **Reverse if:** a better atomic method exists on all target platforms.
 - **Built:** M2 (PR 10). Every result file and the restart file are written to a temporary name and renamed. The restart file has a version and the hash of the input. A test kills the solver at 3 random restart points and checks that the resumed files are equal to the files of a run with no kill.
+- **Update:** D-29 removed restart with the native solver on 2026-10-19. `fh-solve-ccx` writes each result file to a temporary name and renames it.
 
 ### D-10 Element and step design stays open to later analysis types
 - **Decided by:** the captain.
@@ -562,7 +477,8 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A change of these interfaces later costs more than a careful design now.
 - **Rejected:** element code that holds material laws, a design for linear analysis only.
 - **Reverse if:** a later milestone shows that the interfaces cannot carry one of these analysis types.
-- **Built:** M2 (PR 10): the `Material` trait, the `Contribution` trait, the state store, and one increment loop with the linear fallback and the Newton path (section 7.5).
+- **Built:** M2 (PR 10): the `Material` trait, the `Contribution` trait, the state store, and one increment loop with the linear fallback and the Newton path.
+- **Update:** D-29 removed this code on 2026-10-19. Main commit `08a97c2` has it. An own solver later must keep this decision.
 
 ### D-11 Results are the same bits for any thread count
 - **Decided by:** the captain.
@@ -570,12 +486,13 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Results must not depend on the machine. Byte-equal results make crash-resume and tests exact.
 - **Rejected:** results that change with the thread count.
 - **Reverse if:** a measured conflict with D-06 makes the captain choose speed over exact equality.
-- **Built:** M2 (PR 10). `crates/core-solver/tests/threads.rs` compares the result files and the restart files of 1, 2, 4 and all threads.
+- **Built:** M2 (PR 10). `crates/core-solver/tests/threads.rs` compared the result files and the restart files of 1, 2, 4 and all threads.
+- **Update:** D-29 removed the native solver and this test on 2026-10-19. An own solver later must keep this decision.
 
 ### D-12 Own solver, and other solvers as separate programs
-- **Decided by:** the captain. Changed by D-27.
-- **Choice:** The native solver is a main advantage of the product. It gets the nonlinear milestones later (section 13). Other open solvers run as separate programs that the user installs. femahoy adds an adapter crate for each one. "One package" means one femahoy package with the adapters. It never contains the solver programs.
-- **Reason:** External solvers give capabilities now that the native solver does not have yet. Separate programs keep GPL code out of the product (D-02).
+- **Decided by:** the captain. Changed by D-27 and D-29.
+- **Choice:** An own solver is a main advantage of the product, later (D-29). Other open solvers run as separate programs that the user installs. femahoy adds an adapter crate for each one. "One package" means one femahoy package with the adapters. It never contains the solver programs.
+- **Reason:** External solvers give capabilities now. Separate programs keep GPL code out of the product (D-02).
 - **Rejected:** link or bundle another solver.
 - **Reverse if:** the captain changes the focus of the product.
 - **Built:** yes. `solver-ccx` is the first adapter crate (D-13).
@@ -595,6 +512,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Rejected:** M6 and M7 in the built-in solver before users get these capabilities.
 - **Reverse if:** `ccx` fails the C2 case of a capability. Then the built-in milestone for that capability comes first.
 - **Built:** not yet. Stage C1 does not wait for the workflow lock (D-21).
+- **Changed:** D-29 removed the built-in solver on 2026-10-19. `ccx` gives the M5, M6 and M7 capabilities (stage C2). No built-in results exist to cross-check.
 
 ### D-15 gmsh now, a mesher of our own later
 - **Decided by:** the captain. Changed by D-27.
@@ -627,7 +545,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A wrong unit gives wrong results without any warning.
 - **Rejected:** a default unit, a guessed unit, a warning in place of the refusal.
 - **Reverse if:** the captain allows a run with unknown units.
-- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`), no units (`unit.case.missing`) and the STEP unit faults of `fh info`. `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). `fh model` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve` writes those units into `summary.toon`, the PVD file and the text results.
+- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`), no units (`unit.case.missing`) and the STEP unit faults of `fh info`. `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). `fh model` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve-ccx` writes those units into `summary.toon` and the PVD file.
 
 ### D-19 C3D10 is the default element
 - **Decided by:** the captain.
@@ -635,7 +553,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the `cantilever` validation case (length 10 mm, 1 x 1 mm section, nu 0.3) with 1 element through the section and the element type changed to `C3D8`, plain hex8 (`C3D8`, B-bar) gave 0.35 times the beam deflection with 4 elements along the beam, and 2.07 times with 32 elements. The mesh rule is in `docs/compatibility.md`.
 - **Rejected:** hex8 as the default element.
 - **Reverse if:** the workflow benchmark records (B1) show that typical tet10 models do not fit D-06.
-- **Built:** the `C3D10` element is on main (M2, PR 10). The M2b recipe makes `C3D10` meshes from CAD. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). `fh info` and `fh mesh` refuse a hex8 mesh that is not one extrusion (`crates/cli/src/rules.rs`).
+- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). `fh info` and `fh mesh` refuse a hex8 mesh that is not one extrusion (`crates/cli/src/rules.rs`).
 
 ### D-20 Early mesh-only viewer
 - **Decided by:** the captain.
@@ -716,3 +634,11 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A chat needs normal text: scrolling, selection and copy. egui draws its text on a canvas. The 3D viewport needs the GPU, and egui hosts it well.
 - **Rejected:** a script framework or a package manager for the page. A new renderer.
 - **Reverse if:** the teammate tree or the custom panels need widgets that the page cannot give.
+
+### D-29 Native solver removed
+- **Decided by:** the owner, 2026-10-19. The owner said: "It is a main advantage but not now, besides it is recorded in git?"
+- **Choice:** Remove the native solver `fh-solve` (`crates/core-solver`, about 11 600 lines): the linear static solver, the Newton nonlinear path, restart, the sparse Cholesky and the Jacobi PCG solver. `fh-solve-ccx` is the default solver of `fh run`, `fh validate`, `fh measure`, the daemon and `scripts/install.sh`. The subprocess protocol v2 and its runner stay.
+- **Reason:** An own solver is a main advantage later, but not now. Git keeps the code: main commit `08a97c2` has the full native solver. CalculiX through `fh-solve-ccx` passes the validation suite.
+- **Rejected:** keep the native solver beside `fh-solve-ccx`.
+- **Reverse if:** the owner gives an own solver a milestone. Start from commit `08a97c2`.
+- **Built:** yes. This changes D-12, D-14 and item 5 of D-27. Restart (D-09) and the native solver work of D-04, D-06, D-08, D-10 and D-11 are removed.

@@ -60,6 +60,7 @@ const STOPPED: &str = "the daemon stopped before the run ended";
 
 /// The solvers that a submit can name. The first one is the solver of [`Config`]. Add the
 /// name of another protocol v2 solver here to let a submit name it.
+// Decision D-29, see DESIGN.md
 pub const SOLVERS: [&str; 1] = ["fh-solve-ccx"];
 
 /// The settings of a run service.
