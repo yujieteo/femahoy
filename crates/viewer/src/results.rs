@@ -1,8 +1,8 @@
 //! Run results to view data: the steps of a `results.pvd`, the displacement of each step,
 //! the contour fields, the deformed shape and the contour bands.
 //!
-//! Plain functions with no GPU or file types. The caller reads the files (from the disk in
-//! the native app, over HTTP in the browser) and gives the bytes to `load`.
+//! Plain functions with no GPU or file types. The caller gives the file bytes to `load`. The
+//! browser fetches them from the daemon, and the tests read them from disk.
 
 use std::fmt;
 

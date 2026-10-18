@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `check`, `mesh`, `model`, `validate`, `info`, `run`, `serve`, and `view`.
+`fh` implements `check`, `mesh`, `model`, `validate`, `info`, `run`, and `serve`.
 This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
 The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
@@ -226,7 +226,7 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), `native window: fh view DIR`, and the stop command. | 0 |
+| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), and the stop command. | 0 |
 | The solver refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder, for example `bad.inp: line 3, *BOGUS: unsupported keyword (INP002)`. | 1 |
 | The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
@@ -287,24 +287,6 @@ The address holds the token, so it does not go into the command line of a browse
 | Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
 | `--stop` with an option other than `--state` | `fh serve: --stop takes only --state DIR` | 2 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
-
-## `fh view`
-
-```text
-fh view MODEL.inp|RUN_DIR|results.pvd
-```
-
-Source: [view.rs](../../crates/cli/src/view.rs) and [crates/viewer](../../crates/viewer/src/lib.rs).
-The command opens a native window on the mesh of an `.inp` file, or on the results of a run folder ([viewer](../viewer.md)).
-An argument that is a folder or ends in `.pvd` is a run. Any other argument is an `.inp` file.
-
-| Condition | Diagnostic | Exit |
-|---|---|---:|
-| Window closed | none | 0 |
-| No argument, or more than one | `fh view: usage: fh view MODEL.inp\|RUN_DIR\|results.pvd` | 2 |
-| An argument that starts with `-` | `fh view: unknown option: ARGUMENT` | 2 |
-| An `.inp` file with no element to draw | `fh view: FILE: no C3D4, C3D8 or C3D10 elements to draw (N nodes, M elements)` | 2 |
-| Bad or missing result files | `fh view: RUN_DIR: FILE: MESSAGE (CODE)`, with the codes of [viewer](../viewer.md#result-files) | 2 |
 
 ## Keep this list current
 

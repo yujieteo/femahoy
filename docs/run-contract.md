@@ -83,7 +83,7 @@ The protocol v2 runner writes the full solver output to `out/stdout.txt`. The co
 
 ## Which process stays alive
 
-The daemon owns every run. A browser, the native UI and the CLI are only clients.
+The daemon owns every run. A browser and the CLI are only clients.
 
 1. A client that closes or disconnects stops nothing. The run continues. The client reads the same record when it connects again.
 2. Only a cancel command stops a run on purpose.

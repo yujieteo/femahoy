@@ -8,7 +8,6 @@ mod model;
 mod rules;
 mod run;
 mod validate;
-mod view;
 
 use std::process::ExitCode;
 
@@ -24,9 +23,8 @@ fn usage() -> String {
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
          run       solve a model or a case on the daemon and open the results in the browser (fh run MODEL.inp|CASE_DIR|--example NAME)\n  \
-         serve     run the daemon, the browser viewer and the terminal sidebar on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n  \
-         view      show a mesh or the results of a run in 3D (fh view MODEL.inp|RUN_DIR|results.pvd)\n\n\
-         TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
+         serve     run the daemon, the browser viewer and the terminal sidebar on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n\n\
+                  TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
          Exact values are in the VTU files.\n\n\
          planned subcommands:\n",
     );
@@ -50,7 +48,6 @@ fn main() -> ExitCode {
         Some("model") => model::run(&args[1..]),
         Some("info") => info::run(&args[1..]),
         Some("run") => run::run(&args[1..]),
-        Some("view") => view::run(&args[1..]),
         Some("serve") => fh_daemon::serve(&args[1..], measure::Subprocess::locate().exe),
         _ => {
             if args.len() == 1 && PLANNED.contains(&args[0].as_str()) {

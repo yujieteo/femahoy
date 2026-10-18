@@ -67,7 +67,6 @@ fh run: run-000001 succeeded in 0.35 s
 fh run: results in STATE/projects/p-1115b5370dd95116/runs/run-000001/out
 fh run: page http://127.0.0.1:53513/?token=TOKEN&project=p-1115b5370dd95116&run=run-000001
 fh run: opened run-000001 in the browser
-fh run: native window: fh view STATE/projects/p-1115b5370dd95116/runs/run-000001/out
 fh run: the daemon stays alive for the browser. Stop it with: fh serve --stop
 ```
 

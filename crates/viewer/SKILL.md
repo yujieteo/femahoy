@@ -2,11 +2,11 @@
 
 ## Purpose
 
-The crate has the result viewer (`docs/viewer.md`): one eframe app for the native window (`fh view`) and for the browser (wasm, the page of `fh serve`). In the browser, the page also has the terminal sidebar (`docs/terminal.md`): `terminal.rs` is the terminal widget and `sidebar.rs` holds the tabs and the panes. `chat.rs` is the chat panel (`docs/chat.md`): the request, each action of the agent, and the results of a new run in the viewer. The teammate tree is not built.
+The crate has the result viewer (`docs/viewer.md`): one eframe app for the browser (wasm, the page of `fh serve`). In the browser, the page also has the terminal sidebar (`docs/terminal.md`): `terminal.rs` is the terminal widget and `sidebar.rs` holds the tabs and the panes. `chat.rs` is the chat panel (`docs/chat.md`): the request, each action of the agent, and the results of a new run in the viewer. The teammate tree is not built.
 
 ## Inputs and outputs
 
-- Input: an `.inp` model (mesh only), or a run folder with `results.pvd` and `step-N.vtu`. The browser gets the same files from the daemon (`web.rs`).
+- Input: a run folder with `results.pvd` and `step-N.vtu`. The browser gets the files from the daemon (`web.rs`).
 - Output: a 3D view with the mesh, the outlines, the deformed shape, one contour field and a step selector.
 - The terminal widget reads the screens of the daemon in the protocol `fh.term.v1` and sends the keys, the paste, the mouse and the size. The sidebar reads and changes the terminals and the panes through the `Remote` trait.
 
