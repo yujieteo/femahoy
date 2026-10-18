@@ -428,6 +428,12 @@ pub(crate) fn run(
                 pressures.insert((e, dl.face), dl.pressure);
             }
         }
+        // A *DSLOAD is the same pressure on each face of its element surface.
+        for ds in &step.dsloads {
+            for face in mesh.surface_faces(&ds.surface)? {
+                pressures.insert(face, ds.pressure);
+            }
+        }
         let mut cur = vec![0.0; mesh.n_dofs];
         for (&(n, d), &v) in &loads {
             cur[mesh.dof(n, d)] += v;

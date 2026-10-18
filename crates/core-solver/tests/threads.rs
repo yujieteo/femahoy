@@ -33,6 +33,7 @@ fn run(text: &str, name: &str, method: Method, threads: usize) -> (PathBuf, Vec<
     let input = Input {
         name: "block.inp",
         hash: input_hash(text),
+        units: fh_core_solver::NO_UNITS,
     };
     let options = Options {
         method,

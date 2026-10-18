@@ -1,5 +1,6 @@
 //! `fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm|SI-m]`: write a solver input
-//! from a gmsh mesh and the `[model]` table of the case. Decisions D-12 and D-19, see DESIGN.md.
+//! from a gmsh mesh and the `[model]` table of the case. Decisions D-12, D-18 and D-19, see
+//! DESIGN.md. Each region of the case becomes a node set and an element-face surface.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -58,7 +59,13 @@ fn id_lines(out: &mut String, ids: &[u32]) {
 }
 
 /// The text of the solver input. `Err` holds a refusal code and text.
-fn write_inp(model: &fh_inp::Model, spec: &ModelSpec, label: &str) -> Result<String, String> {
+fn write_inp(
+    mesh: &fh_io::MshMesh,
+    spec: &ModelSpec,
+    label: &str,
+    units: Units,
+) -> Result<String, String> {
+    let model = &mesh.model;
     let mut types: Vec<&str> = model
         .elements
         .iter()
@@ -75,6 +82,7 @@ fn write_inp(model: &fh_inp::Model, spec: &ModelSpec, label: &str) -> Result<Str
         });
     };
     crate::rules::hex_needs_extrusion(model)?;
+    crate::rules::volumes_are_named(mesh)?;
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
     for n in &model.nodes {
@@ -84,8 +92,11 @@ fn write_inp(model: &fh_inp::Model, spec: &ModelSpec, label: &str) -> Result<Str
         }
     }
     let extent = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
-    let mut out =
-        format!("** Made by fh model from {label}. Do not edit; change the case.\n*NODE\n");
+    // fh-solve reads the units line and writes the units into the results (D-18).
+    let mut out = format!(
+        "** Made by fh model from {label}. Do not edit; change the case.\n** units: {}\n*NODE\n",
+        units.name()
+    );
     for n in &model.nodes {
         let _ = writeln!(
             out,
@@ -122,6 +133,16 @@ fn write_inp(model: &fh_inp::Model, spec: &ModelSpec, label: &str) -> Result<Str
         let _ = writeln!(out, "*NSET, NSET={}", s.name);
         id_lines(&mut out, &ids);
     }
+    for r in &spec.regions {
+        let surface = crate::rules::region_surface(mesh, &r.name)?;
+        let nodes = model.nset(&r.name).map_or(&[][..], |s| &s.ids[..]);
+        let _ = writeln!(out, "*NSET, NSET={}", r.name);
+        id_lines(&mut out, nodes);
+        let _ = writeln!(out, "*SURFACE, TYPE=ELEMENT, NAME={}", r.name);
+        for (element, face) in &surface.faces {
+            let _ = writeln!(out, "{element}, S{face}");
+        }
+    }
     let m = &spec.material;
     let _ = write!(
         out,
@@ -139,6 +160,12 @@ fn write_inp(model: &fh_inp::Model, spec: &ModelSpec, label: &str) -> Result<Str
         out.push_str("*CLOAD\n");
         for c in &spec.cloads {
             let _ = writeln!(out, "{}, {}, {:?}", c.set, c.dof, c.per_node);
+        }
+    }
+    if !spec.dsloads.is_empty() {
+        out.push_str("*DSLOAD\n");
+        for d in &spec.dsloads {
+            let _ = writeln!(out, "{}, P, {:?}", d.surface, d.pressure);
         }
     }
     out.push_str("*END STEP\n");
@@ -175,7 +202,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let (Some(file), Some(case_dir)) = (file, case_dir) else {
         return Err(USAGE.into());
     };
-    let case = Case::load(&case_dir).map_err(|e| e.to_string())?;
+    let case = Case::load_before_mesh(&case_dir).map_err(|e| e.to_string())?;
     let Some(spec) = &case.model else {
         return Ok(refuse(&format!(
             "model.missing: {} has no [model] table",
@@ -186,12 +213,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         return Ok(refuse(&message));
     }
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let mesh =
-        fh_io::read_msh(&text).map_err(|e| e.with_file(file.display().to_string()).to_string())?;
+    let mesh = fh_io::read_msh_mesh(&text)
+        .map_err(|e| e.with_file(file.display().to_string()).to_string())?;
     let label = file
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-    let inp = match write_inp(&mesh, spec, &label) {
+    let inp = match write_inp(&mesh, spec, &label, case.units) {
         Ok(inp) => inp,
         Err(message) => return Ok(refuse(&message)),
     };
@@ -208,8 +235,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         "ok\t{}\nunits\t{}\nnodes\t{}\nelements\t{}",
         out.display(),
         case.units.name(),
-        mesh.nodes.len(),
-        mesh.elements.len()
+        mesh.model.nodes.len(),
+        mesh.model.elements.len()
     );
     Ok(ExitCode::SUCCESS)
 }

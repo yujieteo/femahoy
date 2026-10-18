@@ -269,6 +269,22 @@ impl<'a> Mesh<'a> {
         }
     }
 
+    /// `(element index, face)` of each face of an element surface. Each face must exist.
+    pub(crate) fn surface_faces(&self, name: &str) -> Result<Vec<(usize, u8)>, SolverError> {
+        let s = self
+            .model
+            .element_surface(name)
+            .ok_or_else(|| SolverError::new(format!("element surface {name} not found")))?;
+        s.faces
+            .iter()
+            .map(|&(id, face)| {
+                let e = self.element(id)?;
+                element::face_nodes(self.kinds[e], face)?;
+                Ok((e, face))
+            })
+            .collect()
+    }
+
     pub(crate) fn add_bcs(
         &self,
         list: &[fh_inp::Boundary],

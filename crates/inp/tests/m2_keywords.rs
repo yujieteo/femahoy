@@ -275,6 +275,17 @@ fn dsload_reads_a_pressure_on_an_element_surface() {
 }
 
 #[test]
+fn dsload_finds_the_surface_in_any_letter_case() {
+    // NAME= is upper case after the parse, a data line keeps its letters. Names ignore case.
+    let m = ok(
+        "*SURFACE, TYPE=ELEMENT, NAME=Load\n1, S4\n*STEP\n*STATIC\n*DSLOAD\nload, P, 2.5\n*END STEP\n",
+    );
+    let d = &m.steps[0].dsloads;
+    assert_eq!((d[0].surface.as_str(), d[0].pressure), ("LOAD", 2.5));
+    assert!(m.element_surface("load").is_some());
+}
+
+#[test]
 fn dsload_errors() {
     let step = "*STEP\n*STATIC\n*DSLOAD\n";
     let s = "*SURFACE, TYPE=ELEMENT, NAME=S\n1, S4\n";

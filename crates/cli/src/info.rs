@@ -102,7 +102,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     }
     let file = file.ok_or("usage: fh info FILE.step|FILE.msh [--case DIR]")?;
     let case = case_dir
-        .map(|dir| Case::load(&dir).map_err(|e| e.to_string()))
+        .map(|dir| Case::load_before_mesh(&dir).map_err(|e| e.to_string()))
         .transpose()?;
     let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     match file.extension().and_then(|x| x.to_str()) {

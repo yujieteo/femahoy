@@ -18,7 +18,8 @@ mod system;
 mod text;
 
 pub use output::{
-    input_hash, run_model, write_results, CoreSolver, Input, ORPHAN_CODE, RESTART_FILE,
+    input_hash, input_units, run_model, write_results, CoreSolver, Input, NO_UNITS, ORPHAN_CODE,
+    RESTART_FILE,
 };
 pub use system::{
     estimate_bytes, solve, solve_from, solve_options, solve_with, step_times, Formats, Increment,

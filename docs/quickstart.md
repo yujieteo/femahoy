@@ -66,7 +66,7 @@ units_match: yes
 ## 3. Mesh the STEP file with gmsh
 
 Use the same unit system as the case TOML.
-`fh mesh` takes `--units` directly. It does not read the case TOML.
+This `fh mesh` command takes `--units` and does not read the case TOML. Section 6 gives `fh mesh` the case with `--case`.
 If gmsh is outside `PATH`, add `--gmsh /path/to/gmsh`.
 
 ```sh
@@ -110,7 +110,7 @@ value = 0.1
 
 A `[[model.cload]]` table applies a force to each node of a set. It is not a total force.
 The command keeps `C3D10` as the element. It accepts hex8 only for an extruded part.
-Named regions and `*DSLOAD` are not built.
+`fh model` writes the line `** units: SI-mm` into the input. Section 6 shows named regions and a pressure load.
 
 ```sh
 fh model "$WORK/bar.msh" --case validation/cases/bar-tension -o "$WORK/bar.inp"
@@ -147,7 +147,7 @@ The TOON summary contains this excerpt.
 schema: fh.run
 version: 1.1.0
 source: bar.inp
-units: unspecified
+units: SI-mm
 status: ok
 precision: 4
 solver: core
@@ -155,9 +155,10 @@ results: results.pvd
 ```
 
 TOON rounds numbers to 4 significant figures. The VTU file retains full precision.
-The PVD file names the VTU result.
+The PVD file states the units and names the VTU result.
 
 ```xml
+<Collection units="SI-mm">
 <DataSet timestep="1" part="0" file="step-1.vtu"/>
 ```
 
@@ -165,10 +166,62 @@ The VTU file contains point fields `U` and `RF`, and cell fields `S` and `MISES`
 The last command reads the XML header before the binary result arrays.
 `U` is displacement. `RF` is reaction force. `S` is stress. `MISES` is von Mises stress.
 The stress components are `S11 S22 S33 S12 S23 S13`.
-The solver does not read the case units. Its TOON and PVD files report `unspecified`.
-Interpret the numbers in the consistent unit system of the input model.
+The solver reads the units from the `** units:` line of the input. It uses them only as a label.
+An input with no such line gives `units: unspecified`.
+Interpret the numbers in the declared unit system: mm, N and MPa for `SI-mm`.
 
-## 6. Run validation
+## 6. Name regions and apply a pressure
+
+The [bar-pressure case](../validation/cases/bar-pressure/case.toml) names 4 faces of the bar as regions.
+A region selects the faces of the part on a plane, or the faces inside a box.
+A `[[model.dsload]]` table applies a pressure to a region. A negative pressure pulls the face.
+
+```toml
+[[model.region]]
+name = "LOAD"
+axis = "x"
+at = 100.0
+
+[[model.dsload]]
+surface = "LOAD"
+pressure = -100.0
+```
+
+Give `fh mesh` the case with `--case`, so that it makes a gmsh physical surface for each region.
+
+```sh
+fh mesh "$WORK/bar.step" --case validation/cases/bar-pressure --size 8 -o "$WORK/press.msh"
+fh model "$WORK/press.msh" --case validation/cases/bar-pressure -o "$WORK/press.inp"
+fh-solve "$WORK/press.inp" "$WORK/run-press" --formats text,vtu
+```
+
+Output excerpt of `fh mesh` (element-face counts of each region):
+
+```text
+elset	SOLID	373
+surface	SUPPORT	14
+surface	LOAD	14
+surface	SYM_Y	54
+surface	SYM_Z	88
+```
+
+`fh model` writes each region as `*NSET` and `*SURFACE, TYPE=ELEMENT`, and the pressure as `*DSLOAD`:
+
+```text
+*DSLOAD
+LOAD, P, -100.0
+```
+
+The exact stress is 100 MPa. Output excerpt of `fh-solve`:
+
+```text
+step 1 max_u=4.7726070210919874e-2 max_mises=1.0000000000000375e2 max_rf=1.0185185185184826e3 free_dofs=2145 method=cholesky iterations=0
+```
+
+`fh` refuses a region that selects no face, and a region that the mesh does not hold (`mesh.region.missing`).
+The [bar-pressure-m case](../validation/cases/bar-pressure-m/case.toml) is the same model in m, N and Pa.
+
+## 7. Run validation
 
 Run this command from the repository root.
 `fh validate` locates `fh-solve` beside `fh`, or through `FH_SOLVE`.
@@ -180,14 +233,13 @@ fh validate
 Output excerpt:
 
 ```text
+bar-pressure    N       pass
+bar-pressure-m  N       pass
 bar-tension     N       pass
 cantilever      L       pass
-lame-cylinder   L       pass
-mms-c3d10       R       pass
-mms-c3d8        R       pass
-mms-c3d8i       R       pass
-patch-test      N       pass
-7 cases: 7 pass, 0 fail
+...
+patch-test-c3d8i        N       pass
+16 cases: 16 pass, 0 fail
 ```
 
 The full output compares computed values with references, tolerances and margins.
@@ -195,6 +247,5 @@ These results apply to the supplied validation cases, not to a new model.
 
 ## What is not built yet
 
-`fh --help` lists `results`, `plot`, `serve`, `init`, `team` and `skills` as not implemented.
+`fh --help` lists `results`, `plot`, `init`, `team` and `skills` as not implemented.
 There is no `fh run` command. Run `fh-solve` and read its result files directly.
-`fh model` has no named regions and no `*DSLOAD` pressure. The result files do not state the units.

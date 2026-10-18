@@ -1,5 +1,7 @@
+mod common;
+use common::*;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
 const BEAM: &str = "SetFactory(\"OpenCASCADE\");\n\
 Box(1) = {0, 0, 0, 4, 1, 1};\n\
@@ -9,17 +11,9 @@ Physical Surface(\"LOAD\") = {2};\n\
 Mesh.MeshSizeMax = 0.5;\n\
 Mesh.MeshSizeMin = 0.5;\n";
 
-/// A new empty folder for one test.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("fh-mesh-test-{}-{name}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
 /// Run `fh mesh`. The units are required (D-18), so this adds `--units SI-mm`
 /// unless the arguments declare units.
-fn fh(args: &[&str], gmsh: Option<&Path>) -> Output {
+fn mesh(args: &[&str], gmsh: Option<&Path>) -> Output {
     let declared = args.iter().any(|a| matches!(*a, "--units" | "--case"));
     let mut all = args.to_vec();
     if !declared {
@@ -29,7 +23,7 @@ fn fh(args: &[&str], gmsh: Option<&Path>) -> Output {
 }
 
 fn fh_raw(args: &[&str], gmsh: Option<&Path>) -> Output {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
+    let mut cmd = cmd();
     cmd.arg("mesh").args(args);
     match gmsh {
         Some(p) => cmd.env("FH_GMSH", p),
@@ -38,19 +32,9 @@ fn fh_raw(args: &[&str], gmsh: Option<&Path>) -> Output {
     cmd.output().expect("run fh")
 }
 
-fn stderr(out: &Output) -> String {
-    String::from_utf8_lossy(&out.stderr).into_owned()
-}
-
-/// The gmsh program that the real test uses, or `None` when it is not installed.
-fn real_gmsh() -> Option<PathBuf> {
-    if let Some(p) = std::env::var_os("FH_GMSH").filter(|p| !p.is_empty()) {
-        return Some(p.into());
-    }
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|d| d.join("gmsh"))
-        .find(|p| p.is_file())
+/// A gmsh program that does not exist.
+fn no_gmsh() -> Option<&'static Path> {
+    Some(Path::new("/nonexistent/gmsh"))
 }
 
 #[test]
@@ -62,8 +46,8 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
     let dir = scratch("real");
     let geo = dir.join("beam.geo");
     std::fs::write(&geo, BEAM).unwrap();
-    let out = fh(&[geo.to_str().unwrap()], Some(&gmsh));
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    let out = mesh(&[p(&geo)], Some(&gmsh));
+    let stdout = stdout(&out);
     assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
     assert!(dir.join("beam.msh").is_file());
     assert!(stdout.contains("type\tC3D10\t"), "{stdout}");
@@ -91,10 +75,7 @@ fn geo_file_with_a_forbidden_command_is_refused_before_gmsh_starts() {
     {
         let geo = dir.join(format!("bad{i}.geo"));
         std::fs::write(&geo, text).unwrap();
-        let out = fh(
-            &[geo.to_str().unwrap()],
-            Some(Path::new("/nonexistent/gmsh")),
-        );
+        let out = mesh(&[p(&geo)], no_gmsh());
         assert_eq!(out.status.code(), Some(1), "{text}: {}", stderr(&out));
         assert!(stderr(&out).contains("refuses"), "{text}: {}", stderr(&out));
         assert!(!dir.join(format!("bad{i}.msh")).exists());
@@ -114,10 +95,7 @@ fn geo_file_with_merge_msh_or_commented_keywords_reaches_gmsh() {
     {
         let geo = dir.join(format!("ok{i}.geo"));
         std::fs::write(&geo, text).unwrap();
-        let out = fh(
-            &[geo.to_str().unwrap()],
-            Some(Path::new("/nonexistent/gmsh")),
-        );
+        let out = mesh(&[p(&geo)], no_gmsh());
         assert!(
             !stderr(&out).contains("refuses"),
             "{text}: {}",
@@ -131,16 +109,7 @@ fn missing_gmsh_gives_a_clear_error() {
     let dir = scratch("missing");
     let geo = dir.join("a.geo");
     std::fs::write(&geo, BEAM).unwrap();
-    let out = fh(
-        &[geo.to_str().unwrap()],
-        Some(Path::new("/nonexistent/gmsh")),
-    );
-    assert_eq!(out.status.code(), Some(1));
-    assert!(
-        stderr(&out).contains("cannot start gmsh"),
-        "{}",
-        stderr(&out)
-    );
+    fails(&mesh(&[p(&geo)], no_gmsh()), 1, "cannot start gmsh");
 }
 
 #[test]
@@ -148,77 +117,30 @@ fn step_file_without_a_unit_record_is_refused() {
     let dir = scratch("nounit");
     let step = dir.join("a.step");
     std::fs::write(&step, "DATA;\nENDSEC;\n").unwrap();
-    let out = fh(
-        &[step.to_str().unwrap()],
-        Some(Path::new("/nonexistent/gmsh")),
-    );
-    assert_eq!(out.status.code(), Some(1));
-    assert!(
-        stderr(&out).contains("unit.step.missing"),
-        "{}",
-        stderr(&out)
-    );
+    fails(&mesh(&[p(&step)], no_gmsh()), 1, "unit.step.missing");
 }
 
 #[test]
 fn step_unit_that_differs_from_the_case_units_is_refused() {
     let dir = scratch("mismatch");
     let step = dir.join("a.step");
-    let text = "DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\nENDSEC;\n";
-    std::fs::write(&step, text).unwrap();
-    let gmsh = Some(Path::new("/nonexistent/gmsh"));
-    let out = fh(&[step.to_str().unwrap()], gmsh);
-    assert_eq!(out.status.code(), Some(1));
-    assert!(
-        stderr(&out).contains("unit.step.mismatch"),
-        "{}",
-        stderr(&out)
-    );
+    std::fs::write(&step, METRE_STEP).unwrap();
+    fails(&mesh(&[p(&step)], no_gmsh()), 1, "unit.step.mismatch");
     // With the matching units the check passes and the run reaches the gmsh start.
-    let out = fh(&[step.to_str().unwrap(), "--units", "SI-m"], gmsh);
-    assert!(
-        stderr(&out).contains("cannot start gmsh"),
-        "{}",
-        stderr(&out)
+    says(
+        &mesh(&[p(&step), "--units", "SI-m"], no_gmsh()),
+        "cannot start gmsh",
     );
 }
 
 const METRE_STEP: &str = "DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\nENDSEC;\n";
-
-/// A case folder that declares `units`. It is a copy of the patch test case.
-fn case_dir(name: &str, units: &str) -> PathBuf {
-    let dir = scratch(name);
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases/patch-test");
-    for file in ["derivation.md", "case.toml"] {
-        std::fs::copy(src.join(file), dir.join(file)).unwrap();
-    }
-    let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
-    let mesh = src.join("../../../fixtures/inp/patch-test.inp");
-    let toml = toml
-        .replace("units = \"SI-mm\"", &format!("units = \"{units}\""))
-        .replace(
-            "../../../fixtures/inp/patch-test.inp",
-            mesh.to_str().unwrap(),
-        );
-    std::fs::write(dir.join("case.toml"), toml).unwrap();
-    dir
-}
 
 #[test]
 fn a_run_with_no_units_is_refused() {
     let dir = scratch("nounits");
     let geo = dir.join("a.geo");
     std::fs::write(&geo, BEAM).unwrap();
-    let out = fh_raw(
-        &[geo.to_str().unwrap()],
-        Some(Path::new("/nonexistent/gmsh")),
-    );
-    assert_eq!(out.status.code(), Some(1));
-    assert!(
-        stderr(&out).contains("unit.case.missing"),
-        "{}",
-        stderr(&out)
-    );
+    fails(&fh_raw(&[p(&geo)], no_gmsh()), 1, "unit.case.missing");
 }
 
 #[test]
@@ -226,43 +148,18 @@ fn the_case_units_are_used_and_checked_against_the_step_file() {
     let dir = scratch("case");
     let step = dir.join("a.step");
     std::fs::write(&step, METRE_STEP).unwrap();
-    let gmsh = Some(Path::new("/nonexistent/gmsh"));
-    let mm = case_dir("case-mm", "SI-mm");
-    let out = fh_raw(
-        &[step.to_str().unwrap(), "--case", mm.to_str().unwrap()],
-        gmsh,
+    let (mm, m) = (patch_case("SI-mm"), patch_case("SI-m"));
+    says(
+        &fh_raw(&[p(&step), "--case", p(&mm)], no_gmsh()),
+        "unit.step.mismatch",
     );
-    assert!(
-        stderr(&out).contains("unit.step.mismatch"),
-        "{}",
-        stderr(&out)
-    );
-    let m = case_dir("case-m", "SI-m");
-    let out = fh_raw(
-        &[step.to_str().unwrap(), "--case", m.to_str().unwrap()],
-        gmsh,
-    );
-    assert!(
-        stderr(&out).contains("cannot start gmsh"),
-        "{}",
-        stderr(&out)
+    says(
+        &fh_raw(&[p(&step), "--case", p(&m)], no_gmsh()),
+        "cannot start gmsh",
     );
     // `--units` that differs from the case is a conflict, even for a .geo file.
-    let out = fh_raw(
-        &[
-            step.to_str().unwrap(),
-            "--case",
-            m.to_str().unwrap(),
-            "--units",
-            "SI-mm",
-        ],
-        gmsh,
-    );
-    assert!(
-        stderr(&out).contains("unit.case.conflict"),
-        "{}",
-        stderr(&out)
-    );
+    let args = [p(&step), "--case", p(&m), "--units", "SI-mm"];
+    says(&fh_raw(&args, no_gmsh()), "unit.case.conflict");
 }
 
 /// A box that gmsh fills with hexes: a 2D grid, extruded along z, or a recombined 3D grid.
@@ -298,46 +195,38 @@ Transfinite Volume {{1}};\n",
     geo
 }
 
-fn hex_run(name: &str, geo: &str) -> Option<(Output, String)> {
+fn hex_run(name: &str, geo: &str) -> Option<Output> {
     let gmsh = real_gmsh()?;
-    let dir = scratch(name);
-    let path = dir.join("hex.geo");
+    let path = scratch(name).join("hex.geo");
     std::fs::write(&path, geo).unwrap();
     // Order 1 makes hex8. The default order 2 would make hex20, which the reader rejects.
-    let out = fh(&[path.to_str().unwrap(), "--order", "1"], Some(&gmsh));
-    let msh = std::fs::read_to_string(dir.join("hex.msh")).unwrap_or_default();
-    Some((out, msh))
+    Some(mesh(&[p(&path), "--order", "1"], Some(&gmsh)))
 }
 
 #[test]
 fn an_extruded_hex_mesh_is_accepted() {
-    let Some((out, _)) = hex_run("hex-ok", &hex_geo(true, 0.0)) else {
+    let Some(out) = hex_run("hex-ok", &hex_geo(true, 0.0)) else {
         eprintln!("skipped: gmsh is not installed");
         return;
     };
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
-    assert!(stdout.contains("type\tC3D8I\t"), "{stdout}");
+    assert!(stdout(&out).contains("type\tC3D8I\t"), "{}", stdout(&out));
 }
 
 #[test]
 fn a_hex_mesh_that_is_not_an_extrusion_is_refused() {
-    let Some((out, _)) = hex_run("hex-bad", &hex_geo(false, 0.4)) else {
+    let Some(out) = hex_run("hex-bad", &hex_geo(false, 0.4)) else {
         eprintln!("skipped: gmsh is not installed");
         return;
     };
     assert_eq!(out.status.code(), Some(1), "stdout: {:?}", out.stdout);
-    assert!(
-        stderr(&out).contains("mesh.hex.not_extruded"),
-        "{}",
-        stderr(&out)
-    );
+    says(&out, "mesh.hex.not_extruded");
 }
 
 #[test]
 fn bad_options_exit_2() {
     for args in [&[][..], &["a.geo", "--order", "3"], &["a.geo", "--bogus"]] {
-        let out = fh(args, None);
+        let out = mesh(args, None);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
     }
 }
@@ -357,55 +246,49 @@ mod fake_gmsh {
         path
     }
 
-    fn run(name: &str, body: &str, extra: &[&str]) -> (Output, PathBuf) {
+    fn run(name: &str, body: &str, extra: &[&str]) -> Output {
         let dir = scratch(name);
         let gmsh = script(&dir, body);
         let geo = dir.join("a.geo");
         std::fs::write(&geo, BEAM).unwrap();
-        let mut args = vec![geo.to_str().unwrap()];
+        let mut args = vec![p(&geo)];
         args.extend(extra);
-        (fh(&args, Some(&gmsh)), dir)
+        mesh(&args, Some(&gmsh))
     }
 
     #[test]
     fn nonzero_exit_is_reported_with_the_error_lines() {
-        let (out, _) = run("fails", "echo 'Error   : bad thing' >&2; exit 1", &[]);
+        let out = run("fails", "echo 'Error   : bad thing' >&2; exit 1", &[]);
         assert_eq!(out.status.code(), Some(1));
-        let e = stderr(&out);
-        assert!(
-            e.contains("gmsh failed (exit code 1)") && e.contains("bad thing"),
-            "{e}"
-        );
+        says(&out, "gmsh failed (exit code 1)");
+        says(&out, "bad thing");
     }
 
     #[test]
     fn error_line_with_exit_0_is_a_failure() {
-        let (out, _) = run("pipwrapper", "echo 'Error   : bad thing' >&2; exit 0", &[]);
-        assert_eq!(out.status.code(), Some(1));
-        assert!(stderr(&out).contains("bad thing"), "{}", stderr(&out));
+        let out = run("pipwrapper", "echo 'Error   : bad thing' >&2; exit 0", &[]);
+        fails(&out, 1, "bad thing");
     }
 
     #[test]
     fn exit_0_without_a_mesh_file_is_a_failure() {
-        let (out, _) = run("nomesh", "exit 0", &[]);
-        assert_eq!(out.status.code(), Some(1));
-        assert!(stderr(&out).contains("wrote no mesh"), "{}", stderr(&out));
+        fails(&run("nomesh", "exit 0", &[]), 1, "wrote no mesh");
     }
 
     #[test]
     fn mesh_file_that_the_reader_rejects_is_a_failure() {
         let body = "for a; do if [ \"$p\" = -o ]; then echo garbage > \"$a\"; fi; p=$a; done";
-        let (out, _) = run("garbage", body, &[]);
-        assert_eq!(out.status.code(), Some(1));
-        assert!(stderr(&out).contains("not readable"), "{}", stderr(&out));
+        fails(&run("garbage", body, &[]), 1, "not readable");
     }
 
     #[test]
     fn slow_gmsh_is_stopped_at_the_time_limit() {
         let start = std::time::Instant::now();
-        let (out, _) = run("slow", "sleep 30", &["--timeout", "1"]);
-        assert_eq!(out.status.code(), Some(1));
-        assert!(stderr(&out).contains("timed out"), "{}", stderr(&out));
+        fails(
+            &run("slow", "sleep 30", &["--timeout", "1"]),
+            1,
+            "timed out",
+        );
         assert!(start.elapsed().as_secs() < 20);
     }
 
@@ -416,10 +299,7 @@ mod fake_gmsh {
         let gmsh = script(&dir, "echo \"$@\" > \"$(dirname \"$0\")/args.txt\"; exit 1");
         let geo = dir.join("a.geo");
         std::fs::write(&geo, BEAM).unwrap();
-        fh(
-            &[geo.to_str().unwrap(), "--size", "0.5", "--set", "h=2"],
-            Some(&gmsh),
-        );
+        mesh(&[p(&geo), "--size", "0.5", "--set", "h=2"], Some(&gmsh));
         let args = std::fs::read_to_string(dir.join("args.txt")).unwrap();
         for flag in [
             "-3",

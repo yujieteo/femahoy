@@ -1,3 +1,5 @@
+mod common;
+use common::{p, scratch};
 use std::process::{Command, Output};
 const PLANNED: [&str; 5] = ["results", "plot", "init", "team", "skills"];
 
@@ -113,6 +115,8 @@ fn validate_runs_every_case_through_the_solver() {
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in [
+        "bar-pressure",
+        "bar-pressure-m",
         "bar-tension",
         "cantilever",
         "cantilever-c3d10",
@@ -128,12 +132,10 @@ fn validate_runs_every_case_through_the_solver() {
         "patch-test-c3d10",
         "patch-test-c3d8i",
     ] {
-        assert!(
-            stdout.contains(&format!("{id}\t")),
-            "{id} missing in {stdout}"
-        );
+        let row = format!("{id}\t");
+        assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("14 cases: 14 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("16 cases: 16 pass, 0 fail"), "{stdout}");
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
@@ -214,20 +216,15 @@ fn convergence_on_the_case_folder_skips_class_n() {
     let out = fh(&["validate", "--convergence", &dir]);
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}");
-    assert!(
-        stdout.contains("lame-cylinder\tL\t4 meshes\tpass"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("patch-test\tN\tskipped, one mesh"),
-        "{stdout}"
-    );
-    assert!(
-        stdout.contains("bar-tension\tN\tskipped, one mesh"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("mms-c3d10\tR\t3 meshes\tpass"), "{stdout}");
-    assert!(stdout.contains("14 cases: 10 pass, 0 fail"), "{stdout}");
+    for row in [
+        "lame-cylinder\tL\t4 meshes\tpass",
+        "patch-test\tN\tskipped, one mesh",
+        "bar-tension\tN\tskipped, one mesh",
+        "mms-c3d10\tR\t3 meshes\tpass",
+        "16 cases: 10 pass, 0 fail",
+    ] {
+        assert!(stdout.contains(row), "{stdout}");
+    }
 }
 
 #[test]
@@ -287,69 +284,55 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 fn validate_checks_each_quantity_against_the_meshes() {
     // The shipped cases pass (sets, steps and element types exist in every mesh).
     assert_eq!(fh(&["validate", "--root", &root()]).status.code(), Some(0));
-    let cases: [(&str, &str, &str, &str); 4] = [
+    // Each edit of the cantilever case: the text, its replacement and the expected error.
+    let cases: [(&str, &str, &str); 4] = [
+        ("set = \"tip\"", "set = \"nope\"", "no node set `nope`"),
+        ("step = \"tip-load\"", "step = \"other\"", "no step `other`"),
+        ("[\"C3D8I\"]", "[\"C3D8\"]", "has element type C3D8I"),
         (
-            "cantilever/case.toml",
-            "set = \"tip\"",
-            "set = \"nope\"",
-            "no node set `nope`",
-        ),
-        (
-            "cantilever/case.toml",
-            "step = \"tip-load\"",
-            "step = \"other\"",
-            "no step `other`",
-        ),
-        (
-            "cantilever/case.toml",
-            "[\"C3D8I\"]",
-            "[\"C3D8\"]",
-            "has element type C3D8I",
-        ),
-        (
-            "cantilever/case.toml",
             "[\"C3D8I\"]",
             "[\"C3D8I\", \"C3D10\"]",
             "lists C3D10, but no mesh has that element type",
         ),
     ];
-    for (i, (file, from, to, needle)) in cases.iter().enumerate() {
+    for (i, (from, to, needle)) in cases.iter().enumerate() {
         let dir = copy_root(&format!("spec{i}"));
-        let path = dir.join("validation/cases").join(file);
-        let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.contains(from), "{from}");
-        std::fs::write(&path, text.replace(from, to)).unwrap();
+        let path = dir.join("validation/cases/cantilever/case.toml");
+        let toml = std::fs::read_to_string(&path).unwrap();
+        assert!(toml.contains(from), "{from}");
+        std::fs::write(&path, toml.replace(from, to)).unwrap();
         let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
         assert_eq!(out.status.code(), Some(1), "{needle}");
-        let err = text_of(out.stderr);
+        let err = text(out.stderr);
         assert!(err.contains(needle), "`{err}` lacks `{needle}`");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
 
-fn text_of(bytes: Vec<u8>) -> String {
-    String::from_utf8(bytes).unwrap()
+/// One hex8 element with no section.
+const NO_SECTION: &str = "*node\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n*element, type=C3D8\n1,1,2,3,4,5,6,7,8\n";
+
+/// A scratch root and its case folder `validation/cases/x`, which holds `mesh.inp` with
+/// [`NO_SECTION`].
+fn no_section_case(tag: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let dir = scratch(tag);
+    let case = dir.join("validation/cases/x");
+    std::fs::create_dir_all(&case).unwrap();
+    std::fs::write(case.join("mesh.inp"), NO_SECTION).unwrap();
+    (dir, case)
 }
 
 #[test]
 fn check_fails_when_a_case_mesh_has_no_section() {
-    let dir = std::env::temp_dir().join(format!("fh-cli-nosec-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let case = dir.join("validation/cases/x");
-    std::fs::create_dir_all(&case).unwrap();
-    let mesh = "*node\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n*element, type=C3D8\n1,1,2,3,4,5,6,7,8\n";
-    std::fs::write(case.join("mesh.inp"), mesh).unwrap();
-    let out = fh(&["check", "--root", dir.to_str().unwrap()]);
+    let (dir, _) = no_section_case("nosec");
+    let out = fh(&["check", "--root", p(&dir)]);
     assert_eq!(out.status.code(), Some(1));
     let err = text(out.stderr);
     assert!(err.contains("no *SOLID SECTION"), "{err}");
     // The same file outside a case folder is only parsed.
     let loose = dir.join("loose.inp");
-    std::fs::write(&loose, mesh).unwrap();
-    assert_eq!(
-        fh(&["check", loose.to_str().unwrap()]).status.code(),
-        Some(0)
-    );
+    std::fs::write(&loose, NO_SECTION).unwrap();
+    assert_eq!(fh(&["check", p(&loose)]).status.code(), Some(0));
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -380,20 +363,10 @@ fn check_fails_when_a_fixture_directory_is_unreadable() {
 
 #[test]
 fn check_finds_a_case_mesh_from_a_relative_path() {
-    let dir = std::env::temp_dir().join(format!("fh-cli-relsec-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    let case = dir.join("validation/cases/x");
-    std::fs::create_dir_all(&case).unwrap();
-    let mesh = "*node\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n*element, type=C3D8\n1,1,2,3,4,5,6,7,8\n";
-    std::fs::write(case.join("mesh.inp"), mesh).unwrap();
+    let (dir, case) = no_section_case("relsec");
     let absolute = case.join("mesh.inp");
     let mut bad = Vec::new();
-    for path in [
-        absolute.to_str().unwrap(),
-        "mesh.inp",
-        "./mesh.inp",
-        "../x/mesh.inp",
-    ] {
+    for path in [p(&absolute), "mesh.inp", "./mesh.inp", "../x/mesh.inp"] {
         let out = Command::new(env!("CARGO_BIN_EXE_fh"))
             .args(["check", path])
             .current_dir(&case)
@@ -415,12 +388,12 @@ fn convergence_checks_the_fixture_as_validate_does() {
     let dir = copy_root("conv-spec");
     let case = dir.join("validation/cases/cantilever");
     let path = case.join("case.toml");
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("[\"C3D8I\"]"));
-    std::fs::write(&path, text.replace("[\"C3D8I\"]", "[\"C3D8\"]")).unwrap();
+    let toml = std::fs::read_to_string(&path).unwrap();
+    assert!(toml.contains("[\"C3D8I\"]"));
+    std::fs::write(&path, toml.replace("[\"C3D8I\"]", "[\"C3D8\"]")).unwrap();
     for target in [case.clone(), dir.join("validation/cases")] {
         let out = fh(&["validate", "--convergence", target.to_str().unwrap()]);
-        let err = text_of(out.stderr);
+        let err = text(out.stderr);
         assert_eq!(out.status.code(), Some(1), "{}: {err}", target.display());
         assert!(err.contains("has element type C3D8I"), "{err}");
     }

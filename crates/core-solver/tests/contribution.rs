@@ -205,6 +205,7 @@ fn run(
     let input = Input {
         name: "input.inp",
         hash: input_hash(text),
+        units: fh_core_solver::NO_UNITS,
     };
     run_model(&m, &input, d, o, restart, &mut |_| {}, cancel)
         .map(|_| ())

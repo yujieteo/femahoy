@@ -112,3 +112,42 @@ fn a_tag_of_zero_is_an_error() {
     }
     assert!(bad.is_empty(), "{bad:#?}");
 }
+
+#[test]
+fn a_surface_group_becomes_an_element_surface() {
+    // The triangle 1 2 3 is face S1 (corners 1 2 3) of the tet. The quadrangle 1 4 8 5 is
+    // face S6 (corners 4 8 5 1) of the hex.
+    let tet = fh_io::read_msh_mesh(TET10).unwrap();
+    assert_eq!(tet.model.element_surface("fixed").unwrap().faces, [(2, 1)]);
+    assert!(tet.model.element_surface("body").is_none());
+    assert!(tet.unnamed_volumes.is_empty() && tet.inner_surfaces.is_empty());
+    let hex = read_msh(HEX).unwrap();
+    assert_eq!(hex.element_surface("xmin").unwrap().faces, [(3, 6)]);
+    // A point group and a volume group give no element surface.
+    assert!(hex.element_surface("origin").is_none());
+    assert!(hex.element_surface("solid").is_none());
+}
+
+#[test]
+fn a_surface_off_the_solid_keeps_its_nodes_but_is_reported() {
+    // The midside nodes 5 6 7 make no face of the tet.
+    let off = TET10.replace("1 1 2 3\n3 1 11 1", "1 5 6 7\n3 1 11 1");
+    let m = fh_io::read_msh_mesh(&off).unwrap();
+    assert_eq!(m.inner_surfaces, ["fixed"]);
+    assert!(m.model.element_surface("fixed").is_none());
+    assert_eq!(m.model.nset("fixed").unwrap().ids, [5, 6, 7]);
+}
+
+#[test]
+fn a_volume_with_no_physical_group_is_reported() {
+    let unnamed = TET10.replace("1 0 0 0 1 1 1 1 9 0", "1 0 0 0 1 1 1 0 0");
+    let m = fh_io::read_msh_mesh(&unnamed).unwrap();
+    assert_eq!(m.unnamed_volumes, [1]);
+    assert!(m.model.elset("body").is_none());
+    // With no physical group at all, gmsh writes every element, so nothing is lost.
+    let none = unnamed.replace("1 0 0 0 1 1 0 1 7 0", "1 0 0 0 1 1 0 0 0");
+    assert!(fh_io::read_msh_mesh(&none)
+        .unwrap()
+        .unnamed_volumes
+        .is_empty());
+}

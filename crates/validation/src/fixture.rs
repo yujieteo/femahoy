@@ -170,8 +170,18 @@ impl fmt::Display for FixtureError {
 impl std::error::Error for FixtureError {}
 
 impl Case {
-    /// Load `<dir>/case.toml`.
+    /// Load `<dir>/case.toml`. Each `mesh` file must exist.
     pub fn load(dir: &Path) -> Result<Case, FixtureError> {
+        Case::read(dir, true)
+    }
+
+    /// Load `<dir>/case.toml` without the check that each `mesh` file exists. `fh info`,
+    /// `fh mesh` and `fh model` use it: the workflow makes the mesh files later.
+    pub fn load_before_mesh(dir: &Path) -> Result<Case, FixtureError> {
+        Case::read(dir, false)
+    }
+
+    fn read(dir: &Path, need_meshes: bool) -> Result<Case, FixtureError> {
         let file = dir.join("case.toml");
         let text = std::fs::read_to_string(&file).map_err(|e| FixtureError {
             file: file.clone(),
@@ -183,7 +193,11 @@ impl Case {
             line: e.span().map(|s| line_of(&text, s.start)),
             message: e.message().to_owned(),
         })?;
-        let reader = FixtureReader { file, text: &text };
+        let reader = FixtureReader {
+            file,
+            text: &text,
+            need_meshes,
+        };
         reader.build(dir, doc.as_table())
     }
 }
@@ -200,6 +214,8 @@ fn line_of(text: &str, offset: usize) -> usize {
 pub(crate) struct FixtureReader<'a> {
     pub(crate) file: PathBuf,
     pub(crate) text: &'a str,
+    /// Refuse a `mesh` entry whose file does not exist.
+    pub(crate) need_meshes: bool,
 }
 
 impl FixtureReader<'_> {
@@ -562,7 +578,7 @@ impl FixtureReader<'_> {
                 self.err(Some(mesh_item), "`mesh` must be an array of strings".into())
             })?;
             let path = dir.join(name);
-            if !path.is_file() {
+            if self.need_meshes && !path.is_file() {
                 return Err(self.err(Some(mesh_item), format!("mesh file {name} not found")));
             }
             meshes.push(path);

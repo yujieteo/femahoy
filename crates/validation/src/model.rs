@@ -1,5 +1,6 @@
 //! The optional `[model]` table of `case.toml`: what `fh model` needs to turn a `.msh` file
-//! into a solver input. Sets are the nodes on a coordinate plane, so no named regions exist.
+//! into a solver input. A set is the nodes on a coordinate plane. A region is a named group of
+//! faces of the part: `fh mesh` gives it a gmsh physical group (M2b).
 
 use toml_edit::{ArrayOfTables, Item, Table};
 
@@ -23,6 +24,33 @@ pub struct SetSpec {
     pub tol: Option<f64>,
 }
 
+/// How a region selects the faces of the part.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Select {
+    /// The faces on the plane `coordinate[axis] = at`. `axis` is 0 for x, 1 for y, 2 for z.
+    Plane { axis: usize, at: f64 },
+    /// The faces that lie fully inside the box.
+    Box { min: [f64; 3], max: [f64; 3] },
+}
+
+/// A named region: faces of the part. `fh mesh` makes a gmsh physical surface of the name.
+/// `fh model` writes it as a node set and an element-face surface of the same name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegionSpec {
+    pub name: String,
+    pub select: Select,
+}
+
+/// A uniform pressure on a region (`*DSLOAD`). Positive pressure pushes into the body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DsloadSpec {
+    pub surface: String,
+    pub pressure: f64,
+}
+
+/// Names that `fh` uses itself: the element set of the input and the volume group of the mesh.
+pub const RESERVED_NAMES: [&str; 2] = ["ALL", "SOLID"];
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoundarySpec {
     pub set: String,
@@ -44,8 +72,10 @@ pub struct ModelSpec {
     pub step: String,
     pub material: MaterialSpec,
     pub sets: Vec<SetSpec>,
+    pub regions: Vec<RegionSpec>,
     pub boundaries: Vec<BoundarySpec>,
     pub cloads: Vec<CloadSpec>,
+    pub dsloads: Vec<DsloadSpec>,
 }
 
 impl FixtureReader<'_> {
@@ -99,7 +129,9 @@ impl FixtureReader<'_> {
         self.only_keys(
             table,
             "model",
-            &["step", "material", "set", "boundary", "cload"],
+            &[
+                "step", "material", "set", "region", "boundary", "cload", "dsload",
+            ],
         )?;
         let step = if table.contains_key("step") {
             self.string(table, "step")?
@@ -165,11 +197,17 @@ impl FixtureReader<'_> {
                 tol,
             });
         }
+        let regions = self.regions(table, &sets)?;
         let known = |at: Option<&Item>, set: &str| -> Result<(), FixtureError> {
-            if sets.iter().any(|s| s.name.eq_ignore_ascii_case(set)) {
+            if sets.iter().any(|s| s.name.eq_ignore_ascii_case(set))
+                || regions.iter().any(|r| r.name.eq_ignore_ascii_case(set))
+            {
                 Ok(())
             } else {
-                Err(self.err(at, format!("`{set}` is not a `[[model.set]]` name")))
+                Err(self.err(
+                    at,
+                    format!("`{set}` is not a `[[model.set]]` or `[[model.region]]` name"),
+                ))
             }
         };
         let mut boundaries = Vec::new();
@@ -211,6 +249,24 @@ impl FixtureReader<'_> {
                 per_node: self.number(t, "per_node")?,
             });
         }
+        let mut dsloads = Vec::new();
+        for t in self.rows(table, "dsload")? {
+            self.only_keys(t, "model.dsload", &["surface", "pressure"])?;
+            let surface = self.string(t, "surface")?;
+            if !regions
+                .iter()
+                .any(|r| r.name.eq_ignore_ascii_case(&surface))
+            {
+                return Err(self.err(
+                    t.get("surface"),
+                    format!("`{surface}` is not a `[[model.region]]` name"),
+                ));
+            }
+            dsloads.push(DsloadSpec {
+                surface,
+                pressure: self.number(t, "pressure")?,
+            });
+        }
         if boundaries.is_empty() {
             return Err(self.err(
                 Some(item),
@@ -221,8 +277,98 @@ impl FixtureReader<'_> {
             step,
             material,
             sets,
+            regions,
             boundaries,
             cloads,
+            dsloads,
         }))
+    }
+
+    /// The `[[model.region]]` rows. A name is unique among the sets and the regions.
+    fn regions(&self, table: &Table, sets: &[SetSpec]) -> Result<Vec<RegionSpec>, FixtureError> {
+        let mut regions: Vec<RegionSpec> = Vec::new();
+        for t in self.rows(table, "region")? {
+            self.only_keys(t, "model.region", &["name", "axis", "at", "box"])?;
+            let name = self.string(t, "name")?;
+            let taken = |n: &str| name.eq_ignore_ascii_case(n);
+            if RESERVED_NAMES.iter().any(|n| taken(n))
+                || sets.iter().any(|s| taken(&s.name))
+                || regions.iter().any(|r| taken(&r.name))
+            {
+                return Err(self.err(
+                    t.get("name"),
+                    format!("region name `{name}` is reserved or repeated"),
+                ));
+            }
+            // The name goes into a gmsh script and an `.inp` file without quotation.
+            let mut chars = name.chars();
+            if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+                || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                return Err(self.err(
+                    t.get("name"),
+                    format!(
+                        "region name `{name}` must start with a letter and hold only letters, digits and _"
+                    ),
+                ));
+            }
+            let plane = t.contains_key("axis") || t.contains_key("at");
+            let select = match t.get("box") {
+                Some(item) if plane => {
+                    return Err(self.err(
+                        Some(item),
+                        "a region needs `axis` and `at`, or `box`, not both".into(),
+                    ))
+                }
+                Some(item) => {
+                    let numbers: Option<Vec<f64>> = item.as_array().and_then(|a| {
+                        a.iter()
+                            .map(|v| {
+                                v.as_float()
+                                    .or_else(|| v.as_integer().map(|i| i as f64))
+                                    .filter(|x| x.is_finite())
+                            })
+                            .collect()
+                    });
+                    let Some(&[x0, y0, z0, x1, y1, z1]) = numbers.as_deref() else {
+                        return Err(self.err(
+                            Some(item),
+                            "`box` must be 6 numbers: x0, y0, z0, x1, y1, z1".into(),
+                        ));
+                    };
+                    if x0 > x1 || y0 > y1 || z0 > z1 {
+                        return Err(self.err(
+                            Some(item),
+                            "`box` needs x0 <= x1, y0 <= y1 and z0 <= z1".into(),
+                        ));
+                    }
+                    Select::Box {
+                        min: [x0, y0, z0],
+                        max: [x1, y1, z1],
+                    }
+                }
+                None if plane => {
+                    let axis_name = self.string(t, "axis")?;
+                    let axis = ["x", "y", "z"]
+                        .iter()
+                        .position(|a| *a == axis_name)
+                        .ok_or_else(|| {
+                            self.err(t.get("axis"), "`axis` must be x, y or z".into())
+                        })?;
+                    Select::Plane {
+                        axis,
+                        at: self.number(t, "at")?,
+                    }
+                }
+                None => {
+                    return Err(self.err(
+                        t.get("name"),
+                        "a region needs `axis` and `at`, or `box`".into(),
+                    ))
+                }
+            };
+            regions.push(RegionSpec { name, select });
+        }
+        Ok(regions)
     }
 }

@@ -407,9 +407,6 @@ pub fn solve_from(
     if model.steps.is_empty() {
         return Err(SolverError::new("the model has no *STEP"));
     }
-    if model.steps.iter().any(|s| !s.dsloads.is_empty()) {
-        return Err(SolverError::new("*DSLOAD is not solved yet"));
-    }
     if model.steps.iter().any(|s| s.nlgeom) {
         return Err(SolverError::new("NLGEOM=YES is not available before M7"));
     }

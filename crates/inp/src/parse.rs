@@ -1475,13 +1475,14 @@ impl Parser {
                 ));
             }
             let name = d.fields[0].as_str();
-            if self.model.element_surface(name).is_none() {
+            let Some(surface) = self.model.element_surface(name) else {
                 return Err(b.error(
                     code::UNDEFINED,
                     d.line,
                     format!("element surface '{name}' is not defined"),
                 ));
-            }
+            };
+            let name = surface.name.clone();
             let ty = d.fields[1].as_str();
             if !ty.eq_ignore_ascii_case("P") {
                 return Err(b.error(
@@ -1491,7 +1492,7 @@ impl Parser {
                 ));
             }
             out.push(Dsload {
-                surface: name.to_owned(),
+                surface: name,
                 pressure: real(b, d, 2, "magnitude")?,
             });
         }

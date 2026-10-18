@@ -11,7 +11,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use fh_core_solver::{input_hash, run_model, Formats, Input, Options};
+use fh_core_solver::{input_hash, input_units, run_model, Formats, Input, Options};
 use fh_solver_api::PROTOCOL_HEADER;
 
 /// Exit code of a run that the user cancelled.
@@ -46,6 +46,7 @@ fn run(
     let input = Input {
         name: &name,
         hash: input_hash(&text),
+        units: input_units(&text),
     };
     run_model(
         &model,
