@@ -705,7 +705,6 @@ impl Drop for Tree {
     }
 }
 
-/// Kill the whole tree of the solver and return `reason`.
 /// What to do when a run does not fit in its limits.
 const SMALLER: &str = "Use a coarser mesh (a larger element size) to make the model smaller";
 
@@ -742,6 +741,7 @@ fn failure(status: std::process::ExitStatus, run_dir: &Path) -> String {
     }
 }
 
+/// Kill the whole tree of the solver and return `reason`.
 fn stop(tree: &mut Tree, reason: ApiError) -> Result<RunReport, ApiError> {
     tree.group.kill();
     let _ = tree.child.kill();
