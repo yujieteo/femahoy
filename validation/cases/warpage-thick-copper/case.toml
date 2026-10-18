@@ -1,0 +1,71 @@
+# Measured warpage of a silicon wafer slice with 20 um copper, through the CAD workflow and CalculiX.
+schema = 2
+id = "warpage-thick-copper"
+units = "SI-mm"
+class = "N"
+justification = "Calabretta et al. 2021, Table 2, give the measured warpage rate 0.700 um/K from 50 to 90 C. The 12 percent tolerance is the root sum square of the measurement and model uncertainties in derivation.md."
+derivation = "derivation.md"
+element_types = ["C3D10"]
+solver = "fh-solve-ccx"
+mesh = ["slice.inp"]
+rel_tol = 0.12
+abs_tol = 0.0
+
+[model]
+step = "HEAT"
+temperature_change = 40.0
+
+[[model.material]]
+name = "SI"
+youngs_modulus = 120000.0
+poissons_ratio = 0.28
+expansion = 2.5e-6
+box = [0, 0, 0, 25, 5, 0.73]
+
+[[model.material]]
+name = "CU"
+youngs_modulus = 77500.0
+poissons_ratio = 0.364
+expansion = 1.64e-5
+box = [0, 0, 0.73, 25, 5, 0.75]
+
+[[model.set]]
+name = "SYM_X"
+axis = "x"
+at = 0.0
+
+[[model.set]]
+name = "SYM_Y"
+axis = "y"
+at = 0.0
+
+[[model.set]]
+name = "ORIGIN"
+point = [0, 0, 0]
+
+[[model.set]]
+name = "END"
+point = [25, 0, 0]
+
+[[model.boundary]]
+set = "SYM_X"
+first_dof = 1
+
+[[model.boundary]]
+set = "SYM_Y"
+first_dof = 2
+
+[[model.boundary]]
+set = "ORIGIN"
+first_dof = 3
+
+[ref]
+# 0.700 um/K x 40 K. The end moves to -z, because the copper face becomes convex on heating.
+warpage = -0.028
+
+[quantity.warpage]
+set = "END"
+field = "U"
+component = 3
+step = "HEAT"
+op = "value"

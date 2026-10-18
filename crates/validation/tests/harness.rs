@@ -537,7 +537,8 @@ fn shipped_cases_load_and_have_existing_inputs() {
             "patch-test",
             "patch-test-c3d10",
             "patch-test-c3d8i",
-            "warpage-strip"
+            "warpage-strip",
+            "warpage-thick-copper"
         ]
     );
     for c in &cases {
