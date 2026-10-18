@@ -48,7 +48,7 @@ Budgets are lines of Rust, tests included. The total cap is 85k lines.
 | `solver-api` | `Solver` trait, subprocess protocol, registry | 3k |
 | `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | 30k |
 | `validation` | harness, tolerance classes, manufactured solutions | 6k |
-| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | 7k |
+| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | 7.3k, up from 7k for `fh run` (`DESIGN.md` section 11) |
 | `agents` | harness start, JSON stream parsing, skills install, role config | 4k |
 | `cli` | `fh` commands | 4.8k, up from 3k for `fh run` (`DESIGN.md` section 11) |
 | `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | 12k, provisional |

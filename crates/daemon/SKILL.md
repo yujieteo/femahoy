@@ -31,7 +31,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - `alacritty_terminal` is pinned to an exact version and only `src/pty.rs` uses it (DESIGN.md section 11.1).
 - Other code reads the panes from `PaneBackend`, never from herdr directly (DESIGN.md section 4.3).
 - The token never goes into the command line of a browser process that stays alive. `$BROWSER` and `xdg-open` get `STATE/open.html` (mode 0600). `--no-open` and `FH_NO_OPEN` stop the open.
-- Line budget: 7k lines, tests included (DESIGN.md section 11).
+- Line budget: 7.3k lines, tests included (DESIGN.md section 11). It was 7k before the browser open and `fh serve --stop` for `fh run`. The captain approved going over the budget for this work.
 
 ## Forbidden actions
 
