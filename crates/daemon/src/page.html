@@ -60,8 +60,8 @@ summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: auto; border-radius: 8px; background: var(--code); color: var(--text); }
 .note { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .open {
-  align-self: flex-start; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
-  background: none; font-size: 13.5px; cursor: pointer;
+  align-self: flex-start; padding: 6px 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: none; font-size: 13.5px; text-align: left; overflow-wrap: anywhere; cursor: pointer;
 }
 .open:hover { background: var(--raised); }
 .end { margin: 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
@@ -204,12 +204,17 @@ function select() {
   if (runs.selectedIndex < 0) runs.value = "";
 }
 
+// The name of each project: the last folder of its root.
+const names = {};
+let listing = null;
+
 // The runs that succeeded, newest first, in the list at the top of the model view.
 async function listRuns() {
   const found = [];
   for (const line of (await reply("/api/v1/projects")).items) {
     const [project, root] = split(line);
     const name = root.split(/[\\/]/).filter((p) => p).pop() || root;
+    names[project] = name;
     for (const item of (await reply("/api/v1/projects/" + project + "/runs")).items.reverse()) {
       const [run, state] = split(item);
       if (state === "succeeded") found.push([project, run, name, root]);
@@ -226,6 +231,26 @@ async function listRuns() {
   select();
 }
 runs.addEventListener("change", () => runs.value && openRun(...split(runs.value)));
+
+// Read the list again, 1 time at once. Then each run on the page shows its project name.
+function relist() {
+  listing ||= listRuns()
+    .catch((e) => showError(e.message))
+    .finally(() => {
+      listing = null;
+      for (const e of document.querySelectorAll("[data-run]")) e.textContent = runLabel(e.dataset.project, e.dataset.run);
+    });
+}
+
+// A run as `<project name> · <run>`, because each case folder has its own run-000001.
+const runLabel = (project, run) => (names[project] ? names[project] + " · " : "") + run;
+
+function runName(project, run) {
+  const e = el("span", "", runLabel(project, run));
+  Object.assign(e.dataset, { project, run });
+  if (!(project in names)) relist();
+  return e;
+}
 
 async function startViewer() {
   try {
@@ -281,9 +306,11 @@ function setRunning(on, fields = {}) {
   const [project, run, state] = solving;
   const step = Object.fromEntries(solving.slice(4).map((p) => p.split("=")));
   const text = step.phase
-    ? run + ": step " + step.step + ", " + step.phase + " " + Math.round(Number(step.fraction) * 100) + "%"
-    : run + ": " + state;
-  status("solve", run ? text : "", "Project " + project);
+    ? step.phase + " " + Math.round(Number(step.fraction) * 100) + "%, step " + step.step
+    : state;
+  $("solve").hidden = !run;
+  // The progress first, because a long project name gets cut at the end.
+  if (run) $("solve").lastChild.replaceChildren(text + " · ", runName(project, run));
 }
 
 function status(id, text, title) {
@@ -300,21 +327,26 @@ function tick() {
 }
 setInterval(() => running && tick(), 1000);
 
-// A failure as a clear entry with its error.
+// A failure as a clear entry with its error. The title is a text or a list of parts.
 function failure(title, text) {
   const d = el("div", "failure", "");
-  d.append(el("strong", "", title), el("pre", "", text));
+  const t = el("strong", "", "");
+  t.append(...[].concat(title));
+  d.append(t, el("pre", "", text));
   return d;
 }
 
 // A failed solve, also in the status while the agent works.
 function failedRun(project, run, error) {
   const p = el("p", "failed", "");
-  p.append(el("b", "", "Failed"), el("span", "", run + ": " + error.split("\n")[0]));
+  const line = el("span", "", "");
+  line.append(runName(project, run), ": " + error.split("\n")[0]);
+  p.append(el("b", "", "Failed"), line);
   p.title = error;
   fails.push(p);
   work.append(p);
-  return failure("The solve of " + run + " failed", error || "The run has no error message.");
+  const title = ["The solve of ", runName(project, run), " failed"];
+  return failure(title, error || "The run has no error message.");
 }
 
 function rest() {
@@ -379,7 +411,8 @@ function entry(kind, text, fresh) {
       return failure("The agent failed", text);
     case "open": {
       const [project, run] = split(text);
-      const b = el("button", "open", "Show the results of " + run);
+      const b = el("button", "open", "Show the results of ");
+      b.append(runName(project, run));
       b.type = "button";
       b.title = "Project " + project;
       b.addEventListener("click", () => openRun(project, run));
