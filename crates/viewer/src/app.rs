@@ -1,5 +1,6 @@
-//! The eframe app: a viewport, a results panel, a status bar and the mouse controls, on the
-//! page of `fh serve`. The chat panel is on the left of the viewport. Before a solve, the
+//! The eframe app of the model view on the page of `fh serve`: a viewport, a results panel,
+//! a status bar and the mouse controls. The page around it (`crates/daemon/src/page.html`)
+//! has the chat and the list of the runs. Before a solve, the
 //! viewport shows the model with its supports and loads: the faces of each set in a colour,
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
@@ -10,12 +11,18 @@ use eframe::egui;
 use eframe::egui_wgpu;
 
 use crate::camera::{self, Camera};
-use crate::chat::Chat;
 use crate::gpu::{face_vertices, FrameParams, Geometry, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
 use crate::view::{self, Contour, ViewState};
+
+/// The font of the controls and of the page: Inter (SIL Open Font License 1.1,
+/// `fonts/OFL.txt`). The page gets it from the viewer, so it loads no font from the network.
+pub const INTER: &[u8] = include_bytes!("../fonts/InterVariable.ttf");
+
+/// The text of the viewport when no run is open.
+const NO_RUN: &str = "No run is open. Select a run at the top, or ask the agent for a model.";
 
 /// What the viewer shows.
 pub enum Content {
@@ -23,10 +30,8 @@ pub enum Content {
     Results(Box<Results>, Result<Box<Preview>, String>),
     /// The model of a solver input with its supports and loads, before the solve.
     Preview(Box<Preview>),
-    /// The runs with results that the page can open: a label and a page address each.
-    Runs(Vec<(String, String)>),
-    /// The results are still loading. The text says what.
-    Loading(String),
+    /// A text in place of the results, for example while they load.
+    Text(String),
     /// The results cannot be shown. The text says why.
     Failed(String),
 }
@@ -56,50 +61,28 @@ struct Shown {
 }
 
 pub struct ViewerApp {
-    title: String,
     render_state: Option<egui_wgpu::RenderState>,
     shown: Option<Shown>,
     message: Option<(bool, String)>,
-    runs: Option<Vec<(String, String)>>,
-    slot: Option<ContentSlot>,
-    /// The chat with the leader: only on the page of `fh serve`.
-    chat: Option<Chat>,
-    chat_open: bool,
+    /// The page fills the slot when it opens a run, then asks for a repaint.
+    slot: ContentSlot,
     /// Show the labels and the arrows of the supports and loads on the model.
     labels: bool,
 }
 
 impl ViewerApp {
-    pub fn new(
-        cc: &eframe::CreationContext<'_>,
-        title: String,
-        content: Content,
-        slot: Option<ContentSlot>,
-    ) -> Self {
-        let mut app = Self {
-            title,
+    pub fn new(cc: &eframe::CreationContext<'_>, slot: ContentSlot) -> Self {
+        style(&cc.egui_ctx);
+        Self {
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
-            message: None,
-            runs: None,
+            message: Some((false, NO_RUN.into())),
             slot,
-            chat: None,
-            chat_open: true,
             labels: true,
-        };
-        app.set_content(content);
-        app
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn set_chat(&mut self, chat: Chat) {
-        self.chat = Some(chat);
+        }
     }
 
     fn set_content(&mut self, content: Content) {
-        if !matches!(content, Content::Runs(_)) {
-            self.runs = None;
-        }
         let body = match content {
             Content::Results(r, preview) => {
                 let view = ViewState::new(&r);
@@ -107,12 +90,7 @@ impl ViewerApp {
                 Body::Results(r, view, Loads { preview, same_mesh })
             }
             Content::Preview(p) => Body::Preview(p),
-            Content::Runs(links) => {
-                self.message = None;
-                self.runs = Some(links);
-                return;
-            }
-            Content::Loading(text) => {
+            Content::Text(text) => {
                 self.message = Some((false, text));
                 return;
             }
@@ -142,19 +120,19 @@ impl ViewerApp {
 
     fn status_text(&self) -> String {
         let Some(s) = &self.shown else {
-            return self.title.clone();
+            return String::new();
         };
         let m = s.mesh();
-        let title = match &s.body {
-            Body::Preview(p) => format!("{} before the solve", p.title),
-            Body::Results(..) => self.title.clone(),
+        let mut text = match &s.body {
+            Body::Preview(p) => format!("{} before the solve: ", p.title),
+            Body::Results(..) => String::new(),
         };
-        let mut text = format!(
-            "{title}: {} nodes, {} elements, {} surface triangles",
+        text.push_str(&format!(
+            "{} nodes, {} elements, {} surface triangles",
             m.node_count,
             m.element_count,
             m.triangles.len()
-        );
+        ));
         if m.skipped_elements > 0 {
             text.push_str(&format!(
                 ", {} elements not drawn (unsupported type or missing node)",
@@ -530,64 +508,70 @@ fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64,
     ));
 }
 
-/// The page with no run selected: a link to each run that has results.
-fn run_list(ui: &mut egui::Ui, links: &[(String, String)]) {
-    ui.heading("Runs with results");
-    if links.is_empty() {
-        ui.label(
-            "No run has succeeded yet. Submit a run with the run contract \
-             (POST /api/v1/projects/<p>/runs), then reload this page.",
-        );
-        return;
+/// The look of the page (`crates/daemon/src/page.html`): the Inter font, and the colours
+/// `--bg`, `--raised` and `--line` of the page in the dark and the light theme.
+fn style(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    let inter = egui::FontData::from_static(INTER);
+    fonts.font_data.insert("Inter".into(), Arc::new(inter));
+    if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+        family.insert(0, "Inter".into());
     }
-    for (label, url) in links {
-        ui.add(egui::Hyperlink::from_label_and_url(label, url).open_in_new_tab(false));
+    ctx.set_fonts(fonts);
+    let gray = egui::Color32::from_gray;
+    for (theme, bg, raised, line) in [
+        (egui::Theme::Dark, gray(33), gray(48), gray(44)),
+        (egui::Theme::Light, gray(255), gray(240), gray(230)),
+    ] {
+        ctx.style_mut_of(theme, |s| {
+            use egui::{FontId, TextStyle};
+            s.text_styles = [
+                (TextStyle::Small, FontId::proportional(12.0)),
+                (TextStyle::Body, FontId::proportional(14.0)),
+                (TextStyle::Button, FontId::proportional(14.0)),
+                (TextStyle::Heading, FontId::proportional(18.0)),
+                (TextStyle::Monospace, FontId::monospace(12.5)),
+            ]
+            .into();
+            s.spacing.item_spacing = egui::vec2(8.0, 6.0);
+            s.spacing.button_padding = egui::vec2(8.0, 4.0);
+            s.spacing.interact_size.y = 26.0;
+            let v = &mut s.visuals;
+            v.panel_fill = bg;
+            v.window_fill = bg;
+            v.widgets.noninteractive.bg_stroke.color = line;
+            v.widgets.inactive.bg_fill = raised;
+            v.widgets.inactive.weak_bg_fill = raised;
+            for w in [
+                &mut v.widgets.inactive,
+                &mut v.widgets.hovered,
+                &mut v.widgets.active,
+                &mut v.widgets.open,
+            ] {
+                w.corner_radius = egui::CornerRadius::same(8);
+            }
+        });
     }
 }
 
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        if let Some(slot) = &self.slot {
-            let next = slot.lock().ok().and_then(|mut s| s.take());
-            if let Some(content) = next {
-                self.set_content(content);
-            }
-            if self.shown.is_none() && matches!(self.message, Some((false, _))) {
-                // Still loading: look at the slot again soon.
-                ui.ctx()
-                    .request_repaint_after(std::time::Duration::from_millis(100));
-            }
-        }
-        if let Some(c) = &mut self.chat {
-            c.poll();
+        let next = self.slot.lock().ok().and_then(|mut s| s.take());
+        if let Some(content) = next {
+            self.set_content(content);
         }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
-                if self.chat.is_some() {
-                    ui.toggle_value(&mut self.chat_open, "Chat")
-                        .on_hover_text("show or hide the chat with the leader");
-                    ui.separator();
-                }
-                ui.label(self.status_text());
-                ui.separator();
-                ui.weak(
-                    "drag: orbit | right or shift drag: pan | scroll: zoom | double click: reset",
-                );
+                ui.weak(self.status_text());
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.weak("drag: orbit | right or shift drag: pan | scroll: zoom | double click: reset");
+                });
             });
         });
-        if let (Some(c), true) = (&mut self.chat, self.chat_open) {
-            let width = (ui.available_width() * 0.3).clamp(300.0, 560.0);
-            egui::Panel::left("chat")
-                .resizable(true)
-                .default_size(width)
-                .min_size(260.0)
-                .max_size(width.max(560.0))
-                .show(ui, |ui| c.ui(ui));
-        }
         if let Some(shown) = self.shown.as_mut() {
             egui::Panel::right("results")
                 .resizable(false)
-                .min_size(250.0)
+                .min_size(260.0)
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         if shown.panel(ui, &mut self.labels) {
@@ -597,16 +581,12 @@ impl eframe::App for ViewerApp {
                 });
         }
         egui::CentralPanel::default().show(ui, |ui| {
-            if let Some(links) = &self.runs {
-                run_list(ui, links);
-                return;
-            }
             if let Some((error, text)) = &self.message {
                 ui.centered_and_justified(|ui| {
                     if *error {
                         ui.colored_label(ui.visuals().error_fg_color, text);
                     } else {
-                        ui.label(text);
+                        ui.weak(text);
                     }
                 });
                 return;

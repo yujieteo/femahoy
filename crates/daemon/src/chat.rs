@@ -2,11 +2,19 @@
 //! as a Claude Code process in headless mode, with the login of the person (connection
 //! path 1). femahoy has no agent loop of its own. The daemon reads the JSON event stream of
 //! the agent (`--output-format stream-json`) and keeps each action as a chat entry: the
-//! request, the text of the agent, each command, each tool and its result, and the end
+//! message, the text of the agent, each command, each tool and its result, and the end
 //! with the time and the cost. When a run of the daemon succeeds during the chat, the chat
 //! gets an `open` entry, and the page shows the results of that run. Before each solve,
 //! `fh run` sends its input to the preview route, the chat gets a `show` entry, and the page
-//! shows the model with each support and each load.
+//! shows the model with each support and each load. When a run fails, the
+//! chat gets a `failed` entry with the error.
+//!
+//! The agent process stays alive between the messages. Each message of the person goes to
+//! its stdin as 1 line of `--input-format stream-json`, also while the agent works: the
+//! agent reads it at its next step. The agent replays each message when it reads it
+//! (`--replay-user-messages`). Thus the agent works while it has a message that it did not
+//! read, or a turn with no `result`. A stop ends the agent and its processes. The next
+//! message then starts a new agent that continues the session (`--resume`).
 //!
 //! The agent gets the instructions of `agent.md`, the state folder of the daemon in
 //! `FH_STATE` (so `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first
@@ -16,16 +24,17 @@
 //!
 //! An entry is the item `<seq> <kind> <text>`. In the text, `\n` is a line break and `\\`
 //! is a backslash, because an item is one line. The token of the daemon never goes into an
-//! entry.
+//! entry. An `error` entry is an error of the chat: the agent cannot start, or it ended
+//! before the end of its work.
 
 use std::collections::{HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::contract::{Error, RunState};
-use crate::json::Json;
+use crate::contract::{now_ms, Error, Message, RunRecord, RunState};
+use crate::json::{quote, Json};
 use crate::service::Service;
 
 /// The instructions of the agent.
@@ -42,10 +51,63 @@ struct Log {
     entries: VecDeque<(u64, String)>,
     next: u64,
     agent: Option<Child>,
-    /// The session of the agent, so that the next request continues it.
+    /// The stdin of the agent. Each message is 1 line on it.
+    input: Option<ChildStdin>,
+    /// The messages that went to the agent, and the messages that the agent read.
+    sent: u64,
+    taken: u64,
+    /// The agent started a turn and did not end it with a `result`.
+    turn: bool,
+    /// The daemon reads the event stream of the current agent. It stops at the exit of the
+    /// agent, after the last entry of the agent.
+    reading: bool,
+    /// The time when the agent started to work, in ms since the Unix epoch.
+    started_ms: u64,
+    /// The session of the agent, so that a new agent continues it.
     session: Option<String>,
-    /// The runs that succeeded before this point of the chat.
+    /// The runs that were final before the agent started to work.
     seen: HashSet<(String, String)>,
+}
+
+impl Log {
+    /// The agent of the process `pid` is the current agent.
+    fn current(&self, pid: u32) -> bool {
+        self.agent.as_ref().is_some_and(|c| c.id() == pid)
+    }
+
+    /// The current agent is alive.
+    fn alive(&mut self) -> bool {
+        self.agent
+            .as_mut()
+            .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
+    }
+
+    /// The agent works: it has a message that it did not read, or a turn with no end.
+    fn running(&self) -> bool {
+        self.reading && (self.turn || self.sent > self.taken)
+    }
+
+    /// The agent works no more.
+    fn rest(&mut self) {
+        (self.sent, self.taken, self.turn) = (0, 0, false);
+    }
+
+    /// Stop the current agent and each process that it started, and forget its work.
+    fn end(&mut self) {
+        self.rest();
+        (self.input, self.reading) = (None, false);
+        let Some(mut child) = self.agent.take() else {
+            return;
+        };
+        // The agent is the first process of its own group.
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGTERM);
+        }
+        #[cfg(not(unix))]
+        let _ = child.kill();
+        std::thread::spawn(move || child.wait());
+    }
 }
 
 pub(crate) struct Chat {
@@ -92,36 +154,73 @@ impl Chat {
         self.push(&mut self.lock(), "show", &text);
     }
 
-    /// `running` while the agent works, else `idle`.
-    fn running(log: &mut Log) -> bool {
-        log.agent
-            .as_mut()
-            .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
-    }
-
-    /// The state and the entries after `since`, as the items `<seq> <kind> <text>`.
-    pub(crate) fn read(&self, since: u64) -> (&'static str, u64, Vec<String>) {
-        let mut log = self.lock();
-        let state = if Chat::running(&mut log) {
-            "running"
-        } else {
-            "idle"
-        };
+    /// The state of the chat and the entries after `since`, as the items `<seq> <kind>
+    /// <text>`. The fields are `state` (`running` or `idle`) and `next`. While the agent
+    /// works, `started_ms` is the time when it started, and `solving` is the first run of
+    /// the daemon that is not final: `<project> <run> <state> <last progress event>`.
+    pub(crate) fn read(&self, since: u64) -> Message {
+        let mut m = Message::new();
+        let log = self.lock();
+        let running = log.running();
+        m.set("state", if running { "running" } else { "idle" });
+        m.set("next", log.next);
         let items = log.entries.iter().filter(|(n, _)| *n > since);
-        let items = items.map(|(n, e)| format!("{n} {e}")).collect();
-        (state, log.next, items)
+        m.items = items.map(|(n, e)| format!("{n} {e}")).collect();
+        if running {
+            m.set("started_ms", log.started_ms);
+            drop(log);
+            if let Some((r, progress)) = self.service.active().into_iter().next() {
+                let solving = format!("{} {} {} {progress}", r.project, r.run, r.state);
+                m.set("solving", solving.trim_end());
+            }
+        }
+        m
     }
 
-    /// Start the agent on the request `text` of the person.
+    /// Send the message `text` of the person to the agent. If no agent is alive, start
+    /// one first.
     pub(crate) fn ask(self: &Arc<Self>, text: &str) -> Result<(), Error> {
         let text = text.trim();
         if text.is_empty() {
-            return Err(Error::bad("chat.empty", "the request is empty"));
+            return Err(Error::bad("chat.empty", "the message is empty"));
         }
         let mut log = self.lock();
-        if Chat::running(&mut log) {
-            return Err(Error::new(409, "chat.busy", "the agent still works"));
+        if log.input.is_none() || !log.alive() {
+            self.start(&mut log)?;
         }
+        if !log.running() {
+            log.rest();
+            log.started_ms = now_ms();
+            log.seen = self.finished();
+        }
+        self.push(&mut log, "you", text);
+        let line = format!(
+            "{{\"type\":\"user\",\"message\":{{\"role\":\"user\",\"content\":{}}},\"parent_tool_use_id\":null}}\n",
+            quote(text)
+        );
+        let sent = match log.input.as_mut() {
+            Some(input) => input
+                .write_all(line.as_bytes())
+                .and_then(|()| input.flush()),
+            None => Err(std::io::ErrorKind::BrokenPipe.into()),
+        };
+        if let Err(e) = sent {
+            let why = format!("cannot send the message to the agent: {e}");
+            self.push(&mut log, "error", &why);
+            log.input = None;
+            return Err(Error::new(502, "chat.agent", why));
+        }
+        log.sent += 1;
+        Ok(())
+    }
+
+    /// Start a new agent, which continues the session of the chat.
+    fn start(self: &Arc<Self>, log: &mut Log) -> Result<(), Error> {
+        if log.running() {
+            // The agent ended, and the daemon did not see the end of its stream yet.
+            self.push(log, "error", "the agent ended before the end of its work");
+        }
+        log.end();
         let dir = self.state_dir.join("chat");
         std::fs::create_dir_all(&dir).map_err(|e| Error::io("chat folder", e))?;
         let program = std::env::var("FH_AGENT")
@@ -129,9 +228,11 @@ impl Chat {
             .filter(|p| !p.is_empty())
             .unwrap_or_else(|| "claude".into());
         let mut cmd = Command::new(&program);
-        // The request goes on stdin, so that no text of the person is read as an option.
-        cmd.args(["-p", "--output-format", "stream-json", "--verbose"])
+        // The messages go on stdin, so that no text of the person is read as an option.
+        cmd.args(["-p", "--input-format", "stream-json"])
+            .args(["--output-format", "stream-json", "--verbose"])
             .args([
+                "--replay-user-messages",
                 "--append-system-prompt",
                 INSTRUCTIONS,
                 "--allowedTools",
@@ -156,23 +257,17 @@ impl Chat {
             .stderr(Stdio::piped());
         #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
-        self.push(&mut log, "you", text);
         let mut child = match cmd.spawn() {
             Ok(child) => child,
             Err(e) => {
                 let why = format!("cannot start the agent {program:?}: {e}");
-                self.push(&mut log, "fail", &why);
+                self.push(log, "error", &why);
                 return Err(Error::new(502, "chat.agent", why));
             }
         };
-        if let Some(mut stdin) = child.stdin.take() {
-            // The drop closes stdin, and the agent starts.
-            let _ = stdin.write_all(text.as_bytes());
-        }
         let (out, err, pid) = (child.stdout.take(), child.stderr.take(), child.id());
+        (log.input, log.reading) = (child.stdin.take(), true);
         log.agent = Some(child);
-        log.seen = self.succeeded();
-        drop(log);
         if let Some(err) = err {
             let chat = self.clone();
             std::thread::spawn(move || {
@@ -199,37 +294,51 @@ impl Chat {
     /// Stop the agent and each process that it started.
     pub(crate) fn stop(&self) {
         let mut log = self.lock();
-        if !Chat::running(&mut log) {
-            return;
+        let running = log.running();
+        log.end();
+        if running {
+            self.push(&mut log, "note", "stopped the agent");
         }
-        if let Some(child) = log.agent.as_mut() {
-            // The agent is the first process of its own group.
-            #[cfg(unix)]
-            unsafe {
-                libc::kill(-(child.id() as i32), libc::SIGTERM);
-            }
-            #[cfg(not(unix))]
-            let _ = child.kill();
-        }
-        self.push(&mut log, "note", "stopped the agent");
     }
 
-    /// The succeeded runs of the daemon.
-    fn succeeded(&self) -> HashSet<(String, String)> {
-        let mut runs = HashSet::new();
-        for (project, _) in self.service.projects() {
-            for r in self.service.runs(&project).unwrap_or_default() {
-                if r.state == RunState::Succeeded {
-                    runs.insert((project.clone(), r.run));
+    /// The final runs of the daemon, with their records.
+    fn final_runs(&self) -> Vec<RunRecord> {
+        let projects = self.service.projects().into_iter();
+        let runs = projects.flat_map(|(p, _)| self.service.runs(&p).unwrap_or_default());
+        runs.filter(|r| r.state.is_final()).collect()
+    }
+
+    /// The keys of the final runs of the daemon.
+    fn finished(&self) -> HashSet<(String, String)> {
+        let runs = self.final_runs().into_iter();
+        runs.map(|r| (r.project, r.run)).collect()
+    }
+
+    /// Add an entry for each run that became final since the agent started to work:
+    /// `open <project> <run>` for a run that succeeded, `failed <project> <run> <error>`
+    /// for a run that failed.
+    fn report_runs(&self) {
+        let mut runs = self.final_runs();
+        runs.sort_by(|a, b| (&a.project, &a.run).cmp(&(&b.project, &b.run)));
+        let mut log = self.lock();
+        for r in runs {
+            if !log.seen.insert((r.project.clone(), r.run.clone())) {
+                continue;
+            }
+            let (project, run) = (&r.project, &r.run);
+            match r.state {
+                RunState::Succeeded => self.push(&mut log, "open", &format!("{project} {run}")),
+                RunState::Failed => {
+                    let text = format!("{project} {run} {}", r.message);
+                    self.push(&mut log, "failed", &text);
                 }
+                _ => {}
             }
         }
-        runs
     }
 
     /// Read the event stream of the agent until it ends.
     fn follow(&self, out: impl Read, pid: u32) {
-        let mut ended = false;
         for line in BufReader::new(out).lines() {
             let Ok(line) = line else { break };
             let Ok(event) = Json::parse(&line) else {
@@ -240,47 +349,54 @@ impl Chat {
             };
             let entries = entries(&event);
             let after_tool = entries.iter().any(|(k, _)| k == "out" || k == "fail");
-            ended |= entries.iter().any(|(k, _)| k == "end");
+            let ended = entries.iter().any(|(k, _)| k == "end");
+            if ended {
+                // A run can end at the last step of the agent.
+                self.report_runs();
+            }
             let mut log = self.lock();
             if let Some(s) = event.text(&["session_id"]) {
                 log.session = Some(s.to_owned());
             }
+            if log.current(pid) {
+                if event.flag(&["isReplay"]) == Some(true) {
+                    log.taken += 1;
+                    log.turn = true;
+                }
+                log.turn |= event.text(&["type"]) == Some("assistant");
+                if ended {
+                    log.turn = false;
+                }
+            }
             for (kind, text) in &entries {
                 self.push(&mut log, kind, text);
             }
+            drop(log);
             if after_tool {
-                drop(log);
-                let now = self.succeeded();
-                let mut log = self.lock();
-                let mut new: Vec<_> = now.difference(&log.seen).cloned().collect();
-                new.sort();
-                for (p, r) in new {
-                    self.push(&mut log, "open", &format!("{p} {r}"));
-                }
-                log.seen = now;
+                self.report_runs();
             }
         }
         // Wait for the exit with no lock, so that a read of the chat does not wait.
-        let code = loop {
+        let (mut log, code) = loop {
             let mut log = self.lock();
-            match log.agent.as_mut() {
-                Some(child) if child.id() == pid => match child.try_wait() {
-                    Ok(None) => {}
-                    Ok(Some(code)) => break Some(code),
-                    Err(_) => break None,
-                },
-                Some(_) => return,
-                None => break None,
+            if !log.current(pid) {
+                // A stop or a new agent took this agent.
+                return;
+            }
+            match log.agent.as_mut().map(Child::try_wait) {
+                Some(Ok(None)) => {}
+                Some(Ok(Some(code))) => break (log, code.code()),
+                _ => break (log, None),
             }
             drop(log);
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
-        let mut log = self.lock();
-        if !ended {
-            let code = code.and_then(|c| c.code());
-            let why = format!("the agent ended with no result (exit code {code:?})");
-            self.push(&mut log, "fail", &why);
+        if log.running() {
+            let why = format!("the agent ended before the end of its work (exit code {code:?})");
+            self.push(&mut log, "error", &why);
         }
+        log.rest();
+        (log.input, log.reading) = (None, false);
     }
 }
 

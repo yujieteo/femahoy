@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal, opens its page in the browser (`src/browser.rs`), and stops a running daemon with `--stop`. `crates/cli` only calls it. Its page loads the wasm viewer of `crates/viewer`. It runs the agent of the chat (`src/chat.rs`, `docs/chat.md`).
+The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal, opens its page in the browser (`src/browser.rs`), and stops a running daemon with `--stop`. `crates/cli` only calls it. Its page (`src/page.html`, HTML and plain JS) has the chat on the left and the wasm viewer of `crates/viewer` in the center. It runs the agent of the chat (`src/chat.rs`, `docs/chat.md`).
 
 ## Inputs and outputs
 
@@ -11,7 +11,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - Commands: register a project, submit, cancel, read a record, list the runs, read the events.
 - The text form, the routes and the access rules are in `src/contract.rs`, `src/http.rs` and `docs/run-contract.md`.
 - A run starts the protocol v2 solver (`fh-solve`) through `fh_solver_api::SubprocessSolver` on a fixed input revision.
-- `src/chat.rs` runs 1 agent (Claude Code, `claude -p --output-format stream-json`) with the instructions of `src/agent.md`, and keeps its actions as chat entries for `/api/v1/chat`.
+- `src/chat.rs` runs 1 agent (Claude Code, `claude -p --input-format stream-json --output-format stream-json`) with the instructions of `src/agent.md`, and keeps its actions as chat entries for `/api/v1/chat`. The agent stays alive between the messages, and each message goes to its stdin, also while it works.
 
 ## Invariants the code must keep
 
@@ -35,7 +35,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/chat.rs` tests the chat routes with a fake agent that prints a recorded event stream. No test calls a real LLM. `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`.
+Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page and its layout, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/chat.rs` tests the chat routes with a fake agent that prints a recorded event stream and takes a message during its work. No test calls a real LLM. `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`.
 
 ## Examples
 

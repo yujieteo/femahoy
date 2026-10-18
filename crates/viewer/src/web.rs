@@ -1,65 +1,23 @@
-//! The browser entry point. The page of `fh serve` calls `start` with its canvas. The app
-//! reads the token, the project and the run from the page address, and fetches the result
-//! files from the daemon with `Authorization: Bearer <token>`. The chat panel sends the
-//! same header with each request.
+//! The browser entry point. The page of `fh serve` (`crates/daemon/src/page.html`) calls
+//! `start` with its canvas and the token, and `Viewer::open` for each run that it shows.
+//! The viewer fetches the result files from the daemon with `Authorization: Bearer
+//! <token>`.
 
-use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::app::{Content, ContentSlot, ViewerApp};
-use crate::chat::{Answer, Chat, Remote, Reply, Target};
+use crate::app::{Content, ContentSlot, ViewerApp, INTER};
 use crate::{preview, results, RESULTS_FILE};
-
-/// The query of the page address: `token`, and `project` and `run` to open a run.
-struct Query {
-    token: String,
-    project: Option<String>,
-    run: Option<String>,
-}
-
-fn query() -> Result<Query, String> {
-    let search = web_sys::window()
-        .ok_or("no window")?
-        .location()
-        .search()
-        .map_err(|_| "cannot read the page address")?;
-    let params = web_sys::UrlSearchParams::new_with_str(&search)
-        .map_err(|_| "cannot read the page address")?;
-    let token = params
-        .get("token")
-        .ok_or("the page address has no token. Open the address that fh serve prints.")?;
-    Ok(Query {
-        token,
-        project: params.get("project").filter(|p| !p.is_empty()),
-        run: params.get("run").filter(|r| !r.is_empty()),
-    })
-}
 
 /// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer.
 async fn get(token: &str, path: &str) -> Result<Vec<u8>, String> {
-    fetch(token, "GET", path, None).await
-}
-
-/// Send a request to the daemon, with the fields of a POST in `body`.
-async fn fetch(
-    token: &str,
-    method: &str,
-    path: &str,
-    body: Option<&str>,
-) -> Result<Vec<u8>, String> {
     let window = web_sys::window().ok_or("no window")?;
-    let init = web_sys::RequestInit::new();
-    init.set_method(method);
-    if let Some(body) = body {
-        init.set_body(&JsValue::from_str(body));
-    }
-    let request = web_sys::Request::new_with_str_and_init(path, &init)
-        .map_err(|e| format!("{path}: {e:?}"))?;
+    let request = web_sys::Request::new_with_str(path).map_err(|e| format!("{path}: {e:?}"))?;
     request
         .headers()
         .set("Authorization", &format!("Bearer {token}"))
@@ -122,9 +80,14 @@ async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, Stri
         Ok(bytes) => text(bytes, &path),
         Err(e) => Err(e),
     };
-    let loads = match record.map(|r| Reply::parse(&r).fields.get("revision").cloned()) {
-        Ok(Some(revision)) => model(token, project, &revision, run).await,
-        Ok(None) => Err(format!("{path}: no revision")),
+    let revision = record.and_then(|r| {
+        r.lines()
+            .find_map(|l| l.strip_prefix("revision="))
+            .map(str::to_owned)
+            .ok_or(format!("{path}: no revision"))
+    });
+    let loads = match revision {
+        Ok(revision) => model(token, project, &revision, run).await,
         Err(e) => Err(e),
     };
     Ok(Content::Results(Box::new(r), loads))
@@ -145,120 +108,93 @@ async fn model(
     Ok(Box::new(p))
 }
 
-/// The runs that have results, newest first, as links to open them.
-async fn list_runs(token: &str) -> Result<Content, String> {
-    let projects = text(get(token, "/api/v1/projects").await?, "/api/v1/projects")?;
-    let mut links = Vec::new();
-    for line in Reply::parse(&projects).items {
-        let Some((project, root)) = line.split_once(' ') else {
-            continue;
-        };
-        let path = format!("/api/v1/projects/{project}/runs");
-        let runs = text(get(token, &path).await?, &path)?;
-        for run in Reply::parse(&runs).items.iter().rev() {
-            let Some((id, state)) = run.split_once(' ') else {
-                continue;
-            };
-            if state == "succeeded" {
-                let url = format!("?token={token}&project={project}&run={id}");
-                links.push((format!("{root}: run {id}"), url));
-            }
-        }
-    }
-    Ok(Content::Runs(links))
+/// The font of the page: the page uses the font of the viewer, so it loads no font from the
+/// network.
+#[wasm_bindgen]
+pub fn font() -> Vec<u8> {
+    INTER.to_vec()
 }
 
-/// The daemon of the page, through `fetch`.
-struct Browser {
+/// The viewer on the canvas of the page.
+#[wasm_bindgen]
+pub struct Viewer {
     token: String,
+    slot: ContentSlot,
     ctx: egui::Context,
-    answers: Rc<RefCell<VecDeque<Answer>>>,
+    /// The number of the last `open`. A load that a later `open` replaced shows nothing.
+    opened: Rc<Cell<u64>>,
 }
 
-impl Remote for Browser {
-    fn request(&mut self, id: u64, method: &str, path: &str, body: &str) {
-        let (token, method, path) = (self.token.clone(), method.to_owned(), path.to_owned());
-        let body = (method != "GET").then(|| body.to_owned());
-        let (answers, ctx) = (self.answers.clone(), self.ctx.clone());
-        wasm_bindgen_futures::spawn_local(async move {
-            let answer = fetch(&token, &method, &path, body.as_deref()).await;
-            let answer = answer.and_then(|bytes| text(bytes, &path));
-            answers.borrow_mut().push_back((id, answer));
-            ctx.request_repaint();
+#[wasm_bindgen]
+impl Viewer {
+    /// Show the results of a run in place of the current content.
+    pub fn open(&self, project: String, run: String) {
+        let token = self.token.clone();
+        self.load("Loading the results...", async move {
+            load_run(&token, &project, &run).await
         });
     }
 
-    fn poll(&mut self) -> Vec<Answer> {
-        self.answers.borrow_mut().drain(..).collect()
+    /// Show the model of a revision with its supports and loads, before the solve.
+    pub fn show(&self, project: String, revision: String, name: String) {
+        let token = self.token.clone();
+        self.load("Loading the model...", async move {
+            let p = model(&token, &project, &revision, &name).await;
+            p.map(Content::Preview)
+        });
     }
 }
 
-/// Start the viewer on a canvas of the page.
+impl Viewer {
+    fn load(
+        &self,
+        loading: &str,
+        work: impl std::future::Future<Output = Result<Content, String>> + 'static,
+    ) {
+        let n = self.opened.get() + 1;
+        self.opened.set(n);
+        let fill = |slot: &ContentSlot, ctx: &egui::Context, content| {
+            if let Ok(mut s) = slot.lock() {
+                *s = Some(content);
+            }
+            ctx.request_repaint();
+        };
+        fill(&self.slot, &self.ctx, Content::Text(loading.into()));
+        let (slot, ctx, opened) = (self.slot.clone(), self.ctx.clone(), self.opened.clone());
+        wasm_bindgen_futures::spawn_local(async move {
+            let content = work.await;
+            if opened.get() == n {
+                fill(&slot, &ctx, content.unwrap_or_else(Content::Failed));
+            }
+        });
+    }
+}
+
+/// Start the viewer on a canvas of the page, with the token of the daemon.
 #[wasm_bindgen]
-pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
+pub async fn start(canvas: web_sys::HtmlCanvasElement, token: String) -> Result<Viewer, JsValue> {
     let slot: ContentSlot = Arc::new(Mutex::new(None));
-    let mut token = None;
-    let (title, first) = match query() {
-        Err(e) => ("femahoy".to_owned(), Content::Failed(e)),
-        Ok(q) => {
-            token = Some(q.token.clone());
-            let fill = slot.clone();
-            let title = match (&q.project, &q.run) {
-                (Some(p), Some(r)) => format!("project {p}, run {r}"),
-                _ => "femahoy".to_owned(),
-            };
-            wasm_bindgen_futures::spawn_local(async move {
-                let content = match (&q.project, &q.run) {
-                    (Some(p), Some(r)) => load_run(&q.token, p, r).await,
-                    _ => list_runs(&q.token).await,
-                };
-                let content = content.unwrap_or_else(Content::Failed);
-                if let Ok(mut s) = fill.lock() {
-                    *s = Some(content);
-                }
-            });
-            (title, Content::Loading("Loading the results...".into()))
-        }
-    };
+    let ctx: Rc<RefCell<Option<egui::Context>>> = Rc::default();
     let options = eframe::WebOptions {
         depth_buffer: crate::gpu::DEPTH_BITS,
         ..Default::default()
     };
+    let (app_slot, app_ctx) = (slot.clone(), ctx.clone());
     eframe::WebRunner::new()
         .start(
             canvas,
             options,
             Box::new(move |cc| {
-                let mut app = ViewerApp::new(cc, title, first, Some(slot.clone()));
-                if let Some(token) = token {
-                    let remote = Browser {
-                        token: token.clone(),
-                        ctx: cc.egui_ctx.clone(),
-                        answers: Rc::default(),
-                    };
-                    // The model before a solve and a run that succeeds during the chat open
-                    // in the viewer.
-                    let (t, ctx) = (token.clone(), cc.egui_ctx.clone());
-                    let open = move |target: &Target| {
-                        let (t, target, fill, ctx) =
-                            (t.clone(), target.clone(), slot.clone(), ctx.clone());
-                        wasm_bindgen_futures::spawn_local(async move {
-                            let content = match &target {
-                                Target::Run(p, r) => load_run(&t, p, r).await,
-                                Target::Model(p, rev, name) => {
-                                    model(&t, p, rev, name).await.map(Content::Preview)
-                                }
-                            };
-                            if let Ok(mut s) = fill.lock() {
-                                *s = Some(content.unwrap_or_else(Content::Failed));
-                            }
-                            ctx.request_repaint();
-                        });
-                    };
-                    app.set_chat(Chat::new(Box::new(remote), Box::new(open)));
-                }
-                Ok(Box::new(app))
+                *app_ctx.borrow_mut() = Some(cc.egui_ctx.clone());
+                Ok(Box::new(ViewerApp::new(cc, app_slot)))
             }),
         )
-        .await
+        .await?;
+    let ctx = ctx.take().ok_or("the viewer did not start")?;
+    Ok(Viewer {
+        token,
+        slot,
+        ctx,
+        opened: Rc::default(),
+    })
 }
