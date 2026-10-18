@@ -159,7 +159,8 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
     assert_eq!(point(&grid, "U", 1), [1e-3, -2e-4, 0.0]);
     assert_eq!(point(&grid, "U", 0), [0.0; 3]);
     assert_eq!(point(&grid, "RF", 0), [-210.0, 0.0, 0.0]);
-    // The mean of the two points, in the order xx, yy, zz, xy, yz, xz.
+    // The points of a cube have the same weight times Jacobian, so S is the mean of the two
+    // points, in the order xx, yy, zz, xy, yz, xz.
     let s = grid.cell_field("S").unwrap().as_f64().unwrap();
     assert_eq!(s, [150.0, 0.0, 0.0, 10.0, 30.0, 20.0]);
     let mises = grid.cell_field("MISES").unwrap().as_f64().unwrap();
@@ -171,6 +172,37 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
         "{summary}"
     );
     assert!(summary.contains("PULL,converged,1,2"), "{summary}");
+}
+
+/// In a distorted element the points have different weights times Jacobian, so `S` is the
+/// volume mean of the points, as in `fh-solve`, and not the plain mean.
+#[test]
+fn the_element_stress_is_the_volume_mean_of_the_points() {
+    let dir = scratch("volume-mean");
+    // Nodes 6 and 7 move to z = 3: the Jacobian determinant is (2 + xi) / 8.
+    let input = dir.join("wedge.inp");
+    let wedge = CUBE
+        .replace("6, 1, 0, 1", "6, 1, 0, 3")
+        .replace("7, 1, 1, 1", "7, 1, 1, 3");
+    std::fs::write(&input, wedge).unwrap();
+    // sxx is 1 at the 4 points at xi = +g, and 0 at the 4 points at xi = -g.
+    let mut dat = String::from(" stresses (elem, integ.pnt.,sxx,syy,szz,sxy,sxz,syz)\n");
+    for p in 1..=8 {
+        dat.push_str(&format!("1 {p} {} 0 0 0 0 0\n", (p + 1) % 2));
+    }
+    std::fs::write(dir.join("frd"), FRD).unwrap();
+    std::fs::write(dir.join("dat"), dat).unwrap();
+    let ccx = fake_ccx(
+        &dir,
+        &format!("cp {0}/frd job.frd\ncp {0}/dat job.dat", dir.display()),
+    );
+    let (code, err) = run(&input, &dir.join("run"), &ccx);
+    assert_eq!(code, Some(0), "{err}");
+    let grid = read_vtu(&std::fs::read(dir.join("run/step-1.vtu")).unwrap()).unwrap();
+    let s = grid.cell_field("S").unwrap().as_f64().unwrap();
+    // The plain mean is 0.5.
+    let g = 1.0 / 3f64.sqrt();
+    assert!((s[0] - (2.0 + g) / 4.0).abs() < 1e-12, "{s:?}");
 }
 
 #[test]

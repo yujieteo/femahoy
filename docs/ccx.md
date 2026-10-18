@@ -29,7 +29,7 @@ Changes for `ccx`:
 
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
 - Each step is one linear increment. The adapter ignores the `*STATIC` data line.
-- The element stress `S` is the mean of the integration point stress. `fh-solve` uses the volume mean.
+- The element stress `S` is the volume mean of the `ccx` integration point stress, as in `fh-solve` (`docs/solver-protocol.md`, "Result contract").
 
 ## Limits
 

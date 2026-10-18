@@ -12,15 +12,12 @@ use std::path::Path;
 use std::time::Instant;
 
 use fh_inp::Model;
+use fh_io::result::base_grid;
 use fh_io::vtk::write_vtk_to;
-use fh_io::vtu::{
-    read_vtu, write_pvd_units, write_vtu_to, Field, Grid, PvdEntry, VTK_HEXAHEDRON,
-    VTK_QUADRATIC_TETRA,
-};
+use fh_io::vtu::{read_vtu, write_pvd_units, write_vtu_to, Field, Grid, PvdEntry};
 use fh_solver_api::{ApiError, RunReport, Solver, PVD_FILE, SUMMARY_FILE};
 use fh_toon as toon;
 
-use crate::element::Kind;
 use crate::restart::{read_latest, Restart};
 use crate::system::{solve_from, CANCELLED};
 use crate::text::write_text;
@@ -115,87 +112,6 @@ pub fn input_hash(text: &str) -> u64 {
     text.bytes().fold(0xcbf2_9ce4_8422_2325, |h, b| {
         (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
     })
-}
-
-/// The grid without result fields: points, cells, ids and sets.
-fn base_grid(model: &Model) -> Result<Grid, ApiError> {
-    let index: std::collections::HashMap<u32, u32> = model
-        .nodes
-        .iter()
-        .enumerate()
-        .map(|(i, n)| (n.id, i as u32))
-        .collect();
-    let mut grid = Grid {
-        points: model.nodes.iter().map(|n| n.xyz).collect(),
-        ..Grid::default()
-    };
-    for el in &model.elements {
-        let kind = Kind::parse(&el.element_type).ok_or_else(|| {
-            ApiError::solver_output(format!("element {}: unsupported type", el.id))
-        })?;
-        grid.cell_types.push(match kind {
-            Kind::C3D10 => VTK_QUADRATIC_TETRA,
-            _ => VTK_HEXAHEDRON,
-        });
-        let cell = el
-            .nodes
-            .iter()
-            .map(|n| {
-                index
-                    .get(n)
-                    .copied()
-                    .ok_or_else(|| ApiError::solver_output(format!("node {n} not found")))
-            })
-            .collect::<Result<_, _>>()?;
-        grid.cells.push(cell);
-    }
-    let ids = |what: &str, v: &[u32]| -> Result<Vec<i32>, ApiError> {
-        v.iter()
-            .map(|&i| {
-                i32::try_from(i).map_err(|_| {
-                    ApiError::solver_output(format!(
-                        "{what} {i} is above {}: the 32-bit {what} array of the VTU file cannot hold it",
-                        i32::MAX
-                    ))
-                })
-            })
-            .collect()
-    };
-    grid.point_data.push(Field::i32(
-        "NODE_ID",
-        ids(
-            "node id",
-            &model.nodes.iter().map(|n| n.id).collect::<Vec<_>>(),
-        )?,
-    ));
-    grid.cell_data.push(Field::i32(
-        "ELEMENT_ID",
-        ids(
-            "element id",
-            &model.elements.iter().map(|e| e.id).collect::<Vec<_>>(),
-        )?,
-    ));
-    for s in &model.nsets {
-        let member: std::collections::HashSet<u32> = s.ids.iter().copied().collect();
-        let flags = model
-            .nodes
-            .iter()
-            .map(|n| i32::from(member.contains(&n.id)))
-            .collect();
-        grid.point_data
-            .push(Field::i32(&format!("NSET_{}", s.name), flags));
-    }
-    for s in &model.elsets {
-        let member: std::collections::HashSet<u32> = s.ids.iter().copied().collect();
-        let flags = model
-            .elements
-            .iter()
-            .map(|e| i32::from(member.contains(&e.id)))
-            .collect();
-        grid.cell_data
-            .push(Field::i32(&format!("ELSET_{}", s.name), flags));
-    }
-    Ok(grid)
 }
 
 /// One row of the increment table of the summary: an accepted increment or a cutback.
@@ -746,7 +662,7 @@ pub fn run_model(
     let clock = Instant::now();
     let hash = input.hash;
     fs::create_dir_all(run_dir).map_err(|e| io("run folder", e))?;
-    let grid = base_grid(model)?;
+    let grid = base_grid(model).map_err(ApiError::solver_output)?;
     let (n_point, n_cell) = (grid.point_data.len(), grid.cell_data.len());
     let (mut entries, mut incs, mut resume) = (Vec::new(), Vec::new(), None);
     if restart {
@@ -827,7 +743,7 @@ pub fn write_results(
     run_dir: &Path,
 ) -> Result<RunReport, ApiError> {
     fs::create_dir_all(run_dir).map_err(|e| io("run folder", e))?;
-    let grid = base_grid(model)?;
+    let grid = base_grid(model).map_err(ApiError::solver_output)?;
     let (n_point, n_cell) = (grid.point_data.len(), grid.cell_data.len());
     let mut writer = Writer {
         run_dir,

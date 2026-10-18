@@ -6,7 +6,7 @@
 //! point stress from the `.dat` file, and writes one VTU file for each step, `results.pvd` and `summary.toon`. `ccx` is GPL, so femahoy only starts it as a
 //! separate program. The results are unvalidated.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::io::Read;
@@ -17,9 +17,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fh_inp::{Boundary, ElementTarget, Model, Target};
-use fh_io::vtu::{
-    write_pvd_units, write_vtu, Field, Grid, PvdEntry, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA,
-};
+use fh_io::result::{base_grid, element_stress};
+use fh_io::vtu::{write_pvd_units, write_vtu, Field, PvdEntry};
 use fh_solver_api::{PROTOCOL_HEADER, PVD_FILE, SUMMARY_FILE};
 use fh_toon as toon;
 
@@ -263,34 +262,106 @@ fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
     Ok(steps)
 }
 
+/// The integration point stress of each element: the point number and the stress.
+type Points = HashMap<u32, Vec<(usize, [f64; 6])>>;
+
 /// Read the integration point stress of the `*EL PRINT` blocks of the `.dat` file. Block `i`
-/// is step `i`, because each step is one increment. The value of an element is the mean of
-/// its points, in the femahoy order `[xx, yy, zz, xy, yz, xz]`. `ccx` prints `sxy, sxz, syz`.
-fn read_dat(text: &str) -> Vec<HashMap<u32, [f64; 6]>> {
-    let mut blocks: Vec<HashMap<u32, ([f64; 6], f64)>> = Vec::new();
+/// is step `i`, because each step is one increment. The stress is in the femahoy order
+/// `[xx, yy, zz, xy, yz, xz]`. `ccx` prints `sxy, sxz, syz`.
+fn read_dat(text: &str) -> Vec<Points> {
+    let mut blocks: Vec<Points> = Vec::new();
     for line in text.lines() {
         if line.trim_start().starts_with("stresses (elem") {
             blocks.push(HashMap::new());
             continue;
         }
         let w: Vec<&str> = line.split_whitespace().collect();
-        let (Some(block), [e, _, v @ ..]) = (blocks.last_mut(), w.as_slice()) else {
+        let (Some(block), [e, p, v @ ..]) = (blocks.last_mut(), w.as_slice()) else {
             continue;
         };
         let v: Option<Vec<f64>> = v.iter().map(|x| x.parse().ok()).collect();
-        if let (Ok(e), Some([xx, yy, zz, xy, xz, yz])) = (e.parse(), v.as_deref()) {
-            let (sum, count) = block.entry(e).or_insert(([0.0; 6], 0.0));
-            for (s, x) in sum.iter_mut().zip([xx, yy, zz, xy, yz, xz]) {
-                *s += x;
-            }
-            *count += 1.0;
+        if let (Ok(e), Ok(p), Some(&[xx, yy, zz, xy, xz, yz])) =
+            (e.parse(), p.parse(), v.as_deref())
+        {
+            block
+                .entry(e)
+                .or_default()
+                .push((p, [xx, yy, zz, xy, yz, xz]));
         }
     }
-    let mean = |(e, (s, n)): (u32, ([f64; 6], f64))| (e, s.map(|x| x / n));
     blocks
-        .into_iter()
-        .map(|b| b.into_iter().map(mean).collect())
-        .collect()
+}
+
+/// The integration points of `ccx` in the order of `job.dat`, with their weights. `C3D8` and
+/// `C3D8I`: 2 x 2 x 2 Gauss points, xi changes first, then eta, then zeta. `C3D10`: 4 points,
+/// point k is near corner k.
+fn ccx_points(kind: &str) -> Vec<([f64; 3], f64)> {
+    if kind == "C3D10" {
+        let (a, b) = (0.138_196_601_125_011, 0.585_410_196_624_968);
+        let p = [[a, a, a], [b, a, a], [a, b, a], [a, a, b]];
+        p.map(|p| (p, 1.0 / 24.0)).to_vec()
+    } else {
+        let g = 1.0 / 3f64.sqrt();
+        let at = |i: usize, k: usize| if i >> k & 1 == 1 { g } else { -g };
+        (0..8)
+            .map(|i| ([at(i, 0), at(i, 1), at(i, 2)], 1.0))
+            .collect()
+    }
+}
+
+/// The derivatives of the shape functions by the natural coordinates `p`, in node order.
+fn shape_derivatives(kind: &str, p: [f64; 3]) -> Vec<[f64; 3]> {
+    if kind == "C3D10" {
+        // Corner 1 is at p = 0, corners 2, 3 and 4 are at p = 1 on the axes. The midside
+        // nodes 5 to 10 are on the edges 1-2, 2-3, 3-1, 1-4, 2-4 and 3-4.
+        let l = [1.0 - p[0] - p[1] - p[2], p[0], p[1], p[2]];
+        let dl = [[-1.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        let mut dn: Vec<[f64; 3]> = (0..4)
+            .map(|i| dl[i].map(|d| (4.0 * l[i] - 1.0) * d))
+            .collect();
+        for (i, j) in [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)] {
+            dn.push(std::array::from_fn(|k| {
+                4.0 * (l[i] * dl[j][k] + l[j] * dl[i][k])
+            }));
+        }
+        dn
+    } else {
+        let corners = [
+            [-1.0, -1.0, -1.0],
+            [1.0, -1.0, -1.0],
+            [1.0, 1.0, -1.0],
+            [-1.0, 1.0, -1.0],
+            [-1.0, -1.0, 1.0],
+            [1.0, -1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [-1.0, 1.0, 1.0],
+        ];
+        let dn = |s: [f64; 3]| {
+            let f: [f64; 3] = std::array::from_fn(|k| 1.0 + s[k] * p[k]);
+            [s[0] * f[1] * f[2], f[0] * s[1] * f[2], f[0] * f[1] * s[2]].map(|v| 0.125 * v)
+        };
+        corners.map(dn).to_vec()
+    }
+}
+
+/// The weight times the Jacobian determinant of each `ccx` integration point of an element
+/// with the node coordinates `x`.
+fn point_weights(kind: &str, x: &[[f64; 3]]) -> Vec<f64> {
+    let weight = |(p, w): ([f64; 3], f64)| {
+        let mut j = [[0.0; 3]; 3];
+        for (x, d) in x.iter().zip(shape_derivatives(kind, p)) {
+            for (r, row) in j.iter_mut().enumerate() {
+                for (c, v) in row.iter_mut().enumerate() {
+                    *v += x[r] * d[c];
+                }
+            }
+        }
+        let det = j[0][0] * (j[1][1] * j[2][2] - j[1][2] * j[2][1])
+            - j[0][1] * (j[1][0] * j[2][2] - j[1][2] * j[2][0])
+            + j[0][2] * (j[1][0] * j[2][1] - j[1][1] * j[2][0]);
+        w * det
+    };
+    ccx_points(kind).into_iter().map(weight).collect()
 }
 
 /// Write the VTU file of each step, the PVD collection and the summary. Each file is written
@@ -298,7 +369,7 @@ fn read_dat(text: &str) -> Vec<HashMap<u32, [f64; 6]>> {
 fn write_results(
     model: &Model,
     frd: &[FrdStep],
-    dat: &[HashMap<u32, [f64; 6]>],
+    dat: &[Points],
     run_dir: &Path,
     header: toon::Header,
     solver: String,
@@ -310,42 +381,14 @@ fn write_results(
             .and_then(|()| fs::rename(&tmp, run_dir.join(file)))
             .map_err(|e| format!("{file}: {e}"))
     };
-    let index: HashMap<u32, u32> = (model.nodes.iter().enumerate())
-        .map(|(i, n)| (n.id, i as u32))
+    let base = base_grid(model)?;
+    let coords: HashMap<u32, [f64; 3]> = model.nodes.iter().map(|n| (n.id, n.xyz)).collect();
+    let weights: Vec<Vec<f64>> = (model.elements.iter())
+        .map(|e| {
+            let x: Vec<[f64; 3]> = e.nodes.iter().map(|n| coords[n]).collect();
+            point_weights(&e.element_type, &x)
+        })
         .collect();
-    let mut base = Grid {
-        points: model.nodes.iter().map(|n| n.xyz).collect(),
-        ..Grid::default()
-    };
-    for e in &model.elements {
-        base.cell_types.push(if e.nodes.len() == 10 {
-            VTK_QUADRATIC_TETRA
-        } else {
-            VTK_HEXAHEDRON
-        });
-        base.cells.push(e.nodes.iter().map(|n| index[n]).collect());
-    }
-    let ids = |v: Vec<u32>| v.into_iter().map(|i| i as i32).collect();
-    base.point_data.push(Field::i32(
-        "NODE_ID",
-        ids(model.nodes.iter().map(|n| n.id).collect()),
-    ));
-    base.cell_data.push(Field::i32(
-        "ELEMENT_ID",
-        ids(model.elements.iter().map(|e| e.id).collect()),
-    ));
-    for s in &model.nsets {
-        let set: HashSet<u32> = s.ids.iter().copied().collect();
-        let flags = model.nodes.iter().map(|n| set.contains(&n.id) as i32);
-        base.point_data
-            .push(Field::i32(&format!("NSET_{}", s.name), flags.collect()));
-    }
-    for s in &model.elsets {
-        let set: HashSet<u32> = s.ids.iter().copied().collect();
-        let flags = model.elements.iter().map(|e| set.contains(&e.id) as i32);
-        base.cell_data
-            .push(Field::i32(&format!("ELSET_{}", s.name), flags.collect()));
-    }
     if dat.len() != model.steps.len() {
         return Err(format!(
             "{JOB}.dat has {} stress blocks for {} steps",
@@ -371,14 +414,16 @@ fn write_results(
             g.point_data.push(Field::f64(name, 3, v.collect()));
         }
         let (mut s, mut mises) = (Vec::new(), Vec::new());
-        for e in &model.elements {
-            let m = *dat[i].get(&e.id).ok_or_else(|| {
-                format!(
-                    "{JOB}.dat has no stress of element {} in step {}",
-                    e.id,
-                    i + 1
-                )
-            })?;
+        for (e, w) in model.elements.iter().zip(&weights) {
+            let at =
+                |what: &str| format!("{JOB}.dat has {what} of element {} in step {}", e.id, i + 1);
+            let points = dat[i].get(&e.id).ok_or_else(|| at("no stress"))?;
+            let weighted = points
+                .iter()
+                .map(|(p, s)| Some((*s, *w.get(p.checked_sub(1)?)?)))
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| at("a bad integration point"))?;
+            let m = element_stress(weighted);
             let [xx, yy, zz, xy, yz, zx] = m;
             let d = (xx - yy).powi(2) + (yy - zz).powi(2) + (zz - xx).powi(2);
             mises.push((0.5 * d + 3.0 * (xy * xy + yz * yz + zx * zx)).sqrt());
