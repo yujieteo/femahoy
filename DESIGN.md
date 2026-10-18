@@ -83,7 +83,7 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 
 ### 4.3 Pane backend
 
-The daemon defines a `PaneBackend` interface. Its one implementation is the plain PTY, owned by the daemon. herdr is removed (D-27). A separate PR removes its code.
+The daemon defines a `PaneBackend` interface. Its one implementation is the plain PTY, owned by the daemon. herdr is removed (D-27).
 
 ---
 
@@ -336,7 +336,7 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | `solver-api` | `Solver` trait, subprocess protocol, registry | open API |
 | `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core |
 | `validation` | harness, tolerance classes, manufactured solutions | validated core |
-| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | app |
+| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backend, process supervision | app |
 | `agents` | harness start, JSON stream parsing, skills install, role config | app |
 | `cli` | `fh` commands | app |
 | `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | app |

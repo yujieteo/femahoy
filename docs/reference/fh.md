@@ -195,8 +195,8 @@ See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 ## `fh run`
 
 ```text
-fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--state DIR] [--panes auto|herdr|pty] [--no-open]
-fh run --example NAME [--size H] [--order 1|2] [--state DIR] [--panes auto|herdr|pty] [--no-open]
+fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--state DIR] [--no-open]
+fh run --example NAME [--size H] [--order 1|2] [--state DIR] [--no-open]
 ```
 
 Source: [run.rs](../../crates/cli/src/run.rs).
@@ -214,10 +214,9 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 | `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder, 8 for `bar-pressure`. |
 | `--order 1\|2` | Sent to `fh mesh`. The `fh mesh` default (2). |
 | `--state DIR` | The state folder of the daemon, the same default as `fh serve`. |
-| `--panes auto\|herdr\|pty` | Sent to a daemon that `fh run` starts, as `fh serve --panes`. The `fh serve` default (`auto`). A daemon that runs keeps its pane backend. |
 | `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
 
-`fh run` uses the daemon of the state folder when one answers. Else it starts `fh serve --state DIR --no-open` (and `--panes MODE` when given) in the background, in its own process group, with its output in `DIR/daemon.log`, and waits up to 20 seconds for it. The file has mode 0600, because it holds the page address with the token. When another daemon answers first, for example the daemon of an `fh run` that started at the same time, `fh run` stops its own `fh serve` and uses the daemon that answers.
+`fh run` uses the daemon of the state folder when one answers. Else it starts `fh serve --state DIR --no-open` in the background, in its own process group, with its output in `DIR/daemon.log`, and waits up to 20 seconds for it. The file has mode 0600, because it holds the page address with the token. When another daemon answers first, for example the daemon of an `fh run` that started at the same time, `fh run` stops its own `fh serve` and uses the daemon that answers.
 That daemon stays alive when `fh run` ends. The browser keeps the results, and the next `fh run` uses the same daemon. `fh serve --stop` stops it.
 A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_SOLVE` and `FH_VIEWER`. `fh mesh` uses `FH_GMSH`.
 
@@ -232,7 +231,7 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | The daemon refused the project or the run | `fh run: the daemon refused the project: MESSAGE (CODE)` or `the daemon refused the run: ...`, for example `queue.full` | 1 |
-| No input, unknown option, bad value (for example `--panes is auto, herdr or pty, not VALUE`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
+| No input, unknown option, bad value (for example `--order needs 1 or 2`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
 | `--size` or `--order` with an `.inp` file | `fh run: --size and --order go to fh mesh, ... (run.option.mesh)` | 2 |
 | The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
 | The input is not an `.inp` file, a folder, `case.toml` or a STEP file | `fh run: PATH: ... (run.input.kind)` | 2 |
@@ -246,12 +245,12 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | Ctrl+C, and the run ended as cancelled | stdout: `cancel: cancel-requested`. stderr: `fh run: RUN was cancelled` | 130 |
 | A second Ctrl+C | stdout: `fh run: Ctrl+C again: fh run ends. The cancel of RUN continues in the daemon.` | 130 |
 
-`crates/cli/tests/run.rs` has a test for each refusal, with a fake browser, `FH_NO_OPEN=1`, a fake gmsh and `--panes pty`.
+`crates/cli/tests/run.rs` has a test for each refusal, with a fake browser, `FH_NO_OPEN=1`, and a fake gmsh.
 
 ## `fh serve`
 
 ```text
-fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH] [--no-open]
+fh serve [--state DIR] [--port N] [--no-open]
 fh serve --stop [--state DIR]
 ```
 
@@ -262,8 +261,7 @@ The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0
 `--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 The page has the terminal sidebar ([terminal](../terminal.md)).
-`--panes` selects the pane backend: `auto` (the default) uses herdr when it answers, else plain PTYs of the daemon.
-`--herdr-session` names the herdr session that femahoy owns (default `femahoy`, never `default`). `--herdr` gives the herdr program.
+The pane backend is plain PTYs of the daemon.
 
 After the start, `fh serve` opens its page in the browser. `--no-open`, or a value of `FH_NO_OPEN` that is not empty and not `0`, stops this, for tests and for a machine with no screen.
 The address holds the token, so it does not go into the command line of a browser process, where other users of the machine can read it:
@@ -281,13 +279,12 @@ The address holds the token, so it does not go into the command line of a browse
 |---|---|---:|
 | Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the pane backend (for example `fh serve: panes pty (plain PTY panes owned by the daemon)`), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). `DIR/daemon.info` gets the port and the token. | |
 | Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
-| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`, `pane.herdr.session` (`--herdr-session default`), `pane.herdr.absent` (`--panes herdr` and no herdr on `PATH`) or `pane.herdr` (herdr does not answer). When another daemon answers: `its page is URL. Stop it with: fh serve --stop --state DIR` | 1 |
+| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`. When another daemon answers: `its page is URL. Stop it with: fh serve --stop --state DIR` | 1 |
 | `--stop` stopped the daemon | stdout: `fh serve: stopped the daemon (pid PID) of DIR` | 0 |
 | `--stop` and no daemon answers | stdout: `fh serve: no daemon answers for DIR (CODE)` | 0 |
 | `--stop` and the daemon does not stop in 30 seconds | stderr: `fh serve: the daemon (pid PID) did not stop in 30 s` | 1 |
 | Missing option value | `fh serve: OPTION needs a value` | 2 |
 | Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
-| Bad pane backend | `fh serve: --panes is auto, herdr or pty, not VALUE` | 2 |
 | `--stop` with an option other than `--state` | `fh serve: --stop takes only --state DIR` | 2 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
 

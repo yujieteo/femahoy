@@ -1,6 +1,6 @@
 //! The terminal sidebar of the page of `fh serve` (DESIGN.md sections 3 and 4.3): one tab for
-//! each terminal of the daemon, the buttons for a new shell and for Herdr, and the panes of
-//! the pane backend. The daemon owns each terminal, so a tab that the browser closes stops
+//! each terminal of the daemon, the button for a new shell, and the panes of the pane
+//! backend. The daemon owns each terminal, so a tab that the browser closes stops
 //! nothing, and a new page shows the same terminals. `docs/terminal.md` has the routes.
 
 use std::collections::BTreeMap;
@@ -71,8 +71,6 @@ enum Ask {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Backend {
     pub kind: String,
-    pub session: String,
-    pub running: bool,
     pub detail: String,
 }
 
@@ -85,8 +83,7 @@ pub struct PaneRow {
     pub title: String,
 }
 
-/// The time between 2 reads of the terminal list and of the panes. Each read of the
-/// herdr panes runs 3 herdr commands.
+/// The time between 2 reads of the terminal list and of the panes.
 const REFRESH_SECONDS: f64 = 5.0;
 
 pub struct Sidebar {
@@ -95,8 +92,6 @@ pub struct Sidebar {
     asks: BTreeMap<u64, Ask>,
     pub terms: Vec<Term>,
     pub active: usize,
-    /// The herdr session of the daemon, or `None` for the pty backend.
-    pub herdr: Option<String>,
     pub backend: Option<Backend>,
     pub panes: Vec<PaneRow>,
     pub error: Option<String>,
@@ -118,7 +113,6 @@ impl Sidebar {
             asks: BTreeMap::new(),
             terms: Vec::new(),
             active: 0,
-            herdr: None,
             backend: None,
             panes: Vec::new(),
             error: None,
@@ -146,7 +140,7 @@ impl Sidebar {
         }
     }
 
-    /// Open a terminal of `kind` (`shell` or `herdr`) and show it.
+    /// Open a terminal of `kind` (`shell`) and show it.
     pub fn open(&mut self, kind: &str) {
         self.ask(Ask::Open, "POST", "/api/v1/terminals", &field("kind", kind));
     }
@@ -229,9 +223,6 @@ impl Sidebar {
         };
         match ask {
             Ask::Terminals => {
-                self.herdr = Some(reply.get("herdr"))
-                    .filter(|h| *h != "-" && !h.is_empty())
-                    .map(str::to_owned);
                 let active = self.terms.get(self.active).map(|t| t.id.clone());
                 for item in &reply.items {
                     let mut words = item.splitn(4, ' ');
@@ -276,8 +267,6 @@ impl Sidebar {
             Ask::Panes => {
                 self.backend = Some(Backend {
                     kind: reply.get("backend").into(),
-                    session: reply.get("session").into(),
-                    running: reply.get("running") == "yes",
                     detail: reply.get("detail").into(),
                 });
                 self.panes = reply
@@ -312,10 +301,9 @@ impl Sidebar {
 
     /// The label of a tab: the terminal ID first, because 2 shells can have the same title.
     fn label(t: &Term) -> String {
-        let name: String = match (t.kind.as_str(), t.title.is_empty()) {
-            ("herdr", _) => "Herdr".to_owned(),
-            (kind, true) => kind.to_owned(),
-            (_, false) => t.title.chars().take(24).collect(),
+        let name: String = match t.title.is_empty() {
+            true => t.kind.clone(),
+            false => t.title.chars().take(24).collect(),
         };
         match t.exit {
             Some(code) => format!("{} {name} (exit {code})", t.id),
@@ -339,18 +327,6 @@ impl Sidebar {
                 .clicked()
             {
                 self.open("shell");
-            }
-            let herdr = ui.add_enabled(self.herdr.is_some(), egui::Button::new("Herdr"));
-            let hint = match &self.herdr {
-                Some(s) => format!("open Herdr on the herdr session {s}"),
-                None => "the pane backend is pty: start fh serve with herdr installed".into(),
-            };
-            if herdr
-                .on_hover_text(hint)
-                .on_disabled_hover_text("the pane backend is pty")
-                .clicked()
-            {
-                self.open("herdr");
             }
         });
         if let Some(e) = self.error.clone() {
@@ -427,17 +403,7 @@ impl Sidebar {
                     ui.weak("Reading the pane backend...");
                     return;
                 };
-                let line = match (b.kind.as_str(), b.running) {
-                    ("herdr", true) => {
-                        format!("Backend: herdr, session {} ({})", b.session, b.detail)
-                    }
-                    ("herdr", false) => format!(
-                        "Backend: herdr, session {} is not running ({}). Use Herdr to start it.",
-                        b.session, b.detail
-                    ),
-                    _ => format!("Backend: {} ({})", b.kind, b.detail),
-                };
-                ui.label(line);
+                ui.label(format!("Backend: {} ({})", b.kind, b.detail));
                 let mut show = None;
                 let mut close = None;
                 for p in &self.panes {
@@ -454,7 +420,7 @@ impl Sidebar {
                         }
                     });
                 }
-                if b.running && self.panes.is_empty() {
+                if self.panes.is_empty() {
                     ui.weak("No pane is open.");
                 }
                 ui.horizontal(|ui| {
@@ -470,10 +436,7 @@ impl Sidebar {
                     );
                     let title = self.pane_title.trim().to_owned();
                     if ui
-                        .add_enabled(
-                            b.running && !title.is_empty(),
-                            egui::Button::new("New pane"),
-                        )
+                        .add_enabled(!title.is_empty(), egui::Button::new("New pane"))
                         .clicked()
                     {
                         let command = self.pane_command.clone();
@@ -554,14 +517,13 @@ mod tests {
         t.title = "vim notes.txt with a long name".into();
         t.exit = Some(1);
         assert_eq!(Sidebar::label(&t), "t2 vim notes.txt with a lon (exit 1)");
-        assert_eq!(Sidebar::label(&Term::new("t3", "herdr")), "t3 Herdr");
     }
 
     #[test]
     fn replies_read_fields_and_items() {
-        let r = Reply::parse("a=1\nb=x=y\n\nt1 shell running my title\nt2 herdr exited\n");
+        let r = Reply::parse("a=1\nb=x=y\n\nt1 shell running my title\nt2 shell exited\n");
         assert_eq!((r.get("a"), r.get("b"), r.get("c")), ("1", "x=y", ""));
-        assert_eq!(r.items, ["t1 shell running my title", "t2 herdr exited"]);
+        assert_eq!(r.items, ["t1 shell running my title", "t2 shell exited"]);
         assert_eq!(Reply::parse("a=1\n").items, Vec::<String>::new());
     }
 
@@ -573,17 +535,15 @@ mod tests {
             ["1 GET /api/v1/terminals", "2 GET /api/v1/panes"]
         );
         // A new page shows the terminals that run. A PTY pane waits for Show.
-        let list = "contract=1\nherdr=-\npanes=pty\n\nt1 shell running \nt2 pane running build\n";
-        let panes = "backend=pty\ndetail=plain\nrunning=yes\nsession=-\n\nt2 running t2 build\n";
+        let list = "contract=1\npanes=pty\n\nt1 shell running \nt2 pane running build\n";
+        let panes = "backend=pty\ndetail=plain\n\nt2 running t2 build\n";
         give(&mut s, &log, vec![answer(1, list), answer(2, panes)]);
         assert_eq!(calls(&log), ["connect t1"]);
         assert_eq!(
             s.terms.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
             ["t1"]
         );
-        assert_eq!(s.herdr, None);
-        let b = s.backend.clone().unwrap();
-        assert_eq!((b.kind.as_str(), b.running), ("pty", true));
+        assert_eq!(s.backend.clone().unwrap().kind, "pty");
         let row = PaneRow {
             id: "t2".into(),
             state: "running".into(),
@@ -640,14 +600,13 @@ mod tests {
         give(
             &mut s,
             &log,
-            vec![answer(5, "herdr=femahoy\n\nt1 shell running \n")],
+            vec![answer(5, "panes=pty\n\nt1 shell running \n")],
         );
         assert_eq!(
             s.terms.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
             ["t1"]
         );
         assert_eq!(calls(&log), ["disconnect t2"]);
-        assert_eq!(s.herdr.as_deref(), Some("femahoy"));
     }
 
     #[test]
@@ -666,8 +625,10 @@ mod tests {
             ]
         );
         // A change reads the panes again. An error shows to the person.
-        let error =
-            RemoteEvent::Answer(5, Err("HTTP 409: the herdr session is not running".into()));
+        let error = RemoteEvent::Answer(
+            5,
+            Err("HTTP 409: 16 terminals are open. Close one first.".into()),
+        );
         give(&mut s, &log, vec![answer(3, "pane=w1:p1\n"), error]);
         assert_eq!(
             calls(&log),
@@ -678,8 +639,8 @@ mod tests {
             &mut s,
             &log,
             vec![
-                answer(1, "herdr=femahoy\n"),
-                answer(2, "backend=herdr\nrunning=no\n"),
+                answer(1, "panes=pty\n"),
+                answer(2, "backend=pty\ndetail=plain\n"),
             ],
         );
         give(&mut s, &log, vec![answer(4, "")]);
@@ -689,9 +650,8 @@ mod tests {
         );
         assert_eq!(
             s.error.as_deref(),
-            Some("HTTP 409: the herdr session is not running")
+            Some("HTTP 409: 16 terminals are open. Close one first.")
         );
-        assert!(!s.backend.clone().unwrap().running);
         assert!(s.panes.is_empty());
     }
 }

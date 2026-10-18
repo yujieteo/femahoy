@@ -19,8 +19,8 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, runs
 - STEP checks report units. With `--case`, they refuse a mismatch against `case.toml`.
 - MSH checks report counts, bounds, volume and minimum scaled Jacobian. They refuse empty solid meshes and nonpositive corner Jacobians.
 - `fh validate [--root DIR] [--convergence PATH]` uses `FH_SOLVE` or the adjacent `fh-solve` binary.
-- `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH] [--no-open]` and `fh serve --stop [--state DIR]` call `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
-- `fh run MODEL.inp|CASE_DIR|PART.step` and `fh run --example NAME` (`src/run.rs`) solve on the daemon of the state folder through `fh_daemon::Client`, and start `fh serve --no-open` in the background when no daemon answers. `fh run --panes MODE` gives `--panes MODE` to that daemon. A case folder goes through `mesh::run` and `model::run` in `STATE/cases/NAME-HASH`. The example files come from `validation/cases/bar-pressure` (`include_bytes!`). Exit codes: 0, 1 (failed or refused), 2 (usage or input), 3 (no daemon), 130 (cancelled), in `docs/reference/fh.md`.
+- `fh serve [--state DIR] [--port N] [--no-open]` and `fh serve --stop [--state DIR]` call `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
+- `fh run MODEL.inp|CASE_DIR|PART.step` and `fh run --example NAME` (`src/run.rs`) solve on the daemon of the state folder through `fh_daemon::Client`, and start `fh serve --no-open` in the background when no daemon answers. A case folder goes through `mesh::run` and `model::run` in `STATE/cases/NAME-HASH`. The example files come from `validation/cases/bar-pressure` (`include_bytes!`). Exit codes: 0, 1 (failed or refused), 2 (usage or input), 3 (no daemon), 130 (cancelled), in `docs/reference/fh.md`.
 
 ## Invariants the code must keep
 

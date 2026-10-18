@@ -1,6 +1,6 @@
 [package]
 name = "fh-daemon"
-description = "HTTP and WebSocket server, token auth, PTY, pane backends, process supervision"
+description = "HTTP and WebSocket server, token auth, PTY, pane backend, process supervision"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

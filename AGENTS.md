@@ -30,7 +30,7 @@ The leader chooses the model for each task. The validator for every merge is Opu
 - Copy text, `.inp` files, figures, or numbers from the Abaqus manuals.
 - Add any Dassault Systèmes file to the repo.
 - Add NAFEMS target values before the leader confirms the legal check.
-- Link gmsh, or bundle herdr.
+- Link gmsh.
 - Put secrets, API keys, or tokens in code, fixtures, logs, or commits.
 - Weaken, skip, or delete a validation case or a test so that a change can pass.
 - Change a tolerance without a written reason in the fixture file and leader approval.
