@@ -241,6 +241,15 @@ fn two_runs_that_start_at_the_same_time_use_one_daemon() {
         .filter(|o| stdout(o).contains("succeeded in"))
         .count();
     assert_eq!(runs, 2);
+    // The fh serve of the other fh run ended with its fh run. Thus after a stop, no daemon
+    // takes the free lock, also after the 1 s in which a new daemon tries the lock.
+    let stop = lab.fh(&["serve", "--stop"]);
+    let said = format!("{}{}", stdout(&stop), stderr(&stop));
+    assert!(said.contains("stopped the daemon"), "{said}");
+    std::thread::sleep(Duration::from_millis(1500));
+    let again = lab.fh(&["serve", "--stop"]);
+    let said = format!("{}{}", stdout(&again), stderr(&again));
+    assert!(said.contains("no daemon answers"), "{said}");
 }
 
 #[test]

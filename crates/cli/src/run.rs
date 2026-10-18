@@ -296,12 +296,19 @@ fn daemon(state: &Path, panes: Option<&str>) -> Result<(Client, bool), String> {
     let mut ended: Option<Instant> = None;
     loop {
         if let Some(client) = answers(state) {
-            // Another fh run can start the daemon that answers. Then the new one ends.
+            // Another fh run can start the daemon that answers. Then stop the new one now:
+            // it tries the lock for 1 s, and it must not take the lock when the other daemon
+            // stops. It has no lock and no run, because the daemon that answers has the lock.
             let pid = client
                 .status()
                 .ok()
                 .and_then(|m| m.get("pid")?.parse::<u32>().ok());
-            return Ok((client, pid == Some(child.id())));
+            let new = pid == Some(child.id());
+            if !new {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            return Ok((client, new));
         }
         if ended.is_none() && child.try_wait().ok().flatten().is_some() {
             ended = Some(Instant::now());
