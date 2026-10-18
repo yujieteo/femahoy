@@ -16,6 +16,8 @@ pub struct Model {
     pub equations: Vec<Equation>,
     pub mpcs: Vec<Mpc>,
     pub couplings: Vec<Coupling>,
+    /// `*INITIAL CONDITIONS, TYPE=TEMPERATURE`: the start temperature of nodes.
+    pub initial_temperatures: Vec<Temperature>,
     pub steps: Vec<Step>,
     /// `*INSTANCE` entries of the `*ASSEMBLY`, in file order.
     pub instances: Vec<Instance>,
@@ -144,6 +146,8 @@ pub struct ElementSet {
 pub struct Material {
     pub name: String,
     pub elastic: Option<Elastic>,
+    /// `*EXPANSION`: the isotropic thermal expansion coefficient.
+    pub expansion: Option<f64>,
 }
 
 /// Isotropic elasticity.
@@ -166,6 +170,13 @@ pub struct Boundary {
     pub target: Target,
     pub first_dof: u8,
     pub last_dof: u8,
+    pub value: f64,
+}
+
+/// One data line of `*INITIAL CONDITIONS, TYPE=TEMPERATURE` or `*TEMPERATURE`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Temperature {
+    pub target: Target,
     pub value: f64,
 }
 
@@ -217,6 +228,8 @@ pub struct Step {
     pub cloads: Vec<Cload>,
     pub dloads: Vec<Dload>,
     pub dsloads: Vec<Dsload>,
+    /// `*TEMPERATURE`: the temperature of nodes at the end of the step.
+    pub temperatures: Vec<Temperature>,
 }
 
 impl Model {

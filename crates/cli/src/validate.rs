@@ -4,7 +4,8 @@
 //! case folder inside PATH. A class N case has one mesh, so it is skipped in a folder of cases
 //! and it is an error when named directly.
 //!
-//! Each case runs through `fh-solve` (`$FH_SOLVE`, or the binary next to `fh`). A table shows
+//! Each case runs through its `solver`: `fh-solve` (`$FH_SOLVE`, or the binary next to `fh`), or
+//! `fh-solve-ccx` next to `fh`. A table shows
 //! every quantity with its computed value, reference, tolerance and margin.
 //! A bad fixture, a case that fails, or a case that cannot run gives exit code 1.
 
@@ -42,10 +43,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
-    let solver = Subprocess::locate();
     let reports: Vec<(&Case, String, Report)> = cases
         .iter()
-        .map(|c| (c, String::new(), run_case_with(c, &solver)))
+        .map(|c| (c, String::new(), run_case_with(c, &Subprocess::for_case(c))))
         .collect();
     Ok(print_reports(&reports, reports.len()))
 }
@@ -126,14 +126,13 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
     if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
-    let solver = Subprocess::locate();
     let mut reports: Vec<(&Case, String, Report)> = Vec::new();
     let mut skipped = Vec::new();
     for case in &cases {
         if matches!(case.class, Class::N { .. }) && !single {
             skipped.push(case);
         } else {
-            let report = run_convergence_with(case, &solver);
+            let report = run_convergence_with(case, &Subprocess::for_case(case));
             if let Outcome::Fail(why) = &report.outcome {
                 eprintln!("fh validate: {why}");
             }

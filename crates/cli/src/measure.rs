@@ -1,11 +1,11 @@
-//! Run `fh-solve` on a mesh and read one number per reference from the result files.
+//! Run the solver of a case on a mesh and read one number per reference from the result files.
 
 use fh_io::vtu::{read_vtu, Grid, Values};
 use fh_validation::{Case, Field, Manufactured, Op, Quantity, Solve};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// Runs the `fh-solve` binary in a scratch folder for every mesh.
+/// Runs a solver binary in a scratch folder for every mesh.
 pub struct Subprocess {
     pub exe: PathBuf,
 }
@@ -13,19 +13,31 @@ pub struct Subprocess {
 impl Subprocess {
     /// The solver is `$FH_SOLVE`, or `fh-solve` next to the `fh` binary.
     pub fn locate() -> Self {
-        let exe = std::env::var_os("FH_SOLVE")
-            .map(PathBuf::from)
-            .or_else(|| {
-                let me = std::env::current_exe().ok()?;
-                Some(me.with_file_name(format!("fh-solve{}", std::env::consts::EXE_SUFFIX)))
-            })
-            .unwrap_or_else(|| PathBuf::from("fh-solve"));
+        match std::env::var_os("FH_SOLVE") {
+            Some(exe) => Subprocess { exe: exe.into() },
+            None => Subprocess::next_to_fh("fh-solve"),
+        }
+    }
+
+    /// The solver of `case`. `fh-solve` is [`Subprocess::locate`]. `$FH_SOLVE` does not
+    /// change another solver: it is the binary of that name next to `fh`.
+    pub fn for_case(case: &Case) -> Self {
+        match case.solver.as_str() {
+            "fh-solve" => Subprocess::locate(),
+            name => Subprocess::next_to_fh(name),
+        }
+    }
+
+    fn next_to_fh(name: &str) -> Self {
+        let exe = std::env::current_exe()
+            .map(|me| me.with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
+            .unwrap_or_else(|_| PathBuf::from(name));
         Subprocess { exe }
     }
 }
 
 impl Subprocess {
-    /// Run `fh-solve` on `input` in a scratch folder named after `stem`. `read` gets the folder
+    /// Run the solver on `input` in a scratch folder named after `stem`. `read` gets the folder
     /// of the results. The folder is removed afterwards.
     fn run<T>(
         &self,
@@ -49,7 +61,8 @@ impl Subprocess {
         } else {
             let err = String::from_utf8_lossy(&out.stderr);
             Err(format!(
-                "fh-solve exited with {}: {}",
+                "{} exited with {}: {}",
+                self.exe.file_name().unwrap_or_default().to_string_lossy(),
                 out.status,
                 err.lines().last().unwrap_or("")
             ))

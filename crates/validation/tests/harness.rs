@@ -523,6 +523,7 @@ fn shipped_cases_load_and_have_existing_inputs() {
             "bar-pressure",
             "bar-pressure-m",
             "bar-tension",
+            "bimetal-strip",
             "cantilever",
             "cantilever-c3d10",
             "cantilever-c3d8",
@@ -799,6 +800,23 @@ fn units_are_read_and_a_missing_or_unknown_value_is_refused() {
     let error = write_case(&tmp("units-unknown"), &unknown).unwrap_err();
     assert!(error.message.contains("unknown units `inch`"), "{error}");
     assert_eq!(error.line, Some(3));
+}
+
+#[test]
+fn the_solver_key_is_read_and_an_unknown_solver_is_refused() {
+    let n = "class = \"N\"\nrel_tol = 1\nabs_tol = 0";
+    let case = write_case(&tmp("solver-default"), &body(1, n)).unwrap();
+    assert_eq!(case.solver, "fh-solve");
+    let ccx = body(1, &format!("{n}\nsolver = \"fh-solve-ccx\""));
+    let case = write_case(&tmp("solver-ccx"), &ccx).unwrap();
+    assert_eq!(case.solver, "fh-solve-ccx");
+    let unknown = body(1, &format!("{n}\nsolver = \"abaqus\""));
+    let error = write_case(&tmp("solver-unknown"), &unknown).unwrap_err();
+    assert_eq!(
+        error.message,
+        "unknown solver `abaqus`, expected fh-solve or fh-solve-ccx"
+    );
+    assert_eq!(error.line, Some(11));
 }
 
 const MODEL: &str =

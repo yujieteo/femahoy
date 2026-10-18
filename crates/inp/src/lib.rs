@@ -12,6 +12,6 @@ pub use error::{code, join_errors, ParseError};
 pub use model::{
     Boundary, Cload, Coupling, CouplingKind, Dload, Dsload, Elastic, Element, ElementSet,
     ElementSurface, ElementTarget, Equation, EquationTerm, Instance, Material, Model, Mpc, MpcKind,
-    Node, NodeSet, NodeSurface, Origin, SolidSection, Static, Step, Target,
+    Node, NodeSet, NodeSurface, Origin, SolidSection, Static, Step, Target, Temperature,
 };
 pub use parse::{parse, parse_all, parse_file};

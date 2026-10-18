@@ -173,7 +173,8 @@ A directory run skips class N cases. A class N case named alone fails.
 A class R case solves each mesh with boundary values from the exact field of the fixture.
 It reports one row, `rate`, with the observed rate, the expected rate, the band and the error of each mesh.
 The case fails if the error does not fall from one mesh to the next.
-The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
+The solver of a case is its `solver` key. For `fh-solve` (the default), the solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
+For `fh-solve-ccx`, the solver is `fh-solve-ccx` beside `fh`. `FH_SOLVE` does not change it.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|

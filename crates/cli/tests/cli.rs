@@ -109,11 +109,30 @@ fn check_with_a_missing_file_exits_1() {
     assert_eq!(fh(&["check", "/nonexistent/x.inp"]).status.code(), Some(1));
 }
 
+/// True when `ccx` (`FH_CCX`, else `ccx` on PATH) starts. The `bimetal-strip` case needs it.
+fn ccx_found() -> bool {
+    let exe = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
+    let found = Command::new(exe).arg("-v").output().is_ok();
+    if !found {
+        eprintln!("ccx not found: bimetal-strip must report cannot run. Set FH_CCX to run it");
+    }
+    found
+}
+
 #[test]
 fn validate_runs_every_case_through_the_solver() {
     let out = fh(&["validate", "--root", &root()]);
     let stdout = text(out.stdout);
-    assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
+    // FH_SOLVE names fh-solve. The case bimetal-strip uses fh-solve-ccx all the same.
+    if ccx_found() {
+        assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
+        assert!(stdout.contains("bimetal-strip\tN\tpass"), "{stdout}");
+        assert!(stdout.contains("17 cases: 17 pass, 0 fail"), "{stdout}");
+    } else {
+        assert_eq!(out.status.code(), Some(1), "{stdout}{}", text(out.stderr));
+        assert!(stdout.contains("bimetal-strip\tN\tcannot run"), "{stdout}");
+        assert!(stdout.contains("17 cases: 16 pass, 1 fail"), "{stdout}");
+    }
     for id in [
         "bar-pressure",
         "bar-pressure-m",
@@ -135,7 +154,6 @@ fn validate_runs_every_case_through_the_solver() {
         let row = format!("{id}\t");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("16 cases: 16 pass, 0 fail"), "{stdout}");
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
@@ -221,7 +239,8 @@ fn convergence_on_the_case_folder_skips_class_n() {
         "patch-test\tN\tskipped, one mesh",
         "bar-tension\tN\tskipped, one mesh",
         "mms-c3d10\tR\t3 meshes\tpass",
-        "16 cases: 10 pass, 0 fail",
+        "bimetal-strip\tN\tskipped, one mesh",
+        "17 cases: 10 pass, 0 fail",
     ] {
         assert!(stdout.contains(row), "{stdout}");
     }
@@ -282,8 +301,13 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[test]
 fn validate_checks_each_quantity_against_the_meshes() {
-    // The shipped cases pass (sets, steps and element types exist in every mesh).
-    assert_eq!(fh(&["validate", "--root", &root()]).status.code(), Some(0));
+    // The shipped cases pass (sets, steps and element types exist in every mesh). Without
+    // ccx, bimetal-strip cannot run.
+    let code = if ccx_found() { 0 } else { 1 };
+    assert_eq!(
+        fh(&["validate", "--root", &root()]).status.code(),
+        Some(code)
+    );
     // Each edit of the cantilever case: the text, its replacement and the expected error.
     let cases: [(&str, &str, &str); 4] = [
         ("set = \"tip\"", "set = \"nope\"", "no node set `nope`"),

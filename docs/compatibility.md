@@ -21,6 +21,9 @@ This file lists how femahoy differs from Abaqus input conventions.
 | `*MPC` | Only the types `TIE`, `PIN`, `LINK` and `BEAM`, each with 2 nodes. | `crates/inp/tests/m2_keywords.rs` `mpc_types` |
 | `*CLOAD` | Data lines for the same node and dof in one step add up. A later step replaces the total of the earlier step. | `crates/core-solver/tests/review.rs` `repeated_cload_on_one_dof_adds_inside_a_step` |
 | `*DLOAD` | Only pressure on an element face (`P1` to `P6`). | `crates/inp/tests/m2_keywords.rs` `dload_pressure_on_face` |
+| `*EXPANSION` | Only `TYPE=ISO` with 1 value. No `ZERO` parameter and no temperature table. The reference temperature is 0, as in CalculiX. | `crates/inp/src/parse.rs` `thermal_keyword_rules` |
+| `*INITIAL CONDITIONS` | Only `TYPE=TEMPERATURE`, with 1 temperature for each node or node set. | `crates/inp/src/parse.rs` `thermal_keyword_rules` |
+| `*TEMPERATURE` | No parameters. Each line gives 1 temperature for a node or a node set. `fh-solve` refuses thermal input. `fh-solve-ccx` gives it to CalculiX. | `crates/inp/src/parse.rs` `thermal_keyword_rules`, `crates/core-solver/tests/review.rs` `thermal_input_is_refused_with_the_keyword_and_the_ccx_solver` |
 
 ## Keywords for M1
 

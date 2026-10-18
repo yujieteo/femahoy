@@ -182,8 +182,8 @@ fn element_nodes(element_type: &str) -> Option<usize> {
 
 impl Parser {
     fn block(&mut self, b: &Block) -> Result<(), ParseError> {
-        // A material keyword (*ELASTIC) only applies inside *MATERIAL.
-        if b.keyword != "ELASTIC" && b.keyword != "MATERIAL" {
+        // A material keyword (*ELASTIC, *EXPANSION) only applies inside *MATERIAL.
+        if !["ELASTIC", "EXPANSION", "MATERIAL"].contains(&b.keyword.as_str()) {
             self.material = None;
         }
         if b.keyword != "KINEMATIC" && b.keyword != "DISTRIBUTING" {
@@ -199,6 +199,9 @@ impl Parser {
             "ELSET" => self.elset(b),
             "MATERIAL" => self.material(b),
             "ELASTIC" => self.elastic(b),
+            "EXPANSION" => self.expansion(b),
+            "INITIAL CONDITIONS" => self.initial_conditions(b),
+            "TEMPERATURE" => self.temperature(b),
             "STEP" => self.step(b),
             "STATIC" => self.static_proc(b),
             "BOUNDARY" => self.boundary(b),
@@ -779,6 +782,7 @@ impl Parser {
         self.model.materials.push(Material {
             name: name.to_owned(),
             elastic: None,
+            expansion: None,
         });
         self.material = Some(self.model.materials.len() - 1);
         Ok(())
@@ -833,6 +837,101 @@ impl Parser {
             return Err(b.error(code::DUPLICATE, b.line, "material already has *ELASTIC"));
         }
         mat.elastic = Some(elastic);
+        Ok(())
+    }
+
+    /// `*EXPANSION`: one isotropic coefficient. `ccx` meaning, with the reference temperature 0.
+    fn expansion(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&["TYPE"])?;
+        if let Some(t) = b.value("TYPE")? {
+            if t != "ISO" {
+                return Err(b.error(
+                    code::UNSUPPORTED_VALUE,
+                    b.line,
+                    format!("unsupported TYPE {t}"),
+                ));
+            }
+        }
+        let idx = self.material.ok_or_else(|| {
+            b.error(
+                code::OUT_OF_PLACE,
+                b.line,
+                "keyword needs an open *MATERIAL",
+            )
+        })?;
+        let d = match b.data.as_slice() {
+            [d] if d.fields.len() == 1 => d,
+            _ => {
+                return Err(b.error(
+                    code::BAD_DATA_LINE,
+                    b.data.first().map_or(b.line, |d| d.line),
+                    "keyword takes 1 data line with 1 value",
+                ))
+            }
+        };
+        let alpha = real(b, d, 0, "expansion coefficient")?;
+        let mat = &mut self.model.materials[idx];
+        if mat.expansion.is_some() {
+            return Err(b.error(code::DUPLICATE, b.line, "material already has *EXPANSION"));
+        }
+        mat.expansion = Some(alpha);
+        Ok(())
+    }
+
+    /// Data lines of a node or node set and a temperature.
+    fn temperatures(&self, b: &Block) -> Result<Vec<Temperature>, ParseError> {
+        b.data
+            .iter()
+            .map(|d| {
+                if d.fields.len() != 2 {
+                    return Err(b.error(
+                        code::BAD_DATA_LINE,
+                        d.line,
+                        "line needs node and temperature",
+                    ));
+                }
+                Ok(Temperature {
+                    target: self.target(b, d)?,
+                    value: real(b, d, 1, "temperature")?,
+                })
+            })
+            .collect()
+    }
+
+    fn initial_conditions(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&["TYPE"])?;
+        match b.value("TYPE")? {
+            Some("TEMPERATURE") => {}
+            Some(t) => {
+                return Err(b.error(
+                    code::UNSUPPORTED_VALUE,
+                    b.line,
+                    format!("unsupported TYPE {t}"),
+                ))
+            }
+            None => {
+                return Err(b.error(
+                    code::MISSING_PARAMETER,
+                    b.line,
+                    "parameter TYPE is required",
+                ))
+            }
+        }
+        self.model_data(b)?;
+        let list = self.temperatures(b)?;
+        self.model.initial_temperatures.extend(list);
+        Ok(())
+    }
+
+    fn temperature(&mut self, b: &Block) -> Result<(), ParseError> {
+        b.allow(&[])?;
+        if self.open_step.is_none() {
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"));
+        }
+        let list = self.temperatures(b)?;
+        if let Some(step) = self.open_step.as_mut() {
+            step.temperatures.extend(list);
+        }
         Ok(())
     }
 
@@ -1757,6 +1856,91 @@ mod tests {
                 magnitude: -2.5
             }
         );
+    }
+
+    #[test]
+    fn thermal_keywords_parse() {
+        let m = parse(&format!(
+            "{MESH}*NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8\n\
+             *MATERIAL, NAME=A\n*ELASTIC\n100, 0.3\n*EXPANSION, TYPE=ISO\n1.2e-5\n\
+             *MATERIAL, NAME=B\n*EXPANSION\n-2e-6\n*ELASTIC\n50, 0\n\
+             *INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 20\n\
+             *STEP\n*STATIC\n*TEMPERATURE\nALL, 120\n8, 100\n*END STEP\n"
+        ))
+        .unwrap();
+        let expansion: Vec<_> = m.materials.iter().map(|m| m.expansion).collect();
+        assert_eq!(expansion, [Some(1.2e-5), Some(-2e-6)]);
+        assert_eq!(
+            m.materials[1].elastic.as_ref().unwrap().youngs_modulus,
+            50.0
+        );
+        let all = Target::Set("ALL".into());
+        let t = |target: &Target, value| Temperature {
+            target: target.clone(),
+            value,
+        };
+        assert_eq!(m.initial_temperatures, [t(&all, 20.0)]);
+        assert_eq!(
+            m.steps[0].temperatures,
+            [t(&all, 120.0), t(&Target::Node(8), 100.0)]
+        );
+    }
+
+    #[test]
+    fn thermal_keyword_rules() {
+        let mat = "*MATERIAL, NAME=M\n*ELASTIC\n100, 0.3\n";
+        for (text, message) in [
+            (
+                "*EXPANSION\n1e-5\n".to_owned(),
+                "line 1, *EXPANSION: keyword needs an open *MATERIAL (INP010)",
+            ),
+            (
+                format!("{mat}*EXPANSION, TYPE=ORTHO\n1e-5\n"),
+                "line 4, *EXPANSION: unsupported TYPE ORTHO (INP005)",
+            ),
+            (
+                format!("{mat}*EXPANSION\n1e-5, 20\n"),
+                "line 5, *EXPANSION: keyword takes 1 data line with 1 value (INP007)",
+            ),
+            (
+                format!("{mat}*EXPANSION\n1e-5\n*EXPANSION\n1e-5\n"),
+                "line 6, *EXPANSION: material already has *EXPANSION (INP008)",
+            ),
+            (
+                format!("{MESH}*INITIAL CONDITIONS\n1, 20\n"),
+                "line 10, *INITIAL CONDITIONS: parameter TYPE is required (INP004)",
+            ),
+            (
+                format!("{MESH}*INITIAL CONDITIONS, TYPE=STRESS\n1, 20\n"),
+                "line 10, *INITIAL CONDITIONS: unsupported TYPE STRESS (INP005)",
+            ),
+            (
+                format!("{MESH}*INITIAL CONDITIONS, TYPE=TEMPERATURE\n9, 20\n"),
+                "line 11, *INITIAL CONDITIONS: node 9 is not defined (INP009)",
+            ),
+            (
+                format!("{MESH}*INITIAL CONDITIONS, TYPE=TEMPERATURE\n1, 20, 30\n"),
+                "line 11, *INITIAL CONDITIONS: line needs node and temperature (INP007)",
+            ),
+            (
+                format!("{MESH}*STEP\n*STATIC\n*INITIAL CONDITIONS, TYPE=TEMPERATURE\n1, 20\n"),
+                "line 12, *INITIAL CONDITIONS: keyword must come before the first *STEP (INP010)",
+            ),
+            (
+                format!("{MESH}*TEMPERATURE\n1, 20\n"),
+                "line 10, *TEMPERATURE: keyword needs an open *STEP (INP010)",
+            ),
+            (
+                format!("{MESH}*STEP\n*STATIC\n*TEMPERATURE, OP=NEW\n1, 20\n*END STEP\n"),
+                "line 12, *TEMPERATURE: unsupported parameter OP (INP003)",
+            ),
+            (
+                format!("{MESH}*STEP\n*STATIC\n*TEMPERATURE\n1, x\n*END STEP\n"),
+                "line 13, *TEMPERATURE: temperature must be a finite number, found 'x' (INP006)",
+            ),
+        ] {
+            assert_eq!(err(&text), message, "{text}");
+        }
     }
 
     #[test]

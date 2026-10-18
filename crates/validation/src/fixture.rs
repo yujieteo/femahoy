@@ -132,6 +132,8 @@ pub struct Case {
     /// Input files, coarse to fine. Absolute or relative to the working directory like `dir`.
     pub meshes: Vec<PathBuf>,
     pub references: Vec<Reference>,
+    /// The solver program: `fh-solve` (the default) or `fh-solve-ccx`.
+    pub solver: String,
     /// How to build a solver input from a `.msh` file (`fh model`). Optional.
     pub model: Option<ModelSpec>,
     /// Class R only.
@@ -454,8 +456,9 @@ impl FixtureReader<'_> {
     }
 
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 22] = [
+        const KEYS: [&str; 23] = [
             "schema",
+            "solver",
             "model",
             "units",
             "quantity",
@@ -646,6 +649,18 @@ impl FixtureReader<'_> {
                 ),
             ));
         }
+        let solver = match table.get("solver") {
+            None => "fh-solve".to_owned(),
+            Some(item) => match self.non_empty_string(item, "solver")? {
+                s @ ("fh-solve" | "fh-solve-ccx") => s.to_owned(),
+                other => {
+                    return Err(self.err(
+                        Some(item),
+                        format!("unknown solver `{other}`, expected fh-solve or fh-solve-ccx"),
+                    ))
+                }
+            },
+        };
         let model = self.model(table)?;
         let manufactured = if is_r {
             Some(self.manufactured(table, meshes.len())?)
@@ -662,6 +677,7 @@ impl FixtureReader<'_> {
             element_types,
             meshes,
             references,
+            solver,
             model,
             manufactured,
         })
