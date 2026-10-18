@@ -7,11 +7,7 @@
 use std::io::Write;
 
 use crate::code;
-use crate::vtu::{check_cells, Field, Grid, Values, VtuError};
-
-fn bad<T>(msg: String) -> Result<T, VtuError> {
-    Err(VtuError::new(code::VTU_INVALID_GRID, msg))
-}
+use crate::vtu::{check, Field, Grid, Values, VtuError};
 
 /// Write `f64` so that it reads back exactly. Very small and very large values use an exponent.
 fn real(w: &mut impl Write, v: f64) -> std::io::Result<()> {
@@ -20,31 +16,6 @@ fn real(w: &mut impl Write, v: f64) -> std::io::Result<()> {
     } else {
         write!(w, "{v}")
     }
-}
-
-fn check(grid: &Grid) -> Result<(), VtuError> {
-    if grid.cell_types.len() != grid.cells.len() {
-        return bad("cell_types and cells differ in length".into());
-    }
-    check_cells(grid)?;
-    for (what, fields, n) in [
-        ("point", &grid.point_data, grid.points.len()),
-        ("cell", &grid.cell_data, grid.cells.len()),
-    ] {
-        for f in fields {
-            let len = match &f.values {
-                Values::F64(v) => v.len(),
-                Values::I32(v) => v.len(),
-            };
-            if f.components == 0 || n.checked_mul(f.components) != Some(len) {
-                return bad(format!(
-                    "{what} field {} has {len} values, expected {n} x {}",
-                    f.name, f.components
-                ));
-            }
-        }
-    }
-    Ok(())
 }
 
 /// A field name for the legacy format, where a space ends a name. A space, a `%`, a control
