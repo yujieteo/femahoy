@@ -45,6 +45,9 @@
 //! | `GET /api/v1/panes/<pane>/text?lines=N` | | one item for each line of text |
 //! | `POST /api/v1/panes/<pane>/send` | optional `text`, `keys` (names, space between) | |
 //! | `POST /api/v1/panes/<pane>/close` | | |
+//! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
+//! | `POST /api/v1/chat` | `text` | `state`: the agent starts on the request |
+//! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
 //!
 //! The page has no secret in it. Its script reads the token from the page address and
 //! fetches the viewer and the results with the `Authorization` header, so only `GET /`
@@ -61,6 +64,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
+use crate::chat::Chat;
 use crate::contract::{Error, Message};
 use crate::panes::{valid_pane, Key, Pane, PaneSpec, Sidebar};
 use crate::pty::{Terminal, HISTORY};
@@ -139,6 +143,7 @@ enum Reply {
 struct Ctx {
     service: Arc<Service>,
     sidebar: Arc<Sidebar>,
+    chat: Arc<Chat>,
     viewer: Option<PathBuf>,
     token: String,
     sockets: AtomicUsize,
@@ -155,6 +160,7 @@ impl Server {
     pub(crate) fn start(
         service: Arc<Service>,
         sidebar: Arc<Sidebar>,
+        chat: Arc<Chat>,
         port: u16,
         token: String,
         viewer: Option<PathBuf>,
@@ -164,6 +170,7 @@ impl Server {
         let ctx = Arc::new(Ctx {
             service,
             sidebar,
+            chat,
             viewer,
             token,
             sockets: AtomicUsize::new(0),
@@ -571,6 +578,20 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
         ("POST", ["", "api", "v1", "panes", p, "close"]) => {
             pane(p)?;
             sidebar.panes.close(p)?;
+        }
+        ("GET", ["", "api", "v1", "chat"]) => {
+            let (state, next, items) = ctx.chat.read(req.query_number("since")?);
+            m.set("state", state);
+            m.set("next", next);
+            m.items = items;
+        }
+        ("POST", ["", "api", "v1", "chat"]) => {
+            ctx.chat.ask(body()?.need("text")?)?;
+            m.set("state", "running");
+        }
+        ("POST", ["", "api", "v1", "chat", "stop"]) => {
+            ctx.chat.stop();
+            m.set("state", ctx.chat.read(u64::MAX).0);
         }
         ("GET", ["", "api", "v1", "projects", p, "runs", r, "files", name]) => {
             return Ok(Reply::Bytes(

@@ -178,10 +178,13 @@ fn stop_daemon(state_dir: &Path) -> ExitCode {
     ExitCode::from(1)
 }
 
-/// `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows
-/// `%LOCALAPPDATA%\femahoy`.
+/// `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows
+/// `%LOCALAPPDATA%\femahoy`. The daemon gives `FH_STATE` to the agent of the chat.
 pub fn default_state_dir() -> Option<PathBuf> {
     let var = |name| std::env::var_os(name).filter(|v| !v.is_empty());
+    if let Some(dir) = var("FH_STATE") {
+        return Some(PathBuf::from(dir));
+    }
     let base = if cfg!(windows) {
         PathBuf::from(var("LOCALAPPDATA")?)
     } else {
