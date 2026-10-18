@@ -120,3 +120,6 @@ Logs exclude the local viewer token. `record.json` gives both values, difference
 The fine mesh gave -0.6126606 mm against -0.6136986301 mm, a difference of 0.169143%, below 1%.
 The mesh has 13720 nodes and 7867 C3D10 elements. The adapter time was 1.349 s.
 The case derivation gives the tested versions and both mesh records.
+
+The same workflow runs `validation/cases/warpage-thick-copper`, a real wafer slice with a measured warpage.
+`scripts/check-warpage-copper.py` runs it at mesh sizes of 1, 0.5 and 0.25 mm. Its [derivation](../validation/cases/warpage-thick-copper/derivation.md) gives the source, the tolerance and the results.

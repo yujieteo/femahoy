@@ -91,3 +91,21 @@ The check sets `FH_SOLVE` to the adjacent `fh-solve-ccx` before it starts each p
 It reads VTU output, compares warpage with the analytical reference, and checks that the native solver refuses thermal input.
 The fine mesh gives -0.6126606 mm against -0.6136986301 mm, a difference of 0.169143% within the 1% tolerance.
 `fh validate` also checks the committed coarse mesh through `solver = "fh-solve-ccx"`.
+
+## Measured warpage use case
+
+`validation/cases/warpage-thick-copper` compares the workflow with a measured warpage of a real part.
+The part is a 50 x 10 x 0.75 mm slice of a power semiconductor wafer, with 730 µm of silicon and 20 µm of ECD copper.
+The source is Calabretta et al., Applied Sciences 11 (2021) 5140, open access under CC BY 4.0.
+Phase-shift moiré gives 0.700 µm/°C from 50 to 90 °C, in the second cycle, where the warpage is linear.
+The case uses the materials of the paper and a temperature change of 40 K.
+The [derivation](../validation/cases/warpage-thick-copper/derivation.md) gives the inputs, the 12% tolerance and the results at 3 mesh sizes.
+
+```sh
+cargo build -p fh-cli -p fh-core-solver -p fh-solver-ccx
+FH_CCX=/path/to/ccx fh-python scripts/check-warpage-copper.py /tmp/warpage-copper-proof
+```
+
+The finest mesh gives 0.67738 µm/K, 3.2% below the measured value.
+The bilayer plate theory with the same inputs gives 0.67813 µm/K. Thus the solve adds almost no error. The difference comes from the inputs, the model assumptions and the measurement.
+The main causes are the low silicon modulus of the paper, the thin layers that the model leaves out, and the moiré accuracy.
