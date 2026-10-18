@@ -180,7 +180,7 @@ The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 | All executed cases pass | stdout: `ID<TAB>CLASS<TAB>pass`, quantity rows, and `N cases: P pass, F fail`. | 0 |
 | Convergence directory contains class N | stdout: `ID<TAB>N<TAB>skipped, one mesh`. Skipped cases count in the total, not pass or fail. | 0 if no failure |
 | Case failure | stdout: case row with `fail: REASON`, then summary. Convergence failures also print `fh validate: REASON` on stderr. | 1 |
-| Solver absent or measurement cannot run | stdout: case row with `cannot run: REASON` or `cannot run: no solver`. | 1 |
+| Solver absent or measurement cannot run | stdout: case row with `cannot run: REASON`. | 1 |
 | Fixture load error | stderr: `fh validate: FILE[:LINE]: MESSAGE` | 1 |
 | Normal-run mesh parse, undeclared element type, missing set, or missing step | stderr: `fh validate: CASE.toml: MESSAGE` | 1 |
 | Missing option value | `fh validate: --root needs a directory` or `--convergence needs a path` | 2 |
