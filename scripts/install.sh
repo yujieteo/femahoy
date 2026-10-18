@@ -116,7 +116,7 @@ for file in "fh$exe" "fh-solve$exe" viewer/fh_viewer.js viewer/fh_viewer_bg.wasm
   echo "  $prefix/$file"
 done
 if [ $update = yes ]; then
-  echo "install: a daemon of the earlier install runs the earlier fh until it stops. Stop it with: fh serve --stop"
+  echo "install: if a daemon runs, it keeps the earlier fh until it stops. Stop it with: fh serve --stop"
 fi
 if ! command -v gmsh >/dev/null 2>&1 && [ ! -x /Applications/Gmsh.app/Contents/MacOS/gmsh ]; then
   echo "install: gmsh is not installed. fh run needs it for a case folder and the example: brew install gmsh (macOS), or see https://gmsh.info"
