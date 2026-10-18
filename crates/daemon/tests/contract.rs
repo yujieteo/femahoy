@@ -70,6 +70,7 @@ impl Lab {
         Config {
             state_dir: self.state.clone(),
             solver: SubprocessSolver::new(&self.solver),
+            solver_dirs: Vec::new(),
         }
     }
 
@@ -190,6 +191,70 @@ fn an_authorized_cli_passes_and_a_foreign_origin_fails() {
     // Only the user can read the token.
     let info = fs::metadata(lab.state.join(fh_daemon::INFO_FILE)).unwrap();
     assert_eq!(info.permissions().mode() & 0o777, 0o600);
+}
+
+#[test]
+fn a_submit_that_names_a_solver_runs_that_solver_from_the_solver_folders() {
+    let lab = Lab::new("named-solver");
+    let bin = lab.dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let config = Config {
+        solver_dirs: vec![lab.dir.join("empty"), bin.clone()],
+        ..lab.config()
+    };
+    let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
+    let c = daemon.client();
+    let project = c.register(&lab.root).unwrap();
+    let input = lab.input("a.inp", "*NODE\n");
+    lab.open_gate();
+
+    let e = c
+        .submit_with_solver(&project, "named-0", &input, "abaqus")
+        .unwrap_err();
+    assert_eq!((e.status, e.code.as_str()), (400, "solver.unknown"));
+
+    // No fh-solve-ccx in the folders: the run fails with the name of the solver.
+    let ack = c
+        .submit_with_solver(&project, "named-1", &input, "fh-solve-ccx")
+        .unwrap();
+    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
+    assert_eq!(record.state, RunState::Failed);
+    assert!(
+        record.message.contains("fh-solve-ccx") && record.message.contains("docs/ccx.md"),
+        "{}",
+        record.message
+    );
+    assert_eq!(lab.starts(), 0);
+
+    let ccx = bin.join("fh-solve-ccx");
+    let body = format!(
+        "#!/bin/sh\necho ccx >> {}\nexec {} \"$@\"\n",
+        lab.dir.join("ccx.log").display(),
+        lab.solver.display()
+    );
+    fs::write(&ccx, body).unwrap();
+    fs::set_permissions(&ccx, fs::Permissions::from_mode(0o755)).unwrap();
+    let ack = c
+        .submit_with_solver(&project, "named-2", &input, "fh-solve-ccx")
+        .unwrap();
+    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
+    assert_eq!(
+        (record.state, record.solver.as_str()),
+        (RunState::Succeeded, "fh-solve-ccx")
+    );
+    assert_eq!(lab.file("ccx.log").as_deref(), Some("ccx\n"));
+
+    // fh-solve is the solver of the daemon.
+    let ack = c
+        .submit_with_solver(&project, "named-3", &input, "fh-solve")
+        .unwrap();
+    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
+    assert_eq!(
+        (record.state, record.solver.as_str()),
+        (RunState::Succeeded, "")
+    );
+    assert_eq!(lab.file("ccx.log").as_deref(), Some("ccx\n"));
+    assert_eq!(lab.starts(), 2);
 }
 
 #[test]
@@ -529,6 +594,7 @@ fn daemon_child() {
     let config = Config {
         state_dir: state.into(),
         solver: SubprocessSolver::new(solver),
+        solver_dirs: Vec::new(),
     };
     let _daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     loop {

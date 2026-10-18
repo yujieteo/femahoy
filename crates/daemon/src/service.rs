@@ -25,7 +25,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use fh_solver_api::{CancelToken, Event as SolverEvent, SubprocessSolver};
+use fh_solver_api::{ApiError, CancelToken, Event as SolverEvent, SubprocessSolver};
 
 use crate::contract::{
     now_ms, parse_event, run_id, valid_project, valid_request, valid_run, Ack, Command, Error,
@@ -58,12 +58,44 @@ const INPUT_FILE: &str = "input.inp";
 const OUT_DIR: &str = "out";
 const STOPPED: &str = "the daemon stopped before the run ended";
 
+/// The solvers that a submit can name. The first one is the solver of [`Config`].
+pub const SOLVERS: [&str; 2] = ["fh-solve", "fh-solve-ccx"];
+
 /// The settings of a run service.
 pub struct Config {
     /// The folder of the store. One daemon at a time uses it.
     pub state_dir: PathBuf,
     /// The protocol v2 solver, for example `fh-solve`, with its limits.
     pub solver: SubprocessSolver,
+    /// The folders, in order, where a run finds another solver of [`SOLVERS`] that its
+    /// submit names. `fh serve` gives [`solver_dirs`].
+    pub solver_dirs: Vec<PathBuf>,
+}
+
+/// The folder of the running program (`fh`), then each folder of `PATH`.
+pub fn solver_dirs() -> Vec<PathBuf> {
+    let exe = std::env::current_exe().ok();
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    exe.as_deref()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .into_iter()
+        .chain(std::env::split_paths(&path))
+        .collect()
+}
+
+/// The program `name` in the first folder of `dirs` that has it.
+pub fn find_solver(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
+    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    dirs.iter().map(|d| d.join(&file)).find(|p| p.is_file())
+}
+
+/// The message for a solver that [`find_solver`] does not find.
+pub fn missing_solver(name: &str) -> String {
+    format!(
+        "the solver {name} is not beside fh or on PATH. To install it, see docs/ccx.md \
+         (run.solver.missing)"
+    )
 }
 
 /// The run service. It owns every run. Clients only send commands and read records.
@@ -77,6 +109,7 @@ struct Shared {
     dir: PathBuf,
     instance: String,
     solver: SubprocessSolver,
+    solver_dirs: Vec<PathBuf>,
     inner: Mutex<Inner>,
     /// Wakes the worker for a new run, and the readers for a new event.
     wake: Condvar,
@@ -412,7 +445,7 @@ impl Shared {
 
     /// Run one queued run to its end.
     fn run(&self, key: &Key) {
-        let (input, out, cancel) = {
+        let (input, out, cancel, name) = {
             let mut inner = self.lock();
             let Some(live) = inner.live.get_mut(key) else {
                 return;
@@ -430,12 +463,23 @@ impl Shared {
                 input,
                 self.run_dir(&key.0, &key.1).join(OUT_DIR),
                 live.cancel.clone(),
+                live.record.solver.clone(),
             )
         };
         self.wake.notify_all();
-        let result = self.solver.run_with(&input, &out, &cancel, &mut |e| {
-            self.event(key, &solver_text(e));
-        });
+        let solver = match name.as_str() {
+            "" => Some(self.solver.clone()),
+            name => find_solver(&self.solver_dirs, name).map(|exe| SubprocessSolver {
+                exe,
+                ..self.solver.clone()
+            }),
+        };
+        let result = match solver {
+            Some(solver) => solver.run_with(&input, &out, &cancel, &mut |e| {
+                self.event(key, &solver_text(e));
+            }),
+            None => Err(ApiError::new("run.solver.missing", missing_solver(&name))),
+        };
         let mut inner = self.lock();
         let Some(state) = inner.live.get(key).map(|l| l.record.state) else {
             return;
@@ -556,6 +600,7 @@ impl Service {
             dir,
             instance: random_hex(8),
             solver: config.solver,
+            solver_dirs: config.solver_dirs,
             inner: Mutex::new(Inner::default()),
             wake: Condvar::new(),
         });
@@ -603,9 +648,27 @@ impl Service {
     /// Fix the input as a revision and queue a run of it.
     ///
     /// A retry with the same request ID gets the same run. A submit of a revision that
-    /// already has an active run in the project gets that run, with the outcome `existing`.
-    pub fn submit(&self, project: &str, request: &str, input: &str) -> Result<Ack, Error> {
+    /// already has an active run in the project with the same solver gets that run, with the
+    /// outcome `existing`. `solver` is a name of [`SOLVERS`], or empty for `fh-solve`.
+    pub fn submit(
+        &self,
+        project: &str,
+        request: &str,
+        input: &str,
+        solver: &str,
+    ) -> Result<Ack, Error> {
         check_request(request)?;
+        let solver = match solver {
+            "" => "",
+            s if s == SOLVERS[0] => "",
+            s if SOLVERS.contains(&s) => s,
+            s => {
+                return Err(Error::bad(
+                    "solver.unknown",
+                    format!("no solver {s}. The solvers: {}", SOLVERS.join(", ")),
+                ))
+            }
+        };
         let sh = &self.shared;
         let mut inner = sh.lock();
         stopping(&inner)?;
@@ -617,6 +680,7 @@ impl Service {
         let active = inner.live.values().find(|l| {
             l.record.project == project
                 && l.record.revision == revision
+                && l.record.solver == solver
                 && !l.record.state.is_final()
         });
         let (run, state, outcome) = match active {
@@ -639,6 +703,7 @@ impl Service {
                     revision,
                     input: input.to_owned(),
                     request: request.to_owned(),
+                    solver: solver.to_owned(),
                     state: RunState::Queued,
                     created_ms: now_ms(),
                     started_ms: 0,

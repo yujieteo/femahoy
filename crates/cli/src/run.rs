@@ -6,6 +6,9 @@
 //!   with `case.toml` and one STEP file. It runs `fh mesh` and `fh model` in the work folder
 //!   `<state>/cases/<name>-<hash>`, then solves the input. The work folder is the project
 //!   root, so the case folder does not change.
+//! - The run of a case uses the solver that `case.toml` names in `solver`: the program of that
+//!   name beside `fh`, else on `PATH`. A case with no `solver` uses `fh-solve`. When
+//!   `FH_SOLVE` is set, each run uses the solver of the daemon.
 //! - `fh run --example NAME` writes an example case that `fh` carries to
 //!   `<state>/examples/NAME`, then runs it as a case folder. It works from any folder.
 //!
@@ -573,6 +576,18 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         (None, Some(example)) => resolve(&write_example(&state, example)?)?,
         (None, None) => unreachable!("parse needs a model or an example"),
     };
+    // A case.toml that does not load gives fh-solve here. Then fh mesh tells the cause.
+    let solver = match &input {
+        Input::Case { dir, .. } if std::env::var_os("FH_SOLVE").is_none() => {
+            fh_validation::Case::load_before_mesh(dir).map_or_else(|_| String::new(), |c| c.solver)
+        }
+        _ => String::new(),
+    };
+    if !matches!(solver.as_str(), "" | "fh-solve")
+        && fh_daemon::find_solver(&fh_daemon::solver_dirs(), &solver).is_none()
+    {
+        return Ok(fail(FAILED, &fh_daemon::missing_solver(&solver)));
+    }
     let (client, started) = match daemon(&state) {
         Ok(found) => found,
         Err(e) => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
@@ -629,7 +644,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         }
     };
     let request = new_request_id();
-    let ack = match retry(|| client.submit(&project, &request, &name)) {
+    let ack = match retry(|| client.submit_with_solver(&project, &request, &name, &solver)) {
         Ok(ack) => ack,
         Err(e) if e.status == 0 => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
         Err(e) => return Ok(fail(FAILED, &format!("the daemon refused the run: {e}"))),

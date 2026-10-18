@@ -225,6 +225,9 @@ pub struct RunRecord {
     pub input: String,
     /// The request ID of the submit command.
     pub request: String,
+    /// The solver that the submit named, for example `fh-solve-ccx`. Empty means the solver
+    /// of the daemon (`fh-solve`).
+    pub solver: String,
     pub state: RunState,
     /// Times in milliseconds since the Unix epoch. 0 means not yet.
     pub created_ms: u64,
@@ -242,6 +245,7 @@ impl RunRecord {
         m.set("revision", &self.revision);
         m.set("input", &self.input);
         m.set("request", &self.request);
+        m.set("solver", &self.solver);
         m.set("state", self.state);
         m.set("created_ms", self.created_ms);
         m.set("started_ms", self.started_ms);
@@ -262,6 +266,7 @@ impl RunRecord {
             revision: m.need("revision")?.to_owned(),
             input: m.need("input")?.to_owned(),
             request: m.need("request")?.to_owned(),
+            solver: m.get("solver").unwrap_or_default().to_owned(),
             state: parse_state(m.need("state")?)?,
             created_ms: num("created_ms")?,
             started_ms: num("started_ms")?,

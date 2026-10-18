@@ -231,6 +231,14 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 That daemon stays alive when `fh run` ends. The browser keeps the results, and the next `fh run` uses the same daemon. `fh serve --stop` stops it.
 A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_SOLVE` and `FH_VIEWER`. `fh mesh` uses `FH_GMSH`.
 
+The run of a case uses the solver that the `solver` key of `case.toml` names:
+
+- No `solver` key, or `solver = "fh-solve"`: the solver of the daemon. That is `FH_SOLVE` when set, else `fh-solve` beside `fh`.
+- `solver = "fh-solve-ccx"`: `fh-solve-ccx` beside `fh`, else on `PATH`. The daemon finds the program when the run starts.
+- When `FH_SOLVE` is set for `fh run`, each run uses the solver of the daemon. Thus `FH_SOLVE` wins over the `solver` key.
+
+An `.inp` file uses the solver of the daemon.
+
 The browser opens on `http://127.0.0.1:PORT/?token=TOKEN&project=P&run=R`, the same way as for [`fh serve`](#fh-serve).
 Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
 Before a daemon starts, `fh run` checks the arguments and the input. Thus a usage error starts no daemon.
@@ -240,6 +248,7 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), and the stop command. | 0 |
 | The solver refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder, for example `bad.inp: line 3, *BOGUS: unsupported keyword (INP002)`. | 1 |
 | The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
+| The case names a solver that is not beside `fh` or on `PATH` | `fh run: the solver fh-solve-ccx is not beside fh or on PATH. To install it, see docs/ccx.md (run.solver.missing)`. No daemon starts. | 1 |
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | The daemon refused the project or the run | `fh run: the daemon refused the project: MESSAGE (CODE)` or `the daemon refused the run: ...`, for example `queue.full` | 1 |
 | No input, unknown option, bad value (for example `--order needs 1 or 2`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |

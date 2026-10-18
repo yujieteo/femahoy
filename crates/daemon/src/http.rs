@@ -429,7 +429,12 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
         ("POST", ["", "api", "v1", "projects", p, "runs"]) => {
             let b = body()?;
             m = service
-                .submit(p, b.need("request")?, b.need("input")?)?
+                .submit(
+                    p,
+                    b.need("request")?,
+                    b.need("input")?,
+                    b.get("solver").unwrap_or_default(),
+                )?
                 .to_message();
         }
         ("GET", ["", "api", "v1", "projects", p, "runs", r]) => {

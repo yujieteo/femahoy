@@ -58,13 +58,15 @@ A message is UTF-8 text with one `key=value` line for each field. An empty line 
 | `GET /api/v1/projects` | | one item `<project> <root>` for each project |
 | `POST /api/v1/projects` | `root` | `project`, `root` |
 | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
-| `POST /api/v1/projects/<p>/runs` | `request`, `input` | acknowledgement |
+| `POST /api/v1/projects/<p>/runs` | `request`, `input`, `solver` (optional) | acknowledgement |
 | `GET /api/v1/projects/<p>/runs/<r>` | | run record |
 | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events after `N` |
 | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | the bytes of a file in the run folder `out/`. `name` is a plain file name (letters, digits, `.`, `_`, `-`, no `.` first), else `file.invalid`. A file that is not there gives `file.missing`. |
 
 The `input` of a submit is a path in the project root. A path outside the root fails with `input.outside`.
+
+The `solver` of a submit is `fh-solve` or `fh-solve-ccx`. Any other name fails with `solver.unknown` (400). No `solver`, or `fh-solve`, gives the solver of the daemon. The run record keeps the name in `solver`, empty for the solver of the daemon. When the run starts, the daemon finds `fh-solve-ccx` beside `fh`, else on `PATH`. If it is not there, the run fails with `run.solver.missing`. A submit gets the outcome `existing` only for an active run of the same revision and the same solver.
 
 ## Limits
 
@@ -146,7 +148,7 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 `fh run` is the client of the contract for a person in a terminal ([`fh run`](reference/fh.md#fh-run)):
 
 1. It finds or starts the daemon (rule 6 of "Which process stays alive").
-2. It registers the folder of the input as a project, and submits the input with a new request ID. A retry after a lost connection keeps the request ID.
+2. It registers the folder of the input as a project, and submits the input with a new request ID. A retry after a lost connection keeps the request ID. For a case, the submit has the `solver` of `case.toml`, unless `FH_SOLVE` is set.
 3. It reads the events with `wait_ms=500` and shows them, until the run is final.
 4. On Ctrl+C, it sends a cancel command with a new request ID and continues to read the events. A second Ctrl+C ends `fh run`. The run continues in the daemon until the cancel ends it.
 5. It reads the record. For a run that succeeded, it shows the result folder and `summary.toon`, and opens the page on `&project=P&run=R`.

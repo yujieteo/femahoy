@@ -86,6 +86,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let config = Config {
         state_dir: state.clone(),
         solver: SubprocessSolver::new(dir.join("solver.sh")),
+        solver_dirs: Vec::new(),
     };
     let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     let c = daemon.client();

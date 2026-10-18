@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use fh_solver_api::SubprocessSolver;
 
 use crate::browser::{no_open, open_page};
-use crate::service::LOCK_FILE;
+use crate::service::{solver_dirs, LOCK_FILE};
 use crate::{Client, Config, Daemon, Options};
 
 const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--no-open]\n       \
@@ -76,6 +76,7 @@ pub fn serve_until(
     let config = Config {
         state_dir: state_dir.clone(),
         solver: SubprocessSolver::new(solver),
+        solver_dirs: solver_dirs(),
     };
     options.viewer = viewer_dir();
     let viewer = options.viewer.clone();
