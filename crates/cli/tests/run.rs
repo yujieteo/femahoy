@@ -545,6 +545,44 @@ fn a_case_runs_on_the_solver_that_its_case_toml_names() {
 }
 
 #[test]
+fn preview_shows_the_case_in_the_page_and_the_run_solves_the_same_revision() {
+    let lab = Lab::new("run-preview");
+    let case = root().join("validation/cases/bar-pressure");
+    let out = lab.fh(&["run", p(&case), "--preview"]);
+    succeeds(&out);
+    let text = stdout(&out);
+    assert!(
+        text.contains("fh run: preview: the page shows bar-pressure (rev-"),
+        "{text}"
+    );
+    assert!(text.ends_with("fh run: --preview: no solve\n"), "{text}");
+    // The chat of the page gets the entry `show <project> <revision> <name>`.
+    let c = fh_daemon::Client::discover(&lab.state).unwrap();
+    let chat = c
+        .send("GET", "/api/v1/chat?since=0", None, Duration::ZERO)
+        .unwrap();
+    let show: Vec<&str> = chat
+        .items
+        .iter()
+        .find_map(|i| i.split_once(" show ").map(|(_, t)| t.split(' ').collect()))
+        .unwrap_or_else(|| panic!("{chat:?}"));
+    let [project, revision, name] = show[..] else {
+        panic!("{show:?}");
+    };
+    assert_eq!(name, "bar-pressure");
+    assert!(
+        c.runs(project).unwrap().is_empty(),
+        "a preview solves nothing"
+    );
+
+    let out = lab.fh(&["run", p(&case)]);
+    succeeds(&out);
+    assert!(stdout(&out).contains(&format!("({revision}) with its supports and loads")));
+    let runs = c.runs(project).unwrap();
+    assert_eq!(c.record(project, &runs[0].0).unwrap().revision, revision);
+}
+
+#[test]
 fn a_folder_that_is_not_a_case_exits_2() {
     let lab = Lab::new("run-not-case");
     let case = root().join("validation/cases/bar-pressure");

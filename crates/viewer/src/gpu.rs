@@ -31,6 +31,8 @@ pub struct FrameParams {
     pub contour: bool,
     /// Draw the outline of the undeformed shape.
     pub ghost: bool,
+    /// Colours for the bands in place of the contour colours.
+    pub palette: Option<[[f32; 3]; BANDS]>,
 }
 
 /// New vertex data: the drawn position of each render position, and the position and the
@@ -247,7 +249,8 @@ impl MeshGpu {
                 [0.45, 0.45, 0.52],
             )
         };
-        let bands = BAND_COLORS.map(|c| [c[0], c[1], c[2], 1.0]);
+        let bands = p.palette.unwrap_or(BAND_COLORS);
+        let bands = bands.map(|c| [c[0], c[1], c[2], 1.0]);
         let contour = [if p.contour { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0];
         let put = |layer: &Layer, rgb: [f32; 3], lit: bool| {
             let u = Uniforms {

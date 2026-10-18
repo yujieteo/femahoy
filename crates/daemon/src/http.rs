@@ -28,6 +28,8 @@
 //! | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 //! | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events |
 //! | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
+//! | `POST /api/v1/projects/<p>/preview` | `input`, optional `title` | `revision`: the chat gets a `show` entry, and the page shows the model with its supports and loads |
+//! | `GET /api/v1/projects/<p>/revisions/<rev>` | | the input of the revision (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
 //! | `POST /api/v1/chat` | `text` | `state`: the agent starts on the request |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
@@ -401,6 +403,19 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
             return Ok(Reply::Bytes(
                 "application/octet-stream",
                 service.result_file(p, r, name)?,
+            ));
+        }
+        ("POST", ["", "api", "v1", "projects", p, "preview"]) => {
+            let b = body()?;
+            let input = b.need("input")?;
+            let revision = service.preview(p, input)?;
+            ctx.chat.show(p, &revision, b.get("title").unwrap_or(input));
+            m.set("revision", revision);
+        }
+        ("GET", ["", "api", "v1", "projects", p, "revisions", rev]) => {
+            return Ok(Reply::Bytes(
+                "application/octet-stream",
+                service.revision_file(p, rev)?,
             ));
         }
         ("GET", ["", "api", "v1", "projects"]) => {

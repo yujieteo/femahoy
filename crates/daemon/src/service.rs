@@ -28,8 +28,8 @@ use std::time::{Duration, Instant};
 use fh_solver_api::{ApiError, CancelToken, Event as SolverEvent, SubprocessSolver};
 
 use crate::contract::{
-    now_ms, parse_event, run_id, valid_project, valid_request, valid_run, Ack, Command, Error,
-    Event, Events, Message, Outcome, RunRecord, RunState,
+    now_ms, parse_event, run_id, valid_project, valid_request, valid_revision, valid_run, Ack,
+    Command, Error, Event, Events, Message, Outcome, RunRecord, RunState,
 };
 use crate::random_hex;
 
@@ -744,6 +744,40 @@ impl Service {
         write_atomic(&sh.ack_path(request), &ack.to_message().to_text())?;
         sh.wake.notify_all();
         Ok(ack)
+    }
+
+    /// Fix the input as a revision with no run, so that the page can show the model before
+    /// the solve. A submit of the same bytes later solves this revision.
+    pub fn preview(&self, project: &str, input: &str) -> Result<String, Error> {
+        let sh = &self.shared;
+        let inner = sh.lock();
+        stopping(&inner)?;
+        let path = resolve_input(project_root(&inner, project)?, input)?;
+        sh.fix_revision(project, &path)
+    }
+
+    /// The bytes of the input of a revision, for the page.
+    pub fn revision_file(&self, project: &str, revision: &str) -> Result<Vec<u8>, Error> {
+        if !valid_revision(revision) {
+            return Err(Error::bad(
+                "revision.invalid",
+                format!("bad revision ID {revision:?}"),
+            ));
+        }
+        let path = {
+            let inner = self.shared.lock();
+            project_root(&inner, project)?;
+            let dir = self.shared.project_dir(project).join("revisions");
+            dir.join(revision).join(INPUT_FILE)
+        };
+        fs::read(&path).map_err(|e| match e.kind() {
+            ErrorKind::NotFound => Error::new(
+                404,
+                "revision.unknown",
+                format!("project {project} has no revision {revision}"),
+            ),
+            _ => Error::io("revision", e),
+        })
     }
 
     /// Stop a run. A queued run ends at once. A running run gets `cancelling`, and its

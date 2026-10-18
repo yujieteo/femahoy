@@ -12,6 +12,10 @@
 //! - `fh run --example NAME` writes an example case that `fh` carries to
 //!   `<state>/examples/NAME`, then runs it as a case folder. It works from any folder.
 //!
+//! Before the solve, `fh run` sends the input to the preview route of the daemon, so that
+//! the page shows the model with each support and each load. With `--preview`, `fh run`
+//! stops there and does not solve.
+//!
 //! Which process stays alive: `fh run` uses the daemon of the state folder when one answers.
 //! Else it starts `fh serve --state DIR --no-open` in the background, in its own process
 //! group, with its output in `DIR/daemon.log`. That daemon stays alive when `fh run` ends,
@@ -29,8 +33,8 @@ use std::time::{Duration, Instant};
 use fh_daemon::{new_request_id, Client, Error, Event, Outcome, RunRecord, RunState};
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] \
-[--state DIR] [--no-open]\n       fh run --example NAME [--size H] [--order 1|2] \
-[--state DIR] [--no-open]";
+[--preview] [--state DIR] [--no-open]\n       fh run --example NAME [--size H] [--order 1|2] \
+[--preview] [--state DIR] [--no-open]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -86,6 +90,7 @@ struct Options {
     order: Option<String>,
     state: Option<PathBuf>,
     no_open: bool,
+    preview: bool,
 }
 
 fn example_names() -> String {
@@ -123,6 +128,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--state" => o.state = Some(value("a folder")?.into()),
             "--no-open" => o.no_open = true,
+            "--preview" => o.preview = true,
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
             s if o.target.is_none() => o.target = Some(s.into()),
             s => return Err(format!("unexpected argument: {s}\n{USAGE}")),
@@ -603,10 +609,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             state.join(LOG_FILE).display()
         );
     }
-    let (root, file) = match &input {
+    // The name of the model in the page: the case folder, else the input file.
+    let (root, file, case) = match &input {
         Input::Inp(file) => (
             file.parent().map(Path::to_path_buf).unwrap_or_default(),
             file.clone(),
+            None,
         ),
         Input::Case { dir, step } => {
             let name = dir
@@ -622,7 +630,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             let _lock = lock.map_err(|e| format!("cannot lock {}: {e}", work.display()))?;
             let size = o.size.as_deref().or(example.map(|e| e.size));
             match prepare(&work, dir, step, &o, size)? {
-                Ok(inp) => (work, inp),
+                Ok(inp) => (work, inp, Some(name.into_owned())),
                 Err(code) => return Ok(code),
             }
         }
@@ -632,6 +640,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         .map(|n| text(Path::new(n)))
         .transpose()?
         .unwrap_or_default();
+    let title = case.unwrap_or_else(|| name.clone());
     interrupt::install();
     let project = match retry(|| client.register(&root)) {
         Ok(project) => project,
@@ -643,6 +652,23 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             ))
         }
     };
+    // The page shows the model before the solve. A daemon with no preview route still solves.
+    match (retry(|| client.preview(&project, &name, &title)), o.preview) {
+        (Ok(revision), _) => println!(
+            "fh run: preview: the page shows {title} ({revision}) with its supports and loads"
+        ),
+        (Err(e), false) => println!("fh run: no preview ({e})"),
+        (Err(e), true) => {
+            return Ok(fail(
+                FAILED,
+                &format!("the daemon refused the preview: {e}"),
+            ))
+        }
+    }
+    if o.preview {
+        println!("fh run: --preview: no solve");
+        return Ok(ExitCode::SUCCESS);
+    }
     let request = new_request_id();
     let ack = match retry(|| client.submit_with_solver(&project, &request, &name, &solver)) {
         Ok(ack) => ack,

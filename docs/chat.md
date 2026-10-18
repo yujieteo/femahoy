@@ -8,6 +8,7 @@ The code is in `crates/daemon/src/chat.rs` (the agent process and the routes) an
 - You write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face".
 - The daemon runs 1 agent: Claude Code in headless mode, with your own Claude Code login. femahoy has no agent loop of its own.
 - The agent makes the CAD with build123d, then meshes and solves with `fh` commands. The chat shows each action: the text of the agent, each command with its result, each file that it writes, and the end with the wall time and the cost.
+- Before each solve, the viewer of the page shows the model with each support and each load. When a support or a load is not clear in the request, the agent shows the candidates and asks you. It solves only after your answer.
 - When a run succeeds, the viewer of the page shows its results. A link in the chat shows them again.
 - The browser holds no API key. The agent runs in the daemon.
 
@@ -37,9 +38,35 @@ claude -p --output-format stream-json --verbose --append-system-prompt <agent.md
   [--resume SESSION]
 ```
 
-The request goes on stdin. The instructions are in `crates/daemon/src/agent.md`: write `part.py` and `case.toml`, then `fh info`, then `fh run .`, which runs `fh mesh`, `fh model` and the solve on the daemon of the page.
+The request goes on stdin. The instructions are in `crates/daemon/src/agent.md`: write `part.py` and `case.toml`, then `fh info`, then `fh run .`, which runs `fh mesh`, `fh model`, the preview and the solve on the daemon of the page.
 The agent can use only the `fh` commands, `fh-python` and the file tools. Claude Code refuses each other tool in headless mode.
 The environment of the agent has `FH_STATE` (the state folder of the daemon, so that `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first on `PATH`.
+
+## The model before the solve
+
+A wrong support face or a wrong load direction gives a result that looks correct. Thus the page shows the supports and the loads before each solve.
+
+1. `fh run` makes the input file with `fh mesh` and `fh model`, then sends it to `POST /api/v1/projects/P/preview`.
+2. The daemon keeps the input as a revision, and adds a `show` entry to the chat.
+3. The page opens the entry: it gets the revision and shows the model.
+4. `fh run` then solves the same revision. With `--preview`, it stops before the solve.
+
+The viewer shows:
+
+- the faces of each support in a blue, teal, violet or green colour, and the faces of each load in a red, orange, magenta or yellow colour. The other faces are grey.
+- 1 arrow for each load, in the direction of the total force of the load. The arrow of a push ends on the face. The arrow of a pull or a shear starts on the face.
+- the region name of `case.toml` at each arrow and at each support.
+- a list with each region: its actions (for example `U1 to U3 = 0` or `pressure 1 MPa`), its number of nodes, its area and its total force.
+
+The page reads the solver input, not `case.toml`. Thus it shows the faces that the solver gets.
+A region that has no face shows a warning in the list.
+
+The agent has 1 rule for the supports and the loads (`crates/daemon/src/agent.md`):
+
+- When the request tells the fixed faces, the load face and the load direction, the agent shows the model and solves with no question.
+- Else the agent makes 1 case folder for each candidate and runs `fh run CANDIDATE --preview` for each. The page shows each candidate. The agent asks you which candidate is correct, and stops. After your answer, it solves that candidate.
+
+A link `Supports and loads of NAME before the solve (REVISION)` in the chat shows a candidate again.
 
 ## Routes
 
@@ -50,6 +77,8 @@ The routes have the token and `Origin` rules of the other routes of `fh serve` (
 | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`; one item `<seq> <kind> <text>` for each entry after `N` |
 | `POST /api/v1/chat` | `text` | `state=running`. `chat.empty` for an empty request, 409 `chat.busy` while the agent works |
 | `POST /api/v1/chat/stop` | | `state` |
+| `POST /api/v1/projects/P/preview` | `input`, `title` | `revision`. The chat gets the entry `show`. The errors are those of a submit (`docs/run-contract.md`) |
+| `GET /api/v1/projects/P/revisions/REV` | | the bytes of the input file of the revision. 400 `revision.invalid`, 404 `revision.unknown` |
 
 | Kind | Text |
 |---|---|
@@ -59,6 +88,7 @@ The routes have the token and `Origin` rules of the other routes of `fh serve` (
 | `cmd` | a shell command of the agent, for example `fh run . --size 2.5` |
 | `tool` | another tool and its file, for example `Write /.../part.py` |
 | `out`, `fail` | the result of a tool, or its error (at most 4000 characters) |
+| `show` | `<project> <revision> <title>`: a model before the solve, with its supports and loads |
 | `open` | `<project> <run>`: a run that succeeded during the chat |
 | `end` | `done in S s, N turns, cost C USD`, from the `result` event of the stream |
 
@@ -68,6 +98,9 @@ The daemon keeps the last 4000 entries in memory. A new daemon starts with an em
 ## Tests
 
 `crates/daemon/tests/chat.rs` runs a fake agent that prints a recorded event stream (`crates/daemon/tests/data/agent-*.jsonl`). No test calls a real LLM.
+The test does a preview before the solve. It checks that the `show` entry comes before the `open` entry, and that the run solves the shown revision.
+`crates/daemon/tests/viewer.rs` checks the revision route: the bytes, the token and the `Origin` rules, and each refusal.
+`crates/viewer/src/preview.rs` checks the preview data: the faces of each region, the area, the total force and the direction of each arrow.
 `crates/viewer/src/chat.rs` tests the panel with a fake daemon.
 
 ## M4: the first slice and the open rest
@@ -78,6 +111,7 @@ The first slice of M4 is the M4 exit test: from 1 chat request, 1 agent builds a
 |---|---|
 | 1 agent in headless mode in the chat, with the login of the user (connection path 1) | Built |
 | Each action of the agent in the chat, and the results in the viewer | Built |
+| The supports and the loads in the viewer before each solve, and a question when they are not clear | Built |
 | Fake agent with a recorded event stream in the tests | Built |
 | Connection path 2: the API key of the user in the environment of the agent | Open |
 | More agents in panes, and the tree of the agents | Open |

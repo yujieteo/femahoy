@@ -9,7 +9,7 @@ The solve path does not change. A run starts the protocol v2 solver (`fh-solve`,
 | Word | Meaning |
 |---|---|
 | Project | A root folder. The daemon gives each root one project ID, `p-` and 16 hex digits. |
-| Revision | A read-only copy of the input file at submit time. Its ID is `rev-` and the FNV-1a hash of the bytes. This is the same hash as `source_hash` in the `fh.run` summary. |
+| Revision | A read-only copy of the input file at submit or preview time. Its ID is `rev-` and the FNV-1a hash of the bytes. This is the same hash as `source_hash` in the `fh.run` summary. |
 | Run | One solve of one revision. Its ID is `run-000001`, `run-000002` and so on, in each project. A run has one record. |
 | Request ID | An ID that the client makes for each submit and each cancel. A retry keeps the same ID. |
 | Acknowledgement | The answer to a submit or a cancel. The daemon keeps it on disk. |
@@ -58,13 +58,15 @@ A message is UTF-8 text with one `key=value` line for each field. An empty line 
 | `GET /api/v1/projects` | | one item `<project> <root>` for each project |
 | `POST /api/v1/projects` | `root` | `project`, `root` |
 | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
+| `POST /api/v1/projects/<p>/preview` | `input`, `title` | `revision`. The page shows the model of the revision before the solve (`docs/chat.md`). No run starts. |
+| `GET /api/v1/projects/<p>/revisions/<revision>` | | the bytes of the input file of the revision. `revision.invalid` for a bad ID, `revision.unknown` when the revision is not there. |
 | `POST /api/v1/projects/<p>/runs` | `request`, `input`, `solver` (optional) | acknowledgement |
 | `GET /api/v1/projects/<p>/runs/<r>` | | run record |
 | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events after `N` |
 | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | the bytes of a file in the run folder `out/`. `name` is a plain file name (letters, digits, `.`, `_`, `-`, no `.` first), else `file.invalid`. A file that is not there gives `file.missing`. |
 
-The `input` of a submit is a path in the project root. A path outside the root fails with `input.outside`.
+The `input` of a submit or a preview is a path in the project root. A submit after a preview of the same bytes solves the same revision. A path outside the root fails with `input.outside`.
 
 The `solver` of a submit is `fh-solve` or `fh-solve-ccx`. Any other name fails with `solver.unknown` (400). No `solver`, or `fh-solve`, gives the solver of the daemon. The run record keeps the name in `solver`, empty for the solver of the daemon. When the run starts, the daemon finds `fh-solve-ccx` beside `fh`, else on `PATH`. If it is not there, the run fails with `run.solver.missing`. A submit gets the outcome `existing` only for an active run of the same revision and the same solver.
 

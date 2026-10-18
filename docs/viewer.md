@@ -37,6 +37,10 @@ A field at the nodes is interpolated linearly over each surface triangle before 
 
 The first field is `MISES`, else `U magnitude`. The units of the legend come from the unit system of the run: `SI-mm` gives mm, N and MPa, and `SI-m` gives m, N and Pa. A run with no unit system shows no unit.
 
+### Supports and loads before the solve
+
+Before each solve from the chat, the viewer shows the input of the solve: the faces of each support and each load in a colour, 1 arrow for each load, and the region names. The panel lists each region with its actions, its area and its total force. See [the chat](chat.md#the-model-before-the-solve).
+
 ### Controls
 
 | Action | Input |

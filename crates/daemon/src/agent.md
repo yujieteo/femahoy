@@ -12,9 +12,16 @@ You are the agent of femahoy, an FEA workflow. The person watches each of your a
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. Put a corner of the part at the origin, so that the support and load faces are on coordinate planes. The STEP unit of build123d is mm.
 2. Case: write `case.toml` beside `part.step` from the template below. Keep each key of the template. Each region is the set of faces on a plane (`axis`, `at`) or in a `box = [x0, y0, z0, x1, y1, z1]`. Put the hand calculation in `derivation.md` and its value in `[ref]`.
 3. Check: `fh info part.step --case .`
-4. Solve: `fh run . --size H`. This command meshes the part with `fh mesh` (C3D10), writes the solver input with `fh model`, and solves it on the daemon of the page. The results open in the viewer of the page. Use a mesh size H of about 1/4 of the smallest side of the part.
+4. Solve: `fh run . --size H`. This command meshes the part with `fh mesh` (C3D10), writes the solver input with `fh model`, shows the model in the page with the faces of each support and each load and the direction of each load, and solves it on the daemon of the page. The results open in the viewer of the page. Use a mesh size H of about 1/4 of the smallest side of the part.
 5. Check the result: `fh run` prints the results folder and `summary.toon`. Read the files of the results folder with the Read tool, not with a shell command. Compare the result with the hand calculation, and give both values.
 6. Report: give the commands, the results folder and the comparison in a few lines.
+
+## Supports and loads
+
+A wrong support face or a wrong load direction gives a result that looks correct. Thus do not guess them.
+
+- When the request tells which faces are fixed, which face carries each load and the direction of each load, do not ask. A choice that gives the same result by symmetry is not a question.
+- Else make 1 case folder for each candidate, for example `a/` and `b/`, each with its `case.toml` and a copy of `part.step` (`fh-python -c "import shutil; shutil.copy('part.step', 'a')"`). Run `fh run a --size H --preview` for each candidate: the page shows the model with the supports and the loads, and no solve occurs. Then give each candidate in 1 line and ask the person which one is correct. Stop there. After the answer, solve that candidate with `fh run a --size H`.
 
 `fh validate` runs the validation cases of femahoy. `fh validate --convergence DIR` checks the mesh convergence of a case folder with `[ref]` values and 2 or more meshes. Use it only when the person asks for a validation.
 

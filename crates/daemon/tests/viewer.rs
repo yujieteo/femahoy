@@ -1,5 +1,5 @@
-//! The routes of the wasm viewer: the page, the viewer files, the project list and the
-//! result files of a run. Each one keeps the token and `Origin` rules.
+//! The routes of the wasm viewer: the page, the viewer files, the project list, the result
+//! files of a run and the input of a revision. Each one keeps the token and `Origin` rules.
 
 #![cfg(unix)]
 
@@ -256,4 +256,58 @@ fn the_projects_and_the_result_files_of_a_run() {
     let own = format!("http://127.0.0.1:{}", lab.daemon.port());
     let page = [("Authorization", bearer.as_str()), ("Origin", own.as_str())];
     assert_eq!(lab.get(&file, &page).status, 200);
+}
+
+#[test]
+fn the_model_before_the_solve_is_the_revision_that_the_run_solves() {
+    let lab = Lab::new("preview", false);
+    let c = lab.daemon.client();
+    let project = c.register(&lab.dir.join("project")).unwrap();
+    let input = "** units: SI-mm\n*NODE\n1, 0, 0, 0\n";
+    fs::write(lab.dir.join("project/model.inp"), input).unwrap();
+    let revision = c.preview(&project, "model.inp", "a case").unwrap();
+    assert!(
+        c.runs(&project).unwrap().is_empty(),
+        "a preview solves nothing"
+    );
+    let path = format!("/api/v1/projects/{project}/revisions/{revision}");
+    let bearer = lab.bearer();
+    let own = format!("http://127.0.0.1:{}", lab.daemon.port());
+    let page = [("Authorization", bearer.as_str()), ("Origin", own.as_str())];
+    let answer = lab.get(&path, &page);
+    assert_eq!(
+        (answer.status, answer.body.as_slice()),
+        (200, input.as_bytes())
+    );
+    let ack = c.submit(&project, &new_request_id(), "model.inp").unwrap();
+    assert_eq!(c.record(&project, &ack.run).unwrap().revision, revision);
+
+    // The token and the Origin rules hold, and only a revision of the project is read.
+    assert_eq!(
+        lab.get(&path, &[]).error().as_deref(),
+        Some("token.missing")
+    );
+    let evil = [("Authorization", bearer.as_str()), ("Origin", "null")];
+    assert_eq!(
+        lab.get(&path, &evil).error().as_deref(),
+        Some("origin.refused")
+    );
+    let auth = [("Authorization", bearer.as_str())];
+    let base = format!("/api/v1/projects/{project}/revisions");
+    for (rev, code) in [
+        ("rev-x", "revision.invalid"),
+        ("..", "revision.invalid"),
+        ("rev-0000000000000007", "revision.unknown"),
+    ] {
+        let answer = lab.get(&format!("{base}/{rev}"), &auth);
+        assert_eq!(answer.error().as_deref(), Some(code), "{rev}");
+    }
+    let other = format!("/api/v1/projects/p-0000000000000000/revisions/{revision}");
+    assert_eq!(
+        lab.get(&other, &auth).error().as_deref(),
+        Some("project.unknown")
+    );
+    fs::write(lab.dir.join("outside.inp"), input).unwrap();
+    let outside = c.preview(&project, "../outside.inp", "x").unwrap_err();
+    assert_eq!(outside.code, "input.outside");
 }

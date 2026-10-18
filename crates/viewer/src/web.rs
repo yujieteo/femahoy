@@ -12,8 +12,8 @@ use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::app::{Content, ContentSlot, ViewerApp};
-use crate::chat::{Answer, Chat, Remote, Reply};
-use crate::{results, RESULTS_FILE};
+use crate::chat::{Answer, Chat, Remote, Reply, Target};
+use crate::{preview, results, RESULTS_FILE};
 
 /// The query of the page address: `token`, and `project` and `run` to open a run.
 struct Query {
@@ -119,6 +119,21 @@ async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, Stri
     Ok(Content::Results(Box::new(r)))
 }
 
+/// Fetch the input of a revision and read its supports and loads.
+async fn load_model(
+    token: &str,
+    project: &str,
+    revision: &str,
+    name: &str,
+) -> Result<Content, String> {
+    let path = format!("/api/v1/projects/{project}/revisions/{revision}");
+    let input = text(get(token, &path).await?, &path)?;
+    let model = fh_inp::parse(&input).map_err(|e| format!("{name} ({revision}): {e}"))?;
+    let mut p = preview::build(&model, &preview::units(&input));
+    p.title = name.to_owned();
+    Ok(Content::Preview(Box::new(p)))
+}
+
 /// The runs that have results, newest first, as links to open them.
 async fn list_runs(token: &str) -> Result<Content, String> {
     let projects = text(get(token, "/api/v1/projects").await?, "/api/v1/projects")?;
@@ -210,18 +225,17 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
                         ctx: cc.egui_ctx.clone(),
                         answers: Rc::default(),
                     };
-                    // A run that succeeds during the chat opens in the viewer.
+                    // The model before a solve and a run that succeeds during the chat open
+                    // in the viewer.
                     let (t, ctx) = (token.clone(), cc.egui_ctx.clone());
-                    let open = move |p: &str, r: &str| {
-                        let (t, p, r, fill, ctx) = (
-                            t.clone(),
-                            p.to_owned(),
-                            r.to_owned(),
-                            slot.clone(),
-                            ctx.clone(),
-                        );
+                    let open = move |target: &Target| {
+                        let (t, target, fill, ctx) =
+                            (t.clone(), target.clone(), slot.clone(), ctx.clone());
                         wasm_bindgen_futures::spawn_local(async move {
-                            let content = load_run(&t, &p, &r).await;
+                            let content = match &target {
+                                Target::Run(p, r) => load_run(&t, p, r).await,
+                                Target::Model(p, rev, name) => load_model(&t, p, rev, name).await,
+                            };
                             if let Ok(mut s) = fill.lock() {
                                 *s = Some(content.unwrap_or_else(Content::Failed));
                             }
