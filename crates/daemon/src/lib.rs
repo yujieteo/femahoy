@@ -149,6 +149,7 @@ fn sidebar(o: &Options) -> Result<panes::Sidebar, Error> {
             Ok(sh) if find_program(&sh).is_some() => vec![sh, "-l".into()],
             _ => vec!["/bin/sh".into()],
         });
+    herdr::check_session(&o.herdr_session)?;
     let terminals = Arc::new(pty::Terminals::default());
     let program = o.herdr_program.clone().or_else(|| find_program("herdr"));
     let herdr = match (o.panes, program) {
@@ -181,6 +182,7 @@ fn sidebar(o: &Options) -> Result<panes::Sidebar, Error> {
         panes,
         herdr,
         shell,
+        open_lock: Default::default(),
     })
 }
 

@@ -4,7 +4,7 @@
 //! herdr directly.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::contract::Error;
 use crate::herdr::Herdr;
@@ -17,12 +17,14 @@ pub struct Sidebar {
     /// The herdr of the herdr backend. The pty backend has none.
     pub herdr: Option<Herdr>,
     pub shell: Vec<String>,
+    pub open_lock: Mutex<()>,
 }
 
 impl Sidebar {
     /// Open a terminal of `kind` (`shell` or `herdr`). There is one herdr client at a time:
     /// a second request gets the running one.
     pub fn open(&self, kind: &str) -> Result<Arc<Terminal>, Error> {
+        let _one_open = self.open_lock.lock().unwrap_or_else(|e| e.into_inner());
         let (kind, argv) = match (kind, &self.herdr) {
             ("shell", _) => (Kind::Shell, self.shell.clone()),
             ("herdr", Some(h)) => match self.terminals.running(Kind::Herdr) {
@@ -159,10 +161,14 @@ pub trait PaneBackend: Send + Sync {
 /// Check a pane spec before a backend uses it.
 pub fn check_spec(spec: &PaneSpec) -> Result<(), Error> {
     let t = &spec.title;
-    if t.is_empty() || t.chars().count() > 64 || t.chars().any(char::is_control) {
+    if t.is_empty()
+        || t.chars().count() > 64
+        || t.chars().any(char::is_control)
+        || t.starts_with('-')
+    {
         return Err(Error::bad(
             "pane.title",
-            "a pane title has 1 to 64 characters and no control character",
+            "a pane title has 1 to 64 characters, no control character and no '-' first",
         ));
     }
     if let Some(cwd) = &spec.cwd {
@@ -174,10 +180,12 @@ pub fn check_spec(spec: &PaneSpec) -> Result<(), Error> {
         }
     }
     match &spec.command {
-        Some(c) if c.len() > 4096 || c.chars().any(char::is_control) => Err(Error::bad(
-            "pane.command",
-            "a pane command is one line of at most 4096 bytes",
-        )),
+        Some(c) if c.len() > 4096 || c.chars().any(char::is_control) || c.starts_with('-') => {
+            Err(Error::bad(
+                "pane.command",
+                "a pane command is one line of at most 4096 bytes and does not start with '-'",
+            ))
+        }
         _ => Ok(()),
     }
 }

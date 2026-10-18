@@ -31,6 +31,8 @@ use crate::screen::{self, cursor, mode, style, Screen, Span};
 pub const MAX_TERMINALS: usize = 16;
 /// The lines of scrollback of each terminal.
 pub const HISTORY: usize = 10_000;
+/// The most zero-width marks that the daemon sends for one cell.
+const MAX_MARKS: usize = 16;
 const START_SIZE: (u16, u16) = (100, 30);
 /// The time that a program gets to end after SIGHUP, and again after SIGKILL.
 const END_WAIT: Duration = Duration::from_secs(1);
@@ -328,11 +330,13 @@ impl Terminal {
             cols.clamp(2, screen::MAX_COLS),
             rows.clamp(1, screen::MAX_ROWS),
         );
+        let mut term = self.term.lock();
         if self.shared.live.lock().unwrap().size == (cols, rows) {
             return Ok(());
         }
         self.send(Msg::Resize(window(cols, rows)))?;
-        self.term.lock().resize(size(cols, rows));
+        term.resize(size(cols, rows));
+        drop(term);
         self.shared.update(|l| l.size = (cols, rows));
         Ok(())
     }
@@ -343,7 +347,7 @@ impl Terminal {
         let to = if lines == 0 {
             Scroll::Bottom
         } else {
-            Scroll::Delta(lines)
+            Scroll::Delta(lines.clamp(-(HISTORY as i32), HISTORY as i32))
         };
         self.term.lock().scroll_display(to);
         self.shared.update(|_| {});
@@ -493,22 +497,28 @@ fn row_spans(row: &alacritty_terminal::grid::Row<Cell>, cols: usize, colors: &Co
             continue;
         }
         let (fg, bg, mut st) = cell_style(cell, colors);
-        let wide = cell.flags.contains(Flags::WIDE_CHAR);
+        let wide = cell.flags.contains(Flags::WIDE_CHAR) && c + 1 < cols;
         if wide {
             st |= style::WIDE;
         }
         let mut text = String::new();
+        let mut marks = false;
         if cell.flags.contains(Flags::LEADING_WIDE_CHAR_SPACER)
             || cell.flags.contains(Flags::HIDDEN)
+            || (cell.flags.contains(Flags::WIDE_CHAR) && !wide)
         {
             text.push(' ');
         } else {
             text.push(cell.c);
-            text.extend(cell.zerowidth().into_iter().flatten());
+            let before = text.len();
+            text.extend(cell.zerowidth().into_iter().flatten().take(MAX_MARKS));
+            marks = text.len() > before;
         }
         match spans.last_mut() {
             Some(s)
                 if !wide
+                    && !marks
+                    && s.cols as usize == s.text.chars().count()
                     && s.style == st
                     && s.fg == fg
                     && s.bg == bg
@@ -785,6 +795,59 @@ mod tests {
         t.close();
         assert_eq!(t.info().state, "closed");
         assert!(t.write(b"x").is_err());
+    }
+
+    #[test]
+    fn a_scroll_request_of_any_size_stays_in_the_scrollback() {
+        let terms = Terminals::default();
+        let t = terms.open(sh("seq 1 100; sleep 30")).unwrap();
+        wait_for(&t, |t| t.text(1) == "100");
+        t.scroll(1);
+        t.scroll(i32::MAX);
+        assert_eq!(t.screen().scrolled, t.screen().history);
+        t.scroll(i32::MIN);
+        assert_eq!(t.screen().scrolled, 0);
+        t.close();
+    }
+
+    #[test]
+    fn rows_split_clusters_and_keep_a_wide_cell_inside_the_row() {
+        use alacritty_terminal::grid::Row;
+        let colors = Colors::default();
+        let mut row = Row::<Cell>::new(8);
+        for (i, ch) in "ab".chars().enumerate() {
+            row[Column(i)].c = ch;
+        }
+        row[Column(2)].c = 'e';
+        row[Column(2)].push_zerowidth('\u{301}');
+        row[Column(3)].c = 'c';
+        row[Column(4)].c = 'd';
+        row[Column(7)].c = '界';
+        row[Column(7)].flags.insert(Flags::WIDE_CHAR);
+        row[Column(7)].bg = Color::Spec(alacritty_terminal::vte::ansi::Rgb { r: 1, g: 2, b: 3 });
+        let spans = row_spans(&row, 8, &colors);
+        let got: Vec<_> = spans
+            .iter()
+            .map(|s| (s.col, s.cols, s.text.as_str()))
+            .collect();
+        assert_eq!(
+            got,
+            [(0, 2, "ab"), (2, 1, "e\u{301}"), (3, 2, "cd"), (7, 1, " ")]
+                .map(|(a, b, c)| (a, b, c)),
+        );
+        assert_eq!(spans[3].style & style::WIDE, 0);
+    }
+
+    #[test]
+    fn a_cell_sends_at_most_16_marks() {
+        use alacritty_terminal::grid::Row;
+        let mut row = Row::<Cell>::new(2);
+        row[Column(0)].c = 'a';
+        for _ in 0..40_000 {
+            row[Column(0)].push_zerowidth('\u{301}');
+        }
+        let spans = row_spans(&row, 2, &Colors::default());
+        assert_eq!(spans[0].text.chars().count(), 1 + MAX_MARKS);
     }
 
     #[test]

@@ -171,7 +171,10 @@ impl Screen {
                 let text =
                     std::str::from_utf8(r.take(len)?).map_err(|_| "text that is not UTF-8")?;
                 if n == 0 || col as u32 + n as u32 > cols as u32 {
-                    return Err(format!("a span over columns {col}..{} of {cols}", col + n));
+                    return Err(format!(
+                        "a span over columns {col}..{} of {cols}",
+                        col as u32 + n as u32
+                    ));
                 }
                 let text = text.to_owned();
                 spans.push(Span {
@@ -230,10 +233,10 @@ fn control(key: Key) -> Option<u8> {
 
 /// The bytes of a key press as xterm sends them, or `None` when the key is text (a `Text`
 /// event brings it) or a shortcut of the browser: Command on macOS, Control with Shift and a
-/// letter, and Control+V on the other systems, which pastes.
-pub fn key_bytes(key: Key, m: Modifiers, modes: u32) -> Option<Vec<u8>> {
+/// letter, and Control+V on the other systems, which pastes. On macOS, Control+V is a key.
+pub fn key_bytes(key: Key, m: Modifiers, modes: u32, mac: bool) -> Option<Vec<u8>> {
     let letter = LETTERS.contains(&key);
-    if m.mac_cmd || (m.ctrl && m.shift && letter) || (m.command && m.ctrl && key == Key::V) {
+    if m.mac_cmd || (m.ctrl && m.shift && letter) || (!mac && m.ctrl && key == Key::V) {
         return None;
     }
     // The xterm modifier parameter: 1 + Shift + 2 Alt + 4 Control.
@@ -290,12 +293,12 @@ pub fn key_bytes(key: Key, m: Modifiers, modes: u32) -> Option<Vec<u8>> {
 }
 
 /// The bytes of a paste. A new line is Enter. In bracketed paste mode the text goes between
-/// the paste brackets, and the text cannot close the bracket early.
+/// the paste brackets, and the text has no Escape, so it cannot close the bracket early.
 pub fn paste_bytes(text: &str, modes: u32) -> Vec<u8> {
     let text = text.replace("\r\n", "\r").replace('\n', "\r");
     match modes & mode::BRACKETED_PASTE {
         0 => text.into_bytes(),
-        _ => format!("\x1b[200~{}\x1b[201~", text.replace("\x1b[201~", "")).into_bytes(),
+        _ => format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', "")).into_bytes(),
     }
 }
 
@@ -362,6 +365,12 @@ pub fn mouse_bytes(
     Some([&b"\x1b[M"[..], &[32 + code], &pos(x)?, &pos(y)?].concat())
 }
 
+/// A span of one cell, or a wide span, is one cluster in its first cell: the daemon sends a
+/// cell with zero-width marks as its own span. Other spans have one character for each cell.
+fn one_cell(s: &Span) -> bool {
+    s.cols == 1 || s.style & style::WIDE != 0
+}
+
 /// The text of each cell of a row. A wide character, or text with combining marks, is in its
 /// first cell, and the other cells of its span are empty.
 fn row_cells(screen: &Screen, row: usize) -> Vec<String> {
@@ -369,7 +378,7 @@ fn row_cells(screen: &Screen, row: usize) -> Vec<String> {
     for s in screen.lines.get(row).into_iter().flatten() {
         let (start, n) = (s.col as usize, s.cols as usize);
         let chars: Vec<char> = s.text.chars().collect();
-        if s.style & style::WIDE == 0 && chars.len() == n {
+        if !one_cell(s) && chars.len() == n {
             for (i, c) in chars.iter().enumerate() {
                 cells[start + i] = c.to_string();
             }
@@ -493,9 +502,16 @@ impl Term {
         Ok(())
     }
 
-    fn type_bytes(&mut self, bytes: &[u8]) {
-        if !bytes.is_empty() && self.connection == Connection::Open && self.exit.is_none() {
+    fn report(&mut self, bytes: &[u8]) -> bool {
+        let live = !bytes.is_empty() && self.connection == Connection::Open && self.exit.is_none();
+        if live {
             self.out.push(input_message(bytes));
+        }
+        live
+    }
+
+    fn type_bytes(&mut self, bytes: &[u8]) {
+        if self.report(bytes) {
             self.selection = None;
         }
     }
@@ -515,7 +531,9 @@ impl Term {
             self.out.push(resize_message(want.0, want.1));
             self.sent_size = Some(want);
         }
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let id = egui::Id::new(("fh-terminal", &self.id));
+        let response = ui.interact(rect, id, egui::Sense::click_and_drag());
         let response = response.on_hover_cursor(egui::CursorIcon::Text);
         self.input(ui, rect, &response, (cw, ch));
         self.paint(ui, rect, &font, (cw, ch));
@@ -542,7 +560,7 @@ impl Term {
         if focused != self.focused {
             self.focused = focused;
             if modes & mode::FOCUS_IN_OUT != 0 {
-                self.type_bytes(if focused { b"\x1b[I" } else { b"\x1b[O" });
+                self.report(if focused { b"\x1b[I" } else { b"\x1b[O" });
             }
         }
         let (sc, sr) = (self.screen.cols.max(1) - 1, self.screen.rows.max(1) - 1);
@@ -643,7 +661,7 @@ impl Term {
                             && modes & mode::ALTERNATE_SCROLL != 0
                         {
                             let key = if up { Key::ArrowUp } else { Key::ArrowDown };
-                            send.extend(key_bytes(key, Modifiers::NONE, modes));
+                            send.extend(key_bytes(key, Modifiers::NONE, modes, mac));
                         }
                     }
                     if modes & (mode::MOUSE | mode::ALT_SCREEN) == 0 {
@@ -663,10 +681,21 @@ impl Term {
                     modifiers,
                     ..
                 } => {
-                    send.extend(key_bytes(*key, *modifiers, modes));
+                    let copy = !mac
+                        && *key == Key::C
+                        && modifiers.ctrl
+                        && !modifiers.shift
+                        && !modifiers.alt;
+                    match self.selection.filter(|(a, b)| copy && a != b) {
+                        Some((a, b)) => {
+                            ui.ctx().copy_text(selected_text(&self.screen, a, b));
+                            self.selection = None;
+                        }
+                        None => send.extend(key_bytes(*key, *modifiers, modes, mac)),
+                    }
                 }
                 egui::Event::Paste(t) => send.push(paste_bytes(t, modes)),
-                egui::Event::Copy | egui::Event::Cut => {
+                egui::Event::Copy => {
                     if let Some((a, b)) = self.selection {
                         ui.ctx().copy_text(selected_text(&self.screen, a, b));
                     }
@@ -694,7 +723,7 @@ impl Term {
                     p.rect_filled(r, 0.0, rgb(span.bg));
                 }
                 let fg = rgb(span.fg);
-                if span.text.is_ascii() || span.style & style::WIDE != 0 {
+                if span.text.is_ascii() || one_cell(span) {
                     draw_text(&p, r.min, &span.text, font, fg, span.style);
                 } else {
                     // One character for each cell, so that a glyph of another font keeps the grid.
@@ -918,7 +947,11 @@ mod tests {
             command: true,
             ..none
         };
-        let mac_ctrl = Modifiers { ctrl: true, ..none };
+        let mac_ctrl = Modifiers {
+            ctrl: true,
+            command: true,
+            ..none
+        };
         let mac_cmd = Modifiers {
             mac_cmd: true,
             command: true,
@@ -929,7 +962,8 @@ mod tests {
             shift: true,
             ..none
         };
-        let k = |key, m, modes| key_bytes(key, m, modes).map(|b| String::from_utf8(b).unwrap());
+        let k =
+            |key, m, modes| key_bytes(key, m, modes, false).map(|b| String::from_utf8(b).unwrap());
         let cases = [
             (Key::ArrowUp, none, 0, Some("\x1b[A")),
             (Key::ArrowUp, none, mode::APP_CURSOR, Some("\x1bOA")),
@@ -953,7 +987,6 @@ mod tests {
             (Key::D, ctrl, 0, Some("\x04")),
             (Key::OpenBracket, ctrl, 0, Some("\x1b")),
             (Key::Space, ctrl, 0, Some("\0")),
-            (Key::V, mac_ctrl, 0, Some("\x16")),
             // Shortcuts of the browser and text keys give no bytes.
             (Key::V, ctrl, 0, None),
             (
@@ -974,6 +1007,10 @@ mod tests {
         for (key, m, modes, want) in cases {
             assert_eq!(k(key, m, modes).as_deref(), want, "{key:?} {m:?} {modes}");
         }
+        // On macOS, Control+V is a key and Command+V pastes.
+        let mac = |key, m| key_bytes(key, m, 0, true);
+        assert_eq!(mac(Key::V, mac_ctrl), Some(vec![0x16]));
+        assert_eq!(mac(Key::V, mac_cmd), None);
     }
 
     #[test]
@@ -981,7 +1018,11 @@ mod tests {
         assert_eq!(paste_bytes("a\nb\r\nc", 0), b"a\rb\rc");
         let evil = "rm x\x1b[201~\nreboot\n";
         let pasted = String::from_utf8(paste_bytes(evil, mode::BRACKETED_PASTE)).unwrap();
-        assert_eq!(pasted, "\x1b[200~rm x\rreboot\r\x1b[201~");
+        assert_eq!(pasted, "\x1b[200~rm x[201~\rreboot\r\x1b[201~");
+        let nested = "echo hi\x1b[20\x1b[201~1~\rid\r";
+        let pasted = paste_bytes(nested, mode::BRACKETED_PASTE);
+        assert_eq!(pasted, b"\x1b[200~echo hi[20[201~1~\rid\r\x1b[201~");
+        assert_eq!(pasted.windows(6).filter(|w| w == b"\x1b[201~").count(), 1);
         let none = Modifiers::NONE;
         let ctrl = Modifiers { ctrl: true, ..none };
         let at = Cell { row: 4, col: 9 };
@@ -1038,5 +1079,176 @@ mod tests {
         assert_eq!(selected_text(&s, cell(1, 1), cell(0, 0)), "$ ok\n界");
         assert_eq!(selected_text(&s, cell(0, 4), cell(0, 5)), "");
         assert_eq!(selected_text(&s, cell(1, 0), cell(9, 9)), "界");
+    }
+
+    #[test]
+    fn a_cell_with_marks_is_one_cluster_in_its_cell() {
+        let mut s = sample();
+        s.cols = 6;
+        let span = |col, cols, text: &str| Span {
+            col,
+            cols,
+            bg: 0x181818,
+            text: text.into(),
+            ..Span::default()
+        };
+        s.lines[0] = vec![span(0, 1, "e\u{301}"), span(1, 2, "ab"), span(3, 1, "x")];
+        let cells = row_cells(&s, 0);
+        assert_eq!(cells[..4], ["e\u{301}", "a", "b", "x"]);
+        let cell = |row, col| Cell { row, col };
+        assert_eq!(selected_text(&s, cell(0, 1), cell(0, 3)), "abx");
+        assert_eq!(selected_text(&s, cell(0, 0), cell(0, 0)), "e\u{301}");
+    }
+
+    struct Frame {
+        ctx: egui::Context,
+        pos: Pos2,
+    }
+
+    impl Frame {
+        fn new(os: egui::os::OperatingSystem) -> Frame {
+            let ctx = egui::Context::default();
+            ctx.set_os(os);
+            Frame {
+                ctx,
+                pos: Pos2::ZERO,
+            }
+        }
+
+        fn run(&mut self, t: &mut Term, events: Vec<egui::Event>) -> Vec<String> {
+            let raw = egui::RawInput {
+                events,
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 200.0))),
+                ..Default::default()
+            };
+            let mut out = self.ctx.run_ui(raw, |ui| {
+                t.ui(ui);
+            });
+            out.textures_delta.clear();
+            out.platform_output
+                .commands
+                .into_iter()
+                .filter_map(|c| match c {
+                    egui::OutputCommand::CopyText(s) => Some(s),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn click(&self, pressed: bool) -> egui::Event {
+            egui::Event::PointerButton {
+                pos: self.pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            }
+        }
+    }
+
+    fn open_term() -> Term {
+        let mut t = Term::new("t1", "shell");
+        t.opened();
+        t.receive(&fixture()).unwrap();
+        t.out.clear();
+        t
+    }
+
+    fn select_and_press(
+        os: egui::os::OperatingSystem,
+        key: Key,
+        m: Modifiers,
+    ) -> (Vec<Vec<u8>>, Vec<String>, bool) {
+        let mut f = Frame::new(os);
+        let mut t = open_term();
+        f.pos = egui::pos2(2.0, 2.0);
+        f.run(&mut t, vec![f.click(true)]);
+        f.pos = egui::pos2(40.0, 2.0);
+        f.run(
+            &mut t,
+            vec![egui::Event::PointerMoved(f.pos), f.click(false)],
+        );
+        t.out.clear();
+        let had = t.selection.is_some();
+        assert!(had, "the drag made no selection");
+        let press = egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: m,
+        };
+        let copied = f.run(&mut t, vec![press]);
+        let sent: Vec<_> = t
+            .out
+            .iter()
+            .filter(|m| m[0] == MSG_INPUT)
+            .cloned()
+            .collect();
+        (sent, copied, t.selection.is_some())
+    }
+
+    #[test]
+    fn control_c_copies_a_selection_on_other_systems_and_never_cuts() {
+        use egui::os::OperatingSystem::{Mac, Windows};
+        let ctrl = Modifiers {
+            ctrl: true,
+            command: true,
+            ..Modifiers::NONE
+        };
+        let (sent, copied, kept) = select_and_press(Windows, Key::C, ctrl);
+        assert_eq!(
+            (sent.len(), copied.len(), kept),
+            (0, 1, false),
+            "{copied:?}"
+        );
+        assert!(!copied[0].is_empty());
+        let (sent, copied, _) = select_and_press(Windows, Key::X, ctrl);
+        assert_eq!((sent, copied.len()), (vec![vec![1, 0x18]], 0));
+        let ctrl_mac = Modifiers {
+            ctrl: true,
+            command: true,
+            ..Modifiers::NONE
+        };
+        let (sent, copied, _) = select_and_press(Mac, Key::C, ctrl_mac);
+        assert_eq!((sent, copied.len()), (vec![vec![1, 3]], 0));
+    }
+
+    #[test]
+    fn control_c_with_no_selection_sends_the_interrupt() {
+        let mut f = Frame::new(egui::os::OperatingSystem::Windows);
+        let mut t = open_term();
+        f.pos = egui::pos2(2.0, 2.0);
+        f.run(&mut t, vec![f.click(true), f.click(false)]);
+        let ctrl = Modifiers {
+            ctrl: true,
+            command: true,
+            ..Modifiers::NONE
+        };
+        let key = egui::Event::Key {
+            key: Key::C,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: ctrl,
+        };
+        let copied = f.run(&mut t, vec![key, egui::Event::Copy]);
+        assert!(copied.is_empty());
+        assert!(t.out.contains(&vec![1, 3]), "{:?}", t.out);
+    }
+
+    #[test]
+    fn a_focus_report_keeps_the_selection() {
+        let mut f = Frame::new(egui::os::OperatingSystem::Windows);
+        let mut t = open_term();
+        t.screen.modes |= mode::FOCUS_IN_OUT;
+        f.pos = egui::pos2(2.0, 2.0);
+        f.run(&mut t, vec![f.click(true)]);
+        f.pos = egui::pos2(40.0, 2.0);
+        f.run(
+            &mut t,
+            vec![egui::Event::PointerMoved(f.pos), f.click(false)],
+        );
+        assert!(t.out.contains(&vec![1, 0x1b, b'[', b'I']), "{:?}", t.out);
+        assert!(t.selection.is_some());
     }
 }

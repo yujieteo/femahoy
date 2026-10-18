@@ -289,7 +289,16 @@ pub(crate) fn attach(stream: TcpStream, t: Arc<Terminal>) {
     };
     let out = Arc::new(Mutex::new(stream));
     let gone = Arc::new(AtomicBool::new(false));
-    let send = |op: u8, payload: &[u8]| write_frame(&mut *out.lock().unwrap(), op, payload, None);
+    let send = |op: u8, payload: &[u8]| {
+        let mut stream = out.lock().unwrap();
+        if gone.load(Ordering::SeqCst) {
+            return Err(io::ErrorKind::BrokenPipe.into());
+        }
+        if op == OP_CLOSE {
+            gone.store(true, Ordering::SeqCst);
+        }
+        write_frame(&mut *stream, op, payload, None)
+    };
     std::thread::scope(|s| {
         s.spawn(|| {
             let mut r = io::BufReader::new(read_half);

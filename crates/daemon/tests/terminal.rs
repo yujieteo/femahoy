@@ -16,22 +16,52 @@ use fh_daemon::screen::{self, input_message, resize_message};
 use fh_daemon::{Client, Config, Daemon, Error, Message, Options, PaneChoice, HERDR_COMMANDS};
 use fh_solver_api::SubprocessSolver;
 
-fn dir(name: &str) -> PathBuf {
+/// A test folder that goes away when the test ends.
+struct TestDir(PathBuf);
+
+impl std::ops::Deref for TestDir {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for TestDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn dir(name: &str) -> TestDir {
     let d = Path::new(env!("CARGO_TARGET_TMPDIR"))
         .join(format!("fh-term-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&d);
     fs::create_dir_all(&d).unwrap();
-    d
+    TestDir(d)
 }
 
+/// Start a daemon. A script that a test has just written can give `Text file busy` on
+/// Linux while another test forks a PTY child, so a start tries again for that error.
 fn start(dir: &Path, options: Options) -> Result<Daemon, Error> {
-    let solver = SubprocessSolver::new("/bin/false");
-    let config = Config {
-        state_dir: dir.join("state"),
-        solver,
-    };
     let shell = Some(vec!["/bin/sh".into()]);
-    Daemon::start_with_options(config, 0, Options { shell, ..options })
+    let mut tries = 0;
+    loop {
+        let config = Config {
+            state_dir: dir.join("state"),
+            solver: SubprocessSolver::new("/bin/false"),
+        };
+        let options = Options {
+            shell: shell.clone(),
+            ..options.clone()
+        };
+        match Daemon::start_with_options(config, 0, options) {
+            Err(e) if e.message.contains("Text file busy") && tries < 40 => {
+                tries += 1;
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            other => return other,
+        }
+    }
 }
 
 /// Send `route` ("GET /path" or "POST /path"), with `fields` as the body of a POST.
@@ -216,14 +246,17 @@ fn pty_panes_run_commands_and_take_keys() {
     let folder = format!("fh-term-pty-{}", std::process::id());
     assert!(text.contains(&folder), "{text}");
     let send = format!("POST /api/v1/panes/{id}/send");
-    call(&c, &send, &[("text", "echo again"), ("keys", "enter")]).unwrap();
-    wait_text(&c, &format!("/api/v1/panes/{id}/text?lines=2"), "again");
+    let typed = [("text", "echo again-$((1+1))"), ("keys", "enter")];
+    call(&c, &send, &typed).unwrap();
+    wait_text(&c, &format!("/api/v1/panes/{id}/text?lines=2"), "again-2");
     let list = call(&c, "GET /api/v1/panes", &[]).unwrap().items;
     assert_eq!(list, [format!("{id} running {id} build")]);
     let bad = call(&c, &send, &[("keys", "enter bogus")]).unwrap_err();
     assert_eq!((bad.status, bad.code.as_str()), (400, "pane.key"));
     for (fields, error) in [
         (&[("title", "")][..], "pane.title"),
+        (&[("title", "--clear")], "pane.title"),
+        (&[("title", "x"), ("command", "-rf")], "pane.command"),
         (&[("title", "x"), ("cwd", "relative")], "pane.cwd"),
         (&[("cwd", "/")], "field.missing"),
     ] {
@@ -254,7 +287,7 @@ shift 2
 case "$1 $2" in
 "status --json") echo '{"client":{"version":"9.9.9"},"server":{"running":true}}' ;;
 "workspace list") [ -e "$0.ws" ] && echo '{"result":{"workspaces":[{"label":"femahoy","workspace_id":"w1"}]}}' || echo '{"result":{"workspaces":[]}}' ;;
-"workspace create") touch "$0.ws"; echo '{"result":{"root_pane":{"pane_id":"w1:p1"}}}' ;;
+"workspace create") sleep 0.3; touch "$0.ws"; echo '{"result":{"root_pane":{"pane_id":"w1:p1"}}}' ;;
 "tab create") echo '{"result":{"root_pane":{"pane_id":"w1:p2"}}}' ;;
 "pane get") case "$3" in w1:p9) echo '{"error":{"code":"pane_not_found","message":"pane w1:p9 not found"}}' >&2; exit 1 ;; w1:*) echo "{\"result\":{\"pane\":{\"pane_id\":\"$3\",\"workspace_id\":\"w1\"}}}" ;; *) echo '{"result":{"pane":{"pane_id":"w2:p1","workspace_id":"w2"}}}' ;; esac ;;
 "pane list") echo '{"result":{"panes":[{"pane_id":"w1:p1","label":"one"},{"pane_id":"w1:p2","label":"two"}]}}' ;;
@@ -361,13 +394,53 @@ fn the_herdr_backend_calls_only_its_own_session() {
     assert_eq!(code(start(&d, broken(PaneChoice::Herdr))), "pane.herdr");
 }
 
+#[test]
+fn the_session_name_is_checked_for_each_backend() {
+    let d = dir("session");
+    for panes in [PaneChoice::Pty, PaneChoice::Auto, PaneChoice::Herdr] {
+        let options = Options {
+            panes,
+            herdr_session: "default".into(),
+            ..Options::default()
+        };
+        assert_eq!(code(start(&d, options)), "pane.herdr.session", "{panes:?}");
+    }
+}
+
+#[test]
+fn two_opens_at_once_make_one_workspace() {
+    let d = dir("race");
+    let daemon = start(&d, herdr(&d, FAKE_HERDR, "fh-test", PaneChoice::Herdr)).unwrap();
+    let cwd = d.display().to_string();
+    let ids: Vec<String> = std::thread::scope(|s| {
+        ["one", "two"]
+            .map(|title| {
+                let (c, cwd) = (daemon.client(), cwd.clone());
+                s.spawn(move || {
+                    let fields = [("title", title), ("cwd", cwd.as_str())];
+                    let p = call(&c, "POST /api/v1/panes", &fields).unwrap();
+                    p.need("pane").unwrap().to_owned()
+                })
+            })
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect()
+    });
+    assert_eq!(ids.len(), 2);
+    let log = fs::read_to_string(d.join("herdr.log")).unwrap();
+    let made = log
+        .lines()
+        .filter(|l| l.contains("workspace create"))
+        .count();
+    assert_eq!(made, 1, "{log}");
+}
+
 /// The real herdr, only on a lab session that the caller provisioned and tears down.
 #[test]
+#[ignore = "needs FH_TEST_HERDR_SESSION, a provisioned fm-lab- session (docs/terminal.md)"]
 fn herdr_lab_session() {
-    let Ok(session) = std::env::var("FH_TEST_HERDR_SESSION") else {
-        eprintln!("skipped: set FH_TEST_HERDR_SESSION to a provisioned fm-lab- session");
-        return;
-    };
+    let session = std::env::var("FH_TEST_HERDR_SESSION")
+        .expect("set FH_TEST_HERDR_SESSION to a provisioned fm-lab- session (docs/terminal.md)");
     assert!(
         session.starts_with("fm-lab-"),
         "only a lab session, never {session:?}"

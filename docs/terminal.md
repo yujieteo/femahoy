@@ -22,7 +22,7 @@ fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME
 | `--panes auto` | yes | herdr when `herdr status --json` answers, else pty |
 | `--panes herdr` | | herdr, or an error at start (`pane.herdr.absent`, `pane.herdr`) |
 | `--panes pty` | | plain PTYs that the daemon owns, also when herdr is installed |
-| `--herdr-session NAME` | `femahoy` | the herdr session that femahoy owns. `default` is refused (`pane.herdr.session`) |
+| `--herdr-session NAME` | `femahoy` | the herdr session that femahoy owns. `default` is refused at start with each backend (`pane.herdr.session`) |
 | `--herdr PATH` | `herdr` on `PATH` | the herdr program |
 
 `fh serve` prints one line for the backend, for example:
@@ -64,9 +64,10 @@ Keys and mouse:
 - Click the terminal to give it the keys. A frame shows which terminal has the keys.
 - Tab, the arrow keys and Esc go to the program, not to the page.
 - Ctrl with a letter sends the control character. Alt with a key sends Esc before the key, but not on macOS, where Option types characters.
-- Drag with the mouse to select text. The copy key of the browser (Cmd+C on macOS) copies the selection. The paste key of the browser pastes. In bracketed paste mode, the program gets the paste as one block.
+- Drag with the mouse to select text. On macOS, Cmd+C copies the selection, and Ctrl+C sends the interrupt (`0x03`). On the other systems, Ctrl+C with a selection copies it, clears the selection and sends nothing. Ctrl+C with no selection sends `0x03` and copies nothing. Ctrl+X only sends `0x18`: a terminal never cuts.
+- The paste key of the browser pastes (Cmd+V on macOS, Ctrl+V or Ctrl+Shift+V on the other systems). On macOS, Ctrl+V sends `0x16`. In bracketed paste mode, the program gets the paste as one block, and the page removes each Esc character from the pasted text so that the text cannot end the block early.
 - When a program asks for the mouse, the clicks, the drags and the wheel go to the program. Hold Shift to select text.
-- The wheel scrolls the scrollback of the daemon. A box at the top right shows how many lines are above the bottom. A key press goes back to the bottom.
+- The wheel scrolls the scrollback of the daemon on the normal screen. On the alternate screen, the wheel sends the arrow keys when the program has alternate scroll, and nothing else. A program with mouse mode gets mouse reports. A box at the top right shows how many lines are above the bottom. A key press goes back to the bottom.
 
 Limits of the page:
 
@@ -93,10 +94,10 @@ Limits:
 | Terminals at the same time | 16. When the list is full, a new terminal removes the oldest ended one, else fails with 503 `term.limit`. |
 | Terminal WebSockets at the same time | 16 (503 `term.busy`) |
 | Scrollback | 10000 lines |
-| Size | 1 to 500 columns, 1 to 200 rows |
+| Size | 2 to 500 columns, 1 to 200 rows |
 
 States: `running`, `exited` (the program ended, the record stays) and `closed`.
-A close sends SIGHUP to the process group of the program. If the program continues, the daemon sends SIGKILL after 1 second.
+A close sends SIGHUP to the process group of the program. If the program continues, the daemon sends SIGKILL after 1 second. SIGHUP and SIGKILL go to the process group of the program only. A job in another process group that ignores SIGHUP continues, as in other terminal programs.
 When the daemon stops, it closes each terminal. A herdr pane stays in herdr.
 
 ## Pane backends
@@ -229,6 +230,8 @@ Each span: cells with the same colours and style.
 | n | UTF-8 text |
 
 A cell with no span is a space with the default colours.
+A cell that has zero-width marks (for example a combining accent) is its own span, with the base character and at most 16 marks in the text. A span of one column, or with the wide style, shows its whole text as one cluster in its first cell. Each other span has one character for each column.
+A wide character in the last column has no room for its second cell, so the daemon sends a space of one column.
 The first message to a client has all rows. Each later message has only the rows that changed. The daemon sends no message when nothing changed.
 A change of the size sends all rows again.
 
@@ -270,7 +273,7 @@ The daemon applies the inverse, dim and hidden attributes to the colours before 
 | `a_shell_runs_over_the_websocket_and_outlives_its_browser` | input, resize, output, a new browser, the exit code |
 | `pty_panes_run_commands_and_take_keys` | the pty backend and its errors |
 | `the_herdr_backend_calls_only_its_own_session` | with a fake herdr: each call has `--session`, only allowed commands, no `HERDR_*` variable of the daemon, and the `auto` fall-back |
-| `herdr_lab_session` | the real herdr: open, run, read, send and close a pane, and a closed pane gives `pane.unknown`. It runs only when `FH_TEST_HERDR_SESSION` names a provisioned `fm-lab-` session. Else it says `skipped` and passes. `FH_TEST_HERDR_PROGRAM` sets the herdr program, for example a wrapper that sends each call through the lab helper. |
+| `herdr_lab_session` | the real herdr: open, run, read, send and close a pane, and a closed pane gives `pane.unknown`. It is ignored in a normal run. Run it with `cargo test -p fh-daemon --test terminal herdr_lab_session -- --ignored` and `FH_TEST_HERDR_SESSION` set to a provisioned `fm-lab-` session. Without that variable it fails. `FH_TEST_HERDR_PROGRAM` sets the herdr program, for example a wrapper that sends each call through the lab helper. |
 | `crates/daemon/src/pty.rs`, `screen.rs`, `ws.rs`, `json.rs` unit tests | colours, wide text, scrollback, close, the frame rules, the fixture |
 | `crates/viewer/src/terminal.rs` unit tests | the decoder against the fixture, a bad message that changes nothing, the client messages, the keys, the paste, the mouse reports, the selection |
 | `crates/viewer/src/sidebar.rs` unit tests | with a fake daemon: the tabs follow the terminal list, open, show, close, the panes form, the error line, the tab label |

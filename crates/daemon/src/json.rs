@@ -138,7 +138,9 @@ impl Parser<'_> {
 
     fn hex4(&mut self) -> Result<u32, String> {
         let digits = self.0.get(self.1..self.1 + 4).unwrap_or(b"x");
-        let n = std::str::from_utf8(digits).ok();
+        let n = std::str::from_utf8(digits)
+            .ok()
+            .filter(|d| d.bytes().all(|b| b.is_ascii_hexdigit()));
         let n = n.and_then(|d| u32::from_str_radix(d, 16).ok());
         self.1 += 4;
         n.map_or_else(|| self.fail("a bad \\u escape"), Ok)
@@ -172,9 +174,15 @@ impl Parser<'_> {
                                 && self.0[self.1..].starts_with(b"\\u");
                             let code = match pair {
                                 true => {
+                                    let at = self.1;
                                     self.1 += 2;
-                                    let lo = self.hex4()?.wrapping_sub(0xDC00) & 0x3FF;
-                                    0x10000 + ((hi - 0xD800) << 10) + lo
+                                    let lo = self.hex4()?;
+                                    if (0xDC00..0xE000).contains(&lo) {
+                                        0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00)
+                                    } else {
+                                        self.1 = at;
+                                        0xFFFD
+                                    }
                                 }
                                 false => hi,
                             };
@@ -197,6 +205,16 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn surrogates_and_hex_digits_in_escapes() {
+        let text = |s: &str| Json::parse(s).unwrap();
+        assert_eq!(text(r#""\ud83d\u0041""#), Json::Text("\u{FFFD}A".into()));
+        assert_eq!(text(r#""\ud83d\ude00""#), Json::Text("😀".into()));
+        assert_eq!(text(r#""\ud83dx""#), Json::Text("\u{FFFD}x".into()));
+        assert!(Json::parse(r#""\u+041""#).is_err());
+        assert!(Json::parse(r#""\u-041""#).is_err());
+    }
 
     #[test]
     fn reads_a_herdr_answer_and_refuses_bad_json() {

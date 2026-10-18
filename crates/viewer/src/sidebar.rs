@@ -250,6 +250,13 @@ impl Sidebar {
                     .iter()
                     .filter_map(|i| i.split(' ').next())
                     .collect();
+                for t in self
+                    .terms
+                    .iter()
+                    .filter(|t| !known.contains(&t.id.as_str()))
+                {
+                    self.remote.disconnect(&t.id);
+                }
                 self.terms.retain(|t| known.contains(&t.id.as_str()));
                 self.active = active
                     .and_then(|a| self.terms.iter().position(|t| t.id == a))
@@ -639,6 +646,7 @@ mod tests {
             s.terms.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
             ["t1"]
         );
+        assert_eq!(calls(&log), ["disconnect t2"]);
         assert_eq!(s.herdr.as_deref(), Some("femahoy"));
     }
 

@@ -143,9 +143,12 @@ fn encode_row(spans: &[Span]) -> Vec<u8> {
         b.extend_from_slice(&s.fg.to_be_bytes());
         b.extend_from_slice(&s.bg.to_be_bytes());
         b.push(s.style);
-        // A span is at most one row of MAX_COLS cells, so its text fits in u16.
-        b.extend_from_slice(&(s.text.len() as u16).to_be_bytes());
-        b.extend_from_slice(s.text.as_bytes());
+        let mut end = s.text.len().min(u16::MAX as usize);
+        while !s.text.is_char_boundary(end) {
+            end -= 1;
+        }
+        b.extend_from_slice(&(end as u16).to_be_bytes());
+        b.extend_from_slice(&s.text.as_bytes()[..end]);
     }
     b
 }
@@ -278,6 +281,17 @@ pub(crate) mod tests {
         s.cols = 7;
         let m = e.encode(&s).unwrap();
         assert_eq!(&m[30..32], &[0, 2]);
+    }
+
+    #[test]
+    fn a_span_text_never_exceeds_its_length_field() {
+        let mut s = sample();
+        s.lines[1][0].text = format!("a{}", "\u{301}".repeat(40_000));
+        let m = Encoder::default().encode(&s).unwrap();
+        let row1 = &m[m.len() - encode_row(&s.lines[1]).len()..];
+        let len = u16::from_be_bytes([row1[2 + 13], row1[2 + 14]]) as usize;
+        assert_eq!(row1.len(), 2 + 15 + len);
+        assert!(std::str::from_utf8(&row1[17..]).is_ok());
     }
 
     #[test]

@@ -525,7 +525,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
                     "pty"
                 },
             );
-            m.set("herdr", sidebar.herdr.as_ref().map_or("-", |h| &h.session));
+            m.set("herdr", sidebar.herdr.as_ref().map_or("-", |h| h.session()));
             m.items = sidebar
                 .terminals
                 .list()

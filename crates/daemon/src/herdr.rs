@@ -15,6 +15,7 @@
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::contract::Error;
@@ -55,24 +56,36 @@ pub fn valid_session(name: &str) -> bool {
         && !name.eq_ignore_ascii_case("default")
 }
 
+/// Refuse a session name that femahoy cannot own.
+pub fn check_session(session: &str) -> Result<(), Error> {
+    if valid_session(session) {
+        return Ok(());
+    }
+    let why = "use letters, digits, '_' and '-', and never 'default'";
+    let message = format!("{session:?} is not a herdr session that femahoy can own: {why}");
+    Err(Error::bad("pane.herdr.session", message))
+}
+
 /// The herdr program and the session of femahoy.
 #[derive(Clone, Debug)]
 pub struct Herdr {
-    pub program: PathBuf,
-    pub session: String,
+    program: PathBuf,
+    session: String,
+    open_lock: Arc<Mutex<()>>,
 }
 
 impl Herdr {
     pub fn new(program: PathBuf, session: &str) -> Result<Herdr, Error> {
-        if !valid_session(session) {
-            let why = "use letters, digits, '_' and '-', and never 'default'";
-            let message = format!("{session:?} is not a herdr session that femahoy can own: {why}");
-            return Err(Error::bad("pane.herdr.session", message));
-        }
+        check_session(session)?;
         Ok(Herdr {
             program,
             session: session.into(),
+            open_lock: Arc::default(),
         })
+    }
+
+    pub fn session(&self) -> &str {
+        &self.session
     }
 
     /// The command line of the herdr client in the sidebar.
@@ -188,7 +201,7 @@ impl HerdrPanes {
         if self.0.status()?.1 {
             return Ok(());
         }
-        let s = &self.0.session;
+        let s = self.0.session();
         let why = "open Herdr in the terminal sidebar to start it";
         let message = format!("the herdr session {s:?} is not running: {why}");
         Err(Error::new(409, "pane.herdr.stopped", message))
@@ -225,7 +238,7 @@ impl PaneBackend for HerdrPanes {
             Ok((version, running)) => (running, format!("herdr {version}")),
             Err(e) => (false, e.message),
         };
-        let session = Some(self.0.session.clone());
+        let session = Some(self.0.session().to_owned());
         BackendStatus {
             kind: "herdr",
             session,
@@ -238,6 +251,7 @@ impl PaneBackend for HerdrPanes {
     /// root pane of a new tab in it.
     fn open(&self, spec: &PaneSpec) -> Result<Pane, Error> {
         check_spec(spec)?;
+        let _one_open = self.0.open_lock.lock().unwrap_or_else(|e| e.into_inner());
         self.running()?;
         let cwd = match &spec.cwd {
             Some(c) => c.clone(),
