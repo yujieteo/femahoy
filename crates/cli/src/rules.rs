@@ -74,11 +74,11 @@ pub fn volumes_are_named(mesh: &MshMesh) -> Result<(), String> {
 /// The element-face surface of a region. Refuse a region that the mesh does not hold, or that
 /// is not on the outside of the solid.
 pub fn region_surface<'m>(mesh: &'m MshMesh, name: &str) -> Result<&'m ElementSurface, String> {
-    if mesh
+    let inner = mesh
         .inner_surfaces
         .iter()
-        .any(|s| s.eq_ignore_ascii_case(name))
-    {
+        .any(|s| s.eq_ignore_ascii_case(name));
+    if inner {
         return Err(format!(
             "mesh.region.inner: region {name} is not on the outside of the solid. A load or support region must be a face of the part"
         ));

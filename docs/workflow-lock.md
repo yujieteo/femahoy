@@ -40,7 +40,7 @@ The refusal steps of the M2b gate:
 | `refuse-gmsh-failure` | A gmsh program that fails | `gmsh failed` |
 
 Measured on macOS 27.0.1 arm64 (Apple M5) with gmsh 4.15.2, Python 3.12.13 and build123d 0.13.0.
-All steps passed. One run took 9.5 s of elapsed time when the release build was up to date.
+All steps passed. One run took 9.6 s of elapsed time when the release build was up to date.
 The values are equal at the 2 mesh sizes:
 
 | Case | Quantity | Computed | Analytical reference | Tolerance |

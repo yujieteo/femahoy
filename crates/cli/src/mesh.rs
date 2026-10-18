@@ -196,15 +196,12 @@ because gmsh would run a shell command or another file"
 /// The units of the run and the regions of the case. D-18: the case or `--units` declares
 /// the units, and there is no default. `Err` holds a refusal code and text.
 fn declared(o: &Options) -> Result<(Units, Vec<RegionSpec>), String> {
-    let case = match &o.case {
-        Some(dir) => Some(Case::load_before_mesh(dir).map_err(|e| e.to_string())?),
-        None => None,
-    };
+    let case = o.case.as_deref().map(Case::load_before_mesh).transpose();
+    let case = case.map_err(|e| e.to_string())?;
     let from_case = case.as_ref().map(|c| c.units);
     let regions = case
         .and_then(|c| c.model)
-        .map(|m| m.regions)
-        .unwrap_or_default();
+        .map_or_else(Vec::new, |m| m.regions);
     let units = match (from_case, o.units) {
         (Some(c), Some(u)) if c != u => Err(format!(
             "unit.case.conflict: the case declares {}, but --units says {}",
