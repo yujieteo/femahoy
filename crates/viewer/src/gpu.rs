@@ -1,9 +1,15 @@
-//! Thin wgpu layer: upload the render data once, draw three layers each frame.
+//! Thin wgpu layer: upload the render data, draw four layers each frame. The deformed
+//! positions and the contour values change with the step, so the app sends new ones in a
+//! `Geometry` and this layer writes them to the buffers.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use eframe::egui_wgpu::{self, wgpu};
 use wgpu::util::DeviceExt;
 
 use crate::mesh::RenderMesh;
+use crate::results::{BANDS, BAND_COLORS};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -11,6 +17,8 @@ struct Uniforms {
     view_proj: [[f32; 4]; 4],
     color: [f32; 4],
     lit: [f32; 4],
+    contour: [f32; 4],
+    bands: [[f32; 4]; BANDS],
 }
 
 /// Per-frame draw parameters.
@@ -19,6 +27,32 @@ pub struct FrameParams {
     pub view_proj: [[f32; 4]; 4],
     pub eye: [f32; 3],
     pub dark: bool,
+    /// Colour the faces by the contour bands.
+    pub contour: bool,
+    /// Draw the outline of the undeformed shape.
+    pub ghost: bool,
+}
+
+/// New vertex data: the drawn position of each render position, and the position and the
+/// contour position (0 to 1) of each triangle corner (three per triangle, see `face_vertices`).
+pub struct Geometry {
+    /// A new number for each change. The buffers are written once per number.
+    pub version: u64,
+    pub positions: Vec<[f32; 3]>,
+    pub faces: Vec<[f32; 4]>,
+}
+
+/// The face vertex data: three corners per triangle, each `[x, y, z, value]`.
+pub fn face_vertices(mesh: &RenderMesh, positions: &[[f32; 3]], values: &[f32]) -> Vec<[f32; 4]> {
+    mesh.triangles
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(i, &p)| {
+            let x = positions[p as usize];
+            [x[0], x[1], x[2], values.get(i).copied().unwrap_or(0.0)]
+        })
+        .collect()
 }
 
 struct Layer {
@@ -30,12 +64,35 @@ struct Layer {
 
 /// The GPU copy of a `RenderMesh`. Lives in the egui callback resources.
 pub struct MeshGpu {
-    vertices: wgpu::Buffer,
+    /// The undeformed positions, for the ghost outline.
+    base: wgpu::Buffer,
+    /// The drawn positions, for the edges and the outline.
+    positions: wgpu::Buffer,
+    /// Three vertices per triangle, `[x, y, z, value]`.
+    face_vertices: wgpu::Buffer,
+    face_count: u32,
+    /// The version of the geometry in the buffers. 0 is the undeformed mesh.
+    version: AtomicU64,
     faces: Layer,
     edges: Layer,
     features: Layer,
+    ghost: Layer,
     face_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
+}
+
+/// A buffer with these contents, or one zero element when the contents are empty.
+fn buffer<T: bytemuck::Pod + bytemuck::Zeroable>(
+    device: &wgpu::Device,
+    contents: &[T],
+    usage: wgpu::BufferUsages,
+) -> wgpu::Buffer {
+    let zero = [T::zeroed()];
+    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some("fh-viewer buffer"),
+        contents: bytemuck::cast_slice(if contents.is_empty() { &zero } else { contents }),
+        usage,
+    })
 }
 
 impl MeshGpu {
@@ -64,19 +121,17 @@ impl MeshGpu {
             immediate_size: 0,
         });
         let depth_format = egui_wgpu::depth_format_from_bits(DEPTH_BITS, 0);
-        let pipeline = |topology, bias: i32| {
+        let line_attrs = wgpu::vertex_attr_array![0 => Float32x3];
+        let face_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32];
+        let pipeline = |topology, bias: i32, entry: &str, layout_v: wgpu::VertexBufferLayout| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("fh-viewer pipeline"),
                 layout: Some(&layout),
                 vertex: wgpu::VertexState {
                     module: &module,
-                    entry_point: Some("vs_main"),
+                    entry_point: Some(entry),
                     compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: 12,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![0 => Float32x3],
-                    })],
+                    buffers: &[Some(layout_v)],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &module,
@@ -105,19 +160,28 @@ impl MeshGpu {
                 cache: None,
             })
         };
-        let face_pipeline = pipeline(wgpu::PrimitiveTopology::TriangleList, 2);
-        let line_pipeline = pipeline(wgpu::PrimitiveTopology::LineList, 0);
+        let face_pipeline = pipeline(
+            wgpu::PrimitiveTopology::TriangleList,
+            2,
+            "vs_face",
+            wgpu::VertexBufferLayout {
+                array_stride: 16,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &face_attrs,
+            },
+        );
+        let line_pipeline = pipeline(
+            wgpu::PrimitiveTopology::LineList,
+            0,
+            "vs_line",
+            wgpu::VertexBufferLayout {
+                array_stride: 12,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &line_attrs,
+            },
+        );
 
-        let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("fh-viewer vertices"),
-            // A model with no surface still needs a non-empty buffer.
-            contents: bytemuck::cast_slice(if mesh.positions.is_empty() {
-                &[[0.0f32; 3]]
-            } else {
-                &mesh.positions[..]
-            }),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let vertex = wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST;
         let layer = |indices: &[u32]| {
             let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("fh-viewer uniforms"),
@@ -134,73 +198,107 @@ impl MeshGpu {
                 }],
             });
             Layer {
-                indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("fh-viewer indices"),
-                    contents: bytemuck::cast_slice(if indices.is_empty() {
-                        &[0u32, 0]
-                    } else {
-                        indices
-                    }),
-                    usage: wgpu::BufferUsages::INDEX,
-                }),
+                indices: buffer(device, indices, wgpu::BufferUsages::INDEX),
                 count: indices.len() as u32,
                 uniforms,
                 bind_group,
             }
         };
         let flat = |pairs: &[[u32; 2]]| pairs.iter().flatten().copied().collect::<Vec<u32>>();
-        let tris: Vec<u32> = mesh.triangles.iter().flatten().copied().collect();
+        let faces = face_vertices(mesh, &mesh.positions, &[]);
         Self {
-            vertices,
-            faces: layer(&tris),
+            base: buffer(device, &mesh.positions, vertex),
+            positions: buffer(device, &mesh.positions, vertex),
+            face_vertices: buffer(device, &faces, vertex),
+            face_count: faces.len() as u32,
+            version: AtomicU64::new(0),
+            faces: layer(&[]),
             edges: layer(&flat(&mesh.edges)),
             features: layer(&flat(&mesh.feature_edges)),
+            ghost: layer(&flat(&mesh.feature_edges)),
             face_pipeline,
             line_pipeline,
         }
     }
 
-    fn write(&self, queue: &wgpu::Queue, p: &FrameParams) {
-        let (face, edge, feature) = if p.dark {
-            ([0.55, 0.62, 0.72], [0.18, 0.21, 0.26], [0.95, 0.95, 0.95])
+    fn write(&self, queue: &wgpu::Queue, p: &FrameParams, geometry: Option<&Geometry>) {
+        if let Some(g) = geometry.filter(|g| g.version != self.version.load(Ordering::Relaxed)) {
+            self.version.store(g.version, Ordering::Relaxed);
+            // The lengths match the mesh: the app makes the geometry from the same mesh.
+            if !g.positions.is_empty() {
+                queue.write_buffer(&self.positions, 0, bytemuck::cast_slice(&g.positions));
+            }
+            if !g.faces.is_empty() {
+                queue.write_buffer(&self.face_vertices, 0, bytemuck::cast_slice(&g.faces));
+            }
+        }
+        let (face, edge, feature, ghost) = if p.dark {
+            (
+                [0.55, 0.62, 0.72],
+                [0.18, 0.21, 0.26],
+                [0.95, 0.95, 0.95],
+                [0.45, 0.45, 0.50],
+            )
         } else {
-            ([0.62, 0.70, 0.82], [0.35, 0.40, 0.48], [0.05, 0.05, 0.08])
+            (
+                [0.62, 0.70, 0.82],
+                [0.35, 0.40, 0.48],
+                [0.05, 0.05, 0.08],
+                [0.45, 0.45, 0.52],
+            )
         };
+        let bands = BAND_COLORS.map(|c| [c[0], c[1], c[2], 1.0]);
+        let contour = [if p.contour { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0];
         let put = |layer: &Layer, rgb: [f32; 3], lit: bool| {
             let u = Uniforms {
                 view_proj: p.view_proj,
                 color: [rgb[0], rgb[1], rgb[2], 1.0],
                 lit: [if lit { 1.0 } else { 0.0 }, p.eye[0], p.eye[1], p.eye[2]],
+                contour,
+                bands,
             };
             queue.write_buffer(&layer.uniforms, 0, bytemuck::bytes_of(&u));
         };
         put(&self.faces, face, true);
         put(&self.edges, edge, false);
         put(&self.features, feature, false);
+        put(&self.ghost, ghost, false);
     }
 
-    fn draw(&self, pass: &mut wgpu::RenderPass<'static>) {
-        pass.set_vertex_buffer(0, self.vertices.slice(..));
-        let mut run = |pipeline: &wgpu::RenderPipeline, layer: &Layer| {
+    fn draw(&self, pass: &mut wgpu::RenderPass<'static>, ghost: bool) {
+        if self.face_count > 0 {
+            pass.set_pipeline(&self.face_pipeline);
+            pass.set_bind_group(0, &self.faces.bind_group, &[]);
+            pass.set_vertex_buffer(0, self.face_vertices.slice(..));
+            pass.draw(0..self.face_count, 0..1);
+        }
+        let mut lines = |vertices: &wgpu::Buffer, layer: &Layer| {
             if layer.count == 0 {
                 return;
             }
-            pass.set_pipeline(pipeline);
+            pass.set_pipeline(&self.line_pipeline);
+            pass.set_vertex_buffer(0, vertices.slice(..));
             pass.set_bind_group(0, &layer.bind_group, &[]);
             pass.set_index_buffer(layer.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..layer.count, 0, 0..1);
         };
-        run(&self.face_pipeline, &self.faces);
-        run(&self.line_pipeline, &self.edges);
-        run(&self.line_pipeline, &self.features);
+        lines(&self.positions, &self.edges);
+        lines(&self.positions, &self.features);
+        if ghost {
+            lines(&self.base, &self.ghost);
+        }
     }
 }
 
-/// Depth buffer bits that `run_native` must request.
+/// Depth buffer bits that the eframe options must request.
 pub const DEPTH_BITS: u8 = 24;
 
-/// The egui paint callback for one frame.
-pub struct MeshCallback(pub FrameParams);
+/// The egui paint callback for one frame. `geometry` is the vertex data to draw, or `None`
+/// for the undeformed mesh as uploaded.
+pub struct MeshCallback {
+    pub params: FrameParams,
+    pub geometry: Option<Arc<Geometry>>,
+}
 
 impl egui_wgpu::CallbackTrait for MeshCallback {
     fn prepare(
@@ -212,7 +310,7 @@ impl egui_wgpu::CallbackTrait for MeshCallback {
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
         if let Some(gpu) = resources.get::<MeshGpu>() {
-            gpu.write(queue, &self.0);
+            gpu.write(queue, &self.params, self.geometry.as_deref());
         }
         Vec::new()
     }
@@ -224,7 +322,7 @@ impl egui_wgpu::CallbackTrait for MeshCallback {
         resources: &egui_wgpu::CallbackResources,
     ) {
         if let Some(gpu) = resources.get::<MeshGpu>() {
-            gpu.draw(pass);
+            gpu.draw(pass, self.params.ghost);
         }
     }
 }

@@ -2,6 +2,7 @@
 //! on 127.0.0.1 only, and no option changes the address. It makes a random token at each
 //! start and writes the port and the token to `DIR/daemon.info` (mode 0600). Each request
 //! must carry the token, and a request from a page of another `Origin` fails (`http` module).
+//! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -53,7 +54,8 @@ pub fn serve_until(
         state_dir: state_dir.clone(),
         solver: SubprocessSolver::new(solver),
     };
-    let daemon = match Daemon::start(config, port) {
+    let viewer = viewer_dir();
+    let daemon = match Daemon::start_with_viewer(config, port, viewer.clone()) {
         Ok(daemon) => daemon,
         Err(e) => {
             let dir = state_dir.display();
@@ -66,6 +68,13 @@ pub fn serve_until(
         daemon.port(),
         daemon.token()
     );
+    match &viewer {
+        Some(dir) => println!("fh serve: viewer {}", dir.display()),
+        None => println!(
+            "fh serve: the wasm viewer is not built (scripts/build-viewer.sh), so the page \
+             shows only an error"
+        ),
+    }
     println!(
         "fh serve: state folder {}. Stop with Ctrl+C.",
         state_dir.display()
@@ -77,6 +86,16 @@ pub fn serve_until(
     drop(daemon);
     println!("fh serve: stopped");
     Ok(ExitCode::SUCCESS)
+}
+
+/// The folder of the wasm viewer files: `$FH_VIEWER`, else `viewer` beside the `fh`
+/// program. `None` when the folder has no `fh_viewer_bg.wasm`.
+fn viewer_dir() -> Option<PathBuf> {
+    let dir = std::env::var_os("FH_VIEWER")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| Some(std::env::current_exe().ok()?.parent()?.join("viewer")))?;
+    dir.join("fh_viewer_bg.wasm").is_file().then_some(dir)
 }
 
 /// `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows

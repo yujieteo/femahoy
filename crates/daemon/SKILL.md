@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal. `crates/cli` only calls it. The viewer, the PTY, the pane backends and the WebSocket server are not built yet.
+The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal. `crates/cli` only calls it. Its page loads the wasm viewer of `crates/viewer`. The PTY, the pane backends and the WebSocket server are not built yet.
 
 ## Inputs and outputs
 
@@ -30,13 +30,13 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - Bind to any address other than 127.0.0.1 (DESIGN.md section 4.1).
 - Send a CORS header that lets another origin read an answer.
 - Change the solve path or the subprocess protocol from this crate.
-- Describe the viewer or the pane backends as available.
+- Describe the pane backends as available.
 - Bundle herdr (DESIGN.md section 4.3).
 - Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI.
+Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page, the viewer files, the project list and the result files, each with the token and `Origin` rules.
 
 ## Examples
 

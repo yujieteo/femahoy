@@ -854,6 +854,11 @@ dependencies = [
  "bytemuck",
  "eframe",
  "fh-inp",
+ "fh-io",
+ "js-sys",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

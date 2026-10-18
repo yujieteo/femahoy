@@ -101,10 +101,19 @@ impl Daemon {
     /// Open the service, make a random token, listen on 127.0.0.1 at `port` (0 for any free
     /// port) and write `daemon.info` for the clients.
     pub fn start(config: Config, port: u16) -> Result<Daemon, Error> {
+        Daemon::start_with_viewer(config, port, None)
+    }
+
+    /// `start`, and serve the wasm viewer from the folder `viewer` (see `fh serve`).
+    pub fn start_with_viewer(
+        config: Config,
+        port: u16,
+        viewer: Option<PathBuf>,
+    ) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32);
-        let server = http::Server::start(service.clone(), port, token.clone())
+        let server = http::Server::start(service.clone(), port, token.clone(), viewer)
             .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
         let mut m = Message::new();
         m.set("port", server.port());

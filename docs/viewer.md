@@ -1,23 +1,48 @@
-# Mesh viewer
+# Viewer
 
-`fh view MODEL.inp` opens a window with the mesh of a model in 3D. It shows no results yet (D-20).
+The viewer shows a mesh or the results of a run in 3D. The same `eframe` code runs in two places:
+
+- `fh view` opens a native window.
+- `fh serve` serves the viewer as wasm. The page of the daemon is the viewer (roadmap item M3).
 
 ```
-fh mesh part.step -o part.msh --order 2   # a mesh from gmsh
-# write or convert the mesh to .inp, then:
-fh view model.inp
+fh view model.inp           # the mesh only (D-20)
+fh view run/                # the results of a run folder
+fh view run/results.pvd     # the same
+fh serve                    # the viewer in the browser, at the address that fh serve prints
 ```
 
-The viewer reads the `.inp` file with the `inp` crate. It draws `C3D4`, `C3D8` (also `C3D8R` and `C3D8I`) and `C3D10` elements. It skips other element types and elements that name a missing node. The status bar shows the count.
+## What the viewer shows
 
-What you see:
+| Item | What you see |
+|---|---|
+| Mesh | The surface of the part (the faces that belong to one element only), with the element edges in grey. |
+| Outline | The edges where the surface turns by more than 30 degrees, and the edges at an open surface (dark lines). |
+| Deformed shape | The nodes move by the scale factor times the displacement `U`. A grey outline shows the undeformed shape. |
+| Contour | One field in 9 colour bands from blue (lowest) to red (highest), with a legend that gives the band limits and the unit. |
+| Step selector | One entry for each step of `results.pvd`, with its time and its file. The `<` and `>` buttons go to the previous and the next step. |
 
-- The surface of the part (the faces that belong to one element only).
-- The element edges on the surface (grey).
-- The outline of the part (dark lines): the edges where the surface turns by more than 30 degrees, and the edges at an open surface.
-- The number of nodes and elements.
+The viewer draws `C3D4`, `C3D8` (also `C3D8R` and `C3D8I`) and `C3D10` elements, and the VTK cell types 10, 12 and 24. It skips other element types and elements that name a missing node. The status bar shows the counts.
 
-Controls:
+### Deformed shape
+
+The scale starts at the automatic value: the largest displacement of all steps shows as 1/10 of the model size, rounded to 1, 2 or 5 times a power of 10. You can type a scale, click **Auto** to go back to the automatic value, or click **1x** for the true scale. The panel shows the largest displacement of the step, in the length unit of the run.
+
+### Contour
+
+The contour fields come from the float arrays of the step file:
+
+| Array | Fields | Where |
+|---|---|---|
+| `U`, `RF` (and `UR` when the solver writes it) | the magnitude and the components 1, 2 and 3, for example `U magnitude` and `U3` | at the nodes |
+| `S` | `S11`, `S22`, `S33`, `S12`, `S23`, `S13` (the order of the text results) | per element |
+| `MISES` | `MISES` | per element |
+
+A field at the nodes is interpolated linearly over each surface triangle before it is put in a band. A field per element has one value over the element. The bands split the range from the smallest to the largest value of the step in 9 equal parts. When the spread of the values is less than 1e-9 of their size, the field is constant: the legend shows one band and the value. For example, the uniform stress of the `bar-pressure` case shows as `constant 100.0`.
+
+The first field is `MISES`, else `U magnitude`. The units of the legend come from the unit system of the run: `SI-mm` gives mm, N and MPa, and `SI-m` gives m, N and Pa. A run with no unit system shows no unit.
+
+### Controls
 
 | Action | Input |
 |---|---|
@@ -26,6 +51,56 @@ Controls:
 | Zoom | scroll |
 | Reset the view | double click |
 
-The window needs a GPU with Metal, Vulkan or DX12. The viewer is native only. The wasm build is not started.
+## Result files
 
-The code is in `crates/viewer`. `mesh.rs` (surface, outline, bounding box) and `camera.rs` have no GPU types and have unit tests. `gpu.rs` and `app.rs` are the thin window layer.
+The viewer reads `results.pvd` and the `step-N.vtu` files that it names (`docs/workflow-lock.md`). Each step must have the mesh of the first step and a displacement field `U` with 3 components. The viewer refuses the results and shows the cause when a file is bad:
+
+| Code | Cause |
+|---|---|
+| `VTU002`, `VTU003` | `results.pvd` or a VTU file is malformed or uses a feature that the reader does not support. |
+| `results.empty` | `results.pvd` names no step file. |
+| `results.file.path` | A step file name is not a plain file name in the run folder. It is empty, or it is `.` or `..`, or it has `/`, `\` or `:`. |
+| `results.file.missing` | A step file cannot be read. |
+| `results.mesh.empty` | A step file has no point or no cell. |
+| `results.mesh.nonfinite` | A point coordinate is not finite (NaN or infinity). |
+| `results.mesh.changed` | A step has a mesh that is not the mesh of the first step. |
+| `results.mesh.unsupported` | The mesh has no cell that the viewer can draw. |
+| `results.field.missing` | A step has no displacement field `U` with 3 float components. |
+| `results.field.length` | A field has the wrong number of values. |
+| `results.field.nonfinite` | A field has a value that is not finite (NaN or infinity). |
+
+The message names the file, for example `step-2.vtu: not found (results.file.missing)`. In the browser, an HTTP error shows the path, the status and the code of the daemon, for example `HTTP 404: no run run-000099 in p-... (run.unknown)`.
+
+## The viewer in the browser
+
+1. Build the wasm viewer:
+
+   ```
+   scripts/build-viewer.sh
+   ```
+
+   The script needs the Rust target `wasm32-unknown-unknown` and `wasm-bindgen-cli` at the version of `wasm-bindgen` in `Cargo.lock` (0.2.129). It writes `fh_viewer.js` and `fh_viewer_bg.wasm` to `release/viewer` in the cargo target folder (`$CARGO_TARGET_DIR` or `target`), the folder beside `fh`.
+
+2. Start the daemon with `fh serve`. It finds the viewer in `$FH_VIEWER`, else in the `viewer` folder beside `fh`.
+3. Open the address that `fh serve` prints, `http://127.0.0.1:PORT/?token=TOKEN`.
+4. Click a run in the list. The list shows each run that succeeded. To open a run directly, add `&project=P&run=R` to the address.
+
+The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/projects/<p>/runs/<r>/files/<name>`.
+
+The browser needs WebGPU or WebGL 2. When the viewer cannot start, the page shows the cause. The native window needs a GPU with Metal, Vulkan or DX12.
+
+## Code
+
+The code is in `crates/viewer`:
+
+| File | Content |
+|---|---|
+| `mesh.rs` | surface, outline and bounding box, from an `.inp` model or a VTU grid |
+| `results.rs` | the reader of the result files, the contour fields, the deformed positions and the bands |
+| `view.rs` | the view state: the step, the scale, the field and the vertex data |
+| `camera.rs` | the orbit camera |
+| `gpu.rs`, `shader.wgsl` | the thin wgpu layer |
+| `app.rs` | the eframe app, the same for the window and the browser |
+| `web.rs` | the browser entry point (wasm only) |
+
+`mesh.rs`, `results.rs`, `view.rs` and `camera.rs` have no GPU types and have unit tests. The tests read `fixtures/results/cantilever-2step` (2 steps of `fh-solve` output) and compare each displacement and each stress value with the text results of the same run.

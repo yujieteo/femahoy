@@ -14,8 +14,12 @@ pub const FEATURE_ANGLE_DEG: f64 = 30.0;
 pub struct RenderMesh {
     /// One position per model node that a surface face uses, in input order.
     pub positions: Vec<[f32; 3]>,
+    /// The index of the model node (in model order) at each position.
+    pub source_node: Vec<u32>,
     /// Surface triangles.
     pub triangles: Vec<[u32; 3]>,
+    /// The index of the element (in model order) that owns each triangle.
+    pub triangle_cell: Vec<u32>,
     /// Element edges on the surface (line segments).
     pub edges: Vec<[u32; 2]>,
     /// Feature edges: the outline of the part (line segments).
@@ -165,30 +169,78 @@ pub fn build(model: &Model) -> RenderMesh {
         .enumerate()
         .map(|(i, n)| (n.id, i))
         .collect();
+    let points: Vec<[f64; 3]> = model.nodes.iter().map(|n| n.xyz).collect();
+    let elements: Vec<Option<(&str, Vec<u32>)>> = model
+        .elements
+        .iter()
+        .map(|el| {
+            let nodes: Option<Vec<u32>> = el
+                .nodes
+                .iter()
+                .map(|n| index.get(n).map(|&i| i as u32))
+                .collect();
+            Some((el.element_type.as_str(), nodes?))
+        })
+        .collect();
+    build_indexed(&points, &elements)
+}
 
+/// The element type name of a VTK cell type, or `None` when the viewer cannot draw it.
+pub fn vtk_element_type(cell_type: u8) -> Option<&'static str> {
+    match cell_type {
+        10 => Some("C3D4"),
+        12 => Some("C3D8"),
+        // VTK quadratic tetra has the C3D10 node order.
+        24 => Some("C3D10"),
+        _ => None,
+    }
+}
+
+/// Build the render data for a VTU grid. Cell `k` of the grid is element `k`.
+pub fn build_grid(grid: &fh_io::vtu::Grid) -> RenderMesh {
+    let n = grid.points.len();
+    let elements: Vec<Option<(&str, Vec<u32>)>> = grid
+        .cell_types
+        .iter()
+        .zip(&grid.cells)
+        .map(|(&t, cell)| {
+            let valid = cell.iter().all(|&i| (i as usize) < n);
+            Some((
+                vtk_element_type(t).unwrap_or(""),
+                valid.then(|| cell.clone())?,
+            ))
+        })
+        .collect();
+    build_indexed(&grid.points, &elements)
+}
+
+/// Build the render data from points and elements with 0-based point indices. `None` is
+/// an element that names a missing point.
+fn build_indexed(points: &[[f64; 3]], elements: &[Option<(&str, Vec<u32>)>]) -> RenderMesh {
     // Pass 1: gather every face and count how many elements share it.
     struct Entry {
         face: Face,
         count: u32,
         inside: [f64; 3],
+        cell: u32,
     }
     let mut faces: HashMap<Vec<u32>, Entry> = HashMap::new();
     let mut order: Vec<Vec<u32>> = Vec::new();
     let mut skipped = 0;
-    for el in &model.elements {
-        let valid = el.nodes.iter().all(|n| index.contains_key(n));
-        let Some(el_faces) = valid
-            .then(|| element_faces(&el.element_type, &el.nodes))
-            .flatten()
-        else {
+    for (cell, el) in elements.iter().enumerate() {
+        let Some((el_type, el_nodes)) = el else {
+            skipped += 1;
+            continue;
+        };
+        let Some(el_faces) = element_faces(el_type, el_nodes) else {
             skipped += 1;
             continue;
         };
         let mut centroid = [0.0; 3];
-        for n in &el.nodes {
-            let p = model.nodes[index[n]].xyz;
+        for &n in el_nodes {
+            let p = points[n as usize];
             for k in 0..3 {
-                centroid[k] += p[k] / el.nodes.len() as f64;
+                centroid[k] += p[k] / el_nodes.len() as f64;
             }
         }
         for face in el_faces {
@@ -203,6 +255,7 @@ pub fn build(model: &Model) -> RenderMesh {
                             face,
                             count: 1,
                             inside: centroid,
+                            cell: cell as u32,
                         },
                     );
                 }
@@ -213,14 +266,17 @@ pub fn build(model: &Model) -> RenderMesh {
     // Pass 2: emit the faces that one element owns.
     let mut used: HashMap<u32, u32> = HashMap::new();
     let mut positions: Vec<[f32; 3]> = Vec::new();
+    let mut source_node: Vec<u32> = Vec::new();
     let mut slot = |id: u32, positions: &mut Vec<[f32; 3]>| -> u32 {
         *used.entry(id).or_insert_with(|| {
-            let p = model.nodes[index[&id]].xyz;
+            let p = points[id as usize];
             positions.push([p[0] as f32, p[1] as f32, p[2] as f32]);
+            source_node.push(id);
             (positions.len() - 1) as u32
         })
     };
     let mut triangles = Vec::new();
+    let mut triangle_cell = Vec::new();
     let mut edges: Vec<[u32; 2]> = Vec::new();
     // Corner edge (sorted node pair) to the outward normals of the surface faces on it.
     let mut edge_normals: HashMap<(u32, u32), Vec<[f64; 3]>> = HashMap::new();
@@ -233,7 +289,7 @@ pub fn build(model: &Model) -> RenderMesh {
             continue;
         }
         let c = &e.face.corners;
-        let pts: Vec<[f64; 3]> = c.iter().map(|id| model.nodes[index[id]].xyz).collect();
+        let pts: Vec<[f64; 3]> = c.iter().map(|&id| points[id as usize]).collect();
         let normal = face_normal(&pts, e.inside);
         let ci: Vec<u32> = c.iter().map(|&id| slot(id, &mut positions)).collect();
         match (&e.face.mids, c.len()) {
@@ -250,6 +306,7 @@ pub fn build(model: &Model) -> RenderMesh {
                 triangles.push([ci[0], ci[2], ci[3]]);
             }
         }
+        triangle_cell.resize(triangles.len(), e.cell);
         for k in 0..c.len() {
             let next = (k + 1) % c.len();
             let (a, b) = (c[k], c[next]);
@@ -289,11 +346,13 @@ pub fn build(model: &Model) -> RenderMesh {
     RenderMesh {
         bounds: bounds(&positions),
         positions,
+        source_node,
         triangles,
+        triangle_cell,
         edges,
         feature_edges,
-        node_count: model.nodes.len(),
-        element_count: model.elements.len(),
+        node_count: points.len(),
+        element_count: elements.len(),
         skipped_elements: skipped,
     }
 }
