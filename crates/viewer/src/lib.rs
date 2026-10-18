@@ -9,6 +9,7 @@ pub mod camera;
 pub mod chat;
 mod gpu;
 pub mod mesh;
+pub mod preview;
 pub mod results;
 pub mod view;
 #[cfg(target_arch = "wasm32")]

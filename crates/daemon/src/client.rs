@@ -172,6 +172,14 @@ impl Client {
         Ack::from_message(&self.post(&path, &fields)?)
     }
 
+    /// Fix the input as a revision with no run, and show its model with the supports and
+    /// the loads in the page. The answer is the revision.
+    pub fn preview(&self, project: &str, input: &str, title: &str) -> Result<String, Error> {
+        let path = format!("/api/v1/projects/{project}/preview");
+        let answer = self.post(&path, &[("input", input), ("title", title)])?;
+        Ok(answer.need("revision")?.to_owned())
+    }
+
     pub fn cancel(&self, project: &str, run: &str, request: &str) -> Result<Ack, Error> {
         let path = format!("/api/v1/projects/{project}/runs/{run}/cancel");
         Ack::from_message(&self.post(&path, &[("request", request)])?)

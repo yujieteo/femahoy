@@ -55,9 +55,9 @@ impl Bounds {
 
 /// A face of one element. `corners` are the corner nodes in element-local order.
 /// `mids` holds the mid-side node of each corner edge, when the element has them.
-struct Face {
-    corners: Vec<u32>,
-    mids: Option<Vec<u32>>,
+pub(crate) struct Face {
+    pub(crate) corners: Vec<u32>,
+    pub(crate) mids: Option<Vec<u32>>,
 }
 
 /// Local corner indices of each face, ordered so that the face is closed.
@@ -79,8 +79,9 @@ const TET_FACES: [([usize; 3], [usize; 3]); 4] = [
     ([2, 0, 3], [6, 7, 9]),
 ];
 
-/// Face list of an element type, or `None` when the viewer cannot draw the type.
-fn element_faces(element_type: &str, nodes: &[u32]) -> Option<Vec<Face>> {
+/// Face list of an element type, or `None` when the viewer cannot draw the type. Face `k`
+/// of the list is the face `S<k+1>` of a `*SURFACE` or a `*DLOAD` in the input.
+pub(crate) fn element_faces(element_type: &str, nodes: &[u32]) -> Option<Vec<Face>> {
     let t = element_type.to_ascii_uppercase();
     match t.as_str() {
         "C3D8" | "C3D8R" | "C3D8I" if nodes.len() >= 8 => Some(

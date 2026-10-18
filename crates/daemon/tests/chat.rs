@@ -117,9 +117,10 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     );
     wait(&c, |m| m.items.iter().any(|i| i.contains(" cmd fh run ")));
 
-    // The `fh run` of the agent solves a run on this daemon.
+    // The `fh run` of the agent sends the model to the page, then solves the same revision.
     let project = c.register(&dir.join("project")).unwrap();
     fs::write(dir.join("project/model.inp"), "*NODE\n").unwrap();
+    let revision = c.preview(&project, "model.inp", "my case").unwrap();
     let ack = c.submit(&project, &new_request_id(), "model.inp").unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
@@ -144,10 +145,20 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let first = |kind: &str| kinds.iter().position(|k| *k == kind).unwrap();
     assert_eq!(kinds[0], "you");
     assert!(
-        first("cmd") < first("open") && first("open") < first("end"),
+        first("cmd") < first("show") && first("show") < first("open"),
         "{kinds:?}"
     );
+    assert!(first("open") < first("end"), "{kinds:?}");
     let text = m.items.join("\n");
+    assert!(
+        text.contains(&format!(" show {project} {revision} my case")),
+        "{text}"
+    );
+    let record = c.record(&project, &ack.run).unwrap();
+    assert_eq!(
+        record.revision, revision,
+        "the run solves the shown revision"
+    );
     assert!(
         text.contains(&format!(" open {project} {}", ack.run)),
         "{text}"

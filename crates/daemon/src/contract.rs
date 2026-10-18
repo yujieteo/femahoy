@@ -134,6 +134,15 @@ pub fn valid_run(id: &str) -> bool {
         .is_some_and(|n| n.len() >= 6 && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// A revision ID: `rev-` and 16 hex digits, and `-N` when other bytes have the same hash.
+pub fn valid_revision(id: &str) -> bool {
+    let Some(rest) = id.strip_prefix("rev-") else {
+        return false;
+    };
+    let (hash, n) = rest.split_once('-').unwrap_or((rest, "1"));
+    hex_digits(hash, 16) && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+}
+
 pub(crate) fn run_id(number: u64) -> String {
     format!("run-{number:06}")
 }

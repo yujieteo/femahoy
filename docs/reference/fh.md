@@ -206,8 +206,8 @@ See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 ## `fh run`
 
 ```text
-fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--state DIR] [--no-open]
-fh run --example NAME [--size H] [--order 1|2] [--state DIR] [--no-open]
+fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--preview] [--state DIR] [--no-open]
+fh run --example NAME [--size H] [--order 1|2] [--preview] [--state DIR] [--no-open]
 ```
 
 Source: [run.rs](../../crates/cli/src/run.rs).
@@ -224,6 +224,7 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 |---|---|
 | `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder, 8 for `bar-pressure`. |
 | `--order 1\|2` | Sent to `fh mesh`. The `fh mesh` default (2). |
+| `--preview` | Show the model with its supports and loads in the page, then stop. No solve occurs. |
 | `--state DIR` | The state folder of the daemon, the same default as `fh serve`. |
 | `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
 
@@ -239,17 +240,26 @@ The run of a case uses the solver that the `solver` key of `case.toml` names:
 
 An `.inp` file uses the solver of the daemon.
 
+Before the solve, `fh run` sends the input to the preview route of the daemon (see [the chat](../chat.md#the-model-before-the-solve)).
+The page then shows the model with the faces of each support and each load, the direction of each load, and the names of the regions.
+The line `fh run: preview: the page shows NAME (REVISION) with its supports and loads` tells this. NAME is the case folder, or the input file.
+The solve then uses the same revision. Thus the page shows the bytes that the solver gets.
+With `--preview`, `fh run` prints `fh run: --preview: no solve` and stops. It does not open the browser, because the page that is open shows the model.
+A daemon that has no preview route still solves: `fh run` prints `fh run: no preview (MESSAGE)` and continues.
+
 The browser opens on `http://127.0.0.1:PORT/?token=TOKEN&project=P&run=R`, the same way as for [`fh serve`](#fh-serve).
 Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
 Before a daemon starts, `fh run` checks the arguments and the input. Thus a usage error starts no daemon.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), and the stop command. | 0 |
+| `--preview`, and the page shows the model | stdout: the `fh mesh` and `fh model` rows for a case, the preview line, and `fh run: --preview: no solve` | 0 |
+| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the preview line, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), and the stop command. | 0 |
 | The solver refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder, for example `bad.inp: line 3, *BOGUS: unsupported keyword (INP002)`. | 1 |
 | The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
 | The case names a solver that is not beside `fh` or on `PATH` | `fh run: the solver fh-solve-ccx is not beside fh or on PATH. To install it, see docs/ccx.md (run.solver.missing)`. No daemon starts. | 1 |
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
+| `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
 | The daemon refused the project or the run | `fh run: the daemon refused the project: MESSAGE (CODE)` or `the daemon refused the run: ...`, for example `queue.full` | 1 |
 | No input, unknown option, bad value (for example `--order needs 1 or 2`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
 | `--size` or `--order` with an `.inp` file | `fh run: --size and --order go to fh mesh, ... (run.option.mesh)` | 2 |

@@ -12,8 +12,8 @@ use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::app::{Content, ContentSlot, ViewerApp};
-use crate::chat::{Answer, Chat, Remote, Reply};
-use crate::{results, RESULTS_FILE};
+use crate::chat::{Answer, Chat, Remote, Reply, Target};
+use crate::{preview, results, RESULTS_FILE};
 
 /// The query of the page address: `token`, and `project` and `run` to open a run.
 struct Query {
@@ -98,7 +98,7 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("{path}: not UTF-8 text"))
 }
 
-/// Fetch the result files of a run and read them.
+/// Fetch the result files of a run and read them, with the supports and loads of its input.
 async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, String> {
     let base = format!("/api/v1/projects/{project}/runs/{run}/files");
     let pvd_path = format!("{base}/{RESULTS_FILE}");
@@ -116,7 +116,33 @@ async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, Stri
         files.remove(f).unwrap_or_else(|| Err("not fetched".into()))
     })
     .map_err(|e| format!("Run {run} of project {project}: {e}"))?;
-    Ok(Content::Results(Box::new(r)))
+    // The record names the revision that the run solved.
+    let path = format!("/api/v1/projects/{project}/runs/{run}");
+    let record = match get(token, &path).await {
+        Ok(bytes) => text(bytes, &path),
+        Err(e) => Err(e),
+    };
+    let loads = match record.map(|r| Reply::parse(&r).fields.get("revision").cloned()) {
+        Ok(Some(revision)) => model(token, project, &revision, run).await,
+        Ok(None) => Err(format!("{path}: no revision")),
+        Err(e) => Err(e),
+    };
+    Ok(Content::Results(Box::new(r), loads))
+}
+
+/// Fetch the input of a revision and read its supports and loads.
+async fn model(
+    token: &str,
+    project: &str,
+    revision: &str,
+    name: &str,
+) -> Result<Box<preview::Preview>, String> {
+    let path = format!("/api/v1/projects/{project}/revisions/{revision}");
+    let input = text(get(token, &path).await?, &path)?;
+    let model = fh_inp::parse(&input).map_err(|e| format!("{name} ({revision}): {e}"))?;
+    let mut p = preview::build(&model, &preview::units(&input));
+    p.title = name.to_owned();
+    Ok(Box::new(p))
 }
 
 /// The runs that have results, newest first, as links to open them.
@@ -210,18 +236,19 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
                         ctx: cc.egui_ctx.clone(),
                         answers: Rc::default(),
                     };
-                    // A run that succeeds during the chat opens in the viewer.
+                    // The model before a solve and a run that succeeds during the chat open
+                    // in the viewer.
                     let (t, ctx) = (token.clone(), cc.egui_ctx.clone());
-                    let open = move |p: &str, r: &str| {
-                        let (t, p, r, fill, ctx) = (
-                            t.clone(),
-                            p.to_owned(),
-                            r.to_owned(),
-                            slot.clone(),
-                            ctx.clone(),
-                        );
+                    let open = move |target: &Target| {
+                        let (t, target, fill, ctx) =
+                            (t.clone(), target.clone(), slot.clone(), ctx.clone());
                         wasm_bindgen_futures::spawn_local(async move {
-                            let content = load_run(&t, &p, &r).await;
+                            let content = match &target {
+                                Target::Run(p, r) => load_run(&t, p, r).await,
+                                Target::Model(p, rev, name) => {
+                                    model(&t, p, rev, name).await.map(Content::Preview)
+                                }
+                            };
                             if let Ok(mut s) = fill.lock() {
                                 *s = Some(content.unwrap_or_else(Content::Failed));
                             }

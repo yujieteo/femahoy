@@ -4,7 +4,9 @@
 //! the agent (`--output-format stream-json`) and keeps each action as a chat entry: the
 //! request, the text of the agent, each command, each tool and its result, and the end
 //! with the time and the cost. When a run of the daemon succeeds during the chat, the chat
-//! gets an `open` entry, and the page shows the results of that run.
+//! gets an `open` entry, and the page shows the results of that run. Before each solve,
+//! `fh run` sends its input to the preview route, the chat gets a `show` entry, and the page
+//! shows the model with each support and each load.
 //!
 //! The agent gets the instructions of `agent.md`, the state folder of the daemon in
 //! `FH_STATE` (so `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first
@@ -81,6 +83,13 @@ impl Chat {
         if log.entries.len() > MAX_ENTRIES {
             log.entries.pop_front();
         }
+    }
+
+    /// The entry `show <project> <revision> <title>`: the page shows the model of the
+    /// revision with its supports and loads.
+    pub(crate) fn show(&self, project: &str, revision: &str, title: &str) {
+        let text = format!("{project} {revision} {title}");
+        self.push(&mut self.lock(), "show", &text);
     }
 
     /// `running` while the agent works, else `idle`.

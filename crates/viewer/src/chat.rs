@@ -1,7 +1,8 @@
 //! The chat panel of the page of `fh serve` (roadmap item M4, `docs/chat.md`). The person
 //! writes a request. The daemon runs the agent, and the panel shows each action of the
 //! agent: its text, each `fh` command with its result, and the end with the time and the
-//! cost. When a run succeeds during the chat, the panel opens its results in the viewer.
+//! cost. Before a solve, the panel opens the model with its supports and loads in the
+//! viewer. When a run succeeds during the chat, the panel opens its results.
 //! The browser holds no API key: the agent runs in the daemon with the login of the person.
 
 use std::collections::BTreeMap;
@@ -86,8 +87,30 @@ fn unescape(text: &str) -> String {
     out
 }
 
-/// Open the results of a run in the viewer: `(project, run)`.
-pub type Open = Box<dyn FnMut(&str, &str)>;
+/// What an entry opens in the viewer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Target {
+    /// The results of a run: the project and the run (the entry `open`).
+    Run(String, String),
+    /// The model of a revision before the solve: the project, the revision and the name of
+    /// the model (the entry `show`).
+    Model(String, String, String),
+}
+
+impl Target {
+    fn of(e: &Entry) -> Option<Target> {
+        let mut words = e.text.splitn(3, ' ');
+        let (p, id) = (words.next()?.to_owned(), words.next()?.to_owned());
+        match e.kind.as_str() {
+            "open" => Some(Target::Run(p, id)),
+            "show" => Some(Target::Model(p, id, words.next().unwrap_or("").to_owned())),
+            _ => None,
+        }
+    }
+}
+
+/// Open a target in the viewer.
+pub type Open = Box<dyn FnMut(&Target)>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Ask {
@@ -196,10 +219,8 @@ impl Chat {
                 continue;
             }
             self.since = entry.seq;
-            if entry.kind == "open" && entry.seq > first {
-                if let Some((p, r)) = entry.text.split_once(' ') {
-                    (self.open)(p, r);
-                }
+            if let Some(target) = Target::of(&entry).filter(|_| entry.seq > first) {
+                (self.open)(&target);
             }
             self.entries.push(entry);
         }
@@ -249,8 +270,8 @@ impl Chat {
                     }
                 }
             });
-        if let Some((p, r)) = reopen {
-            (self.open)(&p, &r);
+        if let Some(target) = reopen {
+            (self.open)(&target);
         }
     }
 
@@ -280,8 +301,8 @@ impl Chat {
     }
 }
 
-/// Show one entry. Returns the run to show again when the person clicks its button.
-fn entry_ui(ui: &mut egui::Ui, e: &Entry) -> Option<(String, String)> {
+/// Show one entry. Returns the target to show again when the person clicks its link.
+fn entry_ui(ui: &mut egui::Ui, e: &Entry) -> Option<Target> {
     let error = ui.visuals().error_fg_color;
     match e.kind.as_str() {
         "you" => {
@@ -319,13 +340,16 @@ fn entry_ui(ui: &mut egui::Ui, e: &Entry) -> Option<(String, String)> {
                 body(ui);
             }
         }
-        "open" => {
-            let (p, r) = e.text.split_once(' ')?;
-            if ui
-                .link(format!("Results of run {r} (project {p})"))
-                .clicked()
-            {
-                return Some((p.to_owned(), r.to_owned()));
+        "open" | "show" => {
+            let target = Target::of(e)?;
+            let text = match &target {
+                Target::Run(p, r) => format!("Results of run {r} (project {p})"),
+                Target::Model(_, rev, name) => {
+                    format!("Supports and loads of {name} before the solve ({rev})")
+                }
+            };
+            if ui.link(text).clicked() {
+                return Some(target);
             }
         }
         "end" => wrap(
@@ -352,7 +376,7 @@ mod tests {
     struct Log {
         calls: Vec<String>,
         events: Vec<Answer>,
-        opened: Vec<String>,
+        opened: Vec<Target>,
     }
 
     struct Fake(Rc<RefCell<Log>>);
@@ -370,7 +394,7 @@ mod tests {
     fn chat() -> (Chat, Rc<RefCell<Log>>) {
         let log = Rc::new(RefCell::new(Log::default()));
         let opened = log.clone();
-        let open = move |p: &str, r: &str| opened.borrow_mut().opened.push(format!("{p} {r}"));
+        let open = move |t: &Target| opened.borrow_mut().opened.push(t.clone());
         (Chat::new(Box::new(Fake(log.clone())), Box::new(open)), log)
     }
 
@@ -413,8 +437,9 @@ mod tests {
         assert!(c.running);
         c.send();
         give(&mut c, &log, 2, "state=running\n");
-        let stream = "next=6\nstate=running\n\n3 you build a cantilever and solve it\n\
-                      4 cmd fh run . --size 2.5\n5 out ok\\tmesh\n6 open p1 r2\n";
+        let stream = "next=7\nstate=running\n\n3 you build a cantilever and solve it\n\
+                      4 cmd fh run . --size 2.5\n5 show p1 rev-1 my case\n6 out ok\\tmesh\n\
+                      7 open p1 r2\n";
         give(&mut c, &log, 3, stream);
         assert_eq!(
             std::mem::take(&mut log.borrow_mut().calls),
@@ -424,21 +449,29 @@ mod tests {
                 "3 GET /api/v1/chat?since=2",
             ]
         );
-        assert_eq!(log.borrow().opened, ["p1 r2"]);
+        // The model shows before the solve, then the results.
+        let (p, rev, name) = ("p1".to_owned(), "rev-1".to_owned(), "my case".to_owned());
+        assert_eq!(
+            log.borrow().opened,
+            [
+                Target::Model(p.clone(), rev, name),
+                Target::Run(p, "r2".into())
+            ]
+        );
         let kinds: Vec<&str> = c.entries.iter().map(|e| e.kind.as_str()).collect();
-        assert_eq!(kinds, ["you", "open", "you", "cmd", "out", "open"]);
+        assert_eq!(kinds, ["you", "open", "you", "cmd", "show", "out", "open"]);
         // The same entries again change nothing, and the end lets the person send again.
         c.read();
         give(
             &mut c,
             &log,
             4,
-            &format!("{stream}7 end done\n").replace("running", "idle"),
+            &format!("{stream}8 end done\n").replace("running", "idle"),
         );
-        assert_eq!(c.entries.len(), 7);
+        assert_eq!(c.entries.len(), 8);
         assert!(!c.running);
         give(&mut c, &log, 99, "next=9\n\n9 end done\n");
-        assert_eq!(c.entries.len(), 7, "an answer to no request");
+        assert_eq!(c.entries.len(), 8, "an answer to no request");
         // A refused request shows the error and lets the person send again.
         c.input = "again".into();
         c.send();
