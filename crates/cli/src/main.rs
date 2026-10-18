@@ -22,8 +22,8 @@ fn usage() -> String {
          model     write a solver input from a .msh file and the case (fh model FILE.msh --case DIR [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
-         serve     run the daemon on 127.0.0.1 with a token (fh serve [--state DIR] [--port N])\n  \
-         view      show the mesh and its outline in 3D (fh view MODEL.inp)\n\n\
+         serve     run the daemon and the browser viewer on 127.0.0.1 (fh serve [--state DIR] [--port N])\n  \
+         view      show a mesh or the results of a run in 3D (fh view MODEL.inp|RUN_DIR|results.pvd)\n\n\
          TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
          Exact values are in the VTU files.\n\n\
          planned subcommands:\n",

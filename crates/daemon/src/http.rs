@@ -17,20 +17,28 @@
 //!
 //! | Method and path | Body | Answer |
 //! |---|---|---|
-//! | `GET /` | | the page of the daemon (HTML) |
+//! | `GET /` | | the page of the daemon (HTML): it loads the wasm viewer |
+//! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
 //! | `GET /api/v1/status` | | `instance`, `pid` |
+//! | `GET /api/v1/projects` | | one item `<project> <root>` for each project |
 //! | `POST /api/v1/projects` | `root` | `project`, `root` |
 //! | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
 //! | `POST /api/v1/projects/<p>/runs` | `request`, `input` | acknowledgement |
 //! | `GET /api/v1/projects/<p>/runs/<r>` | | run record |
 //! | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 //! | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events |
+//! | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
+//!
+//! The page has no secret in it. Its script reads the token from the page address and
+//! fetches the viewer and the results with the `Authorization` header, so only `GET /`
+//! takes the token in the query. The page allows only its own script (a new nonce for each
+//! answer), the viewer module, wasm, and fetches to its own origin.
 //!
 //! An error has the fields `error` (a stable code) and `message`.
 
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -46,16 +54,63 @@ const MAX_BODY: usize = 16 << 10;
 const MAX_CONNECTIONS: usize = 32;
 /// The longest time that a client can take to send its request.
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
-/// The page of the daemon. The wasm viewer replaces it (roadmap item M3).
-const PAGE: &str = "<!doctype html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\">\
-    <title>femahoy</title></head>\n<body>\n<h1>femahoy</h1>\n\
-    <p>fh serve runs. The viewer is not built yet. The run contract is at /api/v1/.</p>\n\
-    </body>\n</html>\n";
+/// The page of the daemon. `NONCE` is the nonce of its script. The script loads the wasm
+/// viewer (`crates/viewer`, `start`) with the token from the page address.
+const PAGE: &str = r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>femahoy</title>
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1b1b; color: #ddd; font: 15px system-ui, sans-serif; }
+#fh { display: block; width: 100%; height: 100%; }
+#msg { position: absolute; top: 40%; width: 100%; text-align: center; padding: 0 16px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<canvas id="fh"></canvas>
+<p id="msg">Loading the viewer...</p>
+<script type="module" nonce="NONCE">
+const msg = document.getElementById("msg");
+const token = new URLSearchParams(location.search).get("token") || "";
+async function get(path) {
+  const r = await fetch(path, { headers: { Authorization: "Bearer " + token } });
+  if (!r.ok) {
+    const text = await r.text();
+    const field = (k) => (text.split("\n").find((l) => l.startsWith(k + "=")) || "").slice(k.length + 1);
+    throw new Error(path + ": HTTP " + r.status + ": " + field("message") + " (" + field("error") + ")");
+  }
+  return r;
+}
+try {
+  const js = await (await get("/viewer/fh_viewer.js")).text();
+  const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
+  const wasm = await (await get("/viewer/fh_viewer_bg.wasm")).arrayBuffer();
+  await viewer.default({ module_or_path: wasm });
+  viewer.start(document.getElementById("fh"));
+  msg.remove();
+} catch (e) {
+  msg.textContent = "The viewer cannot start. " + e.message;
+}
+</script>
+</body>
+</html>
+"#;
+
+/// The files of the wasm viewer that the daemon serves, with their content types.
+const VIEWER_FILES: [(&str, &str); 2] = [
+    ("fh_viewer.js", "text/javascript"),
+    ("fh_viewer_bg.wasm", "application/wasm"),
+];
 
 /// The answer to a request that passed the access rules.
 enum Reply {
     Message(Message),
-    Page(&'static str),
+    /// The page, and the nonce of its script.
+    Page(String),
+    /// File bytes and their content type.
+    Bytes(&'static str, Vec<u8>),
 }
 
 pub(crate) struct Server {
@@ -65,7 +120,14 @@ pub(crate) struct Server {
 }
 
 impl Server {
-    pub(crate) fn start(service: Arc<Service>, port: u16, token: String) -> io::Result<Server> {
+    /// `viewer` is the folder with the wasm viewer files, or `None` when it is not built.
+    pub(crate) fn start(
+        service: Arc<Service>,
+        port: u16,
+        token: String,
+        viewer: Option<PathBuf>,
+    ) -> io::Result<Server> {
+        let viewer = Arc::new(viewer);
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
         let port = listener.local_addr()?.port();
         let stop = Arc::new(AtomicBool::new(false));
@@ -86,10 +148,11 @@ impl Server {
                     continue;
                 }
                 let (service, token, active) = (service.clone(), token.clone(), active.clone());
+                let viewer = viewer.clone();
                 std::thread::spawn(move || {
                     let answer = read_request(&mut stream).and_then(|req| {
                         authorize(&req, port, &token)?;
-                        route(&service, &req)
+                        route(&service, viewer.as_ref().as_deref(), &req)
                     });
                     // A client that has gone, such as a closed browser tab, gets no answer.
                     // This changes no run.
@@ -273,14 +336,51 @@ fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn route(service: &Service, req: &Request) -> Result<Reply, Error> {
+/// A file of the wasm viewer. A daemon with no viewer folder, or a folder with no such
+/// file, gives `viewer.missing`.
+fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Error> {
+    let Some(&(file, kind)) = VIEWER_FILES.iter().find(|(f, _)| *f == name) else {
+        return Err(Error::new(
+            404,
+            "route.unknown",
+            format!("no viewer file {name}"),
+        ));
+    };
+    let missing = |why: String| {
+        Error::new(
+            404,
+            "viewer.missing",
+            format!("{why}. Build it with scripts/build-viewer.sh, or set FH_VIEWER"),
+        )
+    };
+    let dir = viewer.ok_or_else(|| missing("the wasm viewer is not built".into()))?;
+    let bytes = std::fs::read(dir.join(file))
+        .map_err(|e| missing(format!("{}: {e}", dir.join(file).display())))?;
+    Ok(Reply::Bytes(kind, bytes))
+}
+
+fn route(service: &Service, viewer: Option<&Path>, req: &Request) -> Result<Reply, Error> {
     if req.is_page() {
-        return Ok(Reply::Page(PAGE));
+        return Ok(Reply::Page(crate::random_hex(16)));
     }
     let segments: Vec<&str> = req.path.split('/').collect();
     let body = || Message::parse(&req.body);
     let mut m = Message::new();
     match (req.method.as_str(), &segments[..]) {
+        ("GET", ["", "viewer", name]) => return viewer_file(viewer, name),
+        ("GET", ["", "api", "v1", "projects", p, "runs", r, "files", name]) => {
+            return Ok(Reply::Bytes(
+                "application/octet-stream",
+                service.result_file(p, r, name)?,
+            ));
+        }
+        ("GET", ["", "api", "v1", "projects"]) => {
+            m.items = service
+                .projects()
+                .iter()
+                .map(|(p, root)| format!("{p} {}", root.display()))
+                .collect();
+        }
         ("GET", ["", "api", "v1", "status"]) => {
             m.set("instance", service.instance());
             m.set("pid", std::process::id());
@@ -326,15 +426,22 @@ fn route(service: &Service, req: &Request) -> Result<Reply, Error> {
 }
 
 fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<()> {
-    let text = "text/plain";
-    let (status, kind, body) = match answer {
-        Ok(Reply::Message(m)) => (200, text, m.to_text()),
-        Ok(Reply::Page(page)) => (200, "text/html", page.to_owned()),
+    let text = "text/plain; charset=utf-8";
+    let api_policy = "default-src 'none'; frame-ancestors 'none'".to_owned();
+    let (status, kind, body, policy) = match answer {
+        Ok(Reply::Message(m)) => (200, text, m.to_text().into_bytes(), api_policy),
+        Ok(Reply::Page(nonce)) => (
+            200,
+            "text/html; charset=utf-8",
+            PAGE.replace("NONCE", &nonce).into_bytes(),
+            page_policy(&nonce),
+        ),
+        Ok(Reply::Bytes(kind, bytes)) => (200, kind, bytes, api_policy),
         Err(e) => {
             let mut m = Message::new();
             m.set("error", &e.code);
             m.set("message", &e.message);
-            (e.status, text, m.to_text())
+            (e.status, text, m.to_text().into_bytes(), api_policy)
         }
     };
     let reason = match status {
@@ -351,14 +458,26 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<(
     };
     write!(
         stream,
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}; charset=utf-8\r\n\
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {kind}\r\n\
          Content-Length: {}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\
          Referrer-Policy: no-referrer\r\nX-Frame-Options: DENY\r\n\
-         Content-Security-Policy: default-src 'none'; frame-ancestors 'none'\r\n\
-         Connection: close\r\n\r\n{body}",
+         Content-Security-Policy: {policy}\r\n\
+         Connection: close\r\n\r\n",
         body.len()
     )?;
+    stream.write_all(&body)?;
     stream.flush()
+}
+
+/// The content security policy of the page: its own script (by nonce), inline styles (egui
+/// sets style attributes), the
+/// viewer module from a `blob:` address, wasm, and fetches to its own origin only.
+fn page_policy(nonce: &str) -> String {
+    format!(
+        "default-src 'none'; script-src 'nonce-{nonce}' blob: 'wasm-unsafe-eval'; \
+         style-src 'unsafe-inline'; connect-src 'self'; \
+         frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    )
 }
 
 #[cfg(test)]

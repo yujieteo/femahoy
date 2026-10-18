@@ -52,14 +52,17 @@ A message is UTF-8 text with one `key=value` line for each field. An empty line 
 
 | Method and path | Body | Answer |
 |---|---|---|
-| `GET /` | | the page of the daemon (HTML). The wasm viewer replaces it later. |
+| `GET /` | | the page of the daemon (HTML). It loads the wasm viewer (`docs/viewer.md`). |
+| `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer. `viewer.missing` when it is not built. |
 | `GET /api/v1/status` | | `instance`, `pid` |
+| `GET /api/v1/projects` | | one item `<project> <root>` for each project |
 | `POST /api/v1/projects` | `root` | `project`, `root` |
 | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
 | `POST /api/v1/projects/<p>/runs` | `request`, `input` | acknowledgement |
 | `GET /api/v1/projects/<p>/runs/<r>` | | run record |
 | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events after `N` |
+| `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | the bytes of a file in the run folder `out/`. `name` is a plain file name (letters, digits, `.`, `_`, `-`, no `.` first), else `file.invalid`. A file that is not there gives `file.missing`. |
 
 The `input` of a submit is a path in the project root. A path outside the root fails with `input.outside`.
 
@@ -116,7 +119,9 @@ fh serve [--state DIR] [--port N]
 | `--state DIR` | `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows, `%LOCALAPPDATA%\femahoy`. |
 | `--port N` | 0, a free port. The port is in `daemon.info`. |
 
-The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, and the state folder.
+The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/build-viewer.sh`). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
+
+The page holds no token. Its script reads the token from the page address and sends it in the `Authorization` header to fetch the viewer and the results. Thus only `GET /` takes the token in the query. The page has its own content security policy: only its own script (a new nonce for each answer), the viewer module, wasm, and fetches to its own origin.
 
 SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon.info`, and each active run ends as `interrupted`. On Windows, Ctrl+C ends the process. That is the path of a failed daemon (see "Which process stays alive").
 

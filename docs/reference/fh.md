@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `check`, `mesh`, `validate`, `info`, and `serve`.
+`fh` implements `check`, `mesh`, `model`, `validate`, `info`, `serve`, and `view`.
 This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
 The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
@@ -203,15 +203,34 @@ Source: [serve.rs](../../crates/daemon/src/serve.rs). The dispatcher calls it wi
 The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
 `--state` defaults to `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy` (`%LOCALAPPDATA%\femahoy` on Windows).
 `--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
+The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN` and the state folder. `DIR/daemon.info` gets the port and the token. | |
+| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), and the state folder. `DIR/daemon.info` gets the port and the token. | |
 | Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
 | The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running` | 1 |
 | Missing option value | `fh serve: OPTION needs a value` | 2 |
 | Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
+
+## `fh view`
+
+```text
+fh view MODEL.inp|RUN_DIR|results.pvd
+```
+
+Source: [view.rs](../../crates/cli/src/view.rs) and [crates/viewer](../../crates/viewer/src/lib.rs).
+The command opens a native window on the mesh of an `.inp` file, or on the results of a run folder ([viewer](../viewer.md)).
+An argument that is a folder or ends in `.pvd` is a run. Any other argument is an `.inp` file.
+
+| Condition | Diagnostic | Exit |
+|---|---|---:|
+| Window closed | none | 0 |
+| No argument, or more than one | `fh view: usage: fh view MODEL.inp\|RUN_DIR\|results.pvd` | 2 |
+| An argument that starts with `-` | `fh view: unknown option: ARGUMENT` | 2 |
+| An `.inp` file with no element to draw | `fh view: FILE: no C3D4, C3D8 or C3D10 elements to draw (N nodes, M elements)` | 2 |
+| Bad or missing result files | `fh view: RUN_DIR: FILE: MESSAGE (CODE)`, with the codes of [viewer](../viewer.md#result-files) | 2 |
 
 ## Keep this list current
 

@@ -1,36 +1,123 @@
-//! The eframe app: a viewport, a status bar and the mouse controls.
+//! The eframe app: a viewport, a results panel, a status bar and the mouse controls. The
+//! same code runs in the native window (`fh view`) and in the browser (`fh serve`).
+
+use std::sync::{Arc, Mutex};
 
 use eframe::egui;
 use eframe::egui_wgpu;
 
 use crate::camera::Camera;
-use crate::gpu::{self, FrameParams, MeshCallback, MeshGpu};
+use crate::gpu::{FrameParams, Geometry, MeshCallback, MeshGpu};
 use crate::mesh::RenderMesh;
+use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
+use crate::view::{self, Contour, ViewState};
 
-pub struct ViewerApp {
-    title: String,
-    mesh: RenderMesh,
+/// What the viewer shows.
+pub enum Content {
+    /// A mesh with no results (`fh view MODEL.inp`).
+    Mesh(RenderMesh),
+    /// The results of a run.
+    Results(Box<Results>),
+    /// The runs with results that the page can open: a label and a page address each.
+    Runs(Vec<(String, String)>),
+    /// The results are still loading. The text says what.
+    Loading(String),
+    /// The results cannot be shown. The text says why.
+    Failed(String),
+}
+
+/// A slot that a loader fills later, for example after an HTTP fetch in the browser.
+pub type ContentSlot = Arc<Mutex<Option<Content>>>;
+
+struct Shown {
+    results: Option<Box<Results>>,
+    mesh_only: Option<RenderMesh>,
+    view: Option<ViewState>,
+    geometry: Option<Arc<Geometry>>,
+    version: u64,
     camera: Camera,
     home: Camera,
 }
 
+pub struct ViewerApp {
+    title: String,
+    render_state: Option<egui_wgpu::RenderState>,
+    shown: Option<Shown>,
+    message: Option<(bool, String)>,
+    runs: Option<Vec<(String, String)>>,
+    slot: Option<ContentSlot>,
+}
+
 impl ViewerApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, title: String, mesh: RenderMesh) -> Self {
-        if let Some(rs) = cc.wgpu_render_state.as_ref() {
-            let gpu = MeshGpu::new(rs, &mesh);
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        title: String,
+        content: Content,
+        slot: Option<ContentSlot>,
+    ) -> Self {
+        let mut app = Self {
+            title,
+            render_state: cc.wgpu_render_state.clone(),
+            shown: None,
+            message: None,
+            runs: None,
+            slot,
+        };
+        app.set_content(content);
+        app
+    }
+
+    fn set_content(&mut self, content: Content) {
+        let mesh = match &content {
+            Content::Mesh(m) => m,
+            Content::Results(r) => &r.mesh,
+            Content::Runs(links) => {
+                self.message = None;
+                self.runs = Some(links.clone());
+                return;
+            }
+            Content::Loading(text) => {
+                self.message = Some((false, text.clone()));
+                return;
+            }
+            Content::Failed(text) => {
+                self.message = Some((true, text.clone()));
+                self.shown = None;
+                return;
+            }
+        };
+        if let Some(rs) = self.render_state.as_ref() {
+            let gpu = MeshGpu::new(rs, mesh);
             rs.renderer.write().callback_resources.insert(gpu);
         }
         let home = Camera::fit(mesh.bounds);
-        Self {
-            title,
-            mesh,
+        self.message = None;
+        let mut shown = Shown {
+            results: None,
+            mesh_only: None,
+            view: None,
+            geometry: None,
+            version: 0,
             camera: home,
             home,
+        };
+        match content {
+            Content::Mesh(m) => shown.mesh_only = Some(m),
+            Content::Results(r) => {
+                shown.view = Some(ViewState::new(&r));
+                shown.results = Some(r);
+                shown.refresh();
+            }
+            _ => unreachable!("handled above"),
         }
+        self.shown = Some(shown);
     }
 
     fn status_text(&self) -> String {
-        let m = &self.mesh;
+        let Some(s) = &self.shown else {
+            return self.title.clone();
+        };
+        let m = s.mesh();
         let mut text = format!(
             "{}: {} nodes, {} elements, {} surface triangles",
             self.title,
@@ -48,8 +135,196 @@ impl ViewerApp {
     }
 }
 
+impl Shown {
+    fn mesh(&self) -> &RenderMesh {
+        match (&self.results, &self.mesh_only) {
+            (Some(r), _) => &r.mesh,
+            (None, Some(m)) => m,
+            (None, None) => unreachable!("one of the two is set"),
+        }
+    }
+
+    /// Make new vertex data after a change of the view state.
+    fn refresh(&mut self) {
+        if let (Some(r), Some(v)) = (&self.results, &self.view) {
+            self.version += 1;
+            self.geometry = Some(Arc::new(v.geometry(r, self.version)));
+        }
+    }
+
+    fn contour_range(&self) -> Option<(f32, f32)> {
+        let (r, v) = (self.results.as_ref()?, self.view.as_ref()?);
+        match v.contour(r) {
+            Contour::On { lo, hi, .. } => Some((lo as f32, hi as f32)),
+            _ => None,
+        }
+    }
+
+    /// The results panel. Returns true when the view state changed.
+    fn panel(&mut self, ui: &mut egui::Ui) -> bool {
+        let (Some(r), Some(v)) = (&self.results, &mut self.view) else {
+            return false;
+        };
+        let before = v.clone();
+        ui.heading("Results");
+        ui.label(format!("Units: {}", r.units));
+        ui.separator();
+
+        ui.strong("Step");
+        let n = r.steps.len();
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(v.step > 0, egui::Button::new("<"))
+                .on_hover_text("previous step")
+                .clicked()
+            {
+                v.step -= 1;
+            }
+            egui::ComboBox::from_id_salt("step")
+                .selected_text(view::step_label(v.step, &r.steps[v.step]))
+                .show_ui(ui, |ui| {
+                    for (i, s) in r.steps.iter().enumerate() {
+                        ui.selectable_value(&mut v.step, i, view::step_label(i, s));
+                    }
+                });
+            if ui
+                .add_enabled(v.step + 1 < n, egui::Button::new(">"))
+                .on_hover_text("next step")
+                .clicked()
+            {
+                v.step += 1;
+            }
+        });
+        ui.label(format!("{n} steps"));
+        ui.separator();
+
+        ui.strong("Deformed shape");
+        ui.checkbox(&mut v.deformed, "Show the deformed shape");
+        ui.add_enabled_ui(v.deformed, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Scale");
+                let speed = v.scale.max(1e-6) * 0.01;
+                ui.add(
+                    egui::DragValue::new(&mut v.scale)
+                        .range(0.0..=1e12)
+                        .speed(speed)
+                        .custom_formatter(|x, _| view::format_value(x)),
+                );
+                if ui.button("Auto").clicked() {
+                    v.scale = results::auto_scale(r);
+                }
+                if ui.button("1x").on_hover_text("true scale").clicked() {
+                    v.scale = 1.0;
+                }
+            });
+            ui.checkbox(&mut v.ghost, "Undeformed outline");
+        });
+        let step = v.current(r);
+        let unit = results::unit(&r.units, results::Quantity::Displacement);
+        ui.label(format!(
+            "Largest displacement: {} {unit}",
+            view::format_value(step.max_displacement())
+        ));
+        ui.separator();
+
+        ui.strong("Contour");
+        let names = view::field_names(r);
+        egui::ComboBox::from_id_salt("field")
+            .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut v.field, None, "None");
+                for name in &names {
+                    ui.selectable_value(&mut v.field, Some(name.clone()), name);
+                }
+            });
+        match v.contour(r) {
+            Contour::Off => {}
+            Contour::Missing(name) => {
+                ui.colored_label(
+                    ui.visuals().error_fg_color,
+                    format!("Step {} has no field {name}.", v.step + 1),
+                );
+            }
+            Contour::On { field, lo, hi } => legend(ui, &r.units, field, lo, hi),
+        }
+        *v != before
+    }
+}
+
+/// The colour bands with their limits, the highest band at the top.
+fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64, hi: f64) {
+    let unit = results::unit(units, field.quantity);
+    let unit_text = if unit.is_empty() {
+        String::new()
+    } else {
+        format!(" ({unit})")
+    };
+    let at = match field.location {
+        Location::Point => "at the nodes",
+        Location::Cell => "per element",
+    };
+    ui.label(format!("{}{unit_text}, {at}", field.name));
+    let swatch = |ui: &mut egui::Ui, band: usize, text: String| {
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 14.0), egui::Sense::hover());
+            let c = BAND_COLORS[band].map(|x| (x * 255.0).round() as u8);
+            ui.painter()
+                .rect_filled(rect, 0.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
+            ui.monospace(text);
+        });
+    };
+    if hi <= lo {
+        swatch(
+            ui,
+            BANDS / 2,
+            format!("constant {}", view::format_value(lo)),
+        );
+        return;
+    }
+    let limits = results::band_limits(lo, hi);
+    for i in (0..BANDS).rev() {
+        let text = format!(
+            "{} to {}",
+            view::format_value(limits[i]),
+            view::format_value(limits[i + 1])
+        );
+        swatch(ui, i, text);
+    }
+    ui.label(format!(
+        "Min {}, max {}",
+        view::format_value(lo),
+        view::format_value(hi)
+    ));
+}
+
+/// The page with no run selected: a link to each run that has results.
+fn run_list(ui: &mut egui::Ui, links: &[(String, String)]) {
+    ui.heading("Runs with results");
+    if links.is_empty() {
+        ui.label(
+            "No run has succeeded yet. Submit a run with the run contract \
+             (POST /api/v1/projects/<p>/runs), then reload this page.",
+        );
+        return;
+    }
+    for (label, url) in links {
+        ui.add(egui::Hyperlink::from_label_and_url(label, url).open_in_new_tab(false));
+    }
+}
+
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if let Some(slot) = &self.slot {
+            let next = slot.lock().ok().and_then(|mut s| s.take());
+            if let Some(content) = next {
+                self.set_content(content);
+            }
+            if self.shown.is_none() && matches!(self.message, Some((false, _))) {
+                // Still loading: look at the slot again soon.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(100));
+            }
+        }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(self.status_text());
@@ -59,7 +334,38 @@ impl eframe::App for ViewerApp {
                 );
             });
         });
+        let has_results = self.shown.as_ref().is_some_and(|s| s.results.is_some());
+        if has_results {
+            let shown = self.shown.as_mut().expect("has results");
+            egui::Panel::right("results")
+                .resizable(false)
+                .min_size(250.0)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if shown.panel(ui) {
+                            shown.refresh();
+                        }
+                    });
+                });
+        }
         egui::CentralPanel::default().show(ui, |ui| {
+            if let Some(links) = &self.runs {
+                run_list(ui, links);
+                return;
+            }
+            if let Some((error, text)) = &self.message {
+                ui.centered_and_justified(|ui| {
+                    if *error {
+                        ui.colored_label(ui.visuals().error_fg_color, text);
+                    } else {
+                        ui.label(text);
+                    }
+                });
+                return;
+            }
+            let Some(shown) = self.shown.as_mut() else {
+                return;
+            };
             let size = ui.available_size();
             let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
             let delta = response.drag_delta();
@@ -68,44 +374,53 @@ impl eframe::App for ViewerApp {
                 || (response.dragged_by(egui::PointerButton::Primary)
                     && ui.input(|i| i.modifiers.shift));
             if pan {
-                self.camera.pan(delta.x, delta.y, rect.height());
+                shown.camera.pan(delta.x, delta.y, rect.height());
             } else if response.dragged_by(egui::PointerButton::Primary) {
-                self.camera.orbit(delta.x, delta.y);
+                shown.camera.orbit(delta.x, delta.y);
             }
             if response.hovered() {
                 let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-                self.camera.zoom(scroll);
+                shown.camera.zoom(scroll);
             }
             if response.double_clicked() {
-                self.camera = self.home;
+                shown.camera = shown.home;
             }
+            let deformed = shown.view.as_ref().is_some_and(|v| v.deformed && v.ghost);
             let params = FrameParams {
-                view_proj: self.camera.view_proj(rect.width() / rect.height().max(1.0)),
-                eye: self.camera.eye(),
+                view_proj: shown
+                    .camera
+                    .view_proj(rect.width() / rect.height().max(1.0)),
+                eye: shown.camera.eye(),
                 dark: ui.visuals().dark_mode,
+                contour: shown.contour_range(),
+                ghost: deformed,
             };
             ui.painter().add(egui_wgpu::Callback::new_paint_callback(
                 rect,
-                MeshCallback(params),
+                MeshCallback {
+                    params,
+                    geometry: shown.geometry.clone(),
+                },
             ));
         });
     }
 }
 
 /// Open a window and run until it closes.
-pub fn run(title: String, mesh: RenderMesh) -> Result<(), String> {
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run(title: String, content: Content) -> Result<(), String> {
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Wgpu,
-        depth_buffer: gpu::DEPTH_BITS,
+        depth_buffer: crate::gpu::DEPTH_BITS,
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1100.0, 760.0])
+            .with_inner_size([1200.0, 780.0])
             .with_title(format!("fh view {title}")),
         ..Default::default()
     };
     eframe::run_native(
         "fh view",
         options,
-        Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, title, mesh)))),
+        Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, title, content, None)))),
     )
     .map_err(|e| e.to_string())
 }

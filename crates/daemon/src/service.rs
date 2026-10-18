@@ -744,6 +744,44 @@ impl Service {
             .collect()
     }
 
+    /// The registered projects and their root folders, in project ID order.
+    pub fn projects(&self) -> Vec<(String, PathBuf)> {
+        let inner = self.shared.lock();
+        inner
+            .projects
+            .iter()
+            .map(|(p, root)| (p.clone(), root.clone()))
+            .collect()
+    }
+
+    /// The bytes of one file in the protocol v2 run folder of a run, for the viewer. `name`
+    /// is a plain file name: letters, digits, `.`, `_` and `-`, with no `.` first.
+    pub fn result_file(&self, project: &str, run: &str, name: &str) -> Result<Vec<u8>, Error> {
+        let plain = (1..=128).contains(&name.len())
+            && !name.starts_with('.')
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+        if !plain {
+            return Err(Error::bad(
+                "file.invalid",
+                format!("{name:?} is not a plain file name"),
+            ));
+        }
+        let path = {
+            let inner = self.shared.lock();
+            project_root(&inner, project)?;
+            self.shared.record_of(&inner, project, run)?;
+            self.shared.run_dir(project, run).join(OUT_DIR).join(name)
+        };
+        fs::read(&path).map_err(|e| match e.kind() {
+            ErrorKind::NotFound => {
+                Error::new(404, "file.missing", format!("run {run} has no file {name}"))
+            }
+            _ => Error::io(name, e),
+        })
+    }
+
     /// The events of a run after `since`. With a `wait`, the call waits up to `MAX_WAIT` for
     /// a new event, unless the run has ended.
     pub fn events(
