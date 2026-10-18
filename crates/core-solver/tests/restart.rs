@@ -8,121 +8,30 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use common::{assert_same, block_input, snapshot};
-use fh_core_solver::element::{Gradient, Material};
+use common::{assert_same, block_input, dir, pull, run, snapshot, Bilinear, CUBE, MAT};
 use fh_core_solver::restart::{read_latest, Restart};
-use fh_core_solver::{
-    input_hash, run_model, Formats, Input, MaterialFactory, Options, SolverError,
-};
-
-// ---- A material with state, for runs through the library ----
-
-struct Bilinear {
-    d: [[f64; 6]; 6],
-}
-
-impl Material for Bilinear {
-    fn state_len(&self) -> usize {
-        1
-    }
-    fn is_linear(&self) -> bool {
-        false
-    }
-    fn update(
-        &self,
-        g: &Gradient,
-        old: &[f64],
-        new: &mut [f64],
-    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        const C: [f64; 6] = [1.0, 1.0, 1.0, 0.5, 0.5, 0.5];
-        let eps = g.small_strain();
-        let e = (0..6).map(|i| C[i] * eps[i] * eps[i]).sum::<f64>().sqrt();
-        let (ey, k) = (0.01, 0.1);
-        let kappa = old[0].max(e);
-        new[0] = kappa;
-        let (s, ds) = if kappa <= ey {
-            (1.0, 0.0)
-        } else {
-            (
-                (ey + k * (kappa - ey)) / kappa,
-                (k * kappa - (ey + k * (kappa - ey))) / (kappa * kappa),
-            )
-        };
-        let loading = e > old[0] && e > ey;
-        let de: Vec<f64> = (0..6)
-            .map(|i| (0..6).map(|j| self.d[i][j] * eps[j]).sum())
-            .collect();
-        let mut t = [[0.0; 6]; 6];
-        for i in 0..6 {
-            for j in 0..6 {
-                t[i][j] = s * self.d[i][j];
-                if loading {
-                    t[i][j] += de[i] * ds * C[j] * eps[j] / e;
-                }
-            }
-        }
-        let mut stress = [0.0; 6];
-        for i in 0..6 {
-            stress[i] = s * de[i];
-        }
-        Ok((stress, t))
-    }
-}
+use fh_core_solver::{input_hash, Formats, MaterialFactory, Options};
 
 fn options() -> Options {
     Options {
         materials: Some(MaterialFactory::new(|_| {
-            Ok(Box::new(Bilinear {
-                d: fh_core_solver::element::elasticity(1000.0, 0.0),
-            }))
+            Ok(Box::new(Bilinear::new(
+                1000.0,
+                0.0,
+                0.01,
+                0.1,
+                f64::INFINITY,
+            )))
         })),
         formats: Formats::parse("all").unwrap(),
         ..Options::default()
     }
 }
 
-const BAR: &str = "*NODE\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n\
-*ELEMENT, TYPE=C3D8\n1,1,2,3,4,5,6,7,8\n*ELSET, ELSET=E\n1\n\
-*MATERIAL, NAME=M\n*ELASTIC\n1000, 0\n*SOLID SECTION, ELSET=E, MATERIAL=M\n";
-
 /// Two steps: up to strain 0.21, then down to 0.07. Five and two increments.
 fn bar_input() -> String {
-    let step = |inc: &str, load: f64| {
-        format!(
-            "*STEP\n*STATIC\n{inc}\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n2,2,3\n6,2,2\n\
-*CLOAD\n2,1,{load}\n3,1,{load}\n6,1,{load}\n7,1,{load}\n*END STEP\n"
-        )
-    };
-    format!(
-        "{BAR}{}{}",
-        step("0.2, 1., 0.01, 0.2", 7.5),
-        step("0.5, 1.", 2.5)
-    )
-}
-
-fn dir(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("fh-restart-{name}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&d);
-    fs::create_dir_all(&d).unwrap();
-    d
-}
-
-fn run(
-    text: &str,
-    run_dir: &Path,
-    opts: &Options,
-    restart: bool,
-    cancel: &dyn Fn() -> bool,
-) -> Result<(), String> {
-    let model = fh_inp::parse(text).map_err(|e| e.to_string())?;
-    let input = Input {
-        name: "input.inp",
-        hash: input_hash(text),
-        units: fh_core_solver::NO_UNITS,
-    };
-    run_model(&model, &input, run_dir, opts, restart, &mut |_| {}, cancel)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    let (one, two) = (pull("0.2, 1., 0.01, 0.2", 7.5), pull("0.5, 1.", 2.5));
+    format!("{CUBE}{MAT}{one}{two}")
 }
 
 // ---- Result files: one per increment, written once ----
@@ -198,8 +107,7 @@ fn one_flipped_bit_fails_the_checksum() {
 fn a_linear_restart_file_holds_only_the_displacement() {
     let d = dir("linear");
     let text = format!(
-        "{}*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n2,2,3\n6,2,2\n*CLOAD\n2,1,1\n*END STEP\n",
-        BAR
+        "{CUBE}{MAT}*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n2,2,3\n6,2,2\n*CLOAD\n2,1,1\n*END STEP\n"
     );
     run(&text, &d, &Options::default(), false, &|| false).unwrap();
     let bytes = fs::read(d.join("restart.fh")).unwrap();

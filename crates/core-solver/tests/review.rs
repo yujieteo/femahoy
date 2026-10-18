@@ -299,7 +299,9 @@ fn auto_switches_on_the_number_of_free_dofs() {
     let model = block();
     let free = solve_options(&model, &options(Method::Cholesky, 1))
         .unwrap()
-        .free_dofs[0];
+        .summary
+        .steps[0]
+        .free_dofs;
     let small = Options {
         direct_max_dofs: free,
         ..Options::default()

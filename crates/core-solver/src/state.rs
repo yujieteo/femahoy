@@ -76,10 +76,6 @@ impl StateStore {
         }
     }
 
-    pub fn has_internal(&self) -> bool {
-        !self.internal.is_empty()
-    }
-
     /// The trial copy becomes the committed copy.
     pub fn commit(&mut self) {
         self.ip.copy_from_slice(&self.ip_trial);

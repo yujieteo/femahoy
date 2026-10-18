@@ -3,6 +3,8 @@
 
 mod common;
 
+use common::{pull, tip, Bilinear, CUBE, FIX, MAT};
+
 use std::sync::Mutex;
 
 use fh_core_solver::element::{
@@ -213,84 +215,6 @@ fn the_state_image_round_trips() {
     assert!(wrong.load_image(&image).is_err());
 }
 
-// ---- A test-only bilinear material with state ----
-
-/// Secant stiffness that drops after the yield strain. The state is the largest
-/// equivalent strain so far. The tangent is the exact derivative of the stress.
-/// `max_jump` rejects a trial that changes the equivalent strain by more than
-/// that much in one increment, like a failed return map.
-struct Bilinear {
-    d: [[f64; 6]; 6],
-    yield_strain: f64,
-    hardening: f64,
-    max_jump: f64,
-}
-
-const C: [f64; 6] = [1.0, 1.0, 1.0, 0.5, 0.5, 0.5];
-
-impl Bilinear {
-    fn new(e: f64, nu: f64, yield_strain: f64, hardening: f64, max_jump: f64) -> Self {
-        Bilinear {
-            d: fh_core_solver::element::elasticity(e, nu),
-            yield_strain,
-            hardening,
-            max_jump,
-        }
-    }
-
-    /// Scale `s` of the stiffness and its derivative `ds/de` at the strain level `e`.
-    fn scale(&self, e: f64) -> (f64, f64) {
-        if e <= self.yield_strain {
-            return (1.0, 0.0);
-        }
-        let (ey, k) = (self.yield_strain, self.hardening);
-        let s = (ey + k * (e - ey)) / e;
-        let ds = (k * e - (ey + k * (e - ey))) / (e * e);
-        (s, ds)
-    }
-}
-
-impl Material for Bilinear {
-    fn state_len(&self) -> usize {
-        1
-    }
-
-    fn is_linear(&self) -> bool {
-        false
-    }
-
-    fn update(
-        &self,
-        g: &Gradient,
-        old: &[f64],
-        new: &mut [f64],
-    ) -> Result<([f64; 6], [[f64; 6]; 6]), SolverError> {
-        let eps = g.small_strain();
-        let e = (0..6).map(|i| C[i] * eps[i] * eps[i]).sum::<f64>().sqrt();
-        if e - old[0] > self.max_jump {
-            return Err(SolverError::new("the strain jump is too large"));
-        }
-        let loading = e > old[0] && e > self.yield_strain;
-        let kappa = old[0].max(e);
-        new[0] = kappa;
-        let (s, ds) = self.scale(kappa);
-        let de = self
-            .d
-            .map(|row| (0..6).map(|j| row[j] * eps[j]).sum::<f64>());
-        let stress = de.map(|v| s * v);
-        let mut tangent = [[0.0; 6]; 6];
-        for i in 0..6 {
-            for j in 0..6 {
-                tangent[i][j] = s * self.d[i][j];
-                if loading {
-                    tangent[i][j] += de[i] * ds * C[j] * eps[j] / e;
-                }
-            }
-        }
-        Ok((stress, tangent))
-    }
-}
-
 /// The elastic law, but with the "nonlinear" flag. It forces the Newton path.
 struct ForcedNewton(Elastic);
 
@@ -333,27 +257,9 @@ fn forced_options() -> Options {
     }
 }
 
-const CUBE: &str =
-    "*NODE\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n";
-const MAT: &str = "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,5,6,7,8\n*ELSET, ELSET=E\n1\n\
-*MATERIAL, NAME=M\n*ELASTIC\n1000, 0\n*SOLID SECTION, ELSET=E, MATERIAL=M\n";
-/// Symmetry planes: x = 0, y = 0 and z = 0 are held in their normal direction.
-const FIX: &str = "*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n2,2,3\n6,2,2\n";
-
 /// One step. `loads` is the force on each of the four nodes at x = 1.
 fn bar(steps: &str) -> Model {
     parse(&format!("{CUBE}{MAT}{steps}")).unwrap_or_else(|e| panic!("{e}"))
-}
-
-fn pull(static_line: &str, per_node: f64) -> String {
-    format!(
-        "*STEP\n*STATIC\n{static_line}\n{FIX}*CLOAD\n2,1,{per_node}\n3,1,{per_node}\n6,1,{per_node}\n7,1,{per_node}\n*END STEP\n"
-    )
-}
-
-fn tip(model: &Model, sol: &Solution, step: usize) -> f64 {
-    let i = model.nodes.iter().position(|n| n.id == 2).unwrap();
-    sol.steps[step].displacement[i][0]
 }
 
 /// The state of a bar after loading beyond yield is kept when the load goes down.
