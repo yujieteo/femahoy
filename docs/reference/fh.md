@@ -271,8 +271,7 @@ The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0
 `--state` defaults to `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy` (`%LOCALAPPDATA%\femahoy` on Windows). `fh run` has the same default.
 `--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
-The page has the chat with the agent ([chat](../chat.md)) and the terminal sidebar ([terminal](../terminal.md)).
-The pane backend is plain PTYs of the daemon.
+The page has the chat with the agent ([chat](../chat.md)).
 
 After the start, `fh serve` opens its page in the browser. `--no-open`, or a value of `FH_NO_OPEN` that is not empty and not `0`, stops this, for tests and for a machine with no screen.
 The address holds the token, so it does not go into the command line of a browser process, where other users of the machine can read it:
@@ -288,7 +287,7 @@ The address holds the token, so it does not go into the command line of a browse
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the pane backend (for example `fh serve: panes pty (plain PTY panes owned by the daemon)`), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). `DIR/daemon.info` gets the port and the token. | |
+| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). `DIR/daemon.info` gets the port and the token. | |
 | Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
 | The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`. When another daemon answers: `its page is URL. Stop it with: fh serve --stop --state DIR` | 1 |
 | `--stop` stopped the daemon | stdout: `fh serve: stopped the daemon (pid PID) of DIR` | 0 |

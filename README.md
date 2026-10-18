@@ -20,7 +20,7 @@ For your own model, give `fh run` an `.inp` file or a case folder (`case.toml` a
 
 ## Product
 
-The engine is the `fh` command-line program. The main interface is a visual chat. A 3D viewport and a terminal sidebar are beside the chat.
+The engine is the `fh` command-line program. The main interface is a visual chat. A 3D viewport is beside the chat.
 
 The chat plans the work and gives tasks to teammates. The user interface shows each teammate while it runs.
 

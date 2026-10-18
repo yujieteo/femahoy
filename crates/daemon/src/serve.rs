@@ -2,8 +2,7 @@
 //! 127.0.0.1 only, and no option changes the address. It makes a random token at each start
 //! and writes the port and the token to `DIR/daemon.info` (mode 0600). Each request must
 //! carry the token, and a request from a page of another `Origin` fails (`http` module).
-//! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`, with
-//! the terminal sidebar. The panes are plain PTYs of the daemon.
+//! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
 //! At start, `fh serve` opens the page in the browser (`browser` module).
 //!
 //! `fh serve --stop [--state DIR]` stops the daemon of the state folder, for example the
@@ -106,8 +105,6 @@ pub fn serve_until(
              shows only an error"
         ),
     }
-    let panes = daemon.panes().status();
-    println!("fh serve: panes {} ({})", panes.kind, panes.detail);
     println!(
         "fh serve: state folder {}. Stop with Ctrl+C.",
         state_dir.display()

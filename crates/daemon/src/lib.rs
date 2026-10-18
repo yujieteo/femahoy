@@ -13,8 +13,6 @@
 //!   [`EVENT_QUEUE`] events in memory and an event log of at most [`EVENT_LOG`] bytes.
 //!   Clients read events by sequence number, so a slow client never grows a queue.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
-//! - **Terminals and panes.** The daemon owns the PTY of each terminal of the sidebar
-//!   (`pty`) and the pane backend (`panes`), plain PTYs of the daemon. The browser shows a terminal over a WebSocket (`ws`, `screen`, `docs/terminal.md`).
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
 //!   its actions as chat entries for the page (`chat`, `docs/chat.md`).
 //!
@@ -41,12 +39,8 @@ mod client;
 mod contract;
 mod http;
 mod json;
-mod panes;
-mod pty;
-pub mod screen;
 mod serve;
 mod service;
-mod ws;
 
 use std::fs::File;
 use std::io::{Read, Write};
@@ -56,8 +50,6 @@ use std::sync::Arc;
 pub use browser::{no_open, open_page};
 pub use client::{new_request_id, Client};
 pub use contract::{Ack, Error, Event, Events, Message, Outcome, RunRecord, RunState};
-pub use panes::{BackendStatus, PaneBackend};
-use pty::find_program;
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
 pub use service::{Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
@@ -101,31 +93,10 @@ fn write_private(path: &Path, text: &str) -> Result<(), Error> {
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     pub viewer: Option<PathBuf>,
-    pub shell: Option<Vec<String>>,
-}
-
-fn sidebar(o: &Options) -> panes::Sidebar {
-    let shell = o
-        .shell
-        .clone()
-        .unwrap_or_else(|| match std::env::var("SHELL") {
-            Ok(sh) if find_program(&sh).is_some() => vec![sh, "-l".into()],
-            _ => vec!["/bin/sh".into()],
-        });
-    let terminals = Arc::new(pty::Terminals::default());
-    panes::Sidebar {
-        panes: Box::new(panes::PtyPanes {
-            terminals: terminals.clone(),
-            shell: shell.clone(),
-        }),
-        terminals,
-        shell,
-    }
 }
 
 pub struct Daemon {
     service: Arc<Service>,
-    sidebar: Arc<panes::Sidebar>,
     chat: Arc<chat::Chat>,
     server: http::Server,
     token: String,
@@ -143,13 +114,11 @@ impl Daemon {
     ) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
         let state_dir = config.state_dir.clone();
-        let sidebar = Arc::new(sidebar(&options));
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32);
         let chat = chat::Chat::new(service.clone(), state_dir, token.clone());
         let server = http::Server::start(
             service.clone(),
-            sidebar.clone(),
             chat.clone(),
             port,
             token.clone(),
@@ -164,7 +133,6 @@ impl Daemon {
         write_private(&info, &m.to_text())?;
         Ok(Daemon {
             service,
-            sidebar,
             chat,
             server,
             token,
@@ -180,10 +148,6 @@ impl Daemon {
         &self.token
     }
 
-    pub fn panes(&self) -> &dyn PaneBackend {
-        &*self.sidebar.panes
-    }
-
     /// A client with the token of this daemon.
     pub fn client(&self) -> Client {
         Client::new(self.port(), &self.token)
@@ -195,7 +159,6 @@ impl Drop for Daemon {
         let _ = std::fs::remove_file(&self.info);
         self.server.stop();
         self.chat.stop();
-        self.sidebar.terminals.close_all();
         self.service.stop();
     }
 }

@@ -171,9 +171,9 @@ fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
     assert!(text.contains("&run=run-000001"), "{text}");
     // FH_NO_OPEN=1: no browser.
     assert_eq!(lab.browser_log(), None);
-    // The daemon that fh run starts has the pty panes.
+    // The daemon that fh run starts writes its start lines to daemon.log.
     let log = fs::read_to_string(lab.state.join("daemon.log")).unwrap();
-    assert!(log.contains("fh serve: panes pty"), "{log}");
+    assert!(log.contains("fh serve: state folder"), "{log}");
 
     let pid = lab.daemon_pid();
     let again = lab.fh(&["run", p(&bar)]);
