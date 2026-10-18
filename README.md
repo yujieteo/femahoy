@@ -11,7 +11,7 @@ scripts/install.sh
 fh run --example bar-pressure
 ```
 
-1. `scripts/install.sh` builds `fh`, `fh-solve` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target and `wasm-bindgen-cli`). If a tool is missing, the script stops and shows the command that installs it.
+1. `scripts/install.sh` builds `fh`, `fh-solve` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it.
 2. `fh run --example bar-pressure` works in any folder. It meshes a steel bar with gmsh (`brew install gmsh`), writes the solver input, and solves it on a local daemon. Then it opens the results in the browser.
 
 The browser shows the bar with the contour of the von Mises stress. The legend shows `MISES (MPa), per element` and one band, `constant 100.0`, because a pressure of 100 MPa pulls the end of the bar. The daemon stays alive, so the page keeps the results. Stop it with `fh serve --stop`.

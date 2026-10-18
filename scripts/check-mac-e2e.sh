@@ -9,7 +9,7 @@ if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
   printf '%-24s %s\n' 'Apple Silicon macOS' FAIL
   exit 1
 fi
-python="${PYTHON:-python3}"
+python="${PYTHON:-$(command -v fh-python || echo python3)}"
 gmsh="${FH_GMSH:-gmsh}"
 for tool in cargo "$python" "$gmsh"; do
   if ! command -v "$tool" >/dev/null 2>&1; then

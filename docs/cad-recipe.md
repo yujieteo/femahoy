@@ -1,13 +1,13 @@
 # CAD to mesh recipe (M2b, first part)
 
 This recipe makes a part with build123d, meshes it with gmsh, and checks the units and the mesh with `fh info`.
-It follows D-17, D-18 and D-19 in `DESIGN.md`. All tools except `fh` are separate programs that the user installs.
+It follows D-17, D-18 and D-19 in `DESIGN.md`. All tools except `fh` are separate programs. `scripts/install.sh` makes a Python environment with build123d, and its launcher `fh-python` runs that Python. The user installs gmsh.
 Tested with Python 3.12.13, build123d 0.13.0 and gmsh 4.15.2 on macOS 27.0.1 arm64 (Apple M5).
 
 ## Steps
 
 1. Declare the units in `case.toml`: `units = "SI-mm"` or `units = "SI-m"`. There is no default.
-2. Write the part with build123d. `scripts/cad/bar.py` is an example. It writes a STEP file in mm, or in m when the second argument is `m`.
+2. Write the part with build123d and run it with `fh-python part.py`. `scripts/cad/bar.py` is an example. It writes a STEP file in mm, or in m when the second argument is `m`.
 3. Check the STEP file: `fh info part.step --case <case folder>`.
    `fh` refuses with `unit.step.missing`, `unit.step.conflict` or `unit.step.mismatch`.
 4. Copy `scripts/cad/bar.geo.in` and replace `@STEP@`, `@UNIT@`, `@SIZE@` and `@OUT@`.

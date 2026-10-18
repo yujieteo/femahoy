@@ -1,6 +1,6 @@
 //! `scripts/install.sh` with fake tools: the checks before the build, the install folder, and
-//! the update. The fake cargo and wasm-bindgen write small files in place of a build. Each test
-//! has its own HOME, so the default prefix is in the scratch folder.
+//! the update. The fake cargo, wasm-bindgen and uv write small files in place of a build and a
+//! venv. Each test has its own HOME, so the default prefix and venv are in the scratch folder.
 #![cfg(unix)]
 
 mod common;
@@ -95,6 +95,19 @@ impl Lab {
         );
     }
 
+    /// A fake uv. It logs its arguments, and `uv venv DIR` writes a fake DIR/bin/python.
+    fn uv(&self) {
+        let log = p(&self.dir.join("uv.log")).to_owned();
+        script(
+            &self.bin.join("uv"),
+            &format!(
+                "#!/bin/sh\necho \"$*\" >> {log}\n\
+                 if [ \"$1\" = venv ]; then for d; do :; done; mkdir -p \"$d/bin\"\n\
+                   printf '#!/bin/sh\\necho python \"$@\"\\n' > \"$d/bin/python\"; chmod 755 \"$d/bin/python\"; fi\n"
+            ),
+        );
+    }
+
     /// All the tools, with cargo in HOME/.cargo/bin, which is not on PATH.
     fn all_tools(&self) {
         self.cargo(&self.home.join(".cargo/bin"));
@@ -106,6 +119,7 @@ impl Lab {
         ];
         self.rustup(&self.toolchain.clone(), &installed);
         self.wasm_bindgen(&self.bindgen.clone());
+        self.uv();
     }
 
     /// `scripts/install.sh ARGS` with only the fake tools and the system folders on PATH.
@@ -145,6 +159,7 @@ fn missing_tools_are_listed_with_their_install_commands_before_a_build() {
         lab.bindgen
     );
     assert!(err.contains(&bindgen), "{err}");
+    assert!(err.contains("https://astral.sh/uv/install.sh"), "{err}");
     assert!(!lab.target.exists() && !lab.home.join(".local").exists());
 }
 
@@ -222,6 +237,7 @@ fn the_install_builds_copies_and_then_updates() {
     for file in [
         "fh",
         "fh-solve",
+        "fh-python",
         "viewer/fh_viewer.js",
         "viewer/fh_viewer_bg.wasm",
     ] {
@@ -240,6 +256,28 @@ fn the_install_builds_copies_and_then_updates() {
     assert!(
         text.contains(&format!("export PATH=\"{}:$PATH\"", p(&prefix))),
         "{text}"
+    );
+    // fh-python runs the Python 3.12 of the venv, with the tested build123d.
+    let venv = lab.home.join(".local/share/femahoy/venv");
+    let run = Command::new(prefix.join("fh-python"))
+        .args(["part.py", "a b"])
+        .output()
+        .unwrap();
+    assert_eq!(stdout(&run), "python part.py a b\n");
+    let uv = fs::read_to_string(lab.dir.join("uv.log")).unwrap();
+    assert!(
+        uv.contains(&format!(
+            "venv --quiet --allow-existing -p 3.12 {}",
+            p(&venv)
+        )),
+        "{uv}"
+    );
+    assert!(
+        uv.contains(&format!(
+            "pip install --quiet -p {}/bin/python build123d==0.13.0",
+            p(&venv)
+        )),
+        "{uv}"
     );
     // cargo ran in the repository, where rustup reads rust-toolchain.toml, and with no
     // automatic install.
@@ -270,7 +308,10 @@ fn the_install_builds_copies_and_then_updates() {
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(left.len(), 3, "no temporary files: {left:?}");
+    assert_eq!(left.len(), 4, "no temporary files: {left:?}");
+    // The second run updates the venv too.
+    let uv_again = fs::read_to_string(lab.dir.join("uv.log")).unwrap();
+    assert_eq!(uv_again, format!("{uv}{uv}"));
 }
 
 #[test]
@@ -278,9 +319,10 @@ fn a_relative_prefix_on_path_gives_the_short_next_command() {
     let lab = Lab::new("install-prefix");
     lab.all_tools();
     let prefix = lab.dir.join("tools");
-    let out = lab.install(&["--prefix", "tools"], &[&prefix]);
+    let out = lab.install(&["--prefix", "tools", "--venv=env"], &[&prefix]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     assert!(prefix.join("fh").is_file() && prefix.join("viewer/fh_viewer_bg.wasm").is_file());
+    assert!(lab.dir.join("env/bin/python").is_file());
     let text = stdout(&out);
     assert!(
         text.ends_with("\n  fh run --example bar-pressure\n"),
@@ -292,9 +334,14 @@ fn a_relative_prefix_on_path_gives_the_short_next_command() {
 #[test]
 fn bad_install_arguments_exit_2() {
     let lab = Lab::new("install-usage");
-    for args in [&["--prefix"][..], &["--bogus"], &["--prefix", ""]] {
+    for args in [
+        &["--prefix"][..],
+        &["--bogus"],
+        &["--prefix", ""],
+        &["--venv"],
+    ] {
         let out = lab.install(args, &[]);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
-        assert!(stderr(&out).contains("usage: scripts/install.sh [--prefix DIR]"));
+        assert!(stderr(&out).contains("usage: scripts/install.sh [--prefix DIR] [--venv DIR]"));
     }
 }

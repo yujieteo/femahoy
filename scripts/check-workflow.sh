@@ -4,11 +4,11 @@
 # Cases: bar-tension (end displacement, plane sets), and bar-pressure and bar-pressure-m
 # (named regions and a pressure load, in mm and in m, at 2 mesh sizes). The references are
 # analytical. The script also checks that fh refuses the inputs of the M2b gate.
-# Environment: PYTHON (python with build123d), FH_GMSH (gmsh program), KEEP=1 (keep the work folder).
+# Environment: PYTHON (python with build123d, default fh-python or python3), FH_GMSH (gmsh program), KEEP=1 (keep the work folder).
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-python="${PYTHON:-python3}"
+python="${PYTHON:-$(command -v fh-python || echo python3)}"
 gmsh="${FH_GMSH:-gmsh}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/fh-workflow.XXXXXX")"
 [[ "${KEEP:-0}" == 1 ]] || trap 'rm -rf "$work"' EXIT
