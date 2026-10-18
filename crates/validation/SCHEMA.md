@@ -35,14 +35,18 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 ## Model table (optional)
 
 `fh model` builds a solver input from a `.msh` file and the `[model]` table. The table is optional.
+`fh info`, `fh mesh` and `fh model` load the case with `Case::load_before_mesh`, which does not need the `mesh` files.
+`fh check` and `fh validate` use `Case::load`, which needs them.
 
 | Key | Meaning |
 |---|---|
 | `model.step` | Step name. Default `LOAD`. |
 | `model.material` | `name`, `youngs_modulus`, `poissons_ratio` (isotropic, in the case units). |
 | `[[model.set]]` | `name`, `axis` (`x`, `y` or `z`), `at`, optional `tol`. The set holds the nodes within `tol` of that plane. The default `tol` is 1e-6 of the largest bounding box side. `ALL` is reserved. |
-| `[[model.boundary]]` | `set`, `first_dof`, optional `last_dof`, optional `value` (default 0). At least 1 is needed. |
-| `[[model.cload]]` | `set`, `dof`, `per_node`. The force acts on each node of the set. It is not a total force. |
+| `[[model.region]]` | `name`, then `axis` (`x`, `y` or `z`) and `at`, or `box = [x0, y0, z0, x1, y1, z1]`. A named group of faces of the part: the faces on the plane, or the faces fully inside the box. `fh mesh` makes a gmsh physical surface of the name. `fh model` writes a node set and an element-face surface of the name. The name starts with a letter and holds only letters, digits and `_`. Names are unique among sets and regions. `ALL` and `SOLID` are reserved. |
+| `[[model.boundary]]` | `set` (a set or a region), `first_dof`, optional `last_dof`, optional `value` (default 0). At least 1 is needed. |
+| `[[model.cload]]` | `set` (a set or a region), `dof`, `per_node`. The force acts on each node of the set. It is not a total force. |
+| `[[model.dsload]]` | `surface` (a region), `pressure`. A uniform pressure on each face of the region (`*DSLOAD`). Positive pressure pushes into the body. |
 
 ## Measured quantity
 

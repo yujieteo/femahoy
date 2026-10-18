@@ -1,7 +1,8 @@
 //! Mesh rules of the product. Decision D-19, see DESIGN.md: `C3D10` is the default element,
 //! and hex8 (`C3D8I`, `C3D8`) is only for an extruded part.
 
-use fh_inp::Model;
+use fh_inp::{ElementSurface, Model};
+use fh_io::MshMesh;
 
 /// How far a lateral edge may leave the extrusion direction: the sine of the angle.
 const PARALLEL: f64 = 1e-6;
@@ -57,6 +58,32 @@ pub fn hex_needs_extrusion(model: &Model) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Refuse a mesh with a volume outside every physical group. gmsh writes no element of such a
+/// volume, so a part of the body is lost without an error (M2b).
+pub fn volumes_are_named(mesh: &MshMesh) -> Result<(), String> {
+    match mesh.unnamed_volumes.as_slice() {
+        [] => Ok(()),
+        tags => Err(format!(
+            "mesh.volume.unnamed: volume {tags:?} has no physical group, so gmsh wrote none of its elements. Put every volume in a physical group, or mesh with fh mesh --case"
+        )),
+    }
+}
+
+/// The element-face surface of a region. Refuse a region that the mesh does not hold, or that
+/// is not on the outside of the solid.
+pub fn region_surface<'m>(mesh: &'m MshMesh, name: &str) -> Result<&'m ElementSurface, String> {
+    if mesh.inner_surfaces.iter().any(|s| s.eq_ignore_ascii_case(name)) {
+        return Err(format!(
+            "mesh.region.inner: region {name} is not on the outside of the solid. A load or support region must be a face of the part"
+        ));
+    }
+    mesh.model.element_surface(name).ok_or_else(|| {
+        format!(
+            "mesh.region.missing: the mesh has no face group {name}. The region selects no face of the part, or the group was lost or renamed. Check the region in case.toml and mesh again with fh mesh --case"
+        )
+    })
 }
 
 #[cfg(test)]

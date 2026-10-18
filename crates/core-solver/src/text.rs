@@ -37,15 +37,20 @@ pub fn write_text(
     w: &mut impl Write,
     index: usize,
     step: &StepResult,
+    units: &str,
     node_ids: &[i32],
     element_ids: &[i32],
     cell_types: &[u8],
 ) -> io::Result<()> {
     writeln!(w, "{TEXT_HEADER}")?;
-    writeln!(
-        w,
-        "units: none declared; all values are in the unit system of the input file"
-    )?;
+    match units {
+        "SI-mm" => writeln!(w, "units: SI-mm (mm, N, MPa, tonne, s)")?,
+        "SI-m" => writeln!(w, "units: SI-m (m, N, Pa, kg, s)")?,
+        _ => writeln!(
+            w,
+            "units: none declared; all values are in the unit system of the input file"
+        )?,
+    }
     writeln!(w, "step: {}", index + 1)?;
     if let Some(name) = &step.name {
         writeln!(w, "step-name: {name}")?;

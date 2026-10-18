@@ -35,11 +35,39 @@ pub const RESTART_FILE: &str = "restart.fh";
 /// Diagnostic code of a dof that no element reaches. The solver fixes it at zero.
 pub const ORPHAN_CODE: &str = "SOL101";
 
-/// The input file of a run: a name for the summary and the hash of its text.
+/// The input file of a run: a name for the summary, the hash of its text, and its declared
+/// units ([`input_units`]).
 #[derive(Debug, Clone, Copy)]
 pub struct Input<'a> {
     pub name: &'a str,
     pub hash: u64,
+    pub units: &'a str,
+}
+
+/// The value of `units` in the results of an input with no declared units.
+pub const NO_UNITS: &str = "unspecified";
+
+/// The units that an input file declares (D-18): a comment line `** units: SI-mm` or
+/// `** units: SI-m` before the first keyword. `fh model` writes it. Abaqus input has no unit
+/// keyword, so any other input gives [`NO_UNITS`]. The solver uses the units only as a label.
+pub fn input_units(text: &str) -> &'static str {
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some(comment) = line.strip_prefix("**") else {
+            break;
+        };
+        if let Some(value) = comment.trim().strip_prefix("units:") {
+            return match value.trim() {
+                "SI-mm" => "SI-mm",
+                "SI-m" => "SI-m",
+                _ => NO_UNITS,
+            };
+        }
+    }
+    NO_UNITS
 }
 
 /// The reference solver. Its results are unvalidated until the suite passes.
@@ -60,6 +88,7 @@ impl Solver for CoreSolver {
             &Input {
                 name: "model",
                 hash: 0,
+                units: NO_UNITS,
             },
             run_dir,
             &Options::default(),
@@ -372,6 +401,7 @@ struct Writer<'a> {
     run_dir: &'a Path,
     formats: Formats,
     hash: u64,
+    units: &'a str,
     grid: Grid,
     n_point: usize,
     n_cell: usize,
@@ -401,7 +431,7 @@ impl Writer<'_> {
     }
 
     fn write_pvd(&self) -> Result<(), ApiError> {
-        let text = write_pvd_units(&self.entries, "unspecified");
+        let text = write_pvd_units(&self.entries, self.units);
         atomic(self.run_dir, PVD_FILE, |w| {
             w.write_all(text.as_bytes()).map_err(|e| io(PVD_FILE, e))
         })
@@ -457,7 +487,15 @@ impl Writer<'_> {
         if self.formats.text {
             let file = format!("{stem}.txt");
             atomic(self.run_dir, &file, |w| {
-                write_text(w, step, result, &node_ids, &element_ids, &cell_types)
+                write_text(
+                    w,
+                    step,
+                    result,
+                    self.units,
+                    &node_ids,
+                    &element_ids,
+                    &cell_types,
+                )
                     .map_err(|e| io(&file, e))
             })?;
         }
@@ -632,7 +670,7 @@ fn summary_toon(
         header: toon::Header {
             source: input.name.to_string(),
             source_hash: format!("{:016x}", input.hash),
-            units: "unspecified".into(),
+            units: input.units.into(),
             status: if diagnostics.is_empty() {
                 toon::Status::Ok
             } else {
@@ -751,6 +789,7 @@ pub fn run_model(
         run_dir,
         formats: options.formats,
         hash,
+        units: input.units,
         grid,
         n_point,
         n_cell,
@@ -794,6 +833,7 @@ pub fn write_results(
         run_dir,
         formats: Formats::default(),
         hash: 0,
+        units: NO_UNITS,
         grid,
         n_point,
         n_cell,
@@ -821,6 +861,7 @@ pub fn write_results(
     let input = Input {
         name: "model",
         hash: 0,
+        units: NO_UNITS,
     };
     finish(model, &input, &mut writer, run_dir, &solution.summary, 0.0)
 }

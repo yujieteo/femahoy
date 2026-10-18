@@ -27,7 +27,8 @@ The parameter column lists all permitted parameter names. A dash means no parame
 | `*BOUNDARY` | — | Node ID or node set, first DOF, optional last DOF, optional value. Last DOF defaults to first. Value defaults to 0. | Solved, subject to available DOFs. Allowed outside or inside a step. |
 | `*CLOAD` | — | Node ID or node set, DOF, magnitude. Open step required. | Solved, subject to available DOFs. |
 | `*DLOAD` | — | Element ID or element set, `P1` to `P6`, pressure. Open step required. | Solved. Tet10 has only faces 1 to 4. |
-| `*SURFACE` | `TYPE`, `NAME` (both required) | Only `TYPE=NODE`. Data names existing nodes or node sets. | Solved as a node surface for coupling. |
+| `*SURFACE` | `TYPE`, `NAME` (both required) | `TYPE=NODE`: data names existing nodes or node sets. `TYPE=ELEMENT`: data lines `element or element set, S<face>`. | Solved. A coupling can name either kind. `*DSLOAD` names an element surface. |
+| `*DSLOAD` | — | Element surface name, `P`, pressure. Open step required. The name ignores letter case. | Solved. The same pressure acts on each face of the surface. Positive pressure pushes into the body. |
 | `*COUPLING` | `CONSTRAINT NAME`, `REF NODE`, `SURFACE` (all required) | No data lines. Existing reference node ID and surface required. Must immediately precede a coupling kind. | Solved |
 | `*KINEMATIC` | — | Open coupling required. Optional single data line: first DOF, optional last DOF. Default range is 1 to 6. | Solved. Constrains slave translations through reference motion. |
 | `*DISTRIBUTING` | — | Same parsed DOF range as `*KINEMATIC`. | Solved. Uses equal node weights and a rotation fit when required. |

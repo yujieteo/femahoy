@@ -233,7 +233,9 @@ impl Model {
     }
 
     pub fn element_surface(&self, name: &str) -> Option<&ElementSurface> {
-        self.element_surfaces.iter().find(|s| s.name == name)
+        self.element_surfaces
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case(name))
     }
 
     /// The instance and part label of a global node id.

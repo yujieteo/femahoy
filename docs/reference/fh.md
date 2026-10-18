@@ -47,9 +47,8 @@ See the [input reference](inp.md) for accepted keywords and parser limits.
 ## `fh mesh`
 
 ```text
-fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2] [--size H]
-  [--scale S] [--set NAME=VALUE]... [--units SI-mm|SI-m]
-  [--timeout SECONDS] [--gmsh PATH]
+fh mesh FILE.(geo|step) (--case DIR | --units SI-mm|SI-m) [-o OUT.msh] [--order 1|2]
+  [--size H] [--scale S] [--set NAME=VALUE]... [--timeout SECONDS] [--gmsh PATH]
 ```
 
 Source: [mesh.rs](../../crates/cli/src/mesh.rs).
@@ -68,13 +67,18 @@ It runs external gmsh for a 3D mesh in `msh41` format, then reads the result.
 | `--timeout` | 300 seconds. Positive finite duration. The version probe has a separate 30-second limit. |
 | `--gmsh` | Overrides discovery. Otherwise use non-empty `FH_GMSH`, then a file on `PATH`, then the macOS app path. |
 
+For a STEP file, `fh mesh` writes the gmsh script (the fixed script contract of M2b).
+The script sets the STEP target unit, puts every volume in the physical group `SOLID`,
+and makes a physical surface for each `[[model.region]]` of the case.
+A region holds the faces of the part that lie fully inside its plane or box, within 1e-6 of the diagonal of the part.
+
 The macOS fallback is `/Applications/Gmsh.app/Contents/MacOS/gmsh`.
 The minimum gmsh version is 4.8. A release outside 4.15 produces a warning.
 The command removes an existing output file before the mesh run.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Mesh success | stdout: tab-separated `ok`, `gmsh`, `units`, `order`, `nodes`, `elements`, `type`, `nset`, and `elset` rows. | 0 |
+| Mesh success | stdout: tab-separated `ok`, `gmsh`, `units`, `order`, `nodes`, `elements`, `type`, `nset`, `elset`, and `surface` (element-face count) rows. | 0 |
 | gmsh warning or different release | stdout: `warning<TAB>MESSAGE`. gmsh lines that start with `Warning` are retained. | 0 |
 | Missing option value, invalid number, order, units, or set name | stderr: `fh mesh: MESSAGE` | 2 |
 | Unknown option, no input, or more than 1 input | Same prefix. Includes mesh usage. | 2 |
@@ -90,9 +94,40 @@ The command removes an existing output file before the mesh run.
 | Timeout | `fh mesh: gmsh timed out after N seconds and was stopped` | 1 |
 | Child failure or a line that starts with `Error` | `fh mesh: gmsh failed (exit code N)` or `gmsh failed (stopped by a signal)`, with error text. | 1 |
 | Missing output, unreadable mesh, or no volume elements | `fh mesh: gmsh wrote no mesh file: PATH`, `the mesh is not readable (PATH): ERROR`, or `gmsh wrote a mesh with no volume elements: PATH` | 1 |
+| A volume with no physical group, in a file with physical groups | `fh mesh: mesh.volume.unnamed: ...` | 1 |
+| A region of the case that selects no face of the part | `fh mesh: mesh.region.missing: ...` | 1 |
+| A region that is not on the outside of the solid | `fh mesh: mesh.region.inner: ...` | 1 |
 
 The child exit code is diagnostic text. `fh mesh` returns 1 for a child failure.
 Some operating-system errors supply their own message after the command prefix.
+
+## `fh model`
+
+```text
+fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm|SI-m]
+```
+
+Source: [model.rs](../../crates/cli/src/model.rs).
+
+The command writes a solver input from the mesh and the `[model]` table of the case (`crates/validation/SCHEMA.md`).
+The input starts with the line `** units: SI-mm` or `** units: SI-m`. `fh-solve` copies the units into `summary.toon`, `results.pvd` and the text results.
+Each region becomes a node set and an element-face surface of its name. Each `[[model.dsload]]` becomes a `*DSLOAD` line.
+
+| Condition | Diagnostic or output | Exit |
+|---|---|---:|
+| Success | stdout: tab-separated `ok`, `units`, `nodes`, and `elements` rows. | 0 |
+| No unit record and no `--mesh-units` | stderr: `fh model: refused: unit.mesh.missing: ...` | 1 |
+| The unit record and `--mesh-units` differ | Same refusal format with `unit.mesh.conflict`. | 1 |
+| The mesh units differ from the case | Same refusal format with `unit.mesh.mismatch`. | 1 |
+| The case has no `[model]` table | Same refusal format with `model.missing`. | 1 |
+| No solid element, or 2 element types | Same refusal format with `mesh.empty` or `mesh.mixed`. | 1 |
+| A hex8 mesh that is not one extrusion | Same refusal format with `mesh.hex.not_extruded`. | 1 |
+| A volume with no physical group | Same refusal format with `mesh.volume.unnamed`. | 1 |
+| A region that the mesh does not hold (lost or renamed) | Same refusal format with `mesh.region.missing`. | 1 |
+| A region that is not on the outside of the solid | Same refusal format with `mesh.region.inner`. | 1 |
+| A plane set with no node | Same refusal format with `model.set.empty`. | 1 |
+| The written input does not parse | Same refusal format with `model.inp.invalid`. | 1 |
+| Usage, case, file read, or mesh parse error | `fh model: MESSAGE` | 2 |
 
 ## `fh info`
 

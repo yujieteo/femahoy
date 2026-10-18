@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_validation::{Case, Units};
+use fh_validation::{Case, RegionSpec, Select, Units};
 
 use crate::rules;
 
@@ -193,14 +193,19 @@ because gmsh would run a shell command or another file"
     Ok(())
 }
 
-/// The units of the run. D-18: the case or `--units` declares them, and there is no default.
-/// `Err` holds a refusal code and text.
-fn declared_units(o: &Options) -> Result<Units, String> {
-    let from_case = match &o.case {
-        Some(dir) => Some(Case::load(dir).map_err(|e| e.to_string())?.units),
+/// The units of the run and the regions of the case. D-18: the case or `--units` declares
+/// the units, and there is no default. `Err` holds a refusal code and text.
+fn declared(o: &Options) -> Result<(Units, Vec<RegionSpec>), String> {
+    let case = match &o.case {
+        Some(dir) => Some(Case::load_before_mesh(dir).map_err(|e| e.to_string())?),
         None => None,
     };
-    match (from_case, o.units) {
+    let from_case = case.as_ref().map(|c| c.units);
+    let regions = case
+        .and_then(|c| c.model)
+        .map(|m| m.regions)
+        .unwrap_or_default();
+    let units = match (from_case, o.units) {
         (Some(c), Some(u)) if c != u => Err(format!(
             "unit.case.conflict: the case declares {}, but --units says {}",
             c.name(),
@@ -210,7 +215,43 @@ fn declared_units(o: &Options) -> Result<Units, String> {
         (None, None) => Err(
             "unit.case.missing: the run has no units. Give --case DIR or --units SI-mm|SI-m".into(),
         ),
+    }?;
+    Ok((units, regions))
+}
+
+/// The physical groups of the fixed script contract (M2b): the group `SOLID` holds every
+/// volume, and each region of the case is a surface group of its name. A region holds the
+/// faces of the part that lie fully inside its plane or box, within a millionth of the
+/// diagonal of the part.
+fn groups_script(regions: &[RegionSpec]) -> String {
+    let mut s = String::from("fh_v[] = Volume{:};\nPhysical Volume(\"SOLID\") = fh_v[];\n");
+    if regions.is_empty() {
+        return s;
     }
+    s.push_str(
+        "fh_b[] = BoundingBox Volume{fh_v[]};\n\
+fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh_b[2])^2);\n",
+    );
+    for r in regions {
+        let (lo, hi) = match r.select {
+            Select::Plane { axis, at } => {
+                let mut lo = ["-1e30".to_string(), "-1e30".into(), "-1e30".into()];
+                let mut hi = ["1e30".to_string(), "1e30".into(), "1e30".into()];
+                lo[axis] = format!("{at:?} - fh_e");
+                hi[axis] = format!("{at:?} + fh_e");
+                (lo, hi)
+            }
+            Select::Box { min, max } => (
+                min.map(|v| format!("{v:?} - fh_e")),
+                max.map(|v| format!("{v:?} + fh_e")),
+            ),
+        };
+        s.push_str(&format!(
+            "fh_s[] = Surface In BoundingBox{{{}, {}, {}, {}, {}, {}}};\nPhysical Surface(\"{}\") = fh_s[];\n",
+            lo[0], lo[1], lo[2], hi[0], hi[1], hi[2], r.name
+        ));
+    }
+    s
 }
 
 /// Refuse a STEP file whose length unit is missing, mixed, or not the declared unit.
@@ -336,7 +377,7 @@ fn run_dir() -> Result<PathBuf, String> {
 
 /// What a run makes, or a failure text.
 fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
-    let units = declared_units(o)?;
+    let (units, regions) = declared(o)?;
     let input = std::path::absolute(&o.input).map_err(|e| e.to_string())?;
     let output = std::path::absolute(&o.output).map_err(|e| e.to_string())?;
     let extension = input
@@ -354,9 +395,10 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
             // Pin the target unit in every run. The gmsh default is a process state.
             let wrapper = dir.join("input.geo");
             let body = format!(
-                "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n",
+                "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
                 units.gmsh_length(),
-                quote_ok(&input)?
+                quote_ok(&input)?,
+                groups_script(&regions)
             );
             std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
             wrapper
@@ -416,19 +458,24 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
     let msh = std::fs::read_to_string(&output)
         .map_err(|_| format!("gmsh wrote no mesh file: {}", output.display()))?;
-    let model = fh_io::read_msh(&msh).map_err(|e| {
+    let mesh = fh_io::read_msh_mesh(&msh).map_err(|e| {
         format!(
             "the mesh is not readable: {}",
             e.with_file(output.display().to_string())
         )
     })?;
+    let model = &mesh.model;
     if model.elements.is_empty() {
         return Err(format!(
             "gmsh wrote a mesh with no volume elements: {}",
             output.display()
         ));
     }
-    rules::hex_needs_extrusion(&model)?;
+    rules::hex_needs_extrusion(model)?;
+    rules::volumes_are_named(&mesh)?;
+    for r in &regions {
+        rules::region_surface(&mesh, &r.name)?;
+    }
 
     // `fh model` reads this record and refuses a mesh with other units than its case.
     std::fs::write(
@@ -459,6 +506,9 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
     for s in &model.elsets {
         report.push_str(&format!("elset\t{}\t{}\n", s.name, s.ids.len()));
+    }
+    for s in &model.element_surfaces {
+        report.push_str(&format!("surface\t{}\t{}\n", s.name, s.faces.len()));
     }
     if (parsed.0, parsed.1) != TESTED {
         report.push_str(&format!(

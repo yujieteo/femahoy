@@ -22,6 +22,10 @@ fn dir(name: &str) -> PathBuf {
 }
 
 fn run(name: &str, formats: Formats) -> PathBuf {
+    run_in(name, formats, fh_core_solver::NO_UNITS)
+}
+
+fn run_in(name: &str, formats: Formats, units: &str) -> PathBuf {
     let d = dir(name);
     let model = fh_inp::parse(&fixture()).unwrap();
     let options = Options {
@@ -31,9 +35,35 @@ fn run(name: &str, formats: Formats) -> PathBuf {
     let input = Input {
         name: "input.inp",
         hash: 1,
+        units,
     };
     run_model(&model, &input, &d, &options, false, &mut |_| {}, &|| false).unwrap();
     d
+}
+
+#[test]
+fn the_declared_units_come_from_a_comment_before_the_first_keyword() {
+    use fh_core_solver::input_units;
+    assert_eq!(input_units("** Made by fh model\n** units: SI-mm\n*NODE\n"), "SI-mm");
+    assert_eq!(input_units("\n**units:SI-m\n*NODE\n"), "SI-m");
+    // After the first keyword, or with an unknown value, the input declares no units.
+    assert_eq!(input_units("*NODE\n** units: SI-mm\n"), "unspecified");
+    assert_eq!(input_units("** units: inch\n*NODE\n"), "unspecified");
+    assert_eq!(input_units(&fixture()), "unspecified");
+}
+
+#[test]
+fn every_result_file_states_the_declared_units() {
+    let d = run_in("units", Formats::default(), "SI-mm");
+    let toon = fs::read_to_string(d.join("summary.toon")).unwrap();
+    assert!(toon.contains("\nunits: SI-mm\n"), "{toon}");
+    let pvd = fs::read_to_string(d.join("results.pvd")).unwrap();
+    assert!(pvd.contains("units=\"SI-mm\""), "{pvd}");
+    let text = fs::read_to_string(d.join("step-1.txt")).unwrap();
+    assert!(text.contains("\nunits: SI-mm (mm, N, MPa, tonne, s)\n"), "{text}");
+    let none = run_in("no-units", Formats::default(), fh_core_solver::NO_UNITS);
+    let toon = fs::read_to_string(none.join("summary.toon")).unwrap();
+    assert!(toon.contains("\nunits: unspecified\n"), "{toon}");
 }
 
 #[test]
@@ -210,6 +240,7 @@ fn a_set_name_with_a_space_is_kept_in_the_vtu_and_encoded_in_the_vtk() {
     let input = Input {
         name: "input.inp",
         hash: 1,
+        units: fh_core_solver::NO_UNITS,
     };
     let options = Options::default();
     run_model(&model, &input, &d, &options, false, &mut |_| {}, &|| false)

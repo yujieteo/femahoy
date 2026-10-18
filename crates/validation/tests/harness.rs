@@ -830,7 +830,7 @@ fn a_bad_model_table_is_an_error() {
         (
             "set = \"A\"",
             "set = \"B\"",
-            "`B` is not a `[[model.set]]` name",
+            "`B` is not a `[[model.set]]` or `[[model.region]]` name",
         ),
         ("axis = \"z\"", "axis = \"w\"", "`axis` must be x, y or z"),
         (
@@ -866,4 +866,93 @@ fn a_bad_model_table_is_an_error() {
         "{}",
         error.message
     );
+}
+
+const REGIONS: &str = "[[model.region]]\nname = \"LOAD\"\naxis = \"z\"\nat = 9.0\n\
+[[model.region]]\nname = \"BORE\"\nbox = [0, 0, 0, 1, 1, 2.5]\n\
+[[model.boundary]]\nset = \"BORE\"\nfirst_dof = 3\n\
+[[model.dsload]]\nsurface = \"LOAD\"\npressure = -4.5\n";
+
+#[test]
+fn regions_and_pressure_loads_are_read() {
+    use fh_validation::Select;
+    let valid = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0");
+    let case = write_case(&tmp("regions-ok"), &format!("{valid}{MODEL}{REGIONS}")).unwrap();
+    let model = case.model.unwrap();
+    assert_eq!(model.regions.len(), 2);
+    assert_eq!(model.regions[0].name, "LOAD");
+    assert_eq!(model.regions[0].select, Select::Plane { axis: 2, at: 9.0 });
+    assert_eq!(
+        model.regions[1].select,
+        Select::Box {
+            min: [0.0, 0.0, 0.0],
+            max: [1.0, 1.0, 2.5]
+        }
+    );
+    assert_eq!(model.boundaries[1].set, "BORE");
+    assert_eq!(model.dsloads[0].surface, "LOAD");
+    assert_eq!(model.dsloads[0].pressure, -4.5);
+}
+
+#[test]
+fn a_bad_region_or_pressure_load_is_an_error() {
+    let valid = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0");
+    let cases = [
+        (
+            "surface = \"LOAD\"",
+            "surface = \"A\"",
+            "`A` is not a `[[model.region]]` name",
+        ),
+        (
+            "name = \"LOAD\"",
+            "name = \"A\"",
+            "region name `A` is reserved or repeated",
+        ),
+        (
+            "name = \"BORE\"",
+            "name = \"solid\"",
+            "region name `solid` is reserved or repeated",
+        ),
+        (
+            "name = \"BORE\"",
+            "name = \"2nd face\"",
+            "region name `2nd face` must start with a letter and hold only letters, digits and _",
+        ),
+        (
+            "axis = \"z\"\nat = 9.0",
+            "axis = \"z\"\nat = 9.0\nbox = [0, 0, 0, 1, 1, 1]",
+            "a region needs `axis` and `at`, or `box`, not both",
+        ),
+        (
+            "box = [0, 0, 0, 1, 1, 2.5]",
+            "box = [0, 0, 0, 1, 1]",
+            "`box` must be 6 numbers: x0, y0, z0, x1, y1, z1",
+        ),
+        (
+            "box = [0, 0, 0, 1, 1, 2.5]",
+            "box = [0, 0, 3, 1, 1, 2.5]",
+            "`box` needs x0 <= x1, y0 <= y1 and z0 <= z1",
+        ),
+        (
+            "pressure = -4.5",
+            "pressure = -4.5\nextra = 1",
+            "unknown key `extra` in `model.dsload`",
+        ),
+    ];
+    for (index, (old, new, message)) in cases.iter().enumerate() {
+        let text = format!("{valid}{MODEL}{}", REGIONS.replace(old, new));
+        let error = write_case(&tmp(&format!("region-bad{index}")), &text).unwrap_err();
+        assert_eq!(error.message, *message, "case {index}");
+    }
+}
+
+#[test]
+fn a_case_before_its_mesh_loads_only_with_load_before_mesh() {
+    let dir = tmp("before-mesh");
+    let text = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0").replace("m.inp", "later.inp");
+    write_case(&dir, &text).unwrap_err();
+    let error = Case::load(&dir).unwrap_err();
+    assert!(error.message.contains("mesh file later.inp not found"), "{error}");
+    let case = Case::load_before_mesh(&dir).unwrap();
+    assert_eq!(case.meshes, [dir.join("later.inp")]);
 }

@@ -14,7 +14,10 @@ pub use fixture::{
     load_all, Case, Class, Field, FixtureError, Manufactured, Op, Quantity, Reference, Units,
     ELEMENT_TYPES, SCHEMA_VERSION,
 };
-pub use model::{BoundarySpec, CloadSpec, MaterialSpec, ModelSpec, SetSpec};
+pub use model::{
+    BoundarySpec, CloadSpec, DsloadSpec, MaterialSpec, ModelSpec, RegionSpec, Select, SetSpec,
+    RESERVED_NAMES,
+};
 pub use run::{run_case_with, run_convergence_with, Outcome, Report, Row, Solve};
 pub use tolerance::{check_l, check_n, check_r, observed_rate, richardson};
 

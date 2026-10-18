@@ -113,6 +113,8 @@ fn validate_runs_every_case_through_the_solver() {
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in [
+        "bar-pressure",
+        "bar-pressure-m",
         "bar-tension",
         "cantilever",
         "cantilever-c3d10",
@@ -133,7 +135,7 @@ fn validate_runs_every_case_through_the_solver() {
             "{id} missing in {stdout}"
         );
     }
-    assert!(stdout.contains("14 cases: 14 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("16 cases: 16 pass, 0 fail"), "{stdout}");
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
@@ -227,7 +229,7 @@ fn convergence_on_the_case_folder_skips_class_n() {
         "{stdout}"
     );
     assert!(stdout.contains("mms-c3d10\tR\t3 meshes\tpass"), "{stdout}");
-    assert!(stdout.contains("14 cases: 10 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("16 cases: 10 pass, 0 fail"), "{stdout}");
 }
 
 #[test]

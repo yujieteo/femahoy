@@ -6,7 +6,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use crate::code;
-use fh_inp::{Element, ElementSet, Model, Node, NodeSet};
+use fh_inp::{Element, ElementSet, ElementSurface, Model, Node, NodeSet};
 
 /// An import error. It has a stable code and names the line number of the input.
 /// `file` is empty until the caller sets it with `with_file`.
@@ -66,6 +66,22 @@ fn type_info(t: u32) -> Option<(usize, u8)> {
         11 => (10, 3),
         _ => return None,
     })
+}
+
+/// Corner positions (in `inp` node order) of each face, face 1 first. The numbering is the
+/// `*SURFACE, TYPE=ELEMENT` numbering of the solver (`S1` to `S4` for a tet, `S1` to `S6` for a hex).
+fn faces_of(element_type: &str) -> &'static [&'static [usize]] {
+    match element_type {
+        "C3D10" => &[&[0, 1, 2], &[0, 3, 1], &[1, 3, 2], &[2, 3, 0]],
+        _ => &[
+            &[0, 1, 2, 3],
+            &[4, 7, 6, 5],
+            &[0, 4, 5, 1],
+            &[1, 5, 6, 2],
+            &[2, 6, 7, 3],
+            &[3, 7, 4, 0],
+        ],
+    }
 }
 
 /// The `inp` element type and the gmsh position of each `inp` node.
@@ -141,6 +157,21 @@ struct Group {
     name: String,
     nodes: Vec<u32>,
     elements: Vec<u32>,
+    /// The sorted corner nodes of each surface element (triangle or quadrangle).
+    faces: Vec<Vec<u32>>,
+}
+
+/// A mesh, with the facts about its physical groups that the model does not hold.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct MshMesh {
+    pub model: Model,
+    /// Tags of the volumes with no physical group, in a file with at least one physical group.
+    /// gmsh then writes no element of such a volume, so that part of the body is lost.
+    /// A file with no physical group holds every element, and the list is empty.
+    pub unnamed_volumes: Vec<u32>,
+    /// Physical surface groups that are not on the outside of the solid: a face of the group
+    /// is a face of no volume element, or of two. They get a node set, but no element surface.
+    pub inner_surfaces: Vec<String>,
 }
 
 #[derive(Default)]
@@ -152,11 +183,20 @@ struct Reader {
     node_ids: HashSet<u32>,
     element_ids: HashSet<u32>,
     groups: Vec<Group>,
+    /// Each volume entity, and whether it has a physical tag.
+    volumes: Vec<(u32, bool)>,
 }
 
 /// Read a gmsh MSH 4.1 ASCII file. Each physical group becomes a node set.
-/// A group of volumes also becomes an element set.
+/// A group of volumes also becomes an element set. A group of surfaces on the outside of the
+/// solid also becomes an element surface (`*SURFACE, TYPE=ELEMENT`) of the same name.
 pub fn read_msh(text: &str) -> Result<Model> {
+    read_msh_mesh(text).map(|m| m.model)
+}
+
+/// Like [`read_msh`], and also report the volumes with no physical group and the surface
+/// groups that are not on the outside of the solid.
+pub fn read_msh_mesh(text: &str) -> Result<MshMesh> {
     let mut l = Lines {
         lines: text.lines().collect(),
         pos: 0,
@@ -268,6 +308,9 @@ impl Reader {
                 for i in 0..n {
                     tags.push(num::<i32>(&t, at + 1 + i, line, "physical tag")?.unsigned_abs());
                 }
+                if dim == 3 {
+                    self.volumes.push((tag, !tags.is_empty()));
+                }
                 self.entities.insert((dim as u8, tag), tags);
             }
         }
@@ -304,7 +347,7 @@ impl Reader {
                 self.model.nodes.push(Node { id: *id, xyz });
             }
             if dim == 0 {
-                self.add_to_groups(dim, tag, &ids, &[]);
+                self.add_to_groups(dim, tag, &ids, &[], None);
             }
         }
         Ok(())
@@ -374,13 +417,26 @@ impl Reader {
                         nodes: order.iter().map(|&i| nodes[i]).collect(),
                     });
                 }
-                self.add_to_groups(dim, tag, &nodes, &elements);
+                // The corners of a surface element come first: 3 for a triangle, 4 for a quadrangle.
+                let face = (tdim == 2).then(|| {
+                    let mut c = nodes[..if count == 3 || count == 6 { 3 } else { 4 }].to_vec();
+                    c.sort_unstable();
+                    c
+                });
+                self.add_to_groups(dim, tag, &nodes, &elements, face);
             }
         }
         Ok(())
     }
 
-    fn add_to_groups(&mut self, dim: u8, tag: u32, nodes: &[u32], elements: &[u32]) {
+    fn add_to_groups(
+        &mut self,
+        dim: u8,
+        tag: u32,
+        nodes: &[u32],
+        elements: &[u32],
+        face: Option<Vec<u32>>,
+    ) {
         for phys in self.entities.get(&(dim, tag)).cloned().unwrap_or_default() {
             let name = self
                 .names
@@ -399,10 +455,47 @@ impl Reader {
             };
             self.groups[i].nodes.extend_from_slice(nodes);
             self.groups[i].elements.extend_from_slice(elements);
+            self.groups[i].faces.extend(face.clone());
         }
     }
 
-    fn finish(mut self) -> Result<Model> {
+    fn finish(mut self) -> Result<MshMesh> {
+        // Each element face, by its sorted corner nodes.
+        let mut on: HashMap<Vec<u32>, Vec<(u32, u8)>> = HashMap::new();
+        if self.groups.iter().any(|g| !g.faces.is_empty()) {
+            for e in &self.model.elements {
+                for (f, corners) in faces_of(&e.element_type).iter().enumerate() {
+                    let mut key: Vec<u32> = corners.iter().map(|&c| e.nodes[c]).collect();
+                    key.sort_unstable();
+                    on.entry(key).or_default().push((e.id, f as u8 + 1));
+                }
+            }
+        }
+        let mut inner_surfaces = Vec::new();
+        for g in &self.groups {
+            if g.faces.is_empty() {
+                continue;
+            }
+            let faces: Option<Vec<(u32, u8)>> = g
+                .faces
+                .iter()
+                .map(|c| match on.get(c).map(Vec::as_slice) {
+                    Some(&[one]) => Some(one),
+                    _ => None,
+                })
+                .collect();
+            match faces {
+                Some(mut faces) => {
+                    faces.sort_unstable();
+                    faces.dedup();
+                    self.model.element_surfaces.push(ElementSurface {
+                        name: g.name.clone(),
+                        faces,
+                    });
+                }
+                None => inner_surfaces.push(g.name.clone()),
+            }
+        }
         for g in self.groups {
             let (mut nodes, mut elements) = (g.nodes, g.elements);
             nodes.sort_unstable();
@@ -422,6 +515,16 @@ impl Reader {
                 });
             }
         }
-        Ok(self.model)
+        let grouped = self.entities.values().any(|tags| !tags.is_empty());
+        Ok(MshMesh {
+            model: self.model,
+            unnamed_volumes: self
+                .volumes
+                .iter()
+                .filter(|v| grouped && !v.1)
+                .map(|v| v.0)
+                .collect(),
+            inner_surfaces,
+        })
     }
 }
