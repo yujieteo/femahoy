@@ -6,7 +6,7 @@ This page gives the commands, options, file formats and exit codes of the workfl
 
 ## The proof
 
-Run `scripts/check-workflow.sh` from the repository root. It runs 3 cases and prints a pass or fail table:
+Run `scripts/check-workflow.sh` from the repository root. It runs the bar cases and prints a pass or fail table:
 
 - `validation/cases/bar-tension`: node sets on coordinate planes and an end displacement.
 - `validation/cases/bar-pressure` (SI-mm) and `validation/cases/bar-pressure-m` (SI-m): 4 named regions and a pressure (`*DSLOAD`) on the region `LOAD`. Each case runs at 2 mesh sizes (8 mm and 4 mm).
@@ -79,7 +79,7 @@ The cases in mm and in m give the same physical answer.
 |---|---|
 | `case.toml` | Schema 2 (`docs/reference/case-toml.md`). `units` is `"SI-mm"` or `"SI-m"` and has no default. The `[model]` table holds the step, the material, the node sets (`axis`, `at`), the named regions (`[[model.region]]`, by plane or by box), the boundaries, the `[[model.cload]]` loads and the `[[model.dsload]]` pressures. |
 | `*.step` | STEP with one length unit record. `fh` reads the record as text. |
-| `*.msh` | MSH 4.1 ASCII, complete quadratic tetrahedra (`C3D10`). Hex8 only for an extruded part. `fh mesh --case DIR` puts every volume in the physical group `SOLID` and makes a physical surface for each region of the case. |
+| `*.msh` | MSH 4.1 ASCII, complete quadratic tetrahedra (`C3D10`). Hex8 only for an extruded part. `fh mesh --case DIR` uses `SOLID` for one material, or a physical volume group for each material box, and makes a physical surface for each region. |
 | `*.msh.units` | One line, `SI-mm` or `SI-m`. `fh mesh` writes it. `fh model` reads it. |
 | `*.inp` | The keyword subset in `docs/reference/inp.md`. `fh model` writes the line `** units: SI-mm` (or `SI-m`) before the first keyword, and each region as `*NSET` and `*SURFACE, TYPE=ELEMENT`. |
 | Run folder | `results.pvd`, `step-N.vtu`, optional `step-N.txt` and `.vtk`, and `summary.toon` (`schema: fh.run`). `summary.toon`, `results.pvd` and the text results state the units of the input, or `unspecified` when the input has no units line. TOON numbers have 4 significant figures. The VTU files have full precision. |
@@ -95,3 +95,28 @@ The cases in mm and in m give the same physical answer.
 Refusal codes in the path: `unit.step.missing`, `unit.step.conflict`, `unit.step.mixed`, `unit.step.mismatch`,
 `unit.mesh.missing`, `unit.mesh.unreadable`, `unit.mesh.conflict`, `unit.mesh.mismatch`, `mesh.empty`, `mesh.mixed`,
 `mesh.jacobian.negative`, `mesh.volume.unnamed`, `mesh.region.missing`, `mesh.region.inner`, `model.missing`, `model.inp.invalid`.
+
+## Bilayer warpage with CalculiX
+
+The C3 workflow uses `validation/cases/warpage-strip`, next to the input-only `bimetal-strip` check.
+The source, geometry, materials, analytical reference and tolerance are in its [derivation](../validation/cases/warpage-strip/derivation.md).
+
+Build `fh`, `fh-solve` and `fh-solve-ccx`, then run with a Python that has build123d:
+
+```sh
+FH_CCX=/path/to/ccx fh-python scripts/check-warpage.py /tmp/warpage-proof
+```
+
+The script builds 2 touching bodies, writes STEP, then runs `fh run` at mesh sizes of 1 and 0.5 mm.
+Each run uses its own daemon state and `FH_SOLVE=.../fh-solve-ccx`.
+The case declares 2 materials with volume boxes, thermal expansion and `model.temperature_change`.
+gmsh fragments the bodies so the materials share interface nodes.
+`fh model` writes a section for each material and a uniform temperature change.
+The check reads the VTU displacement, compares it with the published bilayer theory, and checks the material partition and shared interface.
+It also checks mesh quality and the native solver refusal.
+The script stops only its private daemon by PID.
+Logs exclude the local viewer token. `record.json` gives both values, differences, mesh counts and adapter times.
+
+The fine mesh gave -0.6126606 mm against -0.6136986301 mm, a difference of 0.169143%, below 1%.
+The mesh has 13720 nodes and 7867 C3D10 elements. The adapter time was 1.349 s.
+The case derivation gives the tested versions and both mesh records.

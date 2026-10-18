@@ -11,6 +11,9 @@ pub struct MaterialSpec {
     pub name: String,
     pub youngs_modulus: f64,
     pub poissons_ratio: f64,
+    pub expansion: Option<f64>,
+    /// A volume selector. None retains the single-material ALL section.
+    pub bounds: Option<[f64; 6]>,
 }
 
 /// A node set: the nodes with `coordinate[axis]` within `tol` of `at`. `tol` is `None` when the
@@ -22,6 +25,7 @@ pub struct SetSpec {
     pub axis: usize,
     pub at: f64,
     pub tol: Option<f64>,
+    pub point: Option<[f64; 3]>,
 }
 
 /// How a region selects the faces of the part.
@@ -70,7 +74,8 @@ pub struct CloadSpec {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModelSpec {
     pub step: String,
-    pub material: MaterialSpec,
+    pub materials: Vec<MaterialSpec>,
+    pub temperature_change: Option<f64>,
     pub sets: Vec<SetSpec>,
     pub regions: Vec<RegionSpec>,
     pub boundaries: Vec<BoundarySpec>,
@@ -118,6 +123,28 @@ impl FixtureReader<'_> {
         }
     }
 
+    fn material_box(&self, table: &Table) -> Result<Option<[f64; 6]>, FixtureError> {
+        let Some(item) = table.get("box") else {
+            return Ok(None);
+        };
+        let values: Option<Vec<f64>> = item.as_array().and_then(|a| {
+            a.iter()
+                .map(|v| {
+                    v.as_float()
+                        .or_else(|| v.as_integer().map(|n| n as f64))
+                        .filter(|v| v.is_finite())
+                })
+                .collect()
+        });
+        let Some(&[x0, y0, z0, x1, y1, z1]) = values.as_deref() else {
+            return Err(self.err(Some(item), "material box needs 6 finite numbers".into()));
+        };
+        if x0 >= x1 || y0 >= y1 || z0 >= z1 {
+            return Err(self.err(Some(item), "material box needs positive extents".into()));
+        }
+        Ok(Some([x0, y0, z0, x1, y1, z1]))
+    }
+
     /// The `[model]` table, or `None` when the case has none.
     pub(crate) fn model(&self, root: &Table) -> Result<Option<ModelSpec>, FixtureError> {
         let Some(item) = root.get("model") else {
@@ -130,7 +157,14 @@ impl FixtureReader<'_> {
             table,
             "model",
             &[
-                "step", "material", "set", "region", "boundary", "cload", "dsload",
+                "step",
+                "material",
+                "set",
+                "region",
+                "boundary",
+                "cload",
+                "dsload",
+                "temperature_change",
             ],
         )?;
         let step = if table.contains_key("step") {
@@ -139,34 +173,76 @@ impl FixtureReader<'_> {
             "LOAD".to_owned()
         };
         let m_item = self.get(table, "material")?;
-        let m = m_item
-            .as_table()
-            .ok_or_else(|| self.err(Some(m_item), "`model.material` must be a table".into()))?;
-        self.only_keys(
-            m,
-            "model.material",
-            &["name", "youngs_modulus", "poissons_ratio"],
-        )?;
-        let material = MaterialSpec {
-            name: self.string(m, "name")?,
-            youngs_modulus: self.number(m, "youngs_modulus")?,
-            poissons_ratio: self.number(m, "poissons_ratio")?,
+        let tables: Vec<&Table> = if let Some(m) = m_item.as_table() {
+            vec![m]
+        } else {
+            self.rows(table, "material")?
         };
-        if material.youngs_modulus <= 0.0 {
+        if tables.is_empty() {
+            return Err(self.err(Some(m_item), "model needs a material".into()));
+        }
+        let mut materials: Vec<MaterialSpec> = Vec::new();
+        for m in tables {
+            self.only_keys(
+                m,
+                "model.material",
+                &[
+                    "name",
+                    "youngs_modulus",
+                    "poissons_ratio",
+                    "expansion",
+                    "box",
+                ],
+            )?;
+            let material = MaterialSpec {
+                name: self.string(m, "name")?,
+                youngs_modulus: self.number(m, "youngs_modulus")?,
+                poissons_ratio: self.number(m, "poissons_ratio")?,
+                expansion: m
+                    .get("expansion")
+                    .map(|_| self.number(m, "expansion"))
+                    .transpose()?,
+                bounds: self.material_box(m)?,
+            };
+            if material.youngs_modulus <= 0.0 {
+                return Err(self.err(
+                    m.get("youngs_modulus"),
+                    "`youngs_modulus` must be above 0".into(),
+                ));
+            }
+            if !(-1.0 < material.poissons_ratio && material.poissons_ratio < 0.5) {
+                return Err(self.err(
+                    m.get("poissons_ratio"),
+                    "`poissons_ratio` must be above -1 and below 0.5".into(),
+                ));
+            }
+            let name = &material.name;
+            let mut chars = name.chars();
+            if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+                || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+                || name.eq_ignore_ascii_case("ALL")
+                || materials.iter().any(|m| m.name.eq_ignore_ascii_case(name))
+            {
+                return Err(self.err(m.get("name"), "material name is invalid or repeated".into()));
+            }
+            materials.push(material);
+        }
+        if materials.len() > 1 && materials.iter().any(|m| m.bounds.is_none()) {
             return Err(self.err(
-                m.get("youngs_modulus"),
-                "`youngs_modulus` must be above 0".into(),
+                Some(m_item),
+                "each material needs a box for several materials".into(),
             ));
         }
-        if !(-1.0 < material.poissons_ratio && material.poissons_ratio < 0.5) {
-            return Err(self.err(
-                m.get("poissons_ratio"),
-                "`poissons_ratio` must be above -1 and below 0.5".into(),
-            ));
+        let temperature_change = table
+            .get("temperature_change")
+            .map(|_| self.number(table, "temperature_change"))
+            .transpose()?;
+        if temperature_change.is_some() && materials.iter().any(|m| m.expansion.is_none()) {
+            return Err(self.err(Some(m_item), "each thermal material needs expansion".into()));
         }
         let mut sets: Vec<SetSpec> = Vec::new();
         for t in self.rows(table, "set")? {
-            self.only_keys(t, "model.set", &["name", "axis", "at", "tol"])?;
+            self.only_keys(t, "model.set", &["name", "axis", "at", "tol", "point"])?;
             let name = self.string(t, "name")?;
             if name.eq_ignore_ascii_case("ALL")
                 || sets.iter().any(|s| s.name.eq_ignore_ascii_case(&name))
@@ -176,7 +252,32 @@ impl FixtureReader<'_> {
                     format!("set name `{name}` is reserved or repeated"),
                 ));
             }
-            let axis_name = self.string(t, "axis")?;
+            let point = t
+                .get("point")
+                .map(|item| {
+                    if t.contains_key("axis") || t.contains_key("at") || t.contains_key("tol") {
+                        return Err(self.err(Some(item), "point cannot use axis, at or tol".into()));
+                    }
+                    let v: Option<Vec<f64>> = item.as_array().and_then(|a| {
+                        a.iter()
+                            .map(|v| {
+                                v.as_float()
+                                    .or_else(|| v.as_integer().map(|x| x as f64))
+                                    .filter(|x| x.is_finite())
+                            })
+                            .collect()
+                    });
+                    let Some(&[x, y, z]) = v.as_deref() else {
+                        return Err(self.err(Some(item), "point needs 3 finite coordinates".into()));
+                    };
+                    Ok([x, y, z])
+                })
+                .transpose()?;
+            let axis_name = if point.is_some() {
+                "x".into()
+            } else {
+                self.string(t, "axis")?
+            };
             let axis = ["x", "y", "z"]
                 .iter()
                 .position(|a| *a == axis_name)
@@ -193,11 +294,27 @@ impl FixtureReader<'_> {
             sets.push(SetSpec {
                 name,
                 axis,
-                at: self.number(t, "at")?,
+                at: if point.is_some() {
+                    0.0
+                } else {
+                    self.number(t, "at")?
+                },
+                point,
                 tol,
             });
         }
         let regions = self.regions(table, &sets)?;
+        for m in &materials {
+            if m.bounds.is_some()
+                && (sets.iter().any(|s| s.name.eq_ignore_ascii_case(&m.name))
+                    || regions.iter().any(|r| r.name.eq_ignore_ascii_case(&m.name)))
+            {
+                return Err(self.err(
+                    Some(m_item),
+                    "material group name conflicts with a set or surface".into(),
+                ));
+            }
+        }
         let known = |at: Option<&Item>, set: &str| -> Result<(), FixtureError> {
             if sets.iter().any(|s| s.name.eq_ignore_ascii_case(set))
                 || regions.iter().any(|r| r.name.eq_ignore_ascii_case(set))
@@ -275,7 +392,8 @@ impl FixtureReader<'_> {
         }
         Ok(Some(ModelSpec {
             step,
-            material,
+            materials,
+            temperature_change,
             sets,
             regions,
             boundaries,

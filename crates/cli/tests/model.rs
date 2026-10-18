@@ -35,6 +35,103 @@ fn model_mm(dir: &Path) -> Output {
 }
 
 #[test]
+fn thermal_material_groups_become_sections() {
+    let dir = case("thermal", |t| {
+        t.replace("[model.material]", "[[model.material]]")
+            .replace("at = 100.0", "at = 4.0")
+            .replace(
+                "name = \"STEEL\"",
+                "name = \"BLOCK\"\nexpansion = 1.2e-5\nbox = [0, 0, 0, 100, 20, 10]",
+            )
+            .replace("[model]", "[model]\ntemperature_change = 100.0")
+    });
+    let out = model_mm(&dir);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let inp = std::fs::read_to_string(dir.join("out.inp")).unwrap();
+    let parsed = fh_inp::parse_all(&inp).unwrap();
+    assert_eq!(parsed.materials[0].expansion, Some(1.2e-5));
+    assert!(inp.contains("*TEMPERATURE\nALL, 100.0"));
+    assert!(inp.contains("ELSET=BLOCK, MATERIAL=BLOCK"));
+}
+
+#[test]
+fn material_groups_must_cover_each_solid_once() {
+    let dir = case("material-groups", |t| {
+        t.replace("at = 100.0", "at = 4.0")
+            .replace("[model.material]", "[[model.material]]")
+            .replace(
+                "name = \"STEEL\"",
+                "name = \"MISSING\"\nbox = [0, 0, 0, 4, 1, 1]",
+            )
+    });
+    fails(&model_mm(&dir), 1, "mesh.material.missing");
+    let msh = dir.join("overlap.msh");
+    let text = std::fs::read_to_string(block("block-tet10.msh")).unwrap();
+    // The solid has two physical tags, so every element has two materials.
+    let text = text
+        .replace("3\n2 1", "4\n2 1")
+        .replace("3 3 \"BLOCK\"", "3 3 \"BLOCK\"\n3 4 \"OTHER\"")
+        .replace("1 3 6", "2 3 4 6");
+    std::fs::write(&msh, text).unwrap();
+    let toml = std::fs::read_to_string(dir.join("case.toml"))
+        .unwrap()
+        .replace("MISSING", "BLOCK");
+    let toml = format!("{toml}\n[[model.material]]\nname = \"OTHER\"\nyoungs_modulus = 70000\npoissons_ratio = 0.0\nbox = [0, 0, 0, 4, 1, 1]\n");
+    std::fs::write(dir.join("case.toml"), toml).unwrap();
+    fails(
+        &model(&msh, &dir, &["--mesh-units", "SI-mm"]),
+        1,
+        "mesh.material.coverage",
+    );
+}
+
+#[test]
+fn warpage_step_keeps_both_materials_and_the_shared_interface() {
+    let Some(gmsh) = real_gmsh() else {
+        return;
+    };
+    let dir = scratch("warpage-step");
+    let source = root().join("validation/cases/warpage-strip");
+    for file in ["case.toml", "derivation.md", "strip.step"] {
+        std::fs::copy(source.join(file), dir.join(file)).unwrap();
+    }
+    let msh = dir.join("strip.msh");
+    let out = fh(&[
+        "mesh",
+        p(&dir.join("strip.step")),
+        "--case",
+        p(&dir),
+        "--size",
+        "1",
+        "--gmsh",
+        p(&gmsh),
+        "-o",
+        p(&msh),
+    ]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let mesh = fh_io::read_msh(&std::fs::read_to_string(&msh).unwrap()).unwrap();
+    let low = &mesh.nset("LOW").unwrap().ids;
+    let high = &mesh.nset("HIGH").unwrap().ids;
+    let shared: Vec<_> = mesh
+        .nodes
+        .iter()
+        .filter(|n| low.contains(&n.id) && high.contains(&n.id))
+        .collect();
+    assert!(!shared.is_empty());
+    assert!(shared.iter().all(|n| (n.xyz[2] - 1.0).abs() < 1e-6));
+    let out = model(&msh, &dir, &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let parsed = fh_inp::parse_all(&std::fs::read_to_string(dir.join("out.inp")).unwrap()).unwrap();
+    assert_eq!(parsed.materials.len(), 2);
+    assert_eq!(parsed.nset("ORIGIN").unwrap().ids.len(), 1);
+    assert_eq!(
+        parsed.elset("LOW").unwrap().ids.len() + parsed.elset("HIGH").unwrap().ids.len(),
+        parsed.elements.len()
+    );
+    assert!(parsed.materials.iter().all(|m| m.expansion.is_some()));
+}
+
+#[test]
 fn a_mesh_without_a_unit_record_is_refused() {
     let dir = case("nounit", |t| t);
     let out = model(&block("block-tet10.msh"), &dir, &[]);

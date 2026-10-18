@@ -90,6 +90,36 @@ pub fn region_surface<'m>(mesh: &'m MshMesh, name: &str) -> Result<&'m ElementSu
     })
 }
 
+/// Each solid element must have exactly one material group.
+pub fn material_groups(
+    mesh: &fh_io::MshMesh,
+    materials: &[fh_validation::MaterialSpec],
+) -> Result<(), String> {
+    if !materials.iter().any(|m| m.bounds.is_some()) {
+        return Ok(());
+    }
+    let mut counts = std::collections::HashMap::<u32, usize>::new();
+    for m in materials {
+        let group = mesh
+            .model
+            .elset(&m.name)
+            .filter(|s| !s.ids.is_empty())
+            .ok_or_else(|| format!("mesh.material.missing: {} has no solid elements", m.name))?;
+        for id in &group.ids {
+            *counts.entry(*id).or_default() += 1;
+        }
+    }
+    if mesh
+        .model
+        .elements
+        .iter()
+        .any(|e| counts.get(&e.id) != Some(&1))
+    {
+        return Err("mesh.material.coverage: each solid element needs exactly one material".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

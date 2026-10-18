@@ -1,0 +1,71 @@
+# Public bilayer theory, through the CAD workflow and CalculiX.
+schema = 2
+id = "warpage-strip"
+units = "SI-mm"
+class = "N"
+justification = "Lubarda and Lubarda equations 2.5 to 2.7 give the bilayer curvature. A 1 percent tolerance covers tetrahedral mesh error and free-end effects."
+derivation = "derivation.md"
+element_types = ["C3D10"]
+solver = "fh-solve-ccx"
+mesh = ["strip.inp"]
+rel_tol = 0.01
+abs_tol = 0.0
+
+[model]
+step = "HEAT"
+temperature_change = 100.0
+
+[[model.material]]
+name = "LOW"
+youngs_modulus = 200000.0
+poissons_ratio = 0.0
+expansion = 1.2e-5
+box = [0, 0, 0, 40, 2, 1]
+
+[[model.material]]
+name = "HIGH"
+youngs_modulus = 70000.0
+poissons_ratio = 0.0
+expansion = 2.3e-5
+box = [0, 0, 1, 40, 2, 2]
+
+[[model.set]]
+name = "SYM_X"
+axis = "x"
+at = 0.0
+
+[[model.set]]
+name = "SYM_Y"
+axis = "y"
+at = 0.0
+
+[[model.set]]
+name = "ORIGIN"
+point = [0, 0, 0]
+
+[[model.set]]
+name = "TIP"
+axis = "x"
+at = 40.0
+
+[[model.boundary]]
+set = "SYM_X"
+first_dof = 1
+
+[[model.boundary]]
+set = "SYM_Y"
+first_dof = 2
+
+[[model.boundary]]
+set = "ORIGIN"
+first_dof = 3
+
+[ref]
+warpage = -0.6136986301369863
+
+[quantity.warpage]
+set = "TIP"
+field = "U"
+component = 3
+step = "HEAT"
+op = "mean"

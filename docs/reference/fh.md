@@ -68,7 +68,9 @@ It runs external gmsh for a 3D mesh in `msh41` format, then reads the result.
 | `--gmsh` | Overrides discovery. Otherwise use non-empty `FH_GMSH`, then a file on `PATH`, then the macOS app path. |
 
 For a STEP file, `fh mesh` writes the gmsh script (the fixed script contract of M2b).
-The script sets the STEP target unit, puts every volume in the physical group `SOLID`,
+The script sets the STEP target unit and uses `SOLID` for one material without a box.
+For material boxes, it fragments the bodies and creates one physical volume group per material.
+It checks that each solid element belongs to exactly one material group,
 and makes a physical surface for each `[[model.region]]` of the case.
 A region holds the faces of the part that lie fully inside its plane or box, within 1e-6 of the diagonal of the part.
 
@@ -111,7 +113,11 @@ Source: [model.rs](../../crates/cli/src/model.rs).
 
 The command writes a solver input from the mesh and the `[model]` table of the case (`crates/validation/SCHEMA.md`).
 The input starts with the line `** units: SI-mm` or `** units: SI-m`. `fh-solve` copies the units into `summary.toon`, `results.pvd` and the text results. `fh run` and `fh-solve` write VTU with PVD by default. Text and legacy VTK need `fh-solve --formats text,vtu,vtk`.
-Each region becomes a node set and an element-face surface of its name. Each `[[model.dsload]]` becomes a `*DSLOAD` line.
+Each material box selects a named solid group and a separate material section.
+`model.temperature_change` writes uniform thermal input for CalculiX.
+A node set can select a plane or an existing node with `point = [x, y, z]`.
+See [case fields](case-toml.md#model-and-thermal-materials).
+Each surface region becomes a node set and an element-face surface of its name. Each `[[model.dsload]]` becomes a `*DSLOAD` line.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
@@ -125,7 +131,9 @@ Each region becomes a node set and an element-face surface of its name. Each `[[
 | A volume with no physical group | Same refusal format with `mesh.volume.unnamed`. | 1 |
 | A region that the mesh does not hold (lost or renamed) | Same refusal format with `mesh.region.missing`. | 1 |
 | A region that is not on the outside of the solid | Same refusal format with `mesh.region.inner`. | 1 |
-| A plane set with no node | Same refusal format with `model.set.empty`. | 1 |
+| A material group with no solid element | Same refusal format with `mesh.material.missing`. | 1 |
+| An element with zero or several material groups | Same refusal format with `mesh.material.coverage`. | 1 |
+| A plane or point set with no node | Same refusal format with `model.set.empty`. | 1 |
 | The written input does not parse | Same refusal format with `model.inp.invalid`. | 1 |
 | Usage, case, file read, or mesh parse error | `fh model: MESSAGE` | 2 |
 
