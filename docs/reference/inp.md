@@ -21,7 +21,7 @@ The parameter column lists all permitted parameter names. A dash means no parame
 | `*ELSET` | `ELSET` (required), `GENERATE` | Existing element IDs or earlier element sets. `GENERATE` follows the same rule as `*NSET`. | Solved |
 | `*MATERIAL` | `NAME` (required) | No data lines. Opens a material for `*ELASTIC` and `*EXPANSION`. Material names must be unique. | Solved |
 | `*ELASTIC` | `TYPE` | Exactly 1 data line with Young’s modulus and Poisson’s ratio. `TYPE` is absent or `ISOTROPIC`. | Solved |
-| `*EXPANSION` | `TYPE` | Exactly 1 data line with 1 isotropic thermal expansion coefficient. `TYPE` is absent or `ISO`. The reference temperature is 0. | Parsed only. `fh-solve` refuses it. `fh-solve-ccx` solves it. |
+| `*EXPANSION` | `TYPE` | Exactly 1 data line with 1 isotropic thermal expansion coefficient. `TYPE` is absent or `ISO`. The thermal strain is alpha (T - T0), with T0 the initial temperature of the node. | Parsed only. `fh-solve` refuses it. `fh-solve-ccx` solves it. |
 | `*SOLID SECTION` | `ELSET`, `MATERIAL` (both required) | No data lines. The set and material must exist. | Solved |
 | `*INITIAL CONDITIONS` | `TYPE` (required) | `TYPE=TEMPERATURE` only. Model data. Data lines: node ID or node set, temperature. | Parsed only. `fh-solve` refuses it. `fh-solve-ccx` solves it. |
 | `*STEP` | `NAME`, `NLGEOM` | No data lines. `NLGEOM` is absent, `NO`, or `YES`. Steps cannot nest. | Solved with `NLGEOM=NO`. `YES` is parsed only and refused by the solver. |
