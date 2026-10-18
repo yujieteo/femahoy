@@ -4,6 +4,8 @@
 set -euo pipefail
 
 # Budgets in lines per crate, from DESIGN.md section 11. Format: crate:budget.
+# cli is 4800, up from 3000, and daemon is 7300, up from 7000, for fh run: the captain
+# approved it (DESIGN.md section 11).
 BUDGETS="
 inp:9000
 io:5000
@@ -11,9 +13,9 @@ toon:3000
 solver-api:3000
 core-solver:30000
 validation:6000
-daemon:7000
+daemon:7300
 agents:4000
-cli:3000
+cli:4800
 viewer:15000
 "
 

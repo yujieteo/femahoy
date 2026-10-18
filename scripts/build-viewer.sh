@@ -11,8 +11,11 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-target=${CARGO_TARGET_DIR:-$root/target}
-out=${1:-$target/release/viewer}
+abs() { case $1 in /*) echo "$1" ;; *) echo "$PWD/$1" ;; esac; }
+target=$(abs "${CARGO_TARGET_DIR:-$root/target}")
+out=$(abs "${1:-$target/release/viewer}")
+# rustup reads rust-toolchain.toml in the current folder.
+cd "$root"
 want=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print }' "$root/Cargo.lock")
 have=$(wasm-bindgen --version 2>/dev/null | awk '{ print $2 }') || true
 if [ "$have" != "$want" ]; then
@@ -21,8 +24,7 @@ if [ "$have" != "$want" ]; then
   exit 1
 fi
 
-cargo build --manifest-path "$root/Cargo.toml" -p fh-viewer --lib --release \
-  --target wasm32-unknown-unknown
+CARGO_TARGET_DIR=$target cargo build -p fh-viewer --lib --release --target wasm32-unknown-unknown
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-name fh_viewer --out-dir "$out" \
   "$target/wasm32-unknown-unknown/release/fh_viewer.wasm"

@@ -18,11 +18,14 @@ fn state_dir(name: &str) -> PathBuf {
 }
 
 fn args(state: &Path) -> Vec<String> {
+    // --no-open: a test never opens the browser of the machine. --panes pty: a test never
+    // calls the herdr of the machine.
     vec![
         "--state".into(),
         state.display().to_string(),
         "--panes".into(),
         "pty".into(),
+        "--no-open".into(),
     ]
 }
 

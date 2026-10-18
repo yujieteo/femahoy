@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal. `crates/cli` only calls it. Its page loads the wasm viewer of `crates/viewer`. The daemon also owns the terminal sidebar: the PTY of each sidebar shell, the pane backend (herdr or plain PTYs) and the WebSocket of each terminal (`docs/terminal.md`).
+The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal, opens its page in the browser (`src/browser.rs`), and stops a running daemon with `--stop`. `crates/cli` only calls it. Its page loads the wasm viewer of `crates/viewer`. The daemon also owns the terminal sidebar: the PTY of each sidebar shell, the pane backend (herdr or plain PTYs) and the WebSocket of each terminal (`docs/terminal.md`).
 
 ## Inputs and outputs
 
@@ -30,7 +30,8 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - A herdr call and a PTY program get no `HERDR_*` variable from the daemon environment.
 - `alacritty_terminal` is pinned to an exact version and only `src/pty.rs` uses it (DESIGN.md section 11.1).
 - Other code reads the panes from `PaneBackend`, never from herdr directly (DESIGN.md section 4.3).
-- Line budget: 7k lines, tests included (DESIGN.md section 11).
+- The token never goes into the command line of a browser process that stays alive. `$BROWSER` and `xdg-open` get `STATE/open.html` (mode 0600). `--no-open` and `FH_NO_OPEN` stop the open.
+- Line budget: 7.3k lines, tests included (DESIGN.md section 11). It was 7k before the browser open and `fh serve --stop` for `fh run`. The captain approved going over the budget for this work.
 
 ## Forbidden actions
 
@@ -44,7 +45,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/terminal.rs` tests the terminal and pane routes and the WebSocket: the access rules, the shell, the pty backend and the herdr backend with a fake herdr. Its test `herdr_lab_session` runs the real herdr only when `FH_TEST_HERDR_SESSION` names a lab session (`docs/terminal.md`).
+Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/terminal.rs` tests the terminal and pane routes and the WebSocket: the access rules, the shell, the pty backend and the herdr backend with a fake herdr. Its test `herdr_lab_session` runs the real herdr only when `FH_TEST_HERDR_SESSION` names a lab session (`docs/terminal.md`). `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`, with `--panes pty`.
 
 ## Examples
 

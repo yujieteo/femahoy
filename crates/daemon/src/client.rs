@@ -67,6 +67,15 @@ impl Client {
         self.port
     }
 
+    /// The address of the page of the daemon, with the token. `query` follows the token, for
+    /// example `&project=P&run=R` to open a run.
+    pub fn page_url(&self, query: &str) -> String {
+        format!(
+            "http://127.0.0.1:{}/?token={}{query}",
+            self.port, self.token
+        )
+    }
+
     /// Send one request and read the answer.
     pub fn send(
         &self,

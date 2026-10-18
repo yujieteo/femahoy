@@ -1,6 +1,6 @@
 # Run contract (D1)
 
-The run contract is one contract for runs. The `fh` CLI and the UI both use it. The code is in `crates/daemon`. `fh serve` runs the daemon (see [`fh serve`](#fh-serve)).
+The run contract is one contract for runs. The `fh` CLI and the UI both use it. The code is in `crates/daemon`. `fh serve` runs the daemon (see [`fh serve`](#fh-serve)). `fh run` is the CLI client (see [`fh run`](#fh-run)).
 
 The solve path does not change. A run starts the protocol v2 solver (`fh-solve`, `docs/solver-protocol.md`) on a fixed copy of the input file.
 
@@ -90,6 +90,7 @@ The daemon owns every run. A browser, the native UI and the CLI are only clients
 3. The solver never lives longer than the daemon. A daemon that stops cancels its runs, and they end as `interrupted`. A daemon that fails closes the stdin of the solver, and protocol v2 then stops the solver.
 4. At the next start, the daemon marks each run that was still active as `interrupted`. A run with a pending cancel becomes `cancelled`. The daemon never starts such a run again by itself. The run folder keeps the restart file of the solver.
 5. One daemon at a time uses a state folder. The lock file `daemon.lock` makes this sure.
+6. `fh run` uses the daemon that answers for the state folder. If no daemon answers, `fh run` starts `fh serve --state DIR --no-open` (with `--panes MODE` from `fh run --panes MODE`) in the background, in its own process group, with its output in `DIR/daemon.log`. This file has mode 0600, because it holds the page address with the token. That daemon stays alive when `fh run` ends, so the browser keeps the results. `fh serve --stop` stops it. When 2 `fh run` commands start a daemon at the same time, the lock lets one start, and both use it. The other `fh run` stops the `fh serve` that it started, so that this `fh serve` cannot take the lock later.
 
 ## Store
 
@@ -102,6 +103,10 @@ The daemon owns every run. A browser, the native UI and the CLI are only clients
 <state>/projects/<p>/runs/<r>/record
 <state>/projects/<p>/runs/<r>/events.log
 <state>/projects/<p>/runs/<r>/out/          protocol v2 run folder
+<state>/open.html                           the page that sends the browser on to the page of the daemon (mode 0600)
+<state>/daemon.log                          the output of a daemon that fh run started (mode 0600)
+<state>/examples/<name>/                    the case files of fh run --example
+<state>/cases/<name>-<hash>/                the mesh and the input of a case folder of fh run
 ```
 
 The daemon writes each record and each acknowledgement to a temporary file and then renames it. Thus a reader never sees a partial file.
@@ -109,7 +114,8 @@ The daemon writes each record and each acknowledgement to a temporary file and t
 ## `fh serve`
 
 ```
-fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH]
+fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH] [--no-open]
+fh serve --stop [--state DIR]
 ```
 
 `fh serve` starts the daemon and runs until a stop signal. It listens on 127.0.0.1 only. No option changes the address.
@@ -121,20 +127,34 @@ fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME
 | `--panes auto\|herdr\|pty` | `auto`: herdr when it answers, else plain PTYs of the daemon. See `docs/terminal.md`. |
 | `--herdr-session NAME` | `femahoy`. The herdr session that femahoy owns. `default` is refused. |
 | `--herdr PATH` | `herdr` on `PATH`. |
+| `--no-open` | Off: `fh serve` opens its page in the browser. `FH_NO_OPEN` with a value that is not empty and not `0` does the same as `--no-open`. |
+| `--stop` | Stop the daemon that answers for the state folder, and wait until it frees `daemon.lock`. |
 
-The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/build-viewer.sh`). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder, the pane backend and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
+The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder, the pane backend and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
+
+Then `fh serve` opens the page in the browser. The token must not go into the command line of a browser process, because other users of the machine can read a command line. Thus `$BROWSER` (when it is set) and `xdg-open` get the file `<state>/open.html` (mode 0600), which sends the browser on to the address. On macOS, `open` gives the address to the default browser through Launch Services. On Windows, `rundll32` does this. The exact rules are in [`fh serve`](reference/fh.md#fh-serve).
 
 The page holds no token. Its script reads the token from the page address and sends it in the `Authorization` header to fetch the viewer and the results. Thus only `GET /` takes the token in the query. The page has its own content security policy: only its own script (a new nonce for each answer), the viewer module, wasm, fetches to its own origin, and WebSockets to `ws://127.0.0.1:<port>`.
 
 The terminal sidebar and the pane backend are in `docs/terminal.md`. Their routes use the same token and `Origin` rules. The WebSocket of a terminal takes the token in the subprotocol `fh.token.<token>`, because a browser cannot set a header on a WebSocket.
 
-SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon.info`, each active run ends as `interrupted`, and each terminal closes. A herdr pane stays in herdr. On Windows, Ctrl+C ends the process. That is the path of a failed daemon (see "Which process stays alive").
+SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon.info`, each active run ends as `interrupted`, and each terminal closes. A herdr pane stays in herdr. `fh serve --stop` sends SIGTERM (on Windows, `taskkill`). On Windows, Ctrl+C ends the process. That is the path of a failed daemon (see "Which process stays alive").
 
 | Exit | Meaning |
 |---|---|
-| 0 | Stopped by a signal. |
-| 1 | The daemon could not start, for example another daemon uses the state folder (`daemon.running`), or `--panes herdr` and herdr does not answer (`pane.herdr`). |
+| 0 | Stopped by a signal. With `--stop`: the daemon stopped, or no daemon answered. |
+| 1 | The daemon could not start, for example another daemon uses the state folder (`daemon.running`), or `--panes herdr` and herdr does not answer (`pane.herdr`). With `--stop`: the daemon did not stop in 30 seconds. |
 | 2 | Usage error. |
+
+## `fh run`
+
+`fh run` is the client of the contract for a person in a terminal ([`fh run`](reference/fh.md#fh-run)):
+
+1. It finds or starts the daemon (rule 6 of "Which process stays alive").
+2. It registers the folder of the input as a project, and submits the input with a new request ID. A retry after a lost connection keeps the request ID.
+3. It reads the events with `wait_ms=500` and shows them, until the run is final.
+4. On Ctrl+C, it sends a cancel command with a new request ID and continues to read the events. A second Ctrl+C ends `fh run`. The run continues in the daemon until the cancel ends it.
+5. It reads the record. For a run that succeeded, it shows the result folder and `summary.toon`, and opens the page on `&project=P&run=R`.
 
 ## Tests
 
@@ -146,5 +166,7 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 - a closed browser does not stop the run,
 - cancel keeps one record,
 - a stopped daemon and a failed daemon (SIGKILL) each leave one `interrupted` record.
+
+`crates/cli/tests/run.rs` tests `fh run` and the browser and stop options of `fh serve`: an `.inp` file, a case folder, the example, a second run on the same daemon, the browser open and `--no-open`, a missing file, an input that the solver refuses, a failed run, no daemon possible, Ctrl+C, and a second Ctrl+C. Each daemon of these tests uses `--panes pty`.
 
 `crates/daemon/tests/serve.rs` tests `fh serve`: a missing token, a wrong token and a wrong `Origin` each fail, the token with no `Origin` or with the own `Origin` passes, a network address of the machine gets no connection, a second daemon on the same state folder fails, and a stop or SIGTERM stops the daemon and removes `daemon.info`. `crates/daemon/tests/terminal.rs` tests the terminal and pane routes and the WebSocket (`docs/terminal.md`).
