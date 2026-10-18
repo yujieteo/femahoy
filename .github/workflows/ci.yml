@@ -22,3 +22,15 @@ jobs:
         run: cargo test --workspace
       - name: Line budget
         run: scripts/check-budget.sh
+
+  # aarch64 build and tests (D-07, P1). The check job keeps fmt, clippy and the line budget.
+  test-aarch64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Build
+        run: cargo test --workspace --no-run
+      - name: Test
+        run: cargo test --workspace
