@@ -55,7 +55,7 @@ Budgets are lines of Rust, tests included. The total cap is 85k lines.
 | `solver-ccx` | CalculiX adapter: `ccx` input, process run, `.frd` reader, results (D-13) | 3k, provisional |
 | **Total** | | **85k** |
 
-The `viewer` and `solver-ccx` budgets are provisional until the budget review at the first user test (`DESIGN.md` section 11).
+The `viewer` and `solver-ccx` budgets are provisional until the budget review at the first user test (`DESIGN.md` section 11). The crate budgets add up to 87.1k, over the 85k cap, because the captain approved the `cli` and `daemon` budgets for `fh run`. That review settles the sum.
 
 ## Planned platforms
 
