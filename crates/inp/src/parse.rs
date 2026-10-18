@@ -840,7 +840,8 @@ impl Parser {
         Ok(())
     }
 
-    /// `*EXPANSION`: one isotropic coefficient. `ccx` meaning, with the reference temperature 0.
+    /// `*EXPANSION`: one isotropic coefficient alpha. The thermal strain is alpha (T - T0).
+    /// T0 is the initial temperature of the node from `*INITIAL CONDITIONS`.
     fn expansion(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE"])?;
         if let Some(t) = b.value("TYPE")? {
