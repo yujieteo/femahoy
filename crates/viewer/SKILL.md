@@ -22,8 +22,6 @@ The crate has the result viewer (`docs/viewer.md`): one eframe app for the nativ
 
 - Do not describe the chat panel or the teammate tree as available.
 - Hold an API key in the browser (DESIGN.md section 4.1).
-- Bundle herdr (DESIGN.md section 4.3).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

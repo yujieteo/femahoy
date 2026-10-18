@@ -23,9 +23,6 @@ Solve solid models with `C3D8`, `C3D8I` and `C3D10`. The crate includes linear a
 
 - Do not infer contact, plasticity or NLGEOM support from the generic material and contribution interfaces.
 - Compare node-by-node contact status in a test (DESIGN.md section 10.3).
-- Weaken, skip or delete a validation case. Change a tolerance only with a written reason and leader approval (AGENTS.md section 4).
-- Copy text, `.inp` files, figures or numbers from Abaqus manuals (DESIGN.md section 10.1).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

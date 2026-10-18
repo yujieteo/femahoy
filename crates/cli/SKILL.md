@@ -40,7 +40,6 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, runs
 - Do not describe planned commands as available. Do not imply that `mesh` checks Jacobian quality. Use `info` for that check.
 - Name the binary `fea`.
 - Require a GUI for any command (DESIGN.md section 3).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

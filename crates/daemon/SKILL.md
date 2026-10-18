@@ -39,8 +39,6 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - Change the solve path or the subprocess protocol from this crate.
 - Use the herdr session `default`, or a herdr call with no `--session`.
 - Add a way into a terminal that does not have the token and `Origin` rules.
-- Bundle herdr (DESIGN.md section 4.3).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

@@ -22,9 +22,6 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 ## Forbidden actions
 
 - Do not describe an `.inp` writer or template mapper as available. The public API exports only the parser and model types.
-- Copy text, `.inp` files, figures or numbers from Abaqus manuals (DESIGN.md section 10.1).
-- Add a Dassault Systèmes file to the repo (AGENTS.md section 4).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

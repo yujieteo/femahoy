@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate is a placeholder. `src/lib.rs` contains no implementation.
+The crate is a placeholder. `src/lib.rs` contains no implementation. M4 (`docs/milestones.md`) builds the leader start, the JSON stream parser and the skill installer here.
 
 ## Inputs and outputs
 
@@ -19,7 +19,6 @@ No harness, role config, JSON stream parser or skill installer exists in this cr
 - Do not describe these features as available.
 - Add an agent loop to femahoy. Every agent is a CLI harness process (DESIGN.md section 5.1).
 - Send an API key to the browser (DESIGN.md section 4.1).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

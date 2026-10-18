@@ -1,6 +1,6 @@
 # U1 first user test: record
 
-U1 is a workflow lock item (`docs/milestones.md`). A person who did not build femahoy runs the validated workflow from the docs only. This file holds the result.
+U1 is the first user test (docs/milestones.md). A person who did not build femahoy runs the validated workflow from the docs only. This file holds the result.
 Each run has its own part. Each problem is a blocker (the run cannot continue) or a friction point (the run continues, but with extra work or doubt).
 The captain removed the line budget on 2026-10-18, so U1 has no budget review.
 
