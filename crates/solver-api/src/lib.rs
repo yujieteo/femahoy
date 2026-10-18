@@ -417,6 +417,16 @@ impl SubprocessSolver {
         self.execute(inp, run_dir, true, cancel, on_event)
     }
 
+    fn time_limit(&self) -> ApiError {
+        ApiError::new(
+            code::TIME_LIMIT,
+            format!(
+                "solver stopped after the time limit of {} s. {SMALLER}",
+                self.timeout.as_secs_f64()
+            ),
+        )
+    }
+
     fn execute(
         &self,
         inp: &Path,
@@ -546,8 +556,9 @@ impl SubprocessSolver {
                 if let Event::Estimate { bytes } = event {
                     if limited && bytes > self.memory_limit {
                         return stop(&mut tree, ApiError::new(code::MEMORY, format!(
-                            "solver expects to need {bytes} bytes, more than the memory limit of {} bytes",
-                            self.memory_limit
+                            "solver expects to need {}, more than the memory limit of {}. {SMALLER}",
+                            size(bytes),
+                            size(self.memory_limit)
                         )));
                     }
                 }
@@ -570,16 +581,7 @@ impl SubprocessSolver {
                 return stop(&mut tree, ApiError::cancelled());
             }
             if start.elapsed() > self.timeout {
-                return stop(
-                    &mut tree,
-                    ApiError::new(
-                        code::TIME_LIMIT,
-                        format!(
-                            "solver stopped after the time limit of {} s",
-                            self.timeout.as_secs_f64()
-                        ),
-                    ),
-                );
+                return stop(&mut tree, self.time_limit());
             }
             if limited && last_probe.elapsed() >= PROBE_EVERY {
                 last_probe = Instant::now();
@@ -590,9 +592,10 @@ impl SubprocessSolver {
                             ApiError::new(
                                 code::MEMORY,
                                 format!(
-                            "solver stopped after it used more than the memory limit of {} bytes",
-                            self.memory_limit
-                        ),
+                                    "solver stopped after it used more than the memory limit \
+                                     of {}. {SMALLER}",
+                                    size(self.memory_limit)
+                                ),
                             ),
                         );
                     }
@@ -647,13 +650,7 @@ impl SubprocessSolver {
                 break;
             }
             if start.elapsed() > self.timeout {
-                return fail(
-                    code::TIME_LIMIT,
-                    format!(
-                        "solver stopped after the time limit of {} s",
-                        self.timeout.as_secs_f64()
-                    ),
-                );
+                return Err(self.time_limit());
             }
         }
         drop(reader);
@@ -663,13 +660,7 @@ impl SubprocessSolver {
             return Err(ApiError::cancelled());
         }
         if !status.success() {
-            return fail(
-                code::SOLVER_FAILED,
-                format!(
-                    "solver failed ({status}): {}",
-                    stderr_tail(&run_dir.join("stderr.txt")).trim()
-                ),
-            );
+            return fail(code::SOLVER_FAILED, failure(status, &run_dir));
         }
         if !header_seen {
             return fail(
@@ -715,6 +706,42 @@ impl Drop for Tree {
 }
 
 /// Kill the whole tree of the solver and return `reason`.
+/// What to do when a run does not fit in its limits.
+const SMALLER: &str = "Use a coarser mesh (a larger element size) to make the model smaller";
+
+/// A memory size for a person: GiB from 1 GiB, else MiB.
+fn size(bytes: u64) -> String {
+    let mib = bytes as f64 / f64::from(1 << 20);
+    if mib >= 1024.0 {
+        format!("{:.1} GiB", mib / 1024.0)
+    } else {
+        format!("{} MiB", (mib * 1000.0).round() / 1000.0)
+    }
+}
+
+/// Why a solver failed. A solver that stops on a signal writes no message, so the message
+/// tells the usual cause and what to do.
+fn failure(status: std::process::ExitStatus, run_dir: &Path) -> String {
+    let tail = stderr_tail(&run_dir.join("stderr.txt"));
+    let tail = tail.trim();
+    #[cfg(unix)]
+    let signal = std::os::unix::process::ExitStatusExt::signal(&status);
+    #[cfg(not(unix))]
+    let signal: Option<i32> = None;
+    match signal {
+        _ if !tail.is_empty() => format!("solver failed ({status}): {tail}"),
+        Some(signal) => format!(
+            "solver stopped on signal {signal} and wrote no error message. Often the system \
+             stops a program in this way when the memory is full. {SMALLER}, or stop other \
+             programs"
+        ),
+        None => format!(
+            "solver failed ({status}) and wrote no error message. Its output is in {}",
+            run_dir.display()
+        ),
+    }
+}
+
 fn stop(tree: &mut Tree, reason: ApiError) -> Result<RunReport, ApiError> {
     tree.group.kill();
     let _ = tree.child.kill();

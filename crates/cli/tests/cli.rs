@@ -116,13 +116,18 @@ fn validate_runs_every_case_through_the_solver() {
         assert!(stdout.contains("bimetal-strip\tN\tpass"), "{stdout}");
         assert!(stdout.contains("warpage-strip\tN\tpass"), "{stdout}");
         assert!(stdout.contains("warpage-thick-copper\tN\tpass"), "{stdout}");
-        assert!(stdout.contains("19 cases: 19 pass, 0 fail"), "{stdout}");
+        assert!(stdout.contains("plate-on-edge\tN\tpass"), "{stdout}");
+        assert!(stdout.contains("20 cases: 20 pass, 0 fail"), "{stdout}");
     } else {
         assert!(
             stdout.contains("bimetal-strip\tN\tskipped, no ccx"),
             "{stdout}"
         );
-        assert!(stdout.contains("19 cases: 16 pass, 0 fail"), "{stdout}");
+        assert!(
+            stdout.contains("plate-on-edge\tN\tskipped, no ccx"),
+            "{stdout}"
+        );
+        assert!(stdout.contains("20 cases: 16 pass, 0 fail"), "{stdout}");
     }
     for id in [
         "bar-pressure",
@@ -172,7 +177,7 @@ fn without_ccx_a_ccx_case_is_skipped_and_the_other_cases_still_fail() {
         "{stdout}"
     );
     assert!(stdout.contains("patch-test\tN\tfail"), "{stdout}");
-    assert!(stdout.contains("19 cases: 15 pass, 1 fail"), "{stdout}");
+    assert!(stdout.contains("20 cases: 15 pass, 1 fail"), "{stdout}");
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -204,6 +209,50 @@ fn validate_exits_1_when_a_class_r_rate_is_outside_the_band() {
     assert!(stdout.contains("mms-c3d8\tR\t3 meshes\tfail"), "{stdout}");
     assert!(text(out.stderr).contains("observed rate"), "stderr");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The runner stops a case at its `time_limit_s` and at its `memory_limit_mib`.
+#[cfg(unix)]
+#[test]
+fn validate_stops_a_case_at_its_time_and_memory_limits() {
+    use std::os::unix::fs::PermissionsExt;
+    for (i, (limit, needle)) in [
+        ("time_limit_s = 0.2", "time limit of 0.2 s"),
+        ("memory_limit_mib = 0.001", "memory limit of 0.001 MiB"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let dir = copy_root(&format!("limit{i}"));
+        let cases = dir.join("validation/cases");
+        for entry in std::fs::read_dir(&cases).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() && !path.ends_with("patch-test") {
+                std::fs::remove_dir_all(path).unwrap();
+            }
+        }
+        let path = cases.join("patch-test/case.toml");
+        let toml = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            toml.replacen("rel_tol", &format!("{limit}\nrel_tol"), 1),
+        )
+        .unwrap();
+        // A solver that runs for 30 s.
+        let slow = dir.join("slow-solver");
+        std::fs::write(&slow, "#!/bin/sh\necho 'fh-solver-protocol 2'\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&slow, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let clock = std::time::Instant::now();
+        let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&slow));
+        let stdout = text(out.stdout);
+        assert_eq!(out.status.code(), Some(1), "{stdout}");
+        assert!(
+            stdout.contains("patch-test\tN\tcannot run") && stdout.contains(needle),
+            "{stdout}"
+        );
+        assert!(clock.elapsed() < std::time::Duration::from_secs(20));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 #[test]
@@ -254,7 +303,7 @@ fn convergence_on_the_case_folder_skips_class_n() {
         "bar-tension\tN\tskipped, one mesh",
         "mms-c3d10\tR\t3 meshes\tpass",
         "bimetal-strip\tN\tskipped, one mesh",
-        "19 cases: 10 pass, 0 fail",
+        "20 cases: 10 pass, 0 fail",
     ] {
         assert!(stdout.contains(row), "{stdout}");
     }

@@ -250,6 +250,45 @@ fn a_failed_ccx_run_is_an_error_with_the_ccx_message() {
     assert!(!dir.join("run/results.pvd").exists());
 }
 
+/// Each `ccx` failure tells why and what to do.
+#[test]
+fn a_ccx_failure_tells_why_and_what_to_do() {
+    let dir = scratch("why");
+    for (i, (body, parts)) in [
+        (
+            "echo ' *ERROR in e_c3d: nonpositive jacobian'\n\
+             echo '        determinant in element           1'\necho\nexit 201",
+            &[
+                "*ERROR in e_c3d: nonpositive jacobian determinant in element 1",
+                "job.log",
+            ][..],
+        ),
+        (
+            "kill -9 $$",
+            &[
+                "ccx stopped on signal 9",
+                "memory",
+                "coarser mesh",
+                "job.log",
+            ][..],
+        ),
+        (
+            "echo 'line one'\necho 'the last line'\nexit 3",
+            &["exit status: 3", "the last line", "job.log"][..],
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let ccx = fake_ccx(&dir, body);
+        let (code, err) = run(&cube(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
+        assert_eq!(code, Some(1), "{body}");
+        for part in parts {
+            assert!(err.contains(part), "{body}: {part} is not in {err}");
+        }
+    }
+}
+
 #[test]
 fn an_invalid_result_file_is_an_error() {
     let dir = scratch("invalid");
@@ -291,6 +330,61 @@ fn a_keyword_outside_the_subset_is_a_clear_error() {
         err.contains("*EQUATION is not in the keyword subset of the ccx adapter"),
         "{err}"
     );
+}
+
+/// `ccx` reads at most 20 characters of a number. A longer number loses the end of its
+/// exponent: -1.33e-17 becomes -0.133. Thus each number of `job.inp` must fit.
+#[test]
+fn each_number_of_the_ccx_input_fits_in_20_characters() {
+    let dir = scratch("width");
+    let input = dir.join("width.inp");
+    let text = CUBE.replace("4, 0, 1, 0\n", "4, -1.3302787975829e-17, 1, -4.7e-117\n");
+    assert_ne!(text, CUBE);
+    std::fs::write(&input, text).unwrap();
+    run(&input, &dir.join("run"), &dir.join("no-ccx"));
+    let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
+    let line = job.lines().find(|l| l.starts_with("4, ")).unwrap();
+    let values: Vec<f64> = line
+        .split(", ")
+        .skip(1)
+        .map(|v| {
+            assert!(v.len() <= 20, "{v} has {} characters", v.len());
+            v.parse().unwrap()
+        })
+        .collect();
+    assert!(
+        (values[0] / -1.3302787975829e-17 - 1.0).abs() < 1e-12,
+        "{line}"
+    );
+    assert!((values[2] / -4.7e-117 - 1.0).abs() < 1e-12, "{line}");
+}
+
+/// `ccx` solves a model with a rigid body motion with no error, and its result is wrong
+/// (displacements of 1e12 mm). Thus the adapter refuses the model before `ccx` starts.
+#[test]
+fn a_model_that_can_move_as_a_rigid_body_is_a_clear_error() {
+    let dir = scratch("rigid");
+    let ccx = fake_ccx(&dir, "touch started");
+    let held = "*BOUNDARY\nFIXED, 1, 3\n2, 1, 1, 0.001\n";
+    for (i, (support, mode)) in [
+        ("*CLOAD\n2, 1, 100.0\n", "translation in x"),
+        ("*BOUNDARY\nFIXED, 1, 1\n", "translation in y"),
+        ("*BOUNDARY\n1, 1, 3\n5, 1, 3\n", "rotation about z"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let input = dir.join(format!("rigid-{i}.inp"));
+        std::fs::write(&input, CUBE.replace(held, support)).unwrap();
+        let (code, err) = run(&input, &dir.join(format!("run-{i}")), &ccx);
+        assert_eq!(code, Some(1), "{support}");
+        assert!(
+            err.contains("can move as a rigid body") && err.contains(mode),
+            "{support}: {err}"
+        );
+        assert!(err.contains("*BOUNDARY"), "{err}");
+        assert!(!dir.join(format!("run-{i}/ccx/started")).exists());
+    }
 }
 
 #[test]

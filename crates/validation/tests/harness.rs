@@ -537,6 +537,7 @@ fn shipped_cases_load_and_have_existing_inputs() {
             "patch-test",
             "patch-test-c3d10",
             "patch-test-c3d8i",
+            "plate-on-edge",
             "warpage-strip",
             "warpage-thick-copper"
         ]
@@ -819,6 +820,35 @@ fn the_solver_key_is_read_and_an_unknown_solver_is_refused() {
         "unknown solver `abaqus`, expected fh-solve or fh-solve-ccx"
     );
     assert_eq!(error.line, Some(11));
+}
+
+#[test]
+fn the_time_and_memory_limits_are_read_and_a_bad_limit_is_refused() {
+    let n = "class = \"N\"\nrel_tol = 1\nabs_tol = 0";
+    let case = write_case(&tmp("limits-none"), &body(1, n)).unwrap();
+    assert_eq!((case.time_limit_s, case.memory_limit_mib), (None, None));
+    let limits = body(
+        1,
+        &format!("{n}\ntime_limit_s = 120\nmemory_limit_mib = 0.5"),
+    );
+    let case = write_case(&tmp("limits"), &limits).unwrap();
+    assert_eq!(
+        (case.time_limit_s, case.memory_limit_mib),
+        (Some(120.0), Some(0.5))
+    );
+    for (bad, why) in [
+        ("time_limit_s = 0", "`time_limit_s` must be above 0"),
+        (
+            "memory_limit_mib = -1",
+            "`memory_limit_mib` must be above 0",
+        ),
+        ("time_limit_s = \"long\"", "`time_limit_s` must be a number"),
+    ] {
+        let text = body(1, &format!("{n}\n{bad}"));
+        let error = write_case(&tmp("limits-bad"), &text).unwrap_err();
+        assert_eq!(error.message, why);
+        assert_eq!(error.line, Some(11));
+    }
 }
 
 const MODEL: &str =

@@ -134,6 +134,10 @@ pub struct Case {
     pub references: Vec<Reference>,
     /// The solver program: `fh-solve` (the default) or `fh-solve-ccx`.
     pub solver: String,
+    /// The longest time of one solver run, in seconds. `None`: the time limit of the runner.
+    pub time_limit_s: Option<f64>,
+    /// The most memory of one solver run, in MiB. `None`: the memory limit of the runner.
+    pub memory_limit_mib: Option<f64>,
     /// How to build a solver input from a `.msh` file (`fh model`). Optional.
     pub model: Option<ModelSpec>,
     /// Class R only.
@@ -456,9 +460,11 @@ impl FixtureReader<'_> {
     }
 
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 23] = [
+        const KEYS: [&str; 25] = [
             "schema",
             "solver",
+            "time_limit_s",
+            "memory_limit_mib",
             "model",
             "units",
             "quantity",
@@ -661,6 +667,16 @@ impl FixtureReader<'_> {
                 }
             },
         };
+        let limit = |key: &str| -> Result<Option<f64>, FixtureError> {
+            let Some(item) = table.get(key) else {
+                return Ok(None);
+            };
+            match self.number(table, key)? {
+                v if v > 0.0 => Ok(Some(v)),
+                _ => Err(self.err(Some(item), format!("`{key}` must be above 0"))),
+            }
+        };
+        let (time_limit_s, memory_limit_mib) = (limit("time_limit_s")?, limit("memory_limit_mib")?);
         let model = self.model(table)?;
         let manufactured = if is_r {
             Some(self.manufactured(table, meshes.len())?)
@@ -678,6 +694,8 @@ impl FixtureReader<'_> {
             meshes,
             references,
             solver,
+            time_limit_s,
+            memory_limit_mib,
             model,
             manufactured,
         })

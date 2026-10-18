@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         Some("model") => model::run(&args[1..]),
         Some("info") => info::run(&args[1..]),
         Some("run") => run::run(&args[1..]),
-        Some("serve") => fh_daemon::serve(&args[1..], measure::Subprocess::locate().exe),
+        Some("serve") => fh_daemon::serve(&args[1..], measure::Subprocess::locate().solver.exe),
         _ => {
             eprintln!("fh: unknown argument: {}", args.join(" "));
             eprint!("{}", usage());

@@ -411,8 +411,9 @@ fn fail(code: u8, message: &str) -> ExitCode {
 /// One event of the run as a line for a person.
 fn show(event: &Event) -> String {
     let text = &event.text;
+    // `fh run` shows the reason of a failed run at its end.
     if let Some(state) = text.strip_prefix("state ") {
-        return state.to_owned();
+        return state.split(':').next().unwrap_or(state).to_owned();
     }
     if let Some(bytes) = text.strip_prefix("estimate bytes=") {
         let mib = bytes.parse::<f64>().unwrap_or(0.0) / f64::from(1 << 20);

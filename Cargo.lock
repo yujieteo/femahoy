@@ -787,6 +787,7 @@ dependencies = [
  "fh-daemon",
  "fh-inp",
  "fh-io",
+ "fh-solver-api",
  "fh-validation",
 ]
 
