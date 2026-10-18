@@ -50,8 +50,8 @@ The worker opened the pages in a headless browser (`chrome-devtools-axi`). It us
 | 5 | Friction | At 1280 × 800 the first view cuts the bar at the edge of the side panel. | Fit the model to the 3D view area. |
 | 6 | Friction | The quickstart shows a short `fh validate` table with `pass` lines. The real output is a long table of computed values, references and tolerances. Only the last line, `16 cases: 16 pass, 0 fail`, matches. | Change the excerpt or add a short mode. |
 | 7 | Friction | The run folder of `fh run bar.inp` holds the file `input.inp` and the run id `out` in `summary.toon`, not the names of the user file. | Keep the user file name in `summary.toon`. |
-| 8 | Not tested | Drag to orbit and scroll to zoom. The headless browser tool sent no real mouse events. | The captain run can test this. |
-| 9 | Not tested | The ParaView step. This Mac has no ParaView. | The captain run can test this. |
+| 8 | Not tested | Drag to orbit and scroll to zoom. The headless browser tool sent no real mouse events. | The captain run did not test this. It stays untested after the close. |
+| 9 | Not tested | The ParaView step. This Mac has no ParaView. | The captain run did not test this. It stays untested after the close. |
 | 10 | Not tested | A missing tool at install. Rust, `wasm-bindgen-cli` and gmsh were all present. | Run the install on a clean machine. |
 
 The worker found no wrong doc text that stopped the run, so it changed no doc text except the link to this file in `docs/milestones.md`.
