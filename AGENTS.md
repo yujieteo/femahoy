@@ -10,11 +10,10 @@ This file is for the agents that build femahoy itself. The product design is in 
 |---|---|---|
 | Leader | The human owner, or one coordinating session | Splits work into tasks, assigns them, merges accepted work |
 | Teammate | One agent per task | Does one task in its own worktree, returns a report |
-| Validator | Opus 5.5, separate session | Reviews each change and runs the gate. Never the same session as the author. |
 
 ## 2. Model
 
-The leader chooses the model for each task. The validator for every merge is Opus 5.5.
+The leader chooses the model for each task.
 
 ## 3. Task rules
 
@@ -45,18 +44,18 @@ The leader chooses the model for each task. The validator for every merge is Opu
 
 ## 6. Merge gate
 
-A change merges only when all of these pass:
+CI (`.github/workflows/ci.yml`) is the full test run. A PR merges when CI is green.
+
+Before a PR, the author runs:
 
 ```
 cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-fh validate                      # from M1; full suite
+cargo clippy -p <crate> --all-targets -- -D warnings # for each changed crate
+cargo test -p <crate>                                # for each changed crate
+fh validate                      # when the change touches solver code
 fh validate --convergence <path> # for each changed solver path
 ```
 
-Then the validator reviews the diff and the hand-back.
-- A validator rejection blocks the merge. Nobody can override it.
 - The leader can re-plan, re-assign, or make the task smaller.
 
 ## 7. Hand-back report
