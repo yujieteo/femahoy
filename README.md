@@ -79,7 +79,7 @@ This section lists the design decisions for femahoy. `DESIGN.md` section 17 hold
 
 Plasticity, contact and large displacement are not built yet.
 
-### Geometry and units (planned milestone M2b)
+### Geometry and units (milestone M2b)
 
 - Text-to-CAD uses Python, with build123d recommended. STEP import goes through gmsh with OpenCASCADE. Reason: Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - The case TOML declares units. `fh` refuses on a units mismatch, and refuses a STEP file with no unit record. Reason: a wrong unit gives wrong results without any warning.
