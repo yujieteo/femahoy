@@ -194,7 +194,9 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, LoadError> {
                     quantity: q,
                     location,
                     values: values
-                        .chunks_exact(3)
+                        .as_chunks::<3>()
+                        .0
+                        .iter()
                         .map(|v| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt())
                         .collect(),
                 });
@@ -293,7 +295,7 @@ pub fn load(
         steps.push(Step {
             time: entry.time,
             file: entry.file.clone(),
-            displacement: u.chunks_exact(3).map(|v| [v[0], v[1], v[2]]).collect(),
+            displacement: u.as_chunks::<3>().0.to_vec(),
             fields,
         });
         if first.is_none() {
