@@ -44,7 +44,7 @@ Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` t
 ## Examples
 
 ```rust
-let daemon = Daemon::start(Config { state_dir, solver: SubprocessSolver::new("fh-solve") }, 0)?;
+let daemon = Daemon::start_with_options(Config { state_dir, solver: SubprocessSolver::new("fh-solve") }, 0, Options::default())?;
 let cli = Client::discover(&state_dir)?;
 let project = cli.register(&root)?;
 let ack = cli.submit(&project, &new_request_id(), "model.inp")?;

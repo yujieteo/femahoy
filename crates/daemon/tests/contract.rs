@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{Client, Config, Daemon, Outcome, RunRecord, RunState};
+use fh_daemon::{Client, Config, Daemon, Options, Outcome, RunRecord, RunState};
 use fh_solver_api::SubprocessSolver;
 
 /// A solver that runs until a cancel or the end of stdin when the input has the word
@@ -74,7 +74,7 @@ impl Lab {
     }
 
     fn start(&self) -> Daemon {
-        Daemon::start(self.config(), 0).unwrap()
+        Daemon::start_with_options(self.config(), 0, Options::default()).unwrap()
     }
 
     fn input(&self, name: &str, text: &str) -> String {
@@ -477,7 +477,9 @@ fn the_event_log_and_queue_are_bounded() {
 fn a_second_daemon_cannot_use_the_same_state() {
     let lab = Lab::new("lock");
     let _daemon = lab.start();
-    let e = Daemon::start(lab.config(), 0).err().unwrap();
+    let e = Daemon::start_with_options(lab.config(), 0, Options::default())
+        .err()
+        .unwrap();
     assert_eq!(e.code, "daemon.running");
 }
 
@@ -493,7 +495,7 @@ fn a_stopped_daemon_leaves_one_interrupted_record() {
     let waiting = c.submit(&project, "stop-2", &queued).unwrap().run;
     wait_for(&c, &project, &run, |s| s == RunState::Running);
     let old_token = daemon.token().to_owned();
-    daemon.stop();
+    drop(daemon);
     assert_eq!(lab.file("solver.end").as_deref(), Some("cancelled\n"));
 
     let daemon = lab.start();
@@ -528,7 +530,7 @@ fn daemon_child() {
         state_dir: state.into(),
         solver: SubprocessSolver::new(solver),
     };
-    let _daemon = Daemon::start(config, 0).unwrap();
+    let _daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     loop {
         std::thread::park();
     }

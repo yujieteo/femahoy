@@ -10,7 +10,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{new_request_id, Config, Daemon, RunState};
+use fh_daemon::{new_request_id, Config, Daemon, Options, RunState};
 use fh_solver_api::SubprocessSolver;
 
 /// A solver that writes a small run folder at once.
@@ -48,7 +48,11 @@ impl Lab {
             state_dir: dir.join("state"),
             solver: SubprocessSolver::new(&solver),
         };
-        let daemon = Daemon::start_with_viewer(config, 0, viewer_dir).unwrap();
+        let options = Options {
+            viewer: viewer_dir,
+            ..Options::default()
+        };
+        let daemon = Daemon::start_with_options(config, 0, options).unwrap();
         Lab { dir, daemon }
     }
 
