@@ -50,7 +50,7 @@ pub enum Method {
     Pcg,
 }
 
-/// The result file formats of a run. All three are on by default.
+/// The result file formats of a run. Only VTU (with PVD) is on by default.
 /// Decision D-04, see DESIGN.md.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Formats {
@@ -63,11 +63,12 @@ pub struct Formats {
 }
 
 impl Default for Formats {
+    /// VTU with the PVD collection only. Text and legacy VTK are large, so they are options.
     fn default() -> Self {
         Formats {
-            text: true,
+            text: false,
             vtu: true,
-            vtk: true,
+            vtk: false,
         }
     }
 }
@@ -85,7 +86,13 @@ impl Formats {
                 "text" => f.text = true,
                 "vtu" => f.vtu = true,
                 "vtk" => f.vtk = true,
-                "all" => f = Formats::default(),
+                "all" => {
+                    f = Formats {
+                        text: true,
+                        vtu: true,
+                        vtk: true,
+                    }
+                }
                 other => {
                     return Err(format!(
                         "unknown result format `{other}`: use text, vtu, vtk or all"

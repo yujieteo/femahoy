@@ -226,7 +226,7 @@ How the later milestones plug in:
 
 ## 8. Results and postprocessing
 
-- **Results files:** the solver writes three formats for each converged increment. The files of the last increment of step N are `step-N.*`, and the files of the other increments are `step-N-inc-k.*`. All formats are on by default. `fh-solve --formats text,vtu,vtk` selects a subset.
+- **Results files:** the solver writes VTU with a PVD file for each converged increment. The files of the last increment of step N are `step-N.*`, and the files of the other increments are `step-N-inc-k.*`. Plain text and legacy VTK are off by default, because they are large. `fh-solve --formats text,vtu,vtk` selects the formats, and `--formats all` selects all 3. `fh run` writes the default only.
   - **Plain text** (`step-N.txt`): first line `fh-results 1`, a header (units note, step, step name, time, stress order), then three tables: one row for each node (`U1 U2 U3 RF1 RF2 RF3`, and `UR1 UR2 UR3` when the model has rotations), one row for each element (`S11 S22 S33 S12 S23 S13 MISES`, volume average), and one row for each integration point (`element_id ip S11 ... MISES`). Reals use the shortest text that reads back to the same value. The model has no unit system, so the units line says that all values are in the units of the input file.
   - **VTU** (`step-N.vtu`): binary data appended raw. Sets are integer arrays. femahoy writes and reads these files in Rust, with no C library. There is no compression, because that needs a new dependency and costs time on a slow CPU.
   - **Legacy VTK** (`step-N.vtk`): ASCII `UNSTRUCTURED_GRID`, version 3.0. It has the same mesh and fields as the VTU file.
@@ -508,11 +508,12 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-04 Result formats are plain text, VTU and legacy VTK
 - **Decided by:** the captain.
-- **Choice:** The solver writes plain text, VTU (with PVD) and legacy VTK. It does not write HDF5 or Exodus.
+- **Choice:** The solver supports plain text, VTU (with PVD) and legacy VTK. It does not write HDF5 or Exodus. From 2026-10-18 only VTU with PVD is on by default. Text and legacy VTK are options (`--formats`).
 - **Reason:** These formats need no large library. HDF5 and Exodus need C libraries that are hard to build on all platforms.
 - **Rejected:** HDF5, Exodus.
 - **Reverse if:** a model is too big for these formats, or a customer needs one of the rejected formats.
-- **Built:** M2 (PR 10). `fh-solve --formats` selects a subset.
+- **Update:** the captain decided on 2026-10-18 to change the default. A run of 1M `C3D8` elements wrote 2.28 GB with all 3 formats, and the text file was about 1.5 GB of that. The text writer also kept about 384 bytes for each element in memory. The 3 formats stay (decided 2026-10-13, for compatibility).
+- **Built:** M2 (PR 10). `fh-solve --formats` selects a subset. The default is VTU with PVD (2026-10-18).
 
 ### D-05 Model input stays Abaqus-style `.inp`, TOML holds only case metadata
 - **Decided by:** the captain.

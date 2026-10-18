@@ -76,6 +76,7 @@ fn options() -> Options {
                 d: fh_core_solver::element::elasticity(1000.0, 0.0),
             }))
         })),
+        formats: Formats::parse("all").unwrap(),
         ..Options::default()
     }
 }

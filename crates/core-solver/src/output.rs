@@ -1,6 +1,6 @@
-//! Results files for the subprocess protocol: for each step a text table, a VTU file and a
-//! legacy VTK file (each can be switched off with `Options::formats`), a PVD collection, a
-//! restart file and the `fh.run` TOON summary.
+//! Results files for the subprocess protocol: for each step a VTU file (a text table and a
+//! legacy VTK file are options in `Options::formats`), a PVD collection, a restart file and
+//! the `fh.run` TOON summary.
 //!
 //! The writer takes one increment at a time from the solver and keeps only the
 //! base grid in memory. Every file is written under a temporary name and renamed.

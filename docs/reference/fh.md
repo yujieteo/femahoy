@@ -110,7 +110,7 @@ fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm|SI-m]
 Source: [model.rs](../../crates/cli/src/model.rs).
 
 The command writes a solver input from the mesh and the `[model]` table of the case (`crates/validation/SCHEMA.md`).
-The input starts with the line `** units: SI-mm` or `** units: SI-m`. `fh-solve` copies the units into `summary.toon`, `results.pvd` and the text results.
+The input starts with the line `** units: SI-mm` or `** units: SI-m`. `fh-solve` copies the units into `summary.toon`, `results.pvd` and the text results. `fh run` and `fh-solve` write VTU with PVD by default. Text and legacy VTK need `fh-solve --formats text,vtu,vtk`.
 Each region becomes a node set and an element-face surface of its name. Each `[[model.dsload]]` becomes a `*DSLOAD` line.
 
 | Condition | Diagnostic or output | Exit |

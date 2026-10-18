@@ -57,7 +57,7 @@ fn the_declared_units_come_from_a_comment_before_the_first_keyword() {
 
 #[test]
 fn every_result_file_states_the_declared_units() {
-    let d = run_in("units", Formats::default(), "SI-mm");
+    let d = run_in("units", Formats::parse("all").unwrap(), "SI-mm");
     let toon = fs::read_to_string(d.join("summary.toon")).unwrap();
     assert!(toon.contains("\nunits: SI-mm\n"), "{toon}");
     let pvd = fs::read_to_string(d.join("results.pvd")).unwrap();
@@ -73,8 +73,19 @@ fn every_result_file_states_the_declared_units() {
 }
 
 #[test]
-fn every_format_is_on_by_default() {
-    let d = run("all", Formats::default());
+fn only_vtu_is_on_by_default() {
+    let d = run("default", Formats::default());
+    for f in ["step-1.vtu", "results.pvd", "summary.toon"] {
+        assert!(d.join(f).is_file(), "{f} missing");
+    }
+    for f in ["step-1.txt", "step-1.vtk"] {
+        assert!(!d.join(f).exists(), "{f} written by default");
+    }
+}
+
+#[test]
+fn all_selects_every_format() {
+    let d = run("all", Formats::parse("all").unwrap());
     for f in ["step-1.txt", "step-1.vtu", "step-1.vtk", "results.pvd"] {
         assert!(d.join(f).is_file(), "{f} missing");
     }
@@ -101,7 +112,7 @@ fn a_bad_format_name_is_an_error() {
 
 #[test]
 fn the_text_file_has_a_header_and_one_row_for_each_entity() {
-    let d = run("text", Formats::default());
+    let d = run("text", Formats::parse("all").unwrap());
     let t = fs::read_to_string(d.join("step-1.txt")).unwrap();
     let lines: Vec<&str> = t.lines().collect();
     assert_eq!(lines[0], "fh-results 1");
@@ -133,7 +144,7 @@ fn the_text_file_has_a_header_and_one_row_for_each_entity() {
 
 #[test]
 fn text_and_vtk_hold_the_numbers_of_the_vtu() {
-    let d = run("same", Formats::default());
+    let d = run("same", Formats::parse("all").unwrap());
     let grid = read_vtu(&fs::read(d.join("step-1.vtu")).unwrap()).unwrap();
     let u = grid.point_field("U").unwrap().as_f64().unwrap().to_vec();
     let s = grid.cell_field("S").unwrap().as_f64().unwrap().to_vec();
@@ -179,7 +190,7 @@ fn text_and_vtk_hold_the_numbers_of_the_vtu() {
 #[test]
 fn the_mean_of_the_point_stresses_matches_the_element_value() {
     // For a cube of equal volume weights the mean of the 8 point values is the element stress.
-    let d = run("mean", Formats::default());
+    let d = run("mean", Formats::parse("all").unwrap());
     let t = fs::read_to_string(d.join("step-1.txt")).unwrap();
     let lines: Vec<&str> = t.lines().collect();
     let e = lines.iter().position(|l| *l == "elements: 4").unwrap() + 2;
@@ -248,7 +259,10 @@ fn a_set_name_with_a_space_is_kept_in_the_vtu_and_encoded_in_the_vtk() {
         hash: 1,
         units: fh_core_solver::NO_UNITS,
     };
-    let options = Options::default();
+    let options = Options {
+        formats: Formats::parse("all").unwrap(),
+        ..Options::default()
+    };
     run_model(&model, &input, &d, &options, false, &mut |_| {}, &|| false)
         .unwrap_or_else(|e| panic!("{e}"));
     let grid = read_vtu(&fs::read(d.join("step-1.vtu")).unwrap()).unwrap();

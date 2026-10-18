@@ -66,7 +66,7 @@ The cases in mm and in m give the same physical answer.
 | Mesh | `fh mesh FILE.(geo\|step) (--case DIR \| --units SI-mm\|SI-m) [-o OUT.msh] [--order 1\|2] [--size H] [--scale S] [--set NAME=VALUE]... [--timeout SECONDS] [--gmsh PATH]` |
 | Model | `fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm\|SI-m]` |
 | Check input | `fh check [--root DIR] [FILE.inp...]` |
-| Solve | `fh-solve INPUT.inp RUN_DIR [--restart] [--formats text,vtu,vtk] [--restart-every N] [--restart-minutes T]` |
+| Solve | `fh-solve INPUT.inp RUN_DIR [--restart] [--formats text,vtu,vtk (default vtu)] [--restart-every N] [--restart-minutes T]` |
 | Validate | `fh validate [--root DIR] [--convergence PATH]` |
 
 `fh mesh` takes the unit from `--case` or from `--units`. It has no default unit (D-18).
