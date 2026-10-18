@@ -83,7 +83,7 @@ Plasticity, contact and large displacement are not built yet.
 
 - Text-to-CAD uses Python, with build123d recommended. STEP import goes through gmsh with OpenCASCADE. Reason: Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - The case TOML declares units. `fh` refuses on a units mismatch, and refuses a STEP file with no unit record. Reason: a wrong unit gives wrong results without any warning.
-- C3D10 (tet10) is the default element. C3D8 (hex8) is only for extruded parts. Reason: tetrahedra mesh any shape, and quadratic elements avoid the bending lock of plain hex8 (a test showed plain hex8 17 percent too small in deflection). Hex8 stays for extruded parts.
+- C3D10 (tet10) is the default element. C3D8 (hex8) is only for extruded parts. Reason: tetrahedra mesh any shape, and quadratic elements avoid the bending errors of plain hex8 (in the `cantilever` validation case, 10 mm long with a 1 x 1 mm section and 1 element through the section, plain hex8 gave 0.35 to 2.07 times the reference tip deflection, see [docs/compatibility.md](docs/compatibility.md#c3d8-mesh-rule-for-bending)). Hex8 stays for extruded parts.
 
 ### External solvers (agreed 2026-10-13)
 

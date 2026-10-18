@@ -105,3 +105,38 @@ fn refined_blocks_approach_beam_theory() {
 fn tet10_block_long() -> Block {
     tet10_block([8, 1, 1], [8.0, 1.0, 1.0], 0.0)
 }
+
+#[test]
+fn one_c3d8_through_the_section_follows_the_b_bar_model() {
+    // Element review T9 (docs/compatibility.md). With 1 element through the section,
+    // the element mean of the bending volume strain is zero, and B-bar removes its
+    // stiffness. Of the bending modulus, 4 mu (1 + r) / (4 + 3 r) remains, with
+    // r = (width / depth)^2 = 1: 0.44 E for nu = 0.3. The shear of the 2 x 2 x 2
+    // points (shear locking) adds mu (a / h)^2 for elements of length a. The section
+    // shear factor is 1. Thus long elements are too stiff and short elements too soft.
+    // Reason for 3 percent: the clamp stops the section contraction, so the solver
+    // values are 1.1 to 2.3 percent stiffer than this model.
+    let (e, l) = (1000.0, 8.0);
+    let mu = e / (2.0 * (1.0 + NU));
+    let (bending, i) = (4.0 * mu * 2.0 / 7.0, 1.0 / 12.0);
+    let beam = timoshenko(l, 1.0) * (E / e);
+    for n in [4, 8, 16, 32, 64] {
+        let a = l / n as f64;
+        let model = l.powi(3) / (3.0 * i * (bending + mu * a * a)) + l / mu;
+        let got = tip_deflection(&hex_block([n, 1, 1], [l, 1.0, 1.0], 0.0, "C3D8"));
+        println!("C3D8 {n} x 1 x 1: {got:e}, model {model:e}, beam {beam:e}");
+        assert!(
+            (got - model).abs() < 0.03 * model,
+            "C3D8 {n} x 1 x 1: tip deflection {got:e}, B-bar model {model:e}"
+        );
+        // C3D8I represents bending with 1 element through the section.
+        // Reason for 2 percent: the clamp, as above. The values are 0.8 to 1.9 percent stiff.
+        if n >= 8 {
+            let got = tip_deflection(&hex_block([n, 1, 1], [l, 1.0, 1.0], 0.0, "C3D8I"));
+            assert!(
+                (got - beam).abs() < 0.02 * beam,
+                "C3D8I {n} x 1 x 1: tip deflection {got:e}, beam theory {beam:e}"
+            );
+        }
+    }
+}

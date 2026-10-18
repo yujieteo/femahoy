@@ -549,3 +549,130 @@ fn face_nodes_maps_each_face_to_local_nodes() {
     assert!(face_nodes(Kind::C3D8, 7).is_err());
     assert!(face_nodes(Kind::C3D10, 5).is_err());
 }
+
+/// A box `a x b x h` along x, y and z, in the hex node order.
+fn hex_box(a: f64, b: f64, h: f64) -> Vec<[f64; 3]> {
+    unit_hex()
+        .iter()
+        .map(|p| [a * p[0], b * p[1], h * p[2]])
+        .collect()
+}
+
+#[test]
+fn hex8_stiffness_has_6_zero_modes_and_no_negative_mode() {
+    // A wrong B-bar or a wrong incompatible mode can add a zero-energy mode or a
+    // negative mode. Each shape must have the 6 rigid body modes and no other.
+    let d = elasticity(200.0, 0.3);
+    for kind in [Kind::C3D8, Kind::C3D8I] {
+        for c in [
+            unit_hex(),
+            hex_box(0.125, 1.0, 1.0),
+            hex_box(4.0, 1.0, 0.25),
+            HEX.to_vec(),
+        ] {
+            let k = stiffness(kind, &c, &d).unwrap();
+            let ev = faer::Mat::from_fn(24, 24, |i, j| k[24 * i + j])
+                .as_ref()
+                .self_adjoint_eigenvalues(faer::Side::Lower)
+                .unwrap();
+            let top = ev[23];
+            // The smallest nonzero eigenvalue of these shapes is 8e-5 times the largest.
+            assert!(
+                ev[..6].iter().all(|v| v.abs() < 1e-10 * top) && ev[6] > 1e-6 * top,
+                "{kind:?} {c:?}: eigenvalues {:?}",
+                &ev[..8]
+            );
+        }
+    }
+}
+
+#[test]
+fn hex8_bending_energy_matches_the_formulation() {
+    // Element review T9 (docs/compatibility.md). A box a x b x h bends about y with
+    // curvature k: u = -k x z and w = k x^2 / 2 at the nodes (x, y, z from the centre),
+    // and v = c y z gives a lateral strain c z. The 2 x 2 x 2 points integrate each
+    // strain exactly. The in-plane shear -k x adds mu k^2 a^2 V / 24 (shear locking).
+    // C3D8 (B-bar) keeps only the deviatoric energy, because the element mean of the
+    // volume strain is zero: mu (2/3 (k^2 + k c + c^2) Iz + c^2 Iy / 2), with Iz and Iy
+    // the integrals of z^2 and y^2 over the box. A fully integrated hex8 adds
+    // lambda (c - k)^2 Iz / 2. C3D8I represents the exact pure bending field.
+    let (e, nu, k) = (1000.0, 0.3, 1.0);
+    let mu = e / (2.0 * (1.0 + nu));
+    let d = elasticity(e, nu);
+    let energy =
+        |m: &[f64], u: &[f64]| 0.5 * u.iter().zip(mat_vec(m, u)).map(|(a, b)| a * b).sum::<f64>();
+    for (a, b, h) in [(1.0, 1.0, 1.0), (0.25, 2.0, 1.0)] {
+        let c8 = hex_box(a, b, h);
+        let (vol, iz, iy) = (
+            a * b * h,
+            a * b * h.powi(3) / 12.0,
+            a * h * b.powi(3) / 12.0,
+        );
+        let shear = mu * k * k * a * a * vol / 24.0;
+        let mode = |c: f64, w2: f64| {
+            field(&c8, |p| {
+                let (x, y, z) = (p[0] - a / 2.0, p[1] - b / 2.0, p[2] - h / 2.0);
+                [
+                    -k * x * z,
+                    c * y * z,
+                    k * x * x / 2.0 + w2 * (z * z - y * y) / 2.0,
+                ]
+            })
+        };
+        let kb = stiffness(Kind::C3D8, &c8, &d).unwrap();
+        // c = 0, and the c of least energy, -2 k / (4 + 3 Iy / Iz).
+        for c in [0.0, -2.0 * k / (4.0 + 3.0 * iy / iz)] {
+            let want = mu * (2.0 / 3.0 * (k * k + k * c + c * c) * iz + c * c * iy / 2.0) + shear;
+            let got = energy(&kb, &mode(c, 0.0));
+            assert!(
+                (got - want).abs() < 1e-12 * want,
+                "C3D8 {a} {b} {h} c {c}: {got} vs {want}"
+            );
+        }
+        let ki = stiffness(Kind::C3D8I, &c8, &d).unwrap();
+        let (got, want) = (energy(&ki, &mode(nu * k, nu * k)), 0.5 * e * k * k * iz);
+        assert!(
+            (got - want).abs() < 1e-12 * want,
+            "C3D8I {a} {b} {h}: {got} vs {want}"
+        );
+    }
+}
+
+#[test]
+fn c3d8_pressure_is_the_bulk_modulus_times_the_volume_change() {
+    // B-bar (Hughes 1980): each point of C3D8 uses the element mean of the volume strain.
+    // That mean is the change of the element volume over the volume. The volume is
+    // cubic in t for the nodes x + t u, so the 4-point difference is exact.
+    let (e, nu) = (200.0, 0.3);
+    let bulk = e / (3.0 * (1.0 - 2.0 * nu));
+    let u: Vec<f64> = (0..24)
+        .map(|i| 1e-3 * ((7 * i % 11) as f64 - 5.0))
+        .collect();
+    let v = |t: f64| {
+        let c: Vec<[f64; 3]> = (0..8)
+            .map(|a| [0, 1, 2].map(|i| HEX[a][i] + t * u[3 * a + i]))
+            .collect();
+        volume(Kind::C3D8, &c).unwrap()
+    };
+    let dv = (8.0 * (v(1.0) - v(-1.0)) - (v(2.0) - v(-2.0))) / 12.0;
+    let want = bulk * dv / v(0.0);
+    let mut out = Evaluation::default();
+    let place = Placement {
+        start: &HEX,
+        disp: &u,
+    };
+    let mat = Elastic::new(e, nu);
+    evaluate(
+        Kind::C3D8,
+        &place,
+        &mat,
+        &ElementState::default(),
+        &mut out,
+        false,
+    )
+    .unwrap();
+    for s in &out.ip_stress[..8] {
+        let p = (s[0] + s[1] + s[2]) / 3.0;
+        assert!((p - want).abs() < 1e-10 * want.abs(), "{p} vs {want}");
+    }
+}
