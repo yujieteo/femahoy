@@ -235,7 +235,7 @@ pub fn load(
     let mut steps = Vec::with_capacity(entries.len());
     for entry in entries {
         let file = entry.file.as_str();
-        if file.contains("..") || file.starts_with('/') || file.contains('\\') {
+        if file.is_empty() || file == "." || file == ".." || file.contains(['/', '\\', ':']) {
             return fail(
                 "results.file.path",
                 pvd_name,
@@ -265,6 +265,13 @@ pub fn load(
                     format!("the mesh is not the mesh of {}", steps_file(&steps)),
                 );
             }
+        }
+        if grid.points.iter().flatten().any(|c| !c.is_finite()) {
+            return fail(
+                "results.mesh.nonfinite",
+                file,
+                "a point coordinate is not a finite number",
+            );
         }
         let fields = fields_of(&grid, file)?;
         let Some(u) = grid.point_field("U") else {
@@ -400,9 +407,19 @@ pub fn contour_range(field: &ScalarField) -> (f64, f64) {
     }
 }
 
-/// The value of a field at each corner of each surface triangle, three per triangle. A
-/// point field gives the node value. A cell field gives the value of the owning element.
-pub fn triangle_values(mesh: &RenderMesh, field: &ScalarField) -> Vec<f32> {
+/// The position of a value in the range `lo..=hi`: 0 at `lo`, 1 at `hi`, 0.5 for a range
+/// of zero width. Linear in the value, so it can be interpolated over a triangle.
+pub fn position(value: f64, lo: f64, hi: f64) -> f64 {
+    if hi <= lo {
+        return 0.5;
+    }
+    (value - lo) / (hi - lo)
+}
+
+/// The contour position (see `position`) at each corner of each surface triangle, three per
+/// triangle. A point field gives the node value. A cell field gives the value of the owning
+/// element.
+pub fn triangle_values(mesh: &RenderMesh, field: &ScalarField, lo: f64, hi: f64) -> Vec<f32> {
     let mut out = Vec::with_capacity(3 * mesh.triangles.len());
     for (t, cell) in mesh.triangles.iter().zip(&mesh.triangle_cell) {
         for &p in t {
@@ -410,19 +427,17 @@ pub fn triangle_values(mesh: &RenderMesh, field: &ScalarField) -> Vec<f32> {
                 Location::Point => field.values[mesh.source_node[p as usize] as usize],
                 Location::Cell => field.values[*cell as usize],
             };
-            out.push(v as f32);
+            out.push(position(v, lo, hi) as f32);
         }
     }
     out
 }
 
-/// The band (0 to `BANDS - 1`) of a value in the range `lo..=hi`. The shader uses the same
-/// rule. A range of zero width gives the middle band.
+/// The band (0 to `BANDS - 1`) of a value in the range `lo..=hi`. The shader maps the
+/// position of `triangle_values` to a band with the same rule. A range of zero width gives
+/// the middle band.
 pub fn band(value: f64, lo: f64, hi: f64) -> usize {
-    if hi <= lo {
-        return BANDS / 2;
-    }
-    let t = (value - lo) / (hi - lo);
+    let t = position(value, lo, hi);
     ((t * BANDS as f64).floor().max(0.0) as usize).min(BANDS - 1)
 }
 
@@ -540,12 +555,23 @@ mod tests {
             let node_ids = ids(&dir, &step.file, "NODE_ID", true);
             let element_ids = ids(&dir, &step.file, "ELEMENT_ID", false);
             assert_eq!(node_ids.len(), text.nodes.len());
+            let comp = |name: &str| &step.field(name).unwrap().values;
+            let mag = |a: f64, b: f64, c: f64| (a * a + b * b + c * c).sqrt();
+            let close = |got: f64, want: f64, what: &str| {
+                assert!((got - want).abs() <= 1e-15 * want.abs().max(1.0), "{what}");
+            };
             for (n, id) in node_ids.iter().enumerate() {
                 let t = text.nodes[id];
                 assert_eq!(step.displacement[n], [t[0], t[1], t[2]], "U node {id}");
-                let mag = step.field("U magnitude").unwrap().values[n];
-                let want = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
-                assert!((mag - want).abs() <= 1e-15 * want.max(1.0));
+                for (k, name) in ["U1", "U2", "U3", "RF1", "RF2", "RF3"].iter().enumerate() {
+                    assert_eq!(comp(name)[n], t[k], "{name} node {id}");
+                }
+                close(comp("U magnitude")[n], mag(t[0], t[1], t[2]), "U magnitude");
+                close(
+                    comp("RF magnitude")[n],
+                    mag(t[3], t[4], t[5]),
+                    "RF magnitude",
+                );
             }
             let names = ["S11", "S22", "S33", "S12", "S23", "S13", "MISES"];
             for (e, id) in element_ids.iter().enumerate() {
@@ -606,7 +632,7 @@ mod tests {
         let r = load_dir(&fixture_dir()).unwrap();
         let step = &r.steps[0];
         let mises = step.field("MISES").unwrap();
-        let vals = triangle_values(&r.mesh, mises);
+        let vals = triangle_values(&r.mesh, mises, 0.0, 1.0);
         assert_eq!(vals.len(), 3 * r.mesh.triangles.len());
         for (t, cell) in r.mesh.triangle_cell.iter().enumerate() {
             for c in 0..3 {
@@ -614,7 +640,7 @@ mod tests {
             }
         }
         let u3 = step.field("U3").unwrap();
-        let vals = triangle_values(&r.mesh, u3);
+        let vals = triangle_values(&r.mesh, u3, 0.0, 1.0);
         for (t, tri) in r.mesh.triangles.iter().enumerate() {
             for c in 0..3 {
                 let node = r.mesh.source_node[tri[c] as usize] as usize;
@@ -661,6 +687,46 @@ mod tests {
         assert_eq!(contour_range(&real), (99.0, 100.0));
         let zero = field(vec![0.0, 1e-300]);
         assert_eq!(contour_range(&zero), (0.0, 1e-300));
+    }
+
+    /// The positions that the shader bands agree with the bands of the legend.
+    #[test]
+    fn positions_band_as_the_legend_does() {
+        let mesh = RenderMesh {
+            positions: vec![[0.0; 3]; 3],
+            triangles: vec![[0, 1, 2]],
+            triangle_cell: vec![0],
+            source_node: vec![0, 1, 2],
+            ..Default::default()
+        };
+        let band_of = |t: f32| ((t as f64 * BANDS as f64).floor().max(0.0) as usize).min(BANDS - 1);
+        let mises = ScalarField {
+            name: "MISES".into(),
+            quantity: Quantity::Stress,
+            location: Location::Point,
+            values: vec![100.0 - 4e-6, 100.0, 100.0 + 4e-6],
+        };
+        let (lo, hi) = contour_range(&mises);
+        let t = triangle_values(&mesh, &mises, lo, hi);
+        assert_eq!(
+            t.iter().map(|&t| band_of(t)).collect::<Vec<_>>(),
+            mises
+                .values
+                .iter()
+                .map(|&v| band(v, lo, hi))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(band_of(t[0]), 0);
+        assert_eq!(band_of(t[2]), BANDS - 1);
+        let tiny = ScalarField {
+            values: vec![0.0, 5e-301, 1e-300],
+            ..mises
+        };
+        let (lo, hi) = contour_range(&tiny);
+        let t = triangle_values(&mesh, &tiny, lo, hi);
+        assert_eq!(t.iter().map(|&t| band_of(t)).collect::<Vec<_>>(), [0, 4, 8]);
+        let constant = triangle_values(&mesh, &tiny, 3.0, 3.0);
+        assert!(constant.iter().all(|&t| band_of(t) == BANDS / 2));
     }
 
     #[test]
@@ -723,13 +789,34 @@ mod tests {
     }
 
     #[test]
-    fn a_step_file_outside_the_run_folder_is_refused() {
-        let pvd = fh_io::vtu::write_pvd(&[fh_io::vtu::PvdEntry {
-            time: 1.0,
-            file: "../secret.vtu".into(),
-        }]);
-        let e = load("results.pvd", &pvd, |_| panic!("must not read")).unwrap_err();
-        assert_eq!(e.code, "results.file.path");
+    fn a_step_file_that_is_not_a_plain_name_is_refused() {
+        for file in [
+            "../secret.vtu",
+            "/x/a.vtu",
+            "C:/x/a.vtu",
+            "C:a.vtu",
+            "sub/step-1.vtu",
+            "a\\b.vtu",
+            "..",
+        ] {
+            let pvd = fh_io::vtu::write_pvd(&[fh_io::vtu::PvdEntry {
+                time: 1.0,
+                file: file.into(),
+            }]);
+            let e = load("results.pvd", &pvd, |_| panic!("must not read")).unwrap_err();
+            assert_eq!(e.code, "results.file.path", "{file}");
+        }
+    }
+
+    #[test]
+    fn a_point_that_is_not_finite_is_an_error() {
+        let mut g = fixture_grid();
+        g.points[3][1] = f64::INFINITY;
+        let e = one_step(&g).unwrap_err();
+        assert_eq!(
+            (e.code, e.file.as_str()),
+            ("results.mesh.nonfinite", "step-1.vtu")
+        );
     }
 
     #[test]

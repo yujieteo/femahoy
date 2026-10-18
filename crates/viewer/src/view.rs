@@ -76,7 +76,7 @@ impl ViewState {
         let scale = if self.deformed { self.scale } else { 0.0 };
         let positions = results::deformed_positions(mesh, step, scale);
         let values = match self.contour(results) {
-            Contour::On { field, .. } => results::triangle_values(mesh, field),
+            Contour::On { field, lo, hi } => results::triangle_values(mesh, field, lo, hi),
             _ => Vec::new(),
         };
         let faces = face_vertices(mesh, &positions, &values);
@@ -103,21 +103,40 @@ pub fn field_names(results: &Results) -> Vec<String> {
 
 /// A value with 4 significant digits, as in the TOON summaries.
 pub fn format_value(v: f64) -> String {
+    format_sig(v, 4)
+}
+
+/// A value with `sig` significant digits.
+fn format_sig(v: f64, sig: usize) -> String {
     if v == 0.0 {
         return "0".to_owned();
     }
-    // Round to 4 significant digits first, then choose the fixed or the exponent form.
-    let sci = format!("{v:.3e}");
+    // Round first, then choose the fixed or the exponent form.
+    let sci = format!("{v:.prec$e}", prec = sig - 1);
     let exponent: i32 = sci
         .split_once('e')
         .and_then(|(_, e)| e.parse().ok())
         .unwrap_or(0);
     if (-3..5).contains(&exponent) {
-        let digits = (3 - exponent).max(0) as usize;
-        format!("{v:.digits$}")
+        let rounded: f64 = sci.parse().unwrap_or(v);
+        let digits = (sig as i32 - 1 - exponent).max(0) as usize;
+        format!("{rounded:.digits$}")
     } else {
         sci
     }
+}
+
+/// The texts of the band limits. Each has 4 significant digits, or more when 4 digits make
+/// two different limits equal text.
+pub fn format_limits(limits: &[f64]) -> Vec<String> {
+    let mut texts = Vec::new();
+    for sig in 4..=17 {
+        texts = limits.iter().map(|&v| format_sig(v, sig)).collect();
+        if texts.windows(2).all(|w| w[0] != w[1]) {
+            break;
+        }
+    }
+    texts
 }
 
 /// The step label of the step selector: the number, the time and the file.
@@ -198,7 +217,8 @@ mod tests {
         let v = ViewState::new(&r);
         let g = v.geometry(&r, 1);
         let mises = r.steps[1].field("MISES").unwrap();
-        let values = results::triangle_values(&r.mesh, mises);
+        let (lo, hi) = results::contour_range(mises);
+        let values = results::triangle_values(&r.mesh, mises, lo, hi);
         for (i, f) in g.faces.iter().enumerate() {
             let p = r.mesh.triangles[i / 3][i % 3] as usize;
             assert_eq!([f[0], f[1], f[2]], g.positions[p]);
@@ -224,6 +244,16 @@ mod tests {
     }
 
     #[test]
+    fn limits_are_distinct_text() {
+        let limits = results::band_limits(100.0 - 4e-6, 100.0 + 4e-6);
+        let texts = format_limits(&limits);
+        assert_eq!(texts.len(), limits.len());
+        assert!(texts.windows(2).all(|w| w[0] != w[1]), "{texts:?}");
+        let plain = format_limits(&results::band_limits(0.0, 9.0));
+        assert_eq!(plain[1], "1.000");
+    }
+
+    #[test]
     fn values_have_four_significant_digits() {
         assert_eq!(format_value(0.0), "0");
         assert_eq!(format_value(100.0), "100.0");
@@ -235,6 +265,8 @@ mod tests {
         // Round first, then choose the form.
         assert_eq!(format_value(99.99999999), "100.0");
         assert_eq!(format_value(99999.9999), "1.000e5");
+        assert_eq!(format_value(12345.6), "12350");
+        assert_eq!(format_value(-12345.6), "-12350");
         assert_eq!(format_value(0.00099999999), "0.001000");
         let r = fixture();
         assert_eq!(

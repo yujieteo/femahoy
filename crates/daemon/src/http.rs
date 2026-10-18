@@ -88,10 +88,10 @@ try {
   const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
   const wasm = await (await get("/viewer/fh_viewer_bg.wasm")).arrayBuffer();
   await viewer.default({ module_or_path: wasm });
-  viewer.start(document.getElementById("fh"));
+  await viewer.start(document.getElementById("fh"));
   msg.remove();
 } catch (e) {
-  msg.textContent = "The viewer cannot start. " + e.message;
+  msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
 }
 </script>
 </body>

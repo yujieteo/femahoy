@@ -27,14 +27,14 @@ pub struct FrameParams {
     pub view_proj: [[f32; 4]; 4],
     pub eye: [f32; 3],
     pub dark: bool,
-    /// The contour range, or `None` for plain faces.
-    pub contour: Option<(f32, f32)>,
+    /// Colour the faces by the contour bands.
+    pub contour: bool,
     /// Draw the outline of the undeformed shape.
     pub ghost: bool,
 }
 
 /// New vertex data: the drawn position of each render position, and the position and the
-/// contour value of each triangle corner (three per triangle, see `face_vertices`).
+/// contour position (0 to 1) of each triangle corner (three per triangle, see `face_vertices`).
 pub struct Geometry {
     /// A new number for each change. The buffers are written once per number.
     pub version: u64,
@@ -248,10 +248,7 @@ impl MeshGpu {
             )
         };
         let bands = BAND_COLORS.map(|c| [c[0], c[1], c[2], 1.0]);
-        let contour = match p.contour {
-            Some((lo, hi)) => [1.0, lo, hi, 0.0],
-            None => [0.0; 4],
-        };
+        let contour = [if p.contour { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0];
         let put = |layer: &Layer, rgb: [f32; 3], lit: bool| {
             let u = Uniforms {
                 view_proj: p.view_proj,

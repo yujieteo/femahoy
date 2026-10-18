@@ -59,9 +59,10 @@ The viewer reads `results.pvd` and the `step-N.vtu` files that it names (`docs/w
 |---|---|
 | `VTU002`, `VTU003` | `results.pvd` or a VTU file is malformed or uses a feature that the reader does not support. |
 | `results.empty` | `results.pvd` names no step file. |
-| `results.file.path` | A step file name is not in the run folder, for example `../x.vtu`. |
+| `results.file.path` | A step file name is not a plain file name in the run folder. It is empty, or it is `.` or `..`, or it has `/`, `\` or `:`. |
 | `results.file.missing` | A step file cannot be read. |
 | `results.mesh.empty` | A step file has no point or no cell. |
+| `results.mesh.nonfinite` | A point coordinate is not finite (NaN or infinity). |
 | `results.mesh.changed` | A step has a mesh that is not the mesh of the first step. |
 | `results.mesh.unsupported` | The mesh has no cell that the viewer can draw. |
 | `results.field.missing` | A step has no displacement field `U` with 3 float components. |
@@ -86,7 +87,7 @@ The message names the file, for example `step-2.vtu: not found (results.file.mis
 
 The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/projects/<p>/runs/<r>/files/<name>`.
 
-The browser needs WebGPU or WebGL 2. The native window needs a GPU with Metal, Vulkan or DX12.
+The browser needs WebGPU or WebGL 2. When the viewer cannot start, the page shows the cause. The native window needs a GPU with Metal, Vulkan or DX12.
 
 ## Code
 

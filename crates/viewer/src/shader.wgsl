@@ -3,7 +3,7 @@ struct Uniforms {
     color: vec4<f32>,
     // x = 1 for lit faces, 0 for flat colour lines. yzw = eye position.
     lit: vec4<f32>,
-    // x = 1 to colour faces by the contour bands. y = lowest value. z = highest value.
+    // x = 1 to colour faces by the contour bands.
     contour: vec4<f32>,
     bands: array<vec4<f32>, 9>,
 };
@@ -34,15 +34,9 @@ fn vs_face(@location(0) position: vec3<f32>, @location(1) value: f32) -> VsOut {
     return out;
 }
 
-// The same rule as `results::band`: equal parts of the range, the middle band for a range
-// of zero width.
-fn band_color(value: f32) -> vec3<f32> {
-    let lo = u.contour.y;
-    let hi = u.contour.z;
-    if (!(hi > lo)) {
-        return u.bands[4].rgb;
-    }
-    let t = (value - lo) / (hi - lo);
+// The same rule as `results::band`. The value is the position in the range, 0 to 1, that
+// the CPU computed in f64.
+fn band_color(t: f32) -> vec3<f32> {
     let i = u32(clamp(floor(t * 9.0), 0.0, 8.0));
     return u.bands[i].rgb;
 }

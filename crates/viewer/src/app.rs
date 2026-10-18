@@ -152,11 +152,10 @@ impl Shown {
         }
     }
 
-    fn contour_range(&self) -> Option<(f32, f32)> {
-        let (r, v) = (self.results.as_ref()?, self.view.as_ref()?);
-        match v.contour(r) {
-            Contour::On { lo, hi, .. } => Some((lo as f32, hi as f32)),
-            _ => None,
+    fn contour_on(&self) -> bool {
+        match (self.results.as_ref(), self.view.as_ref()) {
+            (Some(r), Some(v)) => matches!(v.contour(r), Contour::On { .. }),
+            _ => false,
         }
     }
 
@@ -282,12 +281,9 @@ fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64,
         return;
     }
     let limits = results::band_limits(lo, hi);
+    let texts = view::format_limits(&limits);
     for i in (0..BANDS).rev() {
-        let text = format!(
-            "{} to {}",
-            view::format_value(limits[i]),
-            view::format_value(limits[i + 1])
-        );
+        let text = format!("{} to {}", texts[i], texts[i + 1]);
         swatch(ui, i, text);
     }
     ui.label(format!(
@@ -392,7 +388,7 @@ impl eframe::App for ViewerApp {
                     .view_proj(rect.width() / rect.height().max(1.0)),
                 eye: shown.camera.eye(),
                 dark: ui.visuals().dark_mode,
-                contour: shown.contour_range(),
+                contour: shown.contour_on(),
                 ghost: deformed,
             };
             ui.painter().add(egui_wgpu::Callback::new_paint_callback(

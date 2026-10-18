@@ -135,7 +135,7 @@ async fn list_runs(token: &str) -> Result<Content, String> {
 
 /// Start the viewer on a canvas of the page.
 #[wasm_bindgen]
-pub fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
+pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
     let slot: ContentSlot = Arc::new(Mutex::new(None));
     let (title, first) = match query() {
         Err(e) => ("femahoy".to_owned(), Content::Failed(e)),
@@ -162,17 +162,11 @@ pub fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
         depth_buffer: crate::gpu::DEPTH_BITS,
         ..Default::default()
     };
-    wasm_bindgen_futures::spawn_local(async move {
-        let started = eframe::WebRunner::new()
-            .start(
-                canvas,
-                options,
-                Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, title, first, Some(slot))))),
-            )
-            .await;
-        if let Err(e) = started {
-            web_sys::console::error_1(&e);
-        }
-    });
-    Ok(())
+    eframe::WebRunner::new()
+        .start(
+            canvas,
+            options,
+            Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, title, first, Some(slot))))),
+        )
+        .await
 }

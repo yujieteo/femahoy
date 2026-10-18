@@ -26,10 +26,10 @@ pub fn load_run(path: &std::path::Path) -> Result<results::Results, String> {
     } else {
         path.join(RESULTS_FILE)
     };
-    let dir = pvd_path
-        .parent()
-        .map(std::path::Path::to_path_buf)
-        .unwrap_or_default();
+    let dir = match pvd_path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    };
     let pvd =
         std::fs::read_to_string(&pvd_path).map_err(|e| format!("{}: {e}", pvd_path.display()))?;
     results::load(&pvd_path.display().to_string(), &pvd, |file| {
@@ -83,6 +83,26 @@ mod tests {
         let b = load_run(&dir.join(RESULTS_FILE)).unwrap();
         assert_eq!(a, b);
         assert_eq!(a.steps.len(), 2);
+    }
+
+    #[test]
+    fn load_run_names_the_current_folder_for_a_bare_file_name() {
+        let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/results/cantilever-2step");
+        let dir = std::env::temp_dir().join(format!("fh-viewer-bare-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::copy(src.join("results.pvd"), dir.join("results.pvd")).unwrap();
+        std::fs::copy(src.join("step-1.vtu"), dir.join("step-1.vtu")).unwrap();
+        let previous = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+        let e = load_run(std::path::Path::new("results.pvd"));
+        std::env::set_current_dir(previous).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let e = e.unwrap_err();
+        assert!(
+            e.starts_with(". : step-2.vtu") || e.starts_with(".: step-2.vtu"),
+            "{e}"
+        );
     }
 
     #[test]
