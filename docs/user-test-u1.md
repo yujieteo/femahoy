@@ -92,7 +92,7 @@ The captain's words, word for word:
 
 ### Finding
 
-The owner prefers that an LLM does the workflow steps ("ultimately I will ask an LLM to do it anyway"). This record adds no fix for it.
+The captain prefers that an LLM does the workflow steps ("ultimately I will ask an LLM to do it anyway"). This record adds no fix for it.
 
 ## Summary
 
