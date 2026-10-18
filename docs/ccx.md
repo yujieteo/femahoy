@@ -16,7 +16,8 @@ fh-solve-ccx model.inp run-dir                                # one run
 FH_SOLVE=$PWD/target/release/fh-solve-ccx fh validate          # the validation suite through ccx
 ```
 
-The run folder gets `results.pvd`, `step-N.vtu` and `summary.toon`, as with `fh-solve`. The `ccx` files (`job.inp`, `job.frd`, `job.log`) are in `run-dir/ccx`.
+The run folder gets `results.pvd`, `step-N.vtu` and `summary.toon`, as with `fh-solve`. The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.log`) are in `run-dir/ccx`.
+U and RF come from `job.frd`. The stress comes from the integration points in `job.dat` (`*EL PRINT`).
 The summary says `solver: "ccx <version>, unvalidated"`.
 
 ## Keyword subset
@@ -28,18 +29,18 @@ Changes for `ccx`:
 
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
 - Each step is one linear increment. The adapter ignores the `*STATIC` data line.
-- The element stress `S` is the mean of the nodal stress that `ccx` writes. `fh-solve` uses the volume mean of the integration points.
+- The element stress `S` is the mean of the integration point stress. `fh-solve` uses the volume mean.
 
 ## Limits
 
-- The `.frd` file has 6 significant digits.
-- `ccx` extrapolates the stress to the nodes with an error of about 1e-5 for a uniform field. The integration point stress in `job.dat` is exact.
-- Thus class N cases with a tolerance of 1e-6 fail on stress. Class L and class R cases pass.
+- The `.frd` file has 6 significant digits, so U and RF have 6 digits. The `.dat` stress has 7.
+- Thus a class N displacement can fail on rounding. `bar-pressure` u_x tip passes with a margin of only 3e-17 mm.
+- `ccx` extrapolates the stress to the nodes in `.frd` with an error of about 1e-5. Thus the adapter does not use the `.frd` stress.
 
 ## Record of stage C1 (2026-10-18)
 
 Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
-`FH_SOLVE=fh-solve-ccx fh validate`: 10 of 16 cases pass. All class L and class R cases pass. The 6 class N cases (`bar-pressure`, `bar-pressure-m`, `bar-tension`, and the 3 patch tests) fail on stress only, for the reason in Limits.
+`FH_SOLVE=fh-solve-ccx fh validate`: 16 of 16 cases pass. The tolerances are the same as for `fh-solve`.
 
 | Case | Quantity | `ccx` | `fh-solve` | Reference |
 |---|---|---|---|---|
@@ -48,4 +49,5 @@ Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
 | `lame-cylinder` | ur inner (mm) | 9.0796256e-2 | 9.0794389e-2 | 9.0793651e-2, pass |
 | `bar-pressure` | u_x tip (mm) | 4.76190e-2 | 4.7619048e-2 | 4.7619048e-2, pass |
 | `bar-pressure` | rf_x (N) | -20000.01 | -20000.00 | -20000, pass |
-| `bar-pressure` | s_xx (MPa) | 99.9990 | 100.0000 | 100, fail at tolerance 1e-4 MPa |
+| `bar-pressure` | s_xx (MPa) | 100.0000 | 100.0000 | 100, pass |
+| `patch-test` | s_xx (MPa) | 327.6000 | 327.6000 | 327.6, pass |

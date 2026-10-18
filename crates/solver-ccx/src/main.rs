@@ -2,8 +2,8 @@
 //! Decision D-13, see DESIGN.md.
 //!
 //! The adapter writes the model as `ccx` input in `<run-dir>/ccx`, runs the user's `ccx`
-//! (`$FH_CCX`, else `ccx` on PATH), reads the `.frd` results and writes one VTU file for each
-//! step, `results.pvd` and `summary.toon`. `ccx` is GPL, so femahoy only starts it as a
+//! (`$FH_CCX`, else `ccx` on PATH), reads U and RF from the `.frd` file and the integration
+//! point stress from the `.dat` file, and writes one VTU file for each step, `results.pvd` and `summary.toon`. `ccx` is GPL, so femahoy only starts it as a
 //! separate program. The results are unvalidated.
 
 use std::collections::{HashMap, HashSet};
@@ -127,16 +127,16 @@ fn ccx_input(model: &Model) -> Result<String, String> {
             real(e.poissons_ratio)
         );
     }
+    out.push_str("*ELSET, ELSET=FH_ALL\n");
+    id_lines(
+        &mut out,
+        &model.elements.iter().map(|e| e.id).collect::<Vec<_>>(),
+    );
     // `ccx` needs a section. The femahoy subset gives the only material to all elements.
     if model.sections.is_empty() {
         let [m] = model.materials.as_slice() else {
             return Err("the model has no *SOLID SECTION and more than one material".into());
         };
-        out.push_str("*ELSET, ELSET=FH_ALL\n");
-        id_lines(
-            &mut out,
-            &model.elements.iter().map(|e| e.id).collect::<Vec<_>>(),
-        );
         let _ = writeln!(out, "*SOLID SECTION, ELSET=FH_ALL, MATERIAL={}", m.name);
     }
     for s in &model.sections {
@@ -178,7 +178,7 @@ fn ccx_input(model: &Model) -> Result<String, String> {
         for d in &step.dsloads {
             let _ = writeln!(out, "{}, P, {}", d.surface, real(d.pressure));
         }
-        out.push_str("*NODE FILE\nU, RF\n*EL FILE\nS\n*END STEP\n");
+        out.push_str("*NODE FILE\nU, RF\n*EL PRINT, ELSET=FH_ALL\nS\n*END STEP\n");
     }
     Ok(out)
 }
@@ -190,10 +190,9 @@ struct FrdStep {
     increments: u64,
     disp: HashMap<u32, Vec<f64>>,
     forc: HashMap<u32, Vec<f64>>,
-    stress: HashMap<u32, Vec<f64>>,
 }
 
-/// Read the ASCII `.frd` result blocks DISP, FORC and STRESS. Step `i` of the model is
+/// Read the ASCII `.frd` result blocks DISP and FORC. Step `i` of the model is
 /// entry `i`. A later increment of a step replaces the values of the one before.
 fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
     let bad = |n: usize, why: &str| format!("{JOB}.frd line {}: {why}", n + 1);
@@ -219,7 +218,7 @@ fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
             }
             Some("-4") => {
                 block = match words.get(1).copied() {
-                    Some(b @ ("DISP" | "FORC" | "STRESS")) if step > 0 => Some(b),
+                    Some(b @ ("DISP" | "FORC")) if step > 0 => Some(b),
                     _ => None,
                 };
                 if let Some(b) = block {
@@ -228,10 +227,10 @@ fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
                     }
                     let s = &mut steps[step - 1];
                     (s.time, s.increments) = (time, inc);
-                    match b {
-                        "DISP" => s.disp.clear(),
-                        "FORC" => s.forc.clear(),
-                        _ => s.stress.clear(),
+                    if b == "DISP" {
+                        s.disp.clear();
+                    } else {
+                        s.forc.clear();
                     }
                 }
             }
@@ -248,10 +247,10 @@ fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
                     return Err(bad(n, "bad value line"));
                 };
                 let s = &mut steps[step - 1];
-                let map = match block {
-                    Some("DISP") => &mut s.disp,
-                    Some("FORC") => &mut s.forc,
-                    _ => &mut s.stress,
+                let map = if block == Some("DISP") {
+                    &mut s.disp
+                } else {
+                    &mut s.forc
                 };
                 map.insert(id, values);
             }
@@ -264,11 +263,42 @@ fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
     Ok(steps)
 }
 
+/// Read the integration point stress of the `*EL PRINT` blocks of the `.dat` file. Block `i`
+/// is step `i`, because each step is one increment. The value of an element is the mean of
+/// its points, in the femahoy order `[xx, yy, zz, xy, yz, xz]`. `ccx` prints `sxy, sxz, syz`.
+fn read_dat(text: &str) -> Vec<HashMap<u32, [f64; 6]>> {
+    let mut blocks: Vec<HashMap<u32, ([f64; 6], f64)>> = Vec::new();
+    for line in text.lines() {
+        if line.trim_start().starts_with("stresses (elem") {
+            blocks.push(HashMap::new());
+            continue;
+        }
+        let w: Vec<&str> = line.split_whitespace().collect();
+        let (Some(block), [e, _, v @ ..]) = (blocks.last_mut(), w.as_slice()) else {
+            continue;
+        };
+        let v: Option<Vec<f64>> = v.iter().map(|x| x.parse().ok()).collect();
+        if let (Ok(e), Some([xx, yy, zz, xy, xz, yz])) = (e.parse(), v.as_deref()) {
+            let (sum, count) = block.entry(e).or_insert(([0.0; 6], 0.0));
+            for (s, x) in sum.iter_mut().zip([xx, yy, zz, xy, yz, xz]) {
+                *s += x;
+            }
+            *count += 1.0;
+        }
+    }
+    let mean = |(e, (s, n)): (u32, ([f64; 6], f64))| (e, s.map(|x| x / n));
+    blocks
+        .into_iter()
+        .map(|b| b.into_iter().map(mean).collect())
+        .collect()
+}
+
 /// Write the VTU file of each step, the PVD collection and the summary. Each file is written
 /// under a temporary name and renamed (D-09).
 fn write_results(
     model: &Model,
     frd: &[FrdStep],
+    dat: &[HashMap<u32, [f64; 6]>],
     run_dir: &Path,
     header: toon::Header,
     solver: String,
@@ -316,6 +346,13 @@ fn write_results(
         base.cell_data
             .push(Field::i32(&format!("ELSET_{}", s.name), flags.collect()));
     }
+    if dat.len() != model.steps.len() {
+        return Err(format!(
+            "{JOB}.dat has {} stress blocks for {} steps",
+            dat.len(),
+            model.steps.len()
+        ));
+    }
     let mut entries = Vec::new();
     let mut steps = Vec::new();
     let mut increments = Vec::new();
@@ -333,15 +370,15 @@ fn write_results(
             let v = model.nodes.iter().flat_map(|n| node(map, n.id, 3));
             g.point_data.push(Field::f64(name, 3, v.collect()));
         }
-        // The element stress is the mean of the nodal stress that `ccx` extrapolates.
         let (mut s, mut mises) = (Vec::new(), Vec::new());
         for e in &model.elements {
-            let mut m = [0.0; 6];
-            for n in &e.nodes {
-                for (c, v) in node(&r.stress, *n, 6).into_iter().enumerate() {
-                    m[c] += v / e.nodes.len() as f64;
-                }
-            }
+            let m = *dat[i].get(&e.id).ok_or_else(|| {
+                format!(
+                    "{JOB}.dat has no stress of element {} in step {}",
+                    e.id,
+                    i + 1
+                )
+            })?;
             let [xx, yy, zz, xy, yz, zx] = m;
             let d = (xx - yy).powi(2) + (yy - zz).powi(2) + (zz - xx).powi(2);
             mises.push((0.5 * d + 3.0 * (xy * xy + yz * yz + zx * zx)).sqrt());
@@ -454,8 +491,11 @@ fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
             error.map_or("see ccx/job.log", str::trim)
         ));
     }
-    let frd = fs::read_to_string(work.join(format!("{JOB}.frd")))
-        .map_err(|e| format!("{JOB}.frd: {e}"))?;
+    let read = |ext: &str| {
+        fs::read_to_string(work.join(format!("{JOB}.{ext}")))
+            .map_err(|e| format!("{JOB}.{ext}: {e}"))
+    };
+    let (frd, dat) = (read_frd(&read("frd")?)?, read_dat(&read("dat")?));
     let version = log
         .split("CalculiX Version ")
         .nth(1)
@@ -474,7 +514,7 @@ fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
     };
     let solver = format!("ccx {version}, unvalidated");
     let wall = clock.elapsed().as_secs_f64();
-    write_results(&model, &read_frd(&frd)?, run_dir, header, solver, wall)
+    write_results(&model, &frd, &dat, run_dir, header, solver, wall)
 }
 
 fn main() -> ExitCode {

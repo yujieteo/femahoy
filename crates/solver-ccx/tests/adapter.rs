@@ -117,6 +117,15 @@ const FRD: &str = "    1C
  9999
 ";
 
+/// A `.dat` file with the stress of two integration points of element 1. `ccx` prints
+/// `sxy, sxz, syz`.
+const DAT: &str = "
+ stresses (elem, integ.pnt.,sxx,syy,szz,sxy,sxz,syz) for set FH_ALL and time  0.1000000E+01
+
+         1   1  2.000000E+02  0.000000E+00  0.000000E+00  1.000000E+01  2.000000E+01  3.000000E+01
+         1   2  1.000000E+02  0.000000E+00  0.000000E+00  1.000000E+01  2.000000E+01  3.000000E+01
+";
+
 fn point(grid: &Grid, field: &str, point: usize) -> Vec<f64> {
     let f = grid.point_field(field).unwrap();
     f.as_f64().unwrap()[point * f.components..][..f.components].to_vec()
@@ -125,13 +134,13 @@ fn point(grid: &Grid, field: &str, point: usize) -> Vec<f64> {
 #[test]
 fn the_frd_results_become_vtu_pvd_and_a_summary() {
     let dir = scratch("frd");
-    let frd = dir.join("frd");
-    std::fs::write(&frd, FRD).unwrap();
+    std::fs::write(dir.join("frd"), FRD).unwrap();
+    std::fs::write(dir.join("dat"), DAT).unwrap();
     let ccx = fake_ccx(
         &dir,
         &format!(
-            "echo 'CalculiX Version 9.9, Copyright'\ncp {} job.frd",
-            frd.display()
+            "echo 'CalculiX Version 9.9, Copyright'\ncp {0}/frd job.frd\ncp {0}/dat job.dat",
+            dir.display()
         ),
     );
     let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &ccx);
@@ -140,7 +149,7 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
     for line in [
         "*SOLID SECTION, ELSET=FH_ALL, MATERIAL=STEEL",
         "2, 1, 1, 1.00000000000000e-3",
-        "*NODE FILE\nU, RF\n*EL FILE\nS\n*END STEP",
+        "*NODE FILE\nU, RF\n*EL PRINT, ELSET=FH_ALL\nS\n*END STEP",
     ] {
         assert!(input.contains(line), "{line} not in\n{input}");
     }
@@ -150,10 +159,11 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
     assert_eq!(point(&grid, "U", 1), [1e-3, -2e-4, 0.0]);
     assert_eq!(point(&grid, "U", 0), [0.0; 3]);
     assert_eq!(point(&grid, "RF", 0), [-210.0, 0.0, 0.0]);
+    // The mean of the two points, in the order xx, yy, zz, xy, yz, xz.
     let s = grid.cell_field("S").unwrap().as_f64().unwrap();
-    // The mean of the 8 nodes: 200 and 100 on two nodes, 0 on the others.
-    assert_eq!(s[0], 300.0 / 8.0);
-    assert_eq!(grid.cell_field("MISES").unwrap().as_f64().unwrap(), [37.5]);
+    assert_eq!(s, [150.0, 0.0, 0.0, 10.0, 30.0, 20.0]);
+    let mises = grid.cell_field("MISES").unwrap().as_f64().unwrap();
+    assert_eq!(mises, [26700f64.sqrt()]);
     let summary = std::fs::read_to_string(dir.join("run/summary.toon")).unwrap();
     assert!(summary.starts_with("schema: fh.run"), "{summary}");
     assert!(
@@ -185,19 +195,31 @@ fn a_failed_ccx_run_is_an_error_with_the_ccx_message() {
 }
 
 #[test]
-fn an_invalid_frd_file_is_an_error() {
+fn an_invalid_result_file_is_an_error() {
     let dir = scratch("invalid");
-    for (body, why) in [
+    for (i, (body, why)) in [
         ("echo garbage > job.frd", "no end line"),
         (
             "printf '    1PSTEP 1 1 1\\n -4  DISP\\n -1  xx\\n 9999\\n' > job.frd",
             "line 3: bad value line",
         ),
-        ("printf ' 9999\\n' > job.frd", "no displacement of step 1"),
+        (
+            "echo ' 9999' > job.frd; echo ' stresses (elem' > job.dat",
+            "no displacement of step 1",
+        ),
+        (
+            "printf '    1PSTEP 1 1 1\\n -4  DISP\\n -1         2 1.00000E-03\\n 9999\\n' > job.frd
+             echo ' stresses (elem' > job.dat",
+            "no stress of element 1 in step 1",
+        ),
+        ("echo ' 9999' > job.frd", "job.dat"),
         ("true", "job.frd"),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let ccx = fake_ccx(&dir, body);
-        let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &ccx);
+        let (code, err) = run(&cube(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
         assert_eq!(code, Some(1), "{body}");
         assert!(err.contains(why), "{body}: {err}");
     }
@@ -285,8 +307,8 @@ fn real_ccx_matches_the_cantilever_and_bar_pressure_references() {
     assert!((u / 0.047619047619047616 - 1.0).abs() < 1e-5, "bar u {u}");
     let rf: f64 = on_set(&bar, "RF", "SUPPORT", 0).iter().sum();
     assert!((rf / -20000.0 - 1.0).abs() < 1e-5, "bar rf {rf}");
-    // `ccx` extrapolates the stress to the nodes with an error of about 1e-5.
+    // The integration point stress of `job.dat` has 7 significant digits.
     let s = bar.cell_field("S").unwrap().as_f64().unwrap();
     let s = mean(&s.iter().step_by(6).copied().collect::<Vec<_>>());
-    assert!((s / 100.0 - 1.0).abs() < 1e-4, "bar s_xx {s}");
+    assert!((s / 100.0 - 1.0).abs() < 1e-6, "bar s_xx {s}");
 }
