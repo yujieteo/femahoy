@@ -1,14 +1,12 @@
 //! The daemon of femahoy (`fh serve`, DESIGN.md section 4.1). This crate has the run
 //! contract (roadmap item D1): one contract for runs that the CLI and the UI share.
 //!
-//! - **Projects.** A project is a folder. The daemon gives each root folder one project ID.
-//! - **Fixed input revisions.** A submit copies the input file into a read-only revision.
-//!   The run solves the revision, so a later edit of the file does not change the run.
-//!   The same bytes give the same revision ID, from the FNV-1a hash that the `fh.run`
-//!   summary also gives as `source_hash`.
-//! - **Runs.** Each run has an ID, one record on disk and one state ([`RunState`]).
-//! - **Commands.** A submit and a cancel each carry a request ID from the client. The daemon
-//!   keeps the acknowledgement ([`Ack`]), so a retry after a lost answer changes nothing.
+//! - **Runs.** A submit names the absolute path of an input file. The daemon copies the
+//!   file into the folder of a new run, and the run solves the copy, so a later edit of the
+//!   file does not change the run. Each run has an ID, one record on disk and one state
+//!   ([`RunState`]).
+//! - **Previews.** A preview copies the input file with no run, so that the page shows the
+//!   model with its supports and loads before the solve.
 //! - **Bounded queues.** At most [`MAX_QUEUED`] runs wait. Each run keeps its last
 //!   [`EVENT_QUEUE`] events in memory and an event log of at most [`EVENT_LOG`] bytes.
 //!   Clients read events by sequence number, so a slow client never grows a queue.
@@ -23,14 +21,13 @@
 //!
 //! The daemon owns every run. A browser and the CLI are only clients.
 //!
-//! 1. A client that closes or disconnects stops nothing. The run goes on, and the client
+//! 1. A client that closes or disconnects stops nothing. The run continues, and the client
 //!    reads the same record when it connects again.
 //! 2. Only a cancel command stops a run on purpose.
 //! 3. The solver never lives longer than the daemon. A daemon that stops cancels its runs.
 //!    A daemon that fails closes the stdin of the solver, and protocol v2 then stops it.
-//! 4. At the next start, the daemon marks each run that was still active as `interrupted`,
-//!    or as `cancelled` when a cancel was pending. It never starts such a run again by
-//!    itself.
+//! 4. A later daemon shows a run that an earlier daemon did not end as `interrupted`. It
+//!    never starts such a run again.
 //! 5. One daemon at a time uses a state folder. A lock file makes this sure.
 
 mod browser;
@@ -48,33 +45,25 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use browser::{no_open, open_page};
-pub use client::{new_request_id, Client};
-pub use contract::{Ack, Error, Event, Events, Message, Outcome, RunRecord, RunState};
+pub use client::Client;
+pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
 pub use service::{
     find_solver, missing_solver, solver_dirs, Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT,
-    MAX_QUEUED, SOLVERS,
+    MAX_QUEUED, SOLVER,
 };
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";
 
-/// `n` random bytes as hex digits, from the random source of the operating system.
-pub(crate) fn random_hex(n: usize) -> String {
+/// `n` random bytes as hex digits, from `/dev/urandom`.
+pub(crate) fn random_hex(n: usize) -> Result<String, Error> {
     let mut bytes = vec![0u8; n];
-    let from_os = File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut bytes));
-    if from_os.is_err() {
-        // No /dev/urandom, for example on Windows. The keys of `RandomState` come from the
-        // random source of the operating system.
-        use std::hash::{BuildHasher, Hasher};
-        for (i, chunk) in bytes.chunks_mut(8).enumerate() {
-            let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-            h.write_usize(i);
-            chunk.copy_from_slice(&h.finish().to_le_bytes()[..chunk.len()]);
-        }
-    }
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut bytes))
+        .map_err(|e| Error::io("/dev/urandom", e))?;
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 /// Write a file that only the user can read.
@@ -84,7 +73,6 @@ fn write_private(path: &Path, text: &str) -> Result<(), Error> {
     let _ = std::fs::remove_file(&tmp);
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
-    #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let mut file = options.open(&tmp).map_err(err)?;
     file.write_all(text.as_bytes())
@@ -118,7 +106,7 @@ impl Daemon {
         let info = config.state_dir.join(INFO_FILE);
         let state_dir = config.state_dir.clone();
         let service = Arc::new(Service::open(config)?);
-        let token = random_hex(32);
+        let token = random_hex(32)?;
         let chat = chat::Chat::new(service.clone(), state_dir, token.clone());
         let server = http::Server::start(
             service.clone(),
@@ -132,7 +120,6 @@ impl Daemon {
         m.set("port", server.port());
         m.set("token", &token);
         m.set("pid", std::process::id());
-        m.set("instance", service.instance());
         write_private(&info, &m.to_text())?;
         Ok(Daemon {
             service,

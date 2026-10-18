@@ -57,8 +57,8 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
 }
 
 /// Fetch the result files of a run and read them, with the supports and loads of its input.
-async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, String> {
-    let base = format!("/api/v1/projects/{project}/runs/{run}/files");
+async fn load_run(token: &str, run: &str) -> Result<Content, String> {
+    let base = format!("/api/v1/runs/{run}/files");
     let pvd_path = format!("{base}/{RESULTS_FILE}");
     let pvd = text(get(token, &pvd_path).await?, &pvd_path)?;
     let entries = fh_io::vtu::read_pvd(&pvd).map_err(|e| format!("{RESULTS_FILE}: {e}"))?;
@@ -73,36 +73,15 @@ async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, Stri
     let r = results::load(RESULTS_FILE, &pvd, |f| {
         files.remove(f).unwrap_or_else(|| Err("not fetched".into()))
     })
-    .map_err(|e| format!("Run {run} of project {project}: {e}"))?;
-    // The record names the revision that the run solved.
-    let path = format!("/api/v1/projects/{project}/runs/{run}");
-    let record = match get(token, &path).await {
-        Ok(bytes) => text(bytes, &path),
-        Err(e) => Err(e),
-    };
-    let revision = record.and_then(|r| {
-        r.lines()
-            .find_map(|l| l.strip_prefix("revision="))
-            .map(str::to_owned)
-            .ok_or(format!("{path}: no revision"))
-    });
-    let loads = match revision {
-        Ok(revision) => model(token, project, &revision, run).await,
-        Err(e) => Err(e),
-    };
+    .map_err(|e| format!("Run {run}: {e}"))?;
+    let loads = model(token, &format!("/api/v1/runs/{run}/input"), run).await;
     Ok(Content::Results(Box::new(r), loads))
 }
 
-/// Fetch the input of a revision and read its supports and loads.
-async fn model(
-    token: &str,
-    project: &str,
-    revision: &str,
-    name: &str,
-) -> Result<Box<preview::Preview>, String> {
-    let path = format!("/api/v1/projects/{project}/revisions/{revision}");
-    let input = text(get(token, &path).await?, &path)?;
-    let model = fh_inp::parse(&input).map_err(|e| format!("{name} ({revision}): {e}"))?;
+/// Fetch an input file from the daemon path `path` and read its supports and loads.
+async fn model(token: &str, path: &str, name: &str) -> Result<Box<preview::Preview>, String> {
+    let input = text(get(token, path).await?, path)?;
+    let model = fh_inp::parse(&input).map_err(|e| format!("{name}: {e}"))?;
     let mut p = preview::build(&model, &preview::units(&input));
     p.title = name.to_owned();
     Ok(Box::new(p))
@@ -128,19 +107,19 @@ pub struct Viewer {
 #[wasm_bindgen]
 impl Viewer {
     /// Show the results of a run in place of the current content.
-    pub fn open(&self, project: String, run: String) {
+    pub fn open(&self, run: String) {
         let token = self.token.clone();
         self.load("Loading the results...", async move {
-            load_run(&token, &project, &run).await
+            load_run(&token, &run).await
         });
     }
 
-    /// Show the model of a revision with its supports and loads, before the solve.
-    pub fn show(&self, project: String, revision: String, name: String) {
+    /// Show the model of a preview with its supports and loads, before the solve.
+    pub fn show(&self, preview: String, name: String) {
         let token = self.token.clone();
         self.load("Loading the model...", async move {
-            let p = model(&token, &project, &revision, &name).await;
-            p.map(Content::Preview)
+            let path = format!("/api/v1/previews/{preview}");
+            model(&token, &path, &name).await.map(Content::Preview)
         });
     }
 }

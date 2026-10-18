@@ -231,7 +231,6 @@ fn bad_options_exit_2() {
     }
 }
 
-#[cfg(unix)]
 mod fake_gmsh {
     use super::*;
 

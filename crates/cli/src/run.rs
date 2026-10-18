@@ -1,11 +1,11 @@
 //! `fh run`: solve a model on the daemon of the run contract (`docs/run-contract.md`), show the
 //! progress, and open the results in the browser.
 //!
-//! - `fh run MODEL.inp` solves the input as it is. The folder of the file is the project root.
+//! - `fh run MODEL.inp` solves the input as it is.
 //! - `fh run CASE_DIR` (or `CASE_DIR/case.toml`, or `CASE_DIR/PART.step`) takes a case folder
 //!   with `case.toml` and one STEP file. It runs `fh mesh` and `fh model` in the work folder
-//!   `<state>/cases/<name>-<hash>`, then solves the input. The work folder is the project
-//!   root, so the case folder does not change.
+//!   `<state>/cases/<name>-<hash>`, then solves the input. Thus the case folder does not
+//!   change.
 //! - Each run uses the solver of the daemon: `FH_SOLVE` when set, else `fh-solve-ccx` beside
 //!   `fh` or on `PATH`. `fh-solve-ccx` needs CalculiX (`docs/ccx.md`).
 //! - `fh run --example NAME` writes an example case that `fh` carries to
@@ -29,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{new_request_id, Client, Error, Event, Outcome, RunRecord, RunState};
+use fh_daemon::{Client, Event, RunRecord, RunState};
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] \
 [--preview] [--state DIR] [--no-open]\n       fh run --example NAME [--size H] [--order 1|2] \
@@ -267,12 +267,10 @@ fn daemon(state: &Path) -> Result<(Client, bool), String> {
     let log_path = state.join(LOG_FILE);
     let mut options = OpenOptions::new();
     options.create(true).append(true);
-    #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let log = options
         .open(&log_path)
         .map_err(|e| format!("cannot write {}: {e}", log_path.display()))?;
-    #[cfg(unix)]
     fs::set_permissions(
         &log_path,
         std::os::unix::fs::PermissionsExt::from_mode(0o600),
@@ -291,7 +289,6 @@ fn daemon(state: &Path) -> Result<(Client, bool), String> {
         .stdout(log)
         .stderr(err);
     // Its own process group: a Ctrl+C in the terminal stops fh run, not the daemon.
-    #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
     let mut child = command
         .spawn()
@@ -387,21 +384,6 @@ fn prepare(
     Ok(Ok(inp))
 }
 
-/// Retry a command while the daemon cannot be reached. The command keeps its request ID, so
-/// a retry changes nothing when the daemon got the first one.
-fn retry<T>(mut command: impl FnMut() -> Result<T, Error>) -> Result<T, Error> {
-    let mut tries = 0;
-    loop {
-        match command() {
-            Err(e) if e.status == 0 && tries < 5 => {
-                tries += 1;
-                std::thread::sleep(Duration::from_millis(200));
-            }
-            other => return other,
-        }
-    }
-}
-
 fn fail(code: u8, message: &str) -> ExitCode {
     eprintln!("fh run: {message}");
     ExitCode::from(code)
@@ -432,10 +414,9 @@ fn show(event: &Event) -> String {
 
 /// Show the events of the run until it ends. A Ctrl+C sends a cancel command, a second one
 /// ends `fh run`. `None` means that `fh run` ends before the run.
-fn follow(client: &Client, project: &str, run: &str) -> Result<Option<RunState>, String> {
+fn follow(client: &Client, run: &str) -> Result<Option<RunState>, String> {
     let mut since = 0;
-    let mut cancel: Option<String> = None;
-    let mut cancel_sent = false;
+    let (mut cancel, mut cancel_sent) = (false, false);
     let mut lost: Option<Instant> = None;
     loop {
         let hits = interrupt::count();
@@ -445,17 +426,17 @@ fn follow(client: &Client, project: &str, run: &str) -> Result<Option<RunState>,
             );
             return Ok(None);
         }
-        if hits == 1 && cancel.is_none() {
+        if hits == 1 && !cancel {
             println!("fh run: Ctrl+C: cancel {run}. Press Ctrl+C again to end fh run at once.");
-            cancel = Some(new_request_id());
+            cancel = true;
         }
-        if let (Some(request), false) = (&cancel, cancel_sent) {
-            match client.cancel(project, run, request) {
-                Ok(ack) => {
+        if cancel && !cancel_sent {
+            match client.cancel(run) {
+                Ok(record) => {
                     cancel_sent = true;
-                    println!("  cancel: {}", ack.outcome.as_str());
+                    println!("  cancel: {}", record.state);
                 }
-                // The next pass sends the same request ID again.
+                // The next pass sends the cancel again.
                 Err(e) if e.status == 0 => {}
                 Err(e) => {
                     cancel_sent = true;
@@ -463,7 +444,7 @@ fn follow(client: &Client, project: &str, run: &str) -> Result<Option<RunState>,
                 }
             }
         }
-        let events = match client.events(project, run, since, EVENT_WAIT) {
+        let events = match client.events(run, since, EVENT_WAIT) {
             Ok(events) => events,
             Err(e) if e.status == 0 => {
                 let first = *lost.get_or_insert_with(Instant::now);
@@ -492,28 +473,17 @@ fn follow(client: &Client, project: &str, run: &str) -> Result<Option<RunState>,
     }
 }
 
-/// The message of a run, with the path of the fixed revision replaced by the input file.
+/// The message of a run, with the path of the copy of the input replaced by the input file.
 fn message_of(record: &RunRecord, state: &Path, input: &Path) -> String {
-    let revision = state
-        .join("projects")
-        .join(&record.project)
-        .join("revisions")
-        .join(&record.revision)
-        .join("input.inp");
-    record.message.replace(
-        &revision.display().to_string(),
-        &input.display().to_string(),
-    )
+    let copy = state.join("runs").join(&record.run).join("input.inp");
+    record
+        .message
+        .replace(&copy.display().to_string(), &input.display().to_string())
 }
 
 /// Print the result folder and the summary of a run that succeeded, and open the browser.
 fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_hint: &str) {
-    let out = state
-        .join("projects")
-        .join(&record.project)
-        .join("runs")
-        .join(&record.run)
-        .join("out");
+    let out = state.join("runs").join(&record.run).join("out");
     let seconds = record.finished_ms.saturating_sub(record.started_ms) as f64 / 1000.0;
     println!("fh run: {} succeeded in {seconds:.2} s", record.run);
     println!("fh run: results in {}", out.display());
@@ -526,7 +496,7 @@ fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_h
         }
         Err(e) => println!("fh run: no summary.toon ({e})"),
     }
-    let url = client.page_url(&format!("&project={}&run={}", record.project, record.run));
+    let url = client.page_url(&format!("&run={}", record.run));
     println!("fh run: page {url}");
     if !fh_daemon::no_open(o.no_open) {
         match fh_daemon::open_page(state, &url) {
@@ -580,7 +550,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         (None, None) => unreachable!("parse needs a model or an example"),
     };
     // Without FH_SOLVE the daemon runs fh-solve-ccx. Stop now when it is not there.
-    let solver = fh_daemon::SOLVERS[0];
+    let solver = fh_daemon::SOLVER;
     if std::env::var_os("FH_SOLVE").is_none()
         && fh_daemon::find_solver(&fh_daemon::solver_dirs(), solver).is_none()
     {
@@ -602,12 +572,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         );
     }
     // The name of the model in the page: the case folder, else the input file.
-    let (root, file, case) = match &input {
-        Input::Inp(file) => (
-            file.parent().map(Path::to_path_buf).unwrap_or_default(),
-            file.clone(),
-            None,
-        ),
+    let (file, case) = match &input {
+        Input::Inp(file) => (file.clone(), None),
         Input::Case { dir, step } => {
             let name = dir
                 .file_name()
@@ -622,32 +588,21 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             let _lock = lock.map_err(|e| format!("cannot lock {}: {e}", work.display()))?;
             let size = o.size.as_deref().or(example.map(|e| e.size));
             match prepare(&work, dir, step, &o, size)? {
-                Ok(inp) => (work, inp, Some(name.into_owned())),
+                Ok(inp) => (inp, Some(name.into_owned())),
                 Err(code) => return Ok(code),
             }
         }
     };
-    let name = file
-        .file_name()
-        .map(|n| text(Path::new(n)))
-        .transpose()?
-        .unwrap_or_default();
-    let title = case.unwrap_or_else(|| name.clone());
-    interrupt::install();
-    let project = match retry(|| client.register(&root)) {
-        Ok(project) => project,
-        Err(e) if e.status == 0 => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
-        Err(e) => {
-            return Ok(fail(
-                FAILED,
-                &format!("the daemon refused the project: {e}"),
-            ))
-        }
+    let title = match case {
+        Some(case) => case,
+        None => text(Path::new(file.file_name().unwrap_or_default()))?,
     };
+    interrupt::install();
     // The page shows the model before the solve. A daemon with no preview route still solves.
-    match (retry(|| client.preview(&project, &name, &title)), o.preview) {
-        (Ok(revision), _) => println!(
-            "fh run: preview: the page shows {title} ({revision}) with its supports and loads"
+    match (client.preview(&file, &title), o.preview) {
+        (Ok(preview), _) => println!(
+            "fh run: preview: the page shows {title} (preview {preview}) with its supports and \
+             loads"
         ),
         (Err(e), false) => println!("fh run: no preview ({e})"),
         (Err(e), true) => {
@@ -661,25 +616,18 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         println!("fh run: --preview: no solve");
         return Ok(ExitCode::SUCCESS);
     }
-    let request = new_request_id();
-    let ack = match retry(|| client.submit(&project, &request, &name)) {
-        Ok(ack) => ack,
+    let run = match client.submit(&file) {
+        Ok(record) => record.run,
         Err(e) if e.status == 0 => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
         Err(e) => return Ok(fail(FAILED, &format!("the daemon refused the run: {e}"))),
     };
-    let run = ack.run.clone();
-    match ack.outcome {
-        Outcome::Existing => println!(
-            "fh run: {run} of the same input is still active in project {project}. fh run shows it."
-        ),
-        _ => println!("fh run: project {project} ({}), {run}", root.display()),
-    }
-    let end = match follow(&client, &project, &run) {
+    println!("fh run: {run} solves {}", file.display());
+    let end = match follow(&client, &run) {
         Ok(Some(end)) => end,
         Ok(None) => return Ok(ExitCode::from(CANCELLED)),
         Err(e) => return Ok(fail(NO_DAEMON, &format!("{run}: {e}"))),
     };
-    let record = match retry(|| client.record(&project, &run)) {
+    let record = match client.record(&run) {
         Ok(record) => record,
         Err(e) => return Ok(fail(NO_DAEMON, &format!("{run}: {e}"))),
     };
@@ -705,7 +653,6 @@ mod interrupt {
         COUNT.load(Ordering::SeqCst)
     }
 
-    #[cfg(unix)]
     pub fn install() {
         extern "C" {
             fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
@@ -719,9 +666,6 @@ mod interrupt {
             signal(2, on_signal);
         }
     }
-
-    #[cfg(not(unix))]
-    pub fn install() {}
 }
 
 #[cfg(test)]

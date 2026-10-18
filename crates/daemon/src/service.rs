@@ -4,18 +4,17 @@
 //! # Store
 //!
 //! ```text
-//! <state>/daemon.lock                       exclusive lock of the one daemon
-//! <state>/daemon.info                       port and token for clients (mode 0600)
-//! <state>/acks/<request>                    acknowledgement of each command
-//! <state>/projects/<project>/root           the project root folder
-//! <state>/projects/<project>/revisions/<revision>/input.inp   fixed input, read-only
-//! <state>/projects/<project>/runs/<run>/record                the run record
-//! <state>/projects/<project>/runs/<run>/events.log            bounded event log
-//! <state>/projects/<project>/runs/<run>/out/                  protocol v2 run folder
+//! <state>/daemon.lock                 exclusive lock of the one daemon
+//! <state>/daemon.info                 port and token for clients (mode 0600)
+//! <state>/runs/<run>/input.inp        the read-only copy of the input that the run solves
+//! <state>/runs/<run>/record           the run record
+//! <state>/runs/<run>/events.log       bounded event log
+//! <state>/runs/<run>/out/             protocol v2 run folder
+//! <state>/previews/<n>.inp            the copy of the input of a preview
 //! ```
 //!
-//! Each record and acknowledgement is written to a temporary file and then renamed, so a
-//! reader never sees a partial file.
+//! Each record is written to a temporary file and then renamed, so a reader never sees a
+//! partial file.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -25,13 +24,11 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use fh_solver_api::{ApiError, CancelToken, Event as SolverEvent, SubprocessSolver};
+use fh_solver_api::{CancelToken, Event as SolverEvent, SubprocessSolver};
 
 use crate::contract::{
-    now_ms, parse_event, run_id, valid_project, valid_request, valid_revision, valid_run, Ack,
-    Command, Error, Event, Events, Message, Outcome, RunRecord, RunState,
+    now_ms, parse_event, run_id, valid_run, Error, Event, Events, Message, RunRecord, RunState,
 };
-use crate::random_hex;
 
 /// The most runs that can wait in the queue. A submit after that fails with `queue.full`.
 pub const MAX_QUEUED: usize = 64;
@@ -45,23 +42,20 @@ pub const EVENT_LOG: u64 = 1 << 20;
 pub const EVENT_BATCH: usize = 256;
 /// The longest time that an events request waits for a new event.
 pub const MAX_WAIT: Duration = Duration::from_secs(30);
-/// The most acknowledgements that the daemon keeps. At start it removes the oldest.
-pub const MAX_ACKS: usize = 4096;
 /// The number of ended runs whose events stay in memory. The others come from their log.
 const KEEP_ENDED: usize = 32;
 
 pub(crate) const LOCK_FILE: &str = "daemon.lock";
-const ROOT_FILE: &str = "root";
+const RUNS_DIR: &str = "runs";
+const PREVIEWS_DIR: &str = "previews";
 const RECORD_FILE: &str = "record";
 const EVENTS_FILE: &str = "events.log";
 const INPUT_FILE: &str = "input.inp";
 const OUT_DIR: &str = "out";
 const STOPPED: &str = "the daemon stopped before the run ended";
 
-/// The solvers that a submit can name. The first one is the solver of [`Config`]. Add the
-/// name of another protocol v2 solver here to let a submit name it.
-// Decision D-29, see DESIGN.md
-pub const SOLVERS: [&str; 1] = ["fh-solve-ccx"];
+/// The solver of the daemon when `FH_SOLVE` is not set.
+pub const SOLVER: &str = "fh-solve-ccx";
 
 /// The settings of a run service.
 pub struct Config {
@@ -69,9 +63,6 @@ pub struct Config {
     pub state_dir: PathBuf,
     /// The protocol v2 solver, for example `fh-solve-ccx`, with its limits.
     pub solver: SubprocessSolver,
-    /// The folders, in order, where a run finds another solver of [`SOLVERS`] that its
-    /// submit names. `fh serve` gives [`solver_dirs`].
-    pub solver_dirs: Vec<PathBuf>,
 }
 
 /// The folder of the running program (`fh`), then each folder of `PATH`.
@@ -88,8 +79,7 @@ pub fn solver_dirs() -> Vec<PathBuf> {
 
 /// The program `name` in the first folder of `dirs` that has it.
 pub fn find_solver(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
-    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
-    dirs.iter().map(|d| d.join(&file)).find(|p| p.is_file())
+    dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
 }
 
 /// The message for a solver that [`find_solver`] does not find.
@@ -109,24 +99,20 @@ pub struct Service {
 
 struct Shared {
     dir: PathBuf,
-    instance: String,
     solver: SubprocessSolver,
-    solver_dirs: Vec<PathBuf>,
     inner: Mutex<Inner>,
     /// Wakes the worker for a new run, and the readers for a new event.
     wake: Condvar,
 }
 
-type Key = (String, String);
-
 #[derive(Default)]
 struct Inner {
-    projects: BTreeMap<String, PathBuf>,
-    next_run: BTreeMap<String, u64>,
-    /// The runs of this daemon instance, with their event queues.
-    live: BTreeMap<Key, Live>,
-    queue: VecDeque<Key>,
-    ended: VecDeque<Key>,
+    next_run: u64,
+    next_preview: u64,
+    /// The runs of this daemon instance, with their event queues, by run ID.
+    live: BTreeMap<String, Live>,
+    queue: VecDeque<String>,
+    ended: VecDeque<String>,
     stopping: bool,
 }
 
@@ -265,49 +251,13 @@ fn read_message(path: &Path) -> Result<Option<Message>, Error> {
     }
 }
 
-/// FNV-1a, as the `source_hash` of the `fh.run` summary, so the two agree.
-fn fnv(hash: u64, bytes: &[u8]) -> u64 {
-    bytes.iter().fold(hash, |h, &b| {
-        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
-/// Copy `src` to `dst` and return the hash of the bytes.
-fn copy_hashed(src: &Path, dst: &Path) -> Result<u64, Error> {
+/// Copy `src` to `dst` and make the copy read-only.
+fn copy_input(src: &Path, dst: &Path) -> Result<(), Error> {
     let err = |e| Error::io("input copy", e);
-    let mut from = File::open(src).map_err(err)?;
-    let mut to = File::create(dst).map_err(err)?;
-    let mut buf = vec![0; 64 << 10];
-    let mut hash = 0xcbf2_9ce4_8422_2325;
-    loop {
-        let n = from.read(&mut buf).map_err(err)?;
-        if n == 0 {
-            break;
-        }
-        hash = fnv(hash, &buf[..n]);
-        to.write_all(&buf[..n]).map_err(err)?;
-    }
-    to.sync_all().map_err(err)?;
-    Ok(hash)
-}
-
-fn same_bytes(a: &Path, b: &Path) -> Result<bool, Error> {
-    let err = |e| Error::io("revision compare", e);
-    let (mut fa, mut fb) = (File::open(a).map_err(err)?, File::open(b).map_err(err)?);
-    if fa.metadata().map_err(err)?.len() != fb.metadata().map_err(err)?.len() {
-        return Ok(false);
-    }
-    let (mut ba, mut bb) = (vec![0; 64 << 10], vec![0; 64 << 10]);
-    loop {
-        let n = fa.read(&mut ba).map_err(err)?;
-        if n == 0 {
-            return Ok(true);
-        }
-        fb.read_exact(&mut bb[..n]).map_err(err)?;
-        if ba[..n] != bb[..n] {
-            return Ok(false);
-        }
-    }
+    fs::copy(src, dst).map_err(err)?;
+    let mut perms = fs::metadata(dst).map_err(err)?.permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(dst, perms).map_err(err)
 }
 
 impl Shared {
@@ -315,20 +265,12 @@ impl Shared {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn project_dir(&self, project: &str) -> PathBuf {
-        self.dir.join("projects").join(project)
-    }
-
-    fn run_dir(&self, project: &str, run: &str) -> PathBuf {
-        self.project_dir(project).join("runs").join(run)
-    }
-
-    fn ack_path(&self, request: &str) -> PathBuf {
-        self.dir.join("acks").join(request)
+    fn run_dir(&self, run: &str) -> PathBuf {
+        self.dir.join(RUNS_DIR).join(run)
     }
 
     fn save(&self, record: &RunRecord) -> Result<(), Error> {
-        let path = self.run_dir(&record.project, &record.run).join(RECORD_FILE);
+        let path = self.run_dir(&record.run).join(RECORD_FILE);
         write_atomic(&path, &record.to_message().to_text())
     }
 
@@ -350,17 +292,17 @@ impl Shared {
             live.record.message = message.to_owned();
             live.push(&format!("state {state}: {message}"));
         }
-        // A record that cannot be written keeps its earlier state on disk. The next daemon
-        // start then marks the run interrupted, so the record never shows a false success.
+        // A record that cannot be written keeps its earlier state on disk. A later daemon
+        // then shows the run as interrupted, so the record never shows a false success.
         let _ = self.save(&live.record);
     }
 
-    fn finish(&self, inner: &mut Inner, key: &Key, state: RunState, message: &str) {
-        if let Some(live) = inner.live.get_mut(key) {
+    fn finish(&self, inner: &mut Inner, run: &str, state: RunState, message: &str) {
+        if let Some(live) = inner.live.get_mut(run) {
             self.change(live, state, message);
             live.log = None;
         }
-        inner.ended.push_back(key.clone());
+        inner.ended.push_back(run.to_owned());
         while inner.ended.len() > KEEP_ENDED {
             if let Some(old) = inner.ended.pop_front() {
                 inner.live.remove(&old);
@@ -369,124 +311,71 @@ impl Shared {
         self.wake.notify_all();
     }
 
-    fn event(&self, key: &Key, text: &str) {
-        if let Some(live) = self.lock().live.get_mut(key) {
+    fn event(&self, run: &str, text: &str) {
+        if let Some(live) = self.lock().live.get_mut(run) {
             live.push(text);
         }
         self.wake.notify_all();
     }
 
-    fn record_of(&self, inner: &Inner, project: &str, run: &str) -> Result<RunRecord, Error> {
-        if let Some(live) = inner.live.get(&(project.to_owned(), run.to_owned())) {
+    /// The record of a run. A run of an earlier daemon that did not end shows as
+    /// `interrupted`, because no daemon runs it now.
+    fn record_of(&self, inner: &Inner, run: &str) -> Result<RunRecord, Error> {
+        if let Some(live) = inner.live.get(run) {
             return Ok(live.record.clone());
         }
-        let unknown = || Error::new(404, "run.unknown", format!("no run {run} in {project}"));
-        if !valid_run(run) || !inner.projects.contains_key(project) {
+        let unknown = || Error::new(404, "run.unknown", format!("no run {run}"));
+        if !valid_run(run) {
             return Err(unknown());
         }
-        let path = self.run_dir(project, run).join(RECORD_FILE);
-        RunRecord::from_message(&read_message(&path)?.ok_or_else(unknown)?)
+        let path = self.run_dir(run).join(RECORD_FILE);
+        let mut record = RunRecord::from_message(&read_message(&path)?.ok_or_else(unknown)?)?;
+        if !record.state.is_final() {
+            (record.state, record.message) = (RunState::Interrupted, STOPPED.to_owned());
+        }
+        Ok(record)
     }
 
-    /// The acknowledgement of an earlier command with the same request ID, if any.
-    fn replay(
-        &self,
-        inner: &Inner,
-        request: &str,
-        command: Command,
-        project: &str,
-        detail: &str,
-    ) -> Result<Option<Ack>, Error> {
-        let Some(m) = read_message(&self.ack_path(request))? else {
-            return Ok(None);
+    /// The bytes of the file `name` in the folder of a run.
+    fn run_file(&self, run: &str, name: &Path) -> Result<Vec<u8>, Error> {
+        let path = {
+            let inner = self.lock();
+            self.record_of(&inner, run)?;
+            self.run_dir(run).join(name)
         };
-        let mut ack = Ack::from_message(&m)?;
-        let same_detail = match command {
-            Command::Submit => ack.input == detail,
-            Command::Cancel => ack.run == detail,
-        };
-        if ack.command != command || ack.project != project || !same_detail {
-            return Err(Error::new(
-                409,
-                "request.reused",
-                format!("request {request} belongs to another command"),
-            ));
-        }
-        ack.state = self.record_of(inner, &ack.project, &ack.run)?.state;
-        ack.outcome = Outcome::Replay;
-        Ok(Some(ack))
-    }
-
-    /// Copy the input into a fixed revision. The same bytes give the same revision.
-    fn fix_revision(&self, project: &str, src: &Path) -> Result<String, Error> {
-        let dir = self.project_dir(project).join("revisions");
-        let err = |e| Error::io("revision", e);
-        fs::create_dir_all(&dir).map_err(err)?;
-        let tmp = dir.join(".incoming");
-        let hash = copy_hashed(src, &tmp)?;
-        let mut k = 0;
-        loop {
-            let id = match k {
-                0 => format!("rev-{hash:016x}"),
-                _ => format!("rev-{hash:016x}-{k}"),
-            };
-            let file = dir.join(&id).join(INPUT_FILE);
-            if file.is_file() {
-                if same_bytes(&tmp, &file)? {
-                    fs::remove_file(&tmp).map_err(err)?;
-                    return Ok(id);
-                }
-                k += 1;
-                continue;
-            }
-            fs::create_dir_all(dir.join(&id)).map_err(err)?;
-            fs::rename(&tmp, &file).map_err(err)?;
-            let mut perms = fs::metadata(&file).map_err(err)?.permissions();
-            perms.set_readonly(true);
-            fs::set_permissions(&file, perms).map_err(err)?;
-            return Ok(id);
-        }
+        fs::read(&path).map_err(|e| match e.kind() {
+            ErrorKind::NotFound => Error::new(
+                404,
+                "file.missing",
+                format!("run {run} has no file {}", name.display()),
+            ),
+            _ => Error::io(&name.display().to_string(), e),
+        })
     }
 
     /// Run one queued run to its end.
-    fn run(&self, key: &Key) {
-        let (input, out, cancel, name) = {
+    fn run(&self, run: &str) {
+        let cancel = {
             let mut inner = self.lock();
-            let Some(live) = inner.live.get_mut(key) else {
+            let Some(live) = inner.live.get_mut(run) else {
                 return;
             };
             if live.record.state != RunState::Queued {
                 return;
             }
             self.change(live, RunState::Running, "");
-            let input = self
-                .project_dir(&key.0)
-                .join("revisions")
-                .join(&live.record.revision)
-                .join(INPUT_FILE);
-            (
-                input,
-                self.run_dir(&key.0, &key.1).join(OUT_DIR),
-                live.cancel.clone(),
-                live.record.solver.clone(),
-            )
+            live.cancel.clone()
         };
         self.wake.notify_all();
-        let solver = match name.as_str() {
-            "" => Some(self.solver.clone()),
-            name => find_solver(&self.solver_dirs, name).map(|exe| SubprocessSolver {
-                exe,
-                ..self.solver.clone()
-            }),
-        };
-        let result = match solver {
-            Some(solver) => solver.run_with(&input, &out, &cancel, &mut |e| {
-                self.event(key, &solver_text(e));
-            }),
-            None => Err(ApiError::new("run.solver.missing", missing_solver(&name))),
-        };
+        let dir = self.run_dir(run);
+        let result = self.solver.run_with(
+            &dir.join(INPUT_FILE),
+            &dir.join(OUT_DIR),
+            &cancel,
+            &mut |e| self.event(run, &solver_text(e)),
+        );
         let mut inner = self.lock();
-        let Some(state) = inner.live.get(key).map(|l| l.record.state) else {
+        let Some(state) = inner.live.get(run).map(|l| l.record.state) else {
             return;
         };
         let (next, message) = match result {
@@ -498,20 +387,20 @@ impl Shared {
             Err(e) if e.is_cancelled() => (RunState::Interrupted, STOPPED.to_owned()),
             Err(e) => (RunState::Failed, e.message),
         };
-        self.finish(&mut inner, key, next, &message);
+        self.finish(&mut inner, run, next, &message);
     }
 }
 
 fn work(shared: Arc<Shared>) {
     loop {
-        let key = {
+        let run = {
             let mut inner = shared.lock();
             loop {
                 if inner.stopping {
                     return;
                 }
-                if let Some(key) = inner.queue.pop_front() {
-                    break key;
+                if let Some(run) = inner.queue.pop_front() {
+                    break run;
                 }
                 inner = shared
                     .wake
@@ -519,26 +408,8 @@ fn work(shared: Arc<Shared>) {
                     .unwrap_or_else(PoisonError::into_inner);
             }
         };
-        shared.run(&key);
+        shared.run(&run);
     }
-}
-
-fn check_request(request: &str) -> Result<(), Error> {
-    if valid_request(request) {
-        Ok(())
-    } else {
-        Err(Error::bad(
-            "request.invalid",
-            format!("bad request ID {request:?}"),
-        ))
-    }
-}
-
-fn project_root<'a>(inner: &'a Inner, project: &str) -> Result<&'a PathBuf, Error> {
-    inner
-        .projects
-        .get(project)
-        .ok_or_else(|| Error::new(404, "project.unknown", format!("no project {project}")))
 }
 
 fn stopping(inner: &Inner) -> Result<(), Error> {
@@ -548,32 +419,24 @@ fn stopping(inner: &Inner) -> Result<(), Error> {
     Ok(())
 }
 
-/// The input file of a submit. It must be a file inside the project root.
-fn resolve_input(root: &Path, input: &str) -> Result<PathBuf, Error> {
-    let path = fs::canonicalize(root.join(input))
-        .map_err(|e| Error::bad("input.invalid", format!("{input}: {e}")))?;
-    if !path.starts_with(root) {
-        return Err(Error::bad(
-            "input.outside",
-            format!("{input} is outside the project root"),
-        ));
-    }
-    if !path.is_file() {
+/// The input file of a submit or a preview: the absolute path of a file.
+fn resolve_input(input: &str) -> Result<&Path, Error> {
+    let path = Path::new(input);
+    if !path.is_absolute() || !path.is_file() {
         return Err(Error::bad(
             "input.invalid",
-            format!("{input} is not a file"),
+            format!("{input} is not the absolute path of a file"),
         ));
     }
     Ok(path)
 }
 
 impl Service {
-    /// Open the store, end the runs of an earlier daemon and start the worker. Only one
-    /// service at a time can use a state folder.
+    /// Open the store and start the worker. Only one service at a time can use a state
+    /// folder.
     pub fn open(config: Config) -> Result<Service, Error> {
         let err = |e| Error::io("state folder", e);
-        fs::create_dir_all(config.state_dir.join("acks")).map_err(err)?;
-        fs::create_dir_all(config.state_dir.join("projects")).map_err(err)?;
+        fs::create_dir_all(config.state_dir.join(RUNS_DIR)).map_err(err)?;
         let dir = fs::canonicalize(&config.state_dir).map_err(err)?;
         let lock = OpenOptions::new()
             .create(true)
@@ -601,15 +464,27 @@ impl Service {
             }
             Err(TryLockError::Error(e)) => return Err(err(e)),
         }
+        // Only the chat of this daemon shows a preview, so the previews of an earlier
+        // daemon go.
+        let previews = dir.join(PREVIEWS_DIR);
+        let _ = fs::remove_dir_all(&previews);
+        fs::create_dir_all(&previews).map_err(err)?;
+        let last = fs::read_dir(dir.join(RUNS_DIR))
+            .map_err(err)?
+            .flatten()
+            .filter_map(|e| e.file_name().to_str()?.strip_prefix("run-")?.parse().ok())
+            .max()
+            .unwrap_or(0);
         let shared = Arc::new(Shared {
             dir,
-            instance: random_hex(8),
             solver: config.solver,
-            solver_dirs: config.solver_dirs,
-            inner: Mutex::new(Inner::default()),
+            inner: Mutex::new(Inner {
+                next_run: last + 1,
+                next_preview: 1,
+                ..Inner::default()
+            }),
             wake: Condvar::new(),
         });
-        shared.recover()?;
         let worker = {
             let shared = shared.clone();
             std::thread::spawn(move || work(shared))
@@ -621,229 +496,117 @@ impl Service {
         })
     }
 
-    /// A random ID of this daemon instance.
-    pub fn instance(&self) -> &str {
-        &self.shared.instance
-    }
-
-    /// The ID of the project at `root`. The same root always gets the same ID.
-    pub fn register(&self, root: &Path) -> Result<(String, PathBuf), Error> {
-        let root = fs::canonicalize(root)
-            .map_err(|e| Error::bad("root.invalid", format!("{}: {e}", root.display())))?;
-        let text = root
-            .to_str()
-            .filter(|_| root.is_dir())
-            .ok_or_else(|| Error::bad("root.invalid", "the root must be a UTF-8 folder path"))?
-            .to_owned();
+    /// Copy the input file and queue a run of the copy. `input` is the absolute path of
+    /// the file. A later change of the file does not change the run.
+    pub fn submit(&self, input: &str) -> Result<RunRecord, Error> {
         let sh = &self.shared;
         let mut inner = sh.lock();
         stopping(&inner)?;
-        if let Some((id, _)) = inner.projects.iter().find(|(_, r)| **r == root) {
-            return Ok((id.clone(), root));
-        }
-        let id = format!("p-{}", random_hex(8));
-        let dir = sh.project_dir(&id);
-        fs::create_dir_all(dir.join("runs")).map_err(|e| Error::io("project", e))?;
-        write_atomic(&dir.join(ROOT_FILE), &format!("{text}\n"))?;
-        inner.projects.insert(id.clone(), root.clone());
-        inner.next_run.insert(id.clone(), 1);
-        Ok((id, root))
-    }
-
-    /// Fix the input as a revision and queue a run of it.
-    ///
-    /// A retry with the same request ID gets the same run. A submit of a revision that
-    /// already has an active run in the project with the same solver gets that run, with the
-    /// outcome `existing`. `solver` is a name of [`SOLVERS`], or empty for the solver of [`Config`].
-    pub fn submit(
-        &self,
-        project: &str,
-        request: &str,
-        input: &str,
-        solver: &str,
-    ) -> Result<Ack, Error> {
-        check_request(request)?;
-        let solver = match solver {
-            "" => "",
-            s if s == SOLVERS[0] => "",
-            s if SOLVERS.contains(&s) => s,
-            s => {
-                return Err(Error::bad(
-                    "solver.unknown",
-                    format!("no solver {s}. The solvers: {}", SOLVERS.join(", ")),
-                ))
-            }
-        };
-        let sh = &self.shared;
-        let mut inner = sh.lock();
-        stopping(&inner)?;
-        if let Some(ack) = sh.replay(&inner, request, Command::Submit, project, input)? {
-            return Ok(ack);
-        }
-        let path = resolve_input(project_root(&inner, project)?, input)?;
-        let revision = sh.fix_revision(project, &path)?;
-        let active = inner.live.values().find(|l| {
-            l.record.project == project
-                && l.record.revision == revision
-                && l.record.solver == solver
-                && !l.record.state.is_final()
-        });
-        let (run, state, outcome) = match active {
-            Some(l) => (l.record.run.clone(), l.record.state, Outcome::Existing),
-            None => {
-                if inner.queue.len() >= MAX_QUEUED {
-                    return Err(Error::new(
-                        503,
-                        "queue.full",
-                        format!("{MAX_QUEUED} runs wait already"),
-                    ));
-                }
-                let number = inner.next_run.get(project).copied().unwrap_or(1);
-                let run = run_id(number);
-                let dir = sh.run_dir(project, &run);
-                fs::create_dir_all(&dir).map_err(|e| Error::io("run folder", e))?;
-                let record = RunRecord {
-                    project: project.to_owned(),
-                    run: run.clone(),
-                    revision,
-                    input: input.to_owned(),
-                    request: request.to_owned(),
-                    solver: solver.to_owned(),
-                    state: RunState::Queued,
-                    created_ms: now_ms(),
-                    started_ms: 0,
-                    finished_ms: 0,
-                    message: String::new(),
-                };
-                sh.save(&record)?;
-                inner.next_run.insert(project.to_owned(), number + 1);
-                let log = OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(dir.join(EVENTS_FILE))
-                    .ok();
-                let mut live = Live {
-                    record,
-                    events: EventQueue::new(),
-                    log,
-                    log_bytes: 0,
-                    log_full: false,
-                    cancel: CancelToken::new(),
-                };
-                live.push("state queued");
-                let key = (project.to_owned(), run.clone());
-                inner.live.insert(key.clone(), live);
-                inner.queue.push_back(key);
-                (run, RunState::Queued, Outcome::Created)
-            }
-        };
-        let ack = Ack {
-            request: request.to_owned(),
-            command: Command::Submit,
-            project: project.to_owned(),
-            run,
-            input: input.to_owned(),
-            state,
-            outcome,
-        };
-        write_atomic(&sh.ack_path(request), &ack.to_message().to_text())?;
-        sh.wake.notify_all();
-        Ok(ack)
-    }
-
-    /// Fix the input as a revision with no run, so that the page can show the model before
-    /// the solve. A submit of the same bytes later solves this revision.
-    pub fn preview(&self, project: &str, input: &str) -> Result<String, Error> {
-        let sh = &self.shared;
-        let inner = sh.lock();
-        stopping(&inner)?;
-        let path = resolve_input(project_root(&inner, project)?, input)?;
-        sh.fix_revision(project, &path)
-    }
-
-    /// The bytes of the input of a revision, for the page.
-    pub fn revision_file(&self, project: &str, revision: &str) -> Result<Vec<u8>, Error> {
-        if !valid_revision(revision) {
-            return Err(Error::bad(
-                "revision.invalid",
-                format!("bad revision ID {revision:?}"),
+        let path = resolve_input(input)?;
+        if inner.queue.len() >= MAX_QUEUED {
+            return Err(Error::new(
+                503,
+                "queue.full",
+                format!("{MAX_QUEUED} runs wait already"),
             ));
         }
-        let path = {
-            let inner = self.shared.lock();
-            project_root(&inner, project)?;
-            let dir = self.shared.project_dir(project).join("revisions");
-            dir.join(revision).join(INPUT_FILE)
+        let run = run_id(inner.next_run);
+        let dir = sh.run_dir(&run);
+        fs::create_dir_all(&dir).map_err(|e| Error::io("run folder", e))?;
+        inner.next_run += 1;
+        copy_input(path, &dir.join(INPUT_FILE))?;
+        let record = RunRecord {
+            run: run.clone(),
+            input: input.to_owned(),
+            state: RunState::Queued,
+            created_ms: now_ms(),
+            started_ms: 0,
+            finished_ms: 0,
+            message: String::new(),
         };
+        sh.save(&record)?;
+        let log = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dir.join(EVENTS_FILE))
+            .ok();
+        let mut live = Live {
+            record: record.clone(),
+            events: EventQueue::new(),
+            log,
+            log_bytes: 0,
+            log_full: false,
+            cancel: CancelToken::new(),
+        };
+        live.push("state queued");
+        inner.live.insert(run.clone(), live);
+        inner.queue.push_back(run);
+        sh.wake.notify_all();
+        Ok(record)
+    }
+
+    /// Copy the input file with no run, so that the page can show the model before the
+    /// solve. The answer is the preview ID.
+    pub fn preview(&self, input: &str) -> Result<String, Error> {
+        let sh = &self.shared;
+        let mut inner = sh.lock();
+        stopping(&inner)?;
+        let path = resolve_input(input)?;
+        let id = inner.next_preview.to_string();
+        copy_input(path, &sh.dir.join(PREVIEWS_DIR).join(format!("{id}.inp")))?;
+        inner.next_preview += 1;
+        Ok(id)
+    }
+
+    /// The bytes of the input of a preview, for the page.
+    pub fn preview_file(&self, id: &str) -> Result<Vec<u8>, Error> {
+        let unknown = || Error::new(404, "preview.unknown", format!("no preview {id:?}"));
+        let n: u64 = id.parse().map_err(|_| unknown())?;
+        let path = self.shared.dir.join(PREVIEWS_DIR).join(format!("{n}.inp"));
         fs::read(&path).map_err(|e| match e.kind() {
-            ErrorKind::NotFound => Error::new(
-                404,
-                "revision.unknown",
-                format!("project {project} has no revision {revision}"),
-            ),
-            _ => Error::io("revision", e),
+            ErrorKind::NotFound => unknown(),
+            _ => Error::io("preview", e),
         })
     }
 
+    /// The bytes of the copy of the input that a run solves, for the page.
+    pub fn input_file(&self, run: &str) -> Result<Vec<u8>, Error> {
+        self.shared.run_file(run, Path::new(INPUT_FILE))
+    }
+
     /// Stop a run. A queued run ends at once. A running run gets `cancelling`, and its
-    /// solver gets the protocol v2 `cancel`. A retry with the same request ID changes nothing.
-    pub fn cancel(&self, project: &str, run: &str, request: &str) -> Result<Ack, Error> {
-        check_request(request)?;
+    /// solver gets the protocol v2 `cancel`. A cancel of a final run changes nothing. The
+    /// answer is the record after the cancel.
+    pub fn cancel(&self, run: &str) -> Result<RunRecord, Error> {
         let sh = &self.shared;
         let mut inner = sh.lock();
         stopping(&inner)?;
-        if let Some(ack) = sh.replay(&inner, request, Command::Cancel, project, run)? {
-            return Ok(ack);
-        }
-        project_root(&inner, project)?;
-        let key = (project.to_owned(), run.to_owned());
-        let state = sh.record_of(&inner, project, run)?.state;
-        let (state, outcome) = match state {
+        match sh.record_of(&inner, run)?.state {
             RunState::Queued => {
-                inner.queue.retain(|k| *k != key);
-                sh.finish(
-                    &mut inner,
-                    &key,
-                    RunState::Cancelled,
-                    "cancelled before the start",
-                );
-                (RunState::Cancelled, Outcome::CancelRequested)
+                inner.queue.retain(|r| r != run);
+                let why = "cancelled before the start";
+                sh.finish(&mut inner, run, RunState::Cancelled, why);
             }
             RunState::Running => {
-                if let Some(live) = inner.live.get_mut(&key) {
+                if let Some(live) = inner.live.get_mut(run) {
                     sh.change(live, RunState::Cancelling, "");
                     live.cancel.cancel();
                 }
-                (RunState::Cancelling, Outcome::CancelRequested)
             }
-            RunState::Cancelling => (state, Outcome::CancelRequested),
-            _ => (state, Outcome::AlreadyFinal),
-        };
-        let ack = Ack {
-            request: request.to_owned(),
-            command: Command::Cancel,
-            project: project.to_owned(),
-            run: run.to_owned(),
-            input: String::new(),
-            state,
-            outcome,
-        };
-        write_atomic(&sh.ack_path(request), &ack.to_message().to_text())?;
+            _ => {}
+        }
         sh.wake.notify_all();
-        Ok(ack)
+        sh.record_of(&inner, run)
     }
 
-    pub fn record(&self, project: &str, run: &str) -> Result<RunRecord, Error> {
-        let inner = self.shared.lock();
-        project_root(&inner, project)?;
-        self.shared.record_of(&inner, project, run)
+    pub fn record(&self, run: &str) -> Result<RunRecord, Error> {
+        self.shared.record_of(&self.shared.lock(), run)
     }
 
-    /// The records of all runs of a project, in run order.
-    pub fn runs(&self, project: &str) -> Result<Vec<RunRecord>, Error> {
+    /// The records of all runs, in run order. A run folder with no record is not a run.
+    pub fn runs(&self) -> Result<Vec<RunRecord>, Error> {
         let inner = self.shared.lock();
-        project_root(&inner, project)?;
-        let dir = self.shared.project_dir(project).join("runs");
+        let dir = self.shared.dir.join(RUNS_DIR);
         let mut names: Vec<String> = fs::read_dir(&dir)
             .map_err(|e| Error::io("runs", e))?
             .flatten()
@@ -851,10 +614,8 @@ impl Service {
             .filter(|n| valid_run(n))
             .collect();
         names.sort();
-        names
-            .iter()
-            .map(|run| self.shared.record_of(&inner, project, run))
-            .collect()
+        let records = names.iter().map(|run| self.shared.record_of(&inner, run));
+        Ok(records.filter_map(Result::ok).collect())
     }
 
     /// The runs of this daemon that are not final, in run order, each with the text of its
@@ -870,19 +631,9 @@ impl Service {
         .collect()
     }
 
-    /// The registered projects and their root folders, in project ID order.
-    pub fn projects(&self) -> Vec<(String, PathBuf)> {
-        let inner = self.shared.lock();
-        inner
-            .projects
-            .iter()
-            .map(|(p, root)| (p.clone(), root.clone()))
-            .collect()
-    }
-
     /// The bytes of one file in the protocol v2 run folder of a run, for the viewer. `name`
     /// is a plain file name: letters, digits, `.`, `_` and `-`, with no `.` first.
-    pub fn result_file(&self, project: &str, run: &str, name: &str) -> Result<Vec<u8>, Error> {
+    pub fn result_file(&self, run: &str, name: &str) -> Result<Vec<u8>, Error> {
         let plain = (1..=128).contains(&name.len())
             && !name.starts_with('.')
             && name
@@ -894,38 +645,19 @@ impl Service {
                 format!("{name:?} is not a plain file name"),
             ));
         }
-        let path = {
-            let inner = self.shared.lock();
-            project_root(&inner, project)?;
-            self.shared.record_of(&inner, project, run)?;
-            self.shared.run_dir(project, run).join(OUT_DIR).join(name)
-        };
-        fs::read(&path).map_err(|e| match e.kind() {
-            ErrorKind::NotFound => {
-                Error::new(404, "file.missing", format!("run {run} has no file {name}"))
-            }
-            _ => Error::io(name, e),
-        })
+        self.shared.run_file(run, &Path::new(OUT_DIR).join(name))
     }
 
     /// The events of a run after `since`. With a `wait`, the call waits up to `MAX_WAIT` for
     /// a new event, unless the run has ended.
-    pub fn events(
-        &self,
-        project: &str,
-        run: &str,
-        since: u64,
-        wait: Duration,
-    ) -> Result<Events, Error> {
+    pub fn events(&self, run: &str, since: u64, wait: Duration) -> Result<Events, Error> {
         let sh = &self.shared;
         let deadline = Instant::now() + wait.min(MAX_WAIT);
         let mut inner = sh.lock();
-        project_root(&inner, project)?;
         loop {
-            let key = (project.to_owned(), run.to_owned());
-            let Some(live) = inner.live.get(&key) else {
-                let record = sh.record_of(&inner, project, run)?;
-                let log = sh.run_dir(project, run).join(EVENTS_FILE);
+            let Some(live) = inner.live.get(run) else {
+                let record = sh.record_of(&inner, run)?;
+                let log = sh.run_dir(run).join(EVENTS_FILE);
                 return Ok(EventQueue::load(&log)?.since(since, record.state));
             };
             let left = deadline.saturating_duration_since(Instant::now());
@@ -952,9 +684,9 @@ impl Service {
             let mut inner = sh.lock();
             if !inner.stopping {
                 inner.stopping = true;
-                let queued: Vec<Key> = inner.queue.drain(..).collect();
-                for key in &queued {
-                    sh.finish(&mut inner, key, RunState::Interrupted, STOPPED);
+                let queued: Vec<String> = inner.queue.drain(..).collect();
+                for run in &queued {
+                    sh.finish(&mut inner, run, RunState::Interrupted, STOPPED);
                 }
                 for live in inner.live.values() {
                     if !live.record.state.is_final() {
@@ -982,98 +714,6 @@ impl Service {
 impl Drop for Service {
     fn drop(&mut self) {
         self.stop();
-    }
-}
-
-impl Shared {
-    /// Load the projects and end each run that an earlier daemon left active. A queued or
-    /// running run becomes `interrupted`, and a run with a pending cancel becomes
-    /// `cancelled`. The daemon never starts these runs again by itself.
-    fn recover(&self) -> Result<(), Error> {
-        let err = |e| Error::io("recover", e);
-        let mut inner = self.lock();
-        for entry in fs::read_dir(self.dir.join("projects"))
-            .map_err(err)?
-            .flatten()
-        {
-            let Ok(project) = entry.file_name().into_string() else {
-                continue;
-            };
-            let Ok(root) = fs::read_to_string(entry.path().join(ROOT_FILE)) else {
-                continue;
-            };
-            if !valid_project(&project) {
-                continue;
-            }
-            let mut next = 1;
-            let runs = entry.path().join("runs");
-            for run in fs::read_dir(&runs).map_err(err)?.flatten() {
-                let Ok(name) = run.file_name().into_string() else {
-                    continue;
-                };
-                let Some(number) = name
-                    .strip_prefix("run-")
-                    .and_then(|n| n.parse::<u64>().ok())
-                else {
-                    continue;
-                };
-                next = next.max(number + 1);
-                let Some(m) = read_message(&run.path().join(RECORD_FILE))? else {
-                    continue;
-                };
-                let mut record = RunRecord::from_message(&m)?;
-                if record.state.is_final() {
-                    continue;
-                }
-                (record.state, record.message) = if record.state == RunState::Cancelling {
-                    (
-                        RunState::Cancelled,
-                        "the daemon stopped during the cancel".to_owned(),
-                    )
-                } else {
-                    (RunState::Interrupted, STOPPED.to_owned())
-                };
-                record.finished_ms = now_ms();
-                self.save(&record)?;
-                // The daemon can stop after it wrote the record and before it wrote the
-                // acknowledgement. Write the acknowledgement now, so a retry finds this run.
-                let ack = self.ack_path(&record.request);
-                if !ack.exists() {
-                    let created = Ack {
-                        request: record.request.clone(),
-                        command: Command::Submit,
-                        project: record.project.clone(),
-                        run: record.run.clone(),
-                        input: record.input.clone(),
-                        state: record.state,
-                        outcome: Outcome::Created,
-                    };
-                    write_atomic(&ack, &created.to_message().to_text())?;
-                }
-            }
-            inner
-                .projects
-                .insert(project.clone(), PathBuf::from(root.trim_end_matches('\n')));
-            inner.next_run.insert(project, next);
-        }
-        self.prune_acks()
-    }
-
-    /// Keep the newest `MAX_ACKS` acknowledgements.
-    fn prune_acks(&self) -> Result<(), Error> {
-        let dir = self.dir.join("acks");
-        let mut acks: Vec<(std::time::SystemTime, PathBuf)> = fs::read_dir(&dir)
-            .map_err(|e| Error::io("acks", e))?
-            .flatten()
-            .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
-            .collect();
-        if acks.len() > MAX_ACKS {
-            acks.sort();
-            for (_, path) in &acks[..acks.len() - MAX_ACKS] {
-                let _ = fs::remove_file(path);
-            }
-        }
-        Ok(())
     }
 }
 

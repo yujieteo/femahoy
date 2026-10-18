@@ -8,9 +8,9 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 
 - `Service` keeps the store, the run queue and the event queues. `Daemon` adds the HTTP transport on 127.0.0.1 and writes `daemon.info` (port and token, mode 0600).
 - `Client` is the client of the contract for the CLI and the tests. `Client::discover(STATE_DIR)` reads `daemon.info`.
-- Commands: register a project, submit, cancel, read a record, list the runs, read the events.
+- Commands: submit, preview, cancel, read a record, list the runs, read the events.
 - The text form, the routes and the access rules are in `src/contract.rs`, `src/http.rs` and `docs/run-contract.md`.
-- A run starts the protocol v2 solver (`fh-solve-ccx`) through `fh_solver_api::SubprocessSolver` on a fixed input revision.
+- A run starts the protocol v2 solver (`fh-solve-ccx`) through `fh_solver_api::SubprocessSolver` on a read-only copy of its input.
 - `src/chat.rs` runs 1 agent (Claude Code, `claude -p --input-format stream-json --output-format stream-json`) with the instructions of `src/agent.md`, and keeps its actions as chat entries for `/api/v1/chat`. The agent stays alive between the messages, and each message goes to its stdin, also while it works.
 
 ## Invariants the code must keep
@@ -18,10 +18,9 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - Bind to 127.0.0.1 only (DESIGN.md section 4.1).
 - Every request carries the token. A request with an `Origin` that is not `http://127.0.0.1:<port>` fails. The `Host` must be `127.0.0.1:<port>`.
 - Each run has one record. A final state never changes.
-- A retry with the same request ID changes nothing and gets the outcome `replay`.
-- A run solves its fixed revision, never the file in the project.
+- A run solves its copy of the input, never the file of the client.
 - The queues and the event log are bounded (`MAX_QUEUED`, `EVENT_QUEUE`, `EVENT_LOG`).
-- The solver never lives longer than the daemon. At start, the daemon marks each active run of an earlier daemon `interrupted`, or `cancelled` when a cancel was pending. It never starts such a run again by itself.
+- The solver never lives longer than the daemon. A later daemon shows each run that an earlier daemon did not end as `interrupted`. It never starts such a run again.
 - One daemon at a time uses a state folder (`daemon.lock`).
 - The browser never holds an API key (DESIGN.md section 4.1).
 - femahoy has no agent loop of its own. The agent is a separate harness process (DESIGN.md section 5.1). A chat entry never holds the token.
@@ -35,13 +34,12 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page and its layout, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/chat.rs` tests the chat routes with a fake agent that prints a recorded event stream and takes a message during its work. No test calls a real LLM. `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`.
+Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, cancel, the copy of the input, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page and its layout, the viewer files, the run list, the result files and the preview, each with the token and `Origin` rules. `tests/chat.rs` tests the chat routes with a fake agent that prints a recorded event stream and takes a message during its work. No test calls a real LLM. `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`.
 
 ## Examples
 
 ```rust
 let daemon = Daemon::start_with_options(Config { state_dir, solver: SubprocessSolver::new("fh-solve-ccx") }, 0, Options::default())?;
 let cli = Client::discover(&state_dir)?;
-let project = cli.register(&root)?;
-let ack = cli.submit(&project, &new_request_id(), "model.inp")?;
+let record = cli.submit(&root.join("model.inp"))?;
 ```

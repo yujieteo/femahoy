@@ -171,13 +171,13 @@ fn a_request_from_a_wrong_origin_fails() {
         let (status, body) = serve.get(&page, &[("Origin", origin)]);
         assert_eq!(status, 403, "{origin}: {body}");
     }
-    let root = serve.state.join("project");
-    std::fs::create_dir_all(&root).unwrap();
-    let body = format!("contract=1\nroot={}\n\n", root.display());
+    let input = serve.state.join("model.inp");
+    std::fs::write(&input, "*NODE\n").unwrap();
+    let body = format!("contract=2\ninput={}\n\n", input.display());
     let (status, answer) = request(
         serve.port,
         "POST",
-        "/api/v1/projects",
+        "/api/v1/runs",
         &[
             ("Authorization", &bearer),
             ("Origin", "http://evil.example"),
@@ -194,7 +194,7 @@ fn the_token_and_the_own_origin_pass() {
     let bearer = serve.bearer();
     let (status, body) = serve.get("/api/v1/status", &[("Authorization", &bearer)]);
     assert_eq!(status, 200, "{body}");
-    assert!(body.contains("contract=1"), "{body}");
+    assert!(body.contains("contract=2"), "{body}");
     let own = serve.own();
     let (status, body) = serve.get(
         "/api/v1/status",
@@ -243,8 +243,6 @@ fn the_stop_flag_stops_the_daemon_and_removes_daemon_info() {
     assert_eq!(outcome, Ok(ExitCode::SUCCESS));
     assert!(!serve.state.join("daemon.info").exists());
 }
-
-#[cfg(unix)]
 #[test]
 fn sigterm_stops_the_daemon() {
     let state = state_dir("sigterm");

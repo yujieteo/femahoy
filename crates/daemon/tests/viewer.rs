@@ -1,7 +1,6 @@
-//! The routes of the wasm viewer: the page, the viewer files, the project list, the result
-//! files of a run and the input of a revision. Each one keeps the token and `Origin` rules.
-
-#![cfg(unix)]
+//! The routes of the wasm viewer: the page, the viewer files, the run list, the result files
+//! and the input of a run, and the input of a preview. Each one keeps the token and `Origin`
+//! rules.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -10,7 +9,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{new_request_id, Config, Daemon, Options, RunState};
+use fh_daemon::{Config, Daemon, Options, RunState};
 use fh_solver_api::SubprocessSolver;
 
 /// A solver that writes a small run folder at once.
@@ -47,7 +46,6 @@ impl Lab {
         let config = Config {
             state_dir: dir.join("state"),
             solver: SubprocessSolver::new(&solver),
-            solver_dirs: Vec::new(),
         };
         let options = Options { viewer: viewer_dir };
         let daemon = Daemon::start_with_options(config, 0, options).unwrap();
@@ -81,18 +79,18 @@ impl Lab {
         format!("Bearer {}", self.daemon.token())
     }
 
-    /// Register the project, run the fake solver and wait until the run succeeds.
-    fn run(&self) -> (String, String) {
+    /// Run the fake solver on `project/model.inp` and wait until the run succeeds.
+    fn run(&self) -> String {
         let c = self.daemon.client();
-        let project = c.register(&self.dir.join("project")).unwrap();
-        fs::write(self.dir.join("project/model.inp"), "*NODE\n").unwrap();
-        let ack = c.submit(&project, &new_request_id(), "model.inp").unwrap();
+        let input = self.dir.join("project/model.inp");
+        fs::write(&input, "*NODE\n").unwrap();
+        let run = c.submit(&input).unwrap().run;
         let deadline = Instant::now() + Duration::from_secs(30);
-        while c.record(&project, &ack.run).unwrap().state != RunState::Succeeded {
+        while c.record(&run).unwrap().state != RunState::Succeeded {
             assert!(Instant::now() < deadline, "the run does not succeed");
             std::thread::sleep(Duration::from_millis(20));
         }
-        (project, ack.run)
+        run
     }
 }
 
@@ -232,25 +230,27 @@ fn a_daemon_with_no_viewer_says_how_to_build_it() {
 }
 
 #[test]
-fn the_projects_and_the_result_files_of_a_run() {
+fn the_runs_and_the_files_of_a_run() {
     let lab = Lab::new("results", true);
-    let (project, run) = lab.run();
+    let run = lab.run();
     let bearer = lab.bearer();
     let auth = [("Authorization", bearer.as_str())];
-    let list = lab.get("/api/v1/projects", &auth).text();
-    let root = fs::canonicalize(lab.dir.join("project")).unwrap();
+    let list = lab.get("/api/v1/runs", &auth).text();
+    let input = lab.dir.join("project/model.inp");
     assert!(
         list.lines()
-            .any(|l| l == format!("{project} {}", root.display())),
+            .any(|l| l == format!("{run} succeeded {}", input.display())),
         "{list}"
     );
-    let base = format!("/api/v1/projects/{project}/runs/{run}/files");
+    let base = format!("/api/v1/runs/{run}/files");
     let pvd = lab.get(&format!("{base}/results.pvd"), &auth);
     assert_eq!(pvd.status, 200);
     assert!(pvd.text().contains("file=\"step-1.vtu\""));
     let vtu = lab.get(&format!("{base}/step-1.vtu"), &auth);
     assert_eq!(vtu.body, b"VTU\0BYTES", "binary bytes pass unchanged");
     assert_eq!(vtu.header("Content-Type"), Some("application/octet-stream"));
+    let copy = lab.get(&format!("/api/v1/runs/{run}/input"), &auth);
+    assert_eq!((copy.status, copy.body.as_slice()), (200, &b"*NODE\n"[..]));
 
     let missing = lab.get(&format!("{base}/step-2.vtu"), &auth);
     assert_eq!(
@@ -261,16 +261,16 @@ fn the_projects_and_the_result_files_of_a_run() {
         let bad = lab.get(&format!("{base}/{name}"), &auth);
         assert_eq!(bad.error().as_deref(), Some("file.invalid"), "{name}");
     }
-    let path = format!("/api/v1/projects/{project}/runs/run-999999/files/results.pvd");
-    assert_eq!(
-        lab.get(&path, &auth).error().as_deref(),
-        Some("run.unknown")
-    );
-    let path = format!("/api/v1/projects/p-0000000000000000/runs/{run}/files/results.pvd");
-    assert_eq!(
-        lab.get(&path, &auth).error().as_deref(),
-        Some("project.unknown")
-    );
+    for path in [
+        "/api/v1/runs/run-999999/files/results.pvd",
+        "/api/v1/runs/../input",
+    ] {
+        assert_eq!(
+            lab.get(path, &auth).error().as_deref(),
+            Some("run.unknown"),
+            "{path}"
+        );
+    }
 
     // The token and the Origin rules hold for the result files.
     let file = format!("{base}/results.pvd");
@@ -289,18 +289,17 @@ fn the_projects_and_the_result_files_of_a_run() {
 }
 
 #[test]
-fn the_model_before_the_solve_is_the_revision_that_the_run_solves() {
+fn the_page_shows_a_copy_of_the_model_before_the_solve() {
     let lab = Lab::new("preview", false);
     let c = lab.daemon.client();
-    let project = c.register(&lab.dir.join("project")).unwrap();
     let input = "** units: SI-mm\n*NODE\n1, 0, 0, 0\n";
-    fs::write(lab.dir.join("project/model.inp"), input).unwrap();
-    let revision = c.preview(&project, "model.inp", "a case").unwrap();
-    assert!(
-        c.runs(&project).unwrap().is_empty(),
-        "a preview solves nothing"
-    );
-    let path = format!("/api/v1/projects/{project}/revisions/{revision}");
+    let file = lab.dir.join("project/model.inp");
+    fs::write(&file, input).unwrap();
+    let preview = c.preview(&file, "a case").unwrap();
+    assert!(c.runs().unwrap().is_empty(), "a preview solves nothing");
+    // A later edit of the file does not change the preview.
+    fs::write(&file, "*NODE\n").unwrap();
+    let path = format!("/api/v1/previews/{preview}");
     let bearer = lab.bearer();
     let own = format!("http://127.0.0.1:{}", lab.daemon.port());
     let page = [("Authorization", bearer.as_str()), ("Origin", own.as_str())];
@@ -309,10 +308,8 @@ fn the_model_before_the_solve_is_the_revision_that_the_run_solves() {
         (answer.status, answer.body.as_slice()),
         (200, input.as_bytes())
     );
-    let ack = c.submit(&project, &new_request_id(), "model.inp").unwrap();
-    assert_eq!(c.record(&project, &ack.run).unwrap().revision, revision);
 
-    // The token and the Origin rules hold, and only a revision of the project is read.
+    // The token and the Origin rules hold, and only a preview is read.
     assert_eq!(
         lab.get(&path, &[]).error().as_deref(),
         Some("token.missing")
@@ -323,21 +320,10 @@ fn the_model_before_the_solve_is_the_revision_that_the_run_solves() {
         Some("origin.refused")
     );
     let auth = [("Authorization", bearer.as_str())];
-    let base = format!("/api/v1/projects/{project}/revisions");
-    for (rev, code) in [
-        ("rev-x", "revision.invalid"),
-        ("..", "revision.invalid"),
-        ("rev-0000000000000007", "revision.unknown"),
-    ] {
-        let answer = lab.get(&format!("{base}/{rev}"), &auth);
-        assert_eq!(answer.error().as_deref(), Some(code), "{rev}");
+    for id in ["x", "..", "7"] {
+        let answer = lab.get(&format!("/api/v1/previews/{id}"), &auth);
+        assert_eq!(answer.error().as_deref(), Some("preview.unknown"), "{id}");
     }
-    let other = format!("/api/v1/projects/p-0000000000000000/revisions/{revision}");
-    assert_eq!(
-        lab.get(&other, &auth).error().as_deref(),
-        Some("project.unknown")
-    );
-    fs::write(lab.dir.join("outside.inp"), input).unwrap();
-    let outside = c.preview(&project, "../outside.inp", "x").unwrap_err();
-    assert_eq!(outside.code, "input.outside");
+    let relative = c.preview(Path::new("model.inp"), "x").unwrap_err();
+    assert_eq!(relative.code, "input.invalid");
 }

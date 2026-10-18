@@ -25,7 +25,7 @@ fn solver_ready() -> bool {
         .solver
         .exe
         .file_stem()
-        .is_none_or(|s| s != fh_daemon::SOLVERS[0])
+        .is_none_or(|s| s != fh_daemon::SOLVER)
     {
         return true;
     }

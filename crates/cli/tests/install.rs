@@ -1,8 +1,6 @@
 //! `scripts/install.sh` with fake tools: the checks before the build, the install folder, and
 //! the update. The fake cargo, wasm-bindgen and uv write small files in place of a build and a
 //! venv. Each test has its own HOME, so the default prefix and venv are in the scratch folder.
-#![cfg(unix)]
-
 mod common;
 use common::{p, root, scratch, script, stderr, stdout};
 

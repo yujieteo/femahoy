@@ -10,8 +10,6 @@
 //!   `<state>/open.html` (mode 0600). The file sends the browser on to the address.
 //! - On macOS, `open` gives the address to the default browser through Launch Services. Only
 //!   the short-lived `open` process has the address in its command line.
-//! - On Windows, `rundll32` gives the address to the default browser. Windows does not show
-//!   the command line of a process to the other users.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -41,10 +39,6 @@ pub fn open_page(state_dir: &Path, url: &str) -> Result<(), String> {
         None if cfg!(target_os = "macos") => {
             args.push(url.into());
             "open".into()
-        }
-        None if cfg!(windows) => {
-            args.extend(["url.dll,FileProtocolHandler".into(), url.into()]);
-            "rundll32".into()
         }
         None => {
             args.push(redirect(state_dir, url)?);
@@ -88,23 +82,15 @@ mod tests {
     fn the_redirect_page_escapes_the_address_and_only_the_user_can_read_it() {
         let dir = std::env::temp_dir().join(format!("fh-open-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let file = redirect(
-            &dir,
-            "http://127.0.0.1:1/?token=ab&project=p-1&run=run-000001",
-        );
+        let file = redirect(&dir, "http://127.0.0.1:1/?token=ab&run=run-000001");
         let text = std::fs::read_to_string(file.unwrap()).unwrap();
-        assert!(
-            text.contains("url=http://127.0.0.1:1/?token=ab&amp;project=p-1&amp;run=run-000001\"")
-        );
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = std::fs::metadata(dir.join(OPEN_FILE))
-                .unwrap()
-                .permissions()
-                .mode();
-            assert_eq!(mode & 0o777, 0o600);
-        }
+        assert!(text.contains("url=http://127.0.0.1:1/?token=ab&amp;run=run-000001\""));
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(dir.join(OPEN_FILE))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

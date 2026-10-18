@@ -57,21 +57,22 @@ Output excerpt (paths cut, `STATE` for the state folder):
 
 ```text
 fh run: started a daemon for STATE (log STATE/daemon.log)
-fh run: mesh: fh mesh STATE/examples/bar-pressure/bar.step --case STATE/examples/bar-pressure -o STATE/cases/bar-pressure-22e4b0ed090220c2/bar.msh --size 8
+fh run: mesh: fh mesh STATE/examples/bar-pressure/bar.step --case STATE/examples/bar-pressure -o STATE/cases/bar-pressure-1acfd60cffd6b9a9/bar.msh --size 8
 nodes	844
 elements	373
-fh run: project p-e6ab6e16fb490ff2 (STATE/cases/bar-pressure-84b9974e194acc67), run-000001
+fh run: preview: the page shows bar-pressure (preview 1) with its supports and loads
+fh run: run-000001 solves STATE/cases/bar-pressure-1acfd60cffd6b9a9/bar.inp
   queued
   running
   succeeded
-fh run: run-000001 succeeded in 0.11 s
-fh run: results in STATE/projects/p-e6ab6e16fb490ff2/runs/run-000001/out
+fh run: run-000001 succeeded in 0.21 s
+fh run: results in STATE/runs/run-000001/out
 fh run: summary.toon:
   ...
   status: ok
   ...
   solver: "ccx 2.23, unvalidated"
-fh run: page http://127.0.0.1:53513/?token=TOKEN&project=p-e6ab6e16fb490ff2&run=run-000001
+fh run: page http://127.0.0.1:53513/?token=TOKEN&run=run-000001
 fh run: opened run-000001 in the browser
 fh run: the daemon stays alive for the browser. Stop it with: fh serve --stop
 ```

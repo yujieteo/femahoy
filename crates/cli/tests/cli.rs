@@ -206,7 +206,6 @@ fn validate_exits_1_when_a_class_r_rate_is_outside_the_band() {
 }
 
 /// The runner stops a case at its `time_limit_s` and at its `memory_limit_mib`.
-#[cfg(unix)]
 #[test]
 fn validate_stops_a_case_at_its_time_and_memory_limits() {
     use std::os::unix::fs::PermissionsExt;
@@ -429,7 +428,6 @@ fn check_fails_when_a_case_mesh_has_no_section() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-#[cfg(unix)]
 #[test]
 fn check_fails_when_a_fixture_directory_is_unreadable() {
     use std::os::unix::fs::PermissionsExt;

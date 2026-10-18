@@ -19,13 +19,11 @@ impl Subprocess {
         match std::env::var_os("FH_SOLVE") {
             Some(exe) => Subprocess::new(exe.into()),
             None => {
-                let name = fh_daemon::SOLVERS[0];
+                let name = fh_daemon::SOLVER;
                 let exe =
                     fh_daemon::find_solver(&fh_daemon::solver_dirs(), name).unwrap_or_else(|| {
                         std::env::current_exe()
-                            .map(|me| {
-                                me.with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX))
-                            })
+                            .map(|me| me.with_file_name(name))
                             .unwrap_or_else(|_| PathBuf::from(name))
                     });
                 Subprocess::new(exe)
