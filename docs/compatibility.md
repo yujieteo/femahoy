@@ -78,6 +78,10 @@ The 3D fixed end makes the converged value about 0.99 times the beam value.
 | 32 x 4 x 4 | 1 | 0.98 | 0.99 |
 | 64 x 4 x 4 | 0.5 | 1.00 | 0.99 |
 
+The `cantilever` validation case has the length 10 mm, a 1 x 1 mm section, Poisson's ratio 0.3 and 1 element through the section.
+With the element type changed from `C3D8I` to `C3D8`, 4 elements along the beam (`fixtures/inp/cantilever.inp`) give a tip U3 of -6.682931e-3 mm, which is 0.348 times the reference -1.919619048e-2 mm.
+With 32 elements (`validation/cases/cantilever/mesh-32.inp`), the tip U3 is -3.968578e-2 mm, which is 2.067 times the reference.
+
 ### Cause
 
 The element review (task T9) found no defect. The `C3D8` stiffness is equal to the Hughes form of B-bar to a relative difference of 1e-15.
