@@ -19,7 +19,6 @@ Define the `Solver` trait, registry and subprocess protocol v2.
 - The runner sends `cancel` through stdin and enforces limits on the process tree.
 - New subprocess solvers have `validated: false`.
 - Results from a solver that has not passed the validation suite are marked unvalidated (DESIGN.md section 9.2).
-- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 

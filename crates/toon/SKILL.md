@@ -18,7 +18,6 @@ Encode short agent summaries with schemas `fh.check`, `fh.run`, `fh.validate` an
 - Diagnostics put errors first. The `next` table has at most 3 rows.
 - Truncated tables report omitted rows with `_more`.
 - TOON holds summaries and query answers only. Full field data never goes into TOON (DESIGN.md section 8).
-- Line budget: 3k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 

@@ -11,7 +11,6 @@ No harness, role config, JSON stream parser or skill installer exists in this cr
 ## Invariants the code must keep
 
 `fh init`, `fh team` and `fh skills` are not implemented in `cli/src/main.rs`.
-- Line budget: 4k lines, tests included (DESIGN.md section 11).
 - The validator runs as a separate process from the leader (DESIGN.md section 5.2).
 - API keys go to `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` in the process environment only (DESIGN.md section 5.1).
 

@@ -21,7 +21,6 @@ Load case TOML files, measure solver results and compare them with declared refe
 - A failed case or unavailable solver makes `fh validate` fail.
 - Fixtures are data files, not prose (DESIGN.md section 10.4).
 - A failure blocks the merge. There is no override (DESIGN.md section 10.5).
-- Line budget: 6k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 

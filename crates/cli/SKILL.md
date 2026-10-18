@@ -34,7 +34,6 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, runs
 - Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
 - `fh run` checks the arguments and the input before it starts a daemon. It never changes a case folder of the user.
 - A test never opens the browser of the machine. Tests set `FH_NO_OPEN=1` and a fake `BROWSER`, and use a scratch state folder.
-- Line budget: 4.8k lines, tests included, up from 3k for `fh run` with captain approval (DESIGN.md section 11).
 
 ## Forbidden actions
 

@@ -38,24 +38,19 @@ A commercial licence is for sale to companies that cannot accept AGPL.
 
 ## Planned crates
 
-Budgets are lines of Rust, tests included. The total cap is 85k lines.
-
-| Crate | Scope | Budget |
-|---|---|---|
-| `inp` | `.inp` reader and writer, model, template mapping | 9k |
-| `io` | gmsh `.msh` import, VTU and PVD write and read | 5k |
-| `toon` | agent-facing summaries and queries | 3k |
-| `solver-api` | `Solver` trait, subprocess protocol, registry | 3k |
-| `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | 30k |
-| `validation` | harness, tolerance classes, manufactured solutions | 6k |
-| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | 7.3k, up from 7k for `fh run` (`DESIGN.md` section 11) |
-| `agents` | harness start, JSON stream parsing, skills install, role config | 4k |
-| `cli` | `fh` commands | 4.8k, up from 3k for `fh run` (`DESIGN.md` section 11) |
-| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | 12k, provisional |
-| `solver-ccx` | CalculiX adapter: `ccx` input, process run, `.frd` reader, results (D-13) | 3k, provisional |
-| **Total** | | **85k** |
-
-The `viewer` and `solver-ccx` budgets are provisional until the budget review at the first user test (`DESIGN.md` section 11). The crate budgets add up to 87.1k, over the 85k cap, because the captain approved the `cli` and `daemon` budgets for `fh run`. That review settles the sum.
+| Crate | Scope |
+|---|---|
+| `inp` | `.inp` reader and writer, model, template mapping |
+| `io` | gmsh `.msh` import, VTU and PVD write and read |
+| `toon` | agent-facing summaries and queries |
+| `solver-api` | `Solver` trait, subprocess protocol, registry |
+| `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling |
+| `validation` | harness, tolerance classes, manufactured solutions |
+| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision |
+| `agents` | harness start, JSON stream parsing, skills install, role config |
+| `cli` | `fh` commands |
+| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree |
+| `solver-ccx` | CalculiX adapter: `ccx` input, process run, `.frd` reader, results (D-13) |
 
 ## Planned platforms
 
@@ -72,8 +67,8 @@ This section lists the design decisions for femahoy. `DESIGN.md` section 17 hold
 ### Product scope
 
 - femahoy is an interface for real-time preprocessing, solving and postprocessing. It is dual licensed, open and commercial. Reason: the commercial licence is for companies that cannot accept AGPL-3.0.
-- femahoy has no own mesher for now. Users install gmsh and other tools. External programs run as separate subprocesses and are never bundled or linked. Reason: gmsh is GPL, and the commercial licence rules out GPL code in the product (D-02).
-- The built-in solver stays light on resources. Other open solvers may be integrated later, in one package. Reason: heavy kernels already exist as open tools, so the product focuses on the interface.
+- A mesher of our own is not in the validated path until it is measured against gmsh. Users install gmsh and other tools. External programs run as separate subprocesses and are never bundled or linked. Reason: gmsh is GPL, and the commercial licence rules out GPL code in the product (D-02).
+- A heavy built-in solver is not in the validated path until it is measured against gmsh and CalculiX. Other open solvers may be integrated later, in one package. Reason: heavy kernels already exist as open tools, so the product focuses on the interface.
 - The first goal is one complete validated workflow: text-to-CAD, units check, gmsh, built-in solver, validated results. It comes before the viewer, chat and nonlinear work. Reason: one trusted base comes before more features are built on it.
 
 ### Input, output and formats
@@ -85,7 +80,7 @@ This section lists the design decisions for femahoy. `DESIGN.md` section 17 hold
 ### Hardware and parallelism
 
 - The primary test machine is an Apple Silicon MacBook (aarch64). All code builds and passes tests on it with default flags. Reason: the project tests on that machine (D-07).
-- The target also covers x86-64 with SSE4.2 and no AVX, 4 to 6 cores, 16 GB RAM and a slow disk. A model of 1 million C3D8 elements must solve within 16 GB. Reason: this is the machine of the expected user (D-06).
+- The target also covers x86-64, 4 to 6 cores, 16 GB RAM and a slow disk. A model of 1 million C3D8 elements must solve within 16 GB. Reason: this is the machine of the expected user (D-06).
 - Parallel work must scale. The parallel solver gives the same bits for any thread count. Reason: results must not depend on the machine, and byte-equal results make crash-resume and tests exact.
 - A run can stop at any time. A restart must not read a partial file. Reason: long runs on a slow disk can stop at any time (D-09).
 - A GPU backend comes later. Metal comes first on the Mac. Interfaces stay GPU-neutral, not CUDA-only. Reason: the test machine has a Metal GPU (D-08).

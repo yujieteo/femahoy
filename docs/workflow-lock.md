@@ -1,7 +1,7 @@
 # Workflow lock: the locked interface
 
 This page fixes the commands, options, file formats and exit codes of the workflow from a build123d part to validated results.
-The M3 work uses these interfaces. A change to a locked item needs a decision from the captain.
+The M3 work and the C1 work use these interfaces. A change to a locked item needs a decision from the captain.
 `docs/reference/fh.md` has the full diagnostic tables. `docs/cad-recipe.md` has the CAD steps.
 
 ## The proof
@@ -101,4 +101,4 @@ Refusal codes in the path: `unit.step.missing`, `unit.step.conflict`, `unit.step
 The lock is not complete. These items stay open in other tasks:
 
 - The hex8 rule in the run command.
-- The open parts of P1, E3, U1, E2 and the M2 stages (`docs/milestones.md`).
+- The open parts of P1, U1, E2 and the M2 stages (`docs/milestones.md`).

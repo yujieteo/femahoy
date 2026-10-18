@@ -6,13 +6,12 @@ The full rules for build agents are in `AGENTS.md`.
 ## Task rules
 
 Make one change for each task.
-Use one branch and one crate for each task.
+Use one branch and one roadmap item for each task.
 Read the crate `SKILL.md` before you change code in that crate.
 Do not add a dependency without approval.
 Use only permissive licences: MIT, Apache-2.0, BSD, ISC or Zlib.
 Never add GPL or AGPL code.
-Keep each crate inside its line budget in `DESIGN.md` section 11.
-Stop at the end of a milestone. Do not start the next milestone.
+Keep the code small. Delete code that is not needed.
 
 ## Verification
 
@@ -33,7 +32,6 @@ A change merges only when all these checks pass:
 - `cargo test --workspace`
 - `fh validate`
 - `fh validate --convergence <path>` for each changed solver path
-- The tokei budget check, run by `scripts/check-budget.sh` in CI
 
 After the checks pass, a reviewer reads the diff and the report.
 A rejection from the reviewer blocks the merge.

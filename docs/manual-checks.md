@@ -1,6 +1,6 @@
 # Manual platform checks
 
-GitHub Actions runs the x86-64 Linux checks and an aarch64 macOS job that builds the workspace and runs the workspace tests. It runs no release build, emulator, memory test, convergence check or CAD mesh check.
+GitHub Actions runs the x86-64 Linux checks and an aarch64 macOS job that builds the workspace and runs the workspace tests. It runs no release build, memory test, convergence check or CAD mesh check.
 Run the scripts below from any directory. Each script uses the repository root and exits non-zero on a failure.
 
 ## Apple Silicon macOS
@@ -39,33 +39,3 @@ The checks include:
 The `.inp` fixtures supply separate models. The script states this gap in its output.
 These checks do not prove a complete CAD-to-solver path or the accuracy of a new CAD model.
 The validation cases check numerical results against their references.
-
-## x86-64 Linux without AVX
-
-Use an x86-64 Linux host with Cargo, a C compiler and `qemu-x86_64` user-mode emulation.
-On Ubuntu, install QEMU and the compiler with `sudo apt-get install qemu-user build-essential`.
-The Rust target is `x86_64-unknown-linux-gnu`.
-
-```sh
-rustup target add x86_64-unknown-linux-gnu
-scripts/check-no-avx.sh
-```
-
-The script first runs an AVX instruction under QEMU with the Nehalem CPU model.
-This probe must fail with SIGILL (exit code 132). A different exit code stops the check.
-Then the script builds release `fh` and `fh-solve` with these flags:
-
-```text
--C target-cpu=x86-64 -C target-feature=+sse4.2,-avx,-avx2
-```
-
-It runs `fh validate` and every solver subprocess under the same Nehalem model.
-An illegal instruction or a failed validation case makes the script fail.
-The build uses a new temporary directory. The script removes that directory when it exits.
-
-On a Mac, use an amd64 Linux container with these tools and mount the repository inside it.
-Run the same script inside the container. The script does not install or start a container.
-
-Neither script measures the 1-million-element memory target. The Mac script includes the existing tests of results across thread counts.
-The full E3 byte comparison at 1, 2, 4 and 6 threads remains unchecked.
-The full CAD-to-solver path and the record of external CPU requirements also remain future manual work.

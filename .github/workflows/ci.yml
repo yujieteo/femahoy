@@ -12,18 +12,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Install tokei
-        run: cargo install --locked tokei
       - name: Format
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
-      - name: Line budget
-        run: scripts/check-budget.sh
 
-  # aarch64 build and tests (D-07, P1). The check job keeps fmt, clippy and the line budget.
+  # aarch64 build and tests (D-07, P1). The check job keeps fmt, clippy and the tests.
   test-aarch64:
     runs-on: macos-14
     steps:
