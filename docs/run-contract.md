@@ -74,6 +74,7 @@ The `solver` of a submit is optional. Its only value is `fh-solve-ccx`, the solv
 
 | Limit | Value |
 |---|---|
+| Time of a run | No limit. A large model can solve for hours. A cancel stops a run. |
 | Runs in the queue | 64. A submit after that fails with `queue.full` (503). |
 | Events of a run in memory | 1024. A client that reads too late gets the count in `dropped`. |
 | Event text | 1024 bytes. A longer text is cut. |

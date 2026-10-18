@@ -51,7 +51,7 @@ On failure the solver exits with a non-zero code and prints the reason on stderr
 
 ## Limits
 
-- The default time limit is 10 minutes.
+- There is no default time limit, because a large model can solve for hours. A cancel stops a run.
 - The default memory limit is 85% of the machine RAM. If the RAM is not known, there is no limit.
 - A validation case can set its own limits with `time_limit_s` and `memory_limit_mib`.
 - The error at a limit tells the user to use a coarser mesh. A solver that a signal stops, with no error text, gets the same advice, because a full memory is the usual cause.
