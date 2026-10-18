@@ -250,3 +250,120 @@ fn mpc_pin_transfers_load_and_equalises_all_translations() {
     let reaction: f64 = sol.steps[0].reaction.iter().map(|r| r[0]).sum();
     assert!((reaction + 100.0).abs() < 1e-9, "reaction {reaction}");
 }
+
+#[test]
+fn mpc_beam_moves_the_slave_with_the_rotation_of_the_master() {
+    // Node 9 is the master. It moves by d and turns by theta. The beam is rigid, so the
+    // slave node 7 moves by d + theta x r, with r from node 9 to node 7, and turns by theta.
+    let model = cube(
+        "C3D8I",
+        "*NODE\n9,3,2,0.5\n*MPC\nBEAM, 9, 7\n*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n\
+2,3,3\n3,3,3\n9,1,1,0.1\n9,2,2,-0.2\n9,3,3,0.3\n9,4,4,0.01\n9,5,5,0.02\n9,6,6,0.03\n*END STEP\n",
+    );
+    let sol = solve(&model).unwrap();
+    // r = (1,1,1) - (3,2,0.5) = (-2,-1,0.5). theta x r = (0.04, -0.065, 0.03).
+    let want = [0.1 + 0.04, -0.2 - 0.065, 0.3 + 0.03];
+    let got = u(&model, &sol, 0, 7);
+    for i in 0..3 {
+        assert!((got[i] - want[i]).abs() < 1e-12, "u7 {got:?} vs {want:?}");
+    }
+    let i7 = model.nodes.iter().position(|n| n.id == 7).unwrap();
+    let rot = sol.steps[0].rotation[i7];
+    for (i, want) in [0.01, 0.02, 0.03].into_iter().enumerate() {
+        assert!((rot[i] - want).abs() < 1e-12, "rotation of node 7: {rot:?}");
+    }
+}
+
+#[test]
+fn mpc_beam_carries_an_axial_load_into_the_body_and_the_reactions_balance() {
+    // Node 9 lies 2 beyond corner 7 on the x line. A load of 25 on node 9 goes through the
+    // rigid beam to corner 7, with no moment because the load acts along the beam. With 25 on
+    // each of nodes 2, 3 and 6, the body is in uniform tension: u = (0.1, -0.03, -0.03) at
+    // corner 7. Node 9 turns by 0.01 about z, so it moves 0.02 in y relative to corner 7.
+    let model = cube(
+        "C3D8I",
+        "*NODE\n9,3,1,1\n*MPC\nBEAM, 7, 9\n*STEP\n*STATIC\n*BOUNDARY\n1,1,3\n4,1,1\n5,1,1\n8,1,1\n\
+2,3,3\n3,3,3\n9,4,5\n9,6,6,0.01\n*CLOAD\n2,1,25\n3,1,25\n6,1,25\n9,1,25\n*END STEP\n",
+    );
+    let sol = solve(&model).unwrap();
+    let want7 = [0.1, -0.03, -0.03];
+    // For theta = (0, 0, 0.01) and r = (-2, 0, 0) from node 7 to node 9, theta x r = (0, -0.02, 0).
+    let want9 = [0.1, -0.03 + 0.02, -0.03];
+    for (id, want) in [(7, want7), (9, want9)] {
+        let got = u(&model, &sol, 0, id);
+        for i in 0..3 {
+            assert!(
+                (got[i] - want[i]).abs() < 1e-12,
+                "node {id} component {i}: {got:?} vs {want:?}"
+            );
+        }
+    }
+    for id in [7, 9] {
+        let i = model.nodes.iter().position(|n| n.id == id).unwrap();
+        let rot = sol.steps[0].rotation[i];
+        assert!(
+            rot[0].abs() < 1e-12 && rot[1].abs() < 1e-12 && (rot[2] - 0.01).abs() < 1e-12,
+            "rotation of node {id}: {rot:?}"
+        );
+    }
+    // The 4 loads of 25 are in balance with the reactions at the fixed nodes 1, 4, 5 and 8.
+    let rf = &sol.steps[0].reaction;
+    let index = |id: u32| model.nodes.iter().position(|n| n.id == id).unwrap();
+    let fixed: f64 = [1, 4, 5, 8].into_iter().map(|id| rf[index(id)][0]).sum();
+    let total: f64 = rf.iter().map(|r| r[0]).sum();
+    assert!((total + 100.0).abs() < 1e-9, "sum of reactions {total}");
+    assert!(
+        (fixed.abs() - 100.0).abs() < 1e-9,
+        "reactions at supports {fixed}"
+    );
+}
+
+#[test]
+fn three_instances_of_one_part_solve_to_the_exact_field_of_each_instance() {
+    // I1 and I2 are in series through *MPC TIE and carry 100. I3 is alone and carries 50.
+    let model = fixture("m2-instances.inp");
+    assert_eq!((model.nodes.len(), model.elements.len()), (24, 3));
+    assert_eq!(model.instances.len(), 3);
+    let sol = solve(&model).unwrap_or_else(|e| panic!("{e}"));
+    let step = &sol.steps[0];
+    let name = |id: u32| model.node_instance(id).unwrap().0.name.as_str();
+    // The two linked faces are the same points of space, so the tie joins instances.
+    for (a, b) in [(2, 9), (3, 12), (6, 13), (7, 16)] {
+        assert_eq!((name(a), name(b)), ("I1", "I2"));
+    }
+    let mut count = [0; 3];
+    for (i, node) in model.nodes.iter().enumerate() {
+        let [x, y, z] = node.xyz;
+        let (k, want) = match name(node.id) {
+            "I1" => (0, [0.1 * x, -0.03 * y, -0.03 * z]),
+            "I2" => (1, [0.1 * x, -0.03 * y, -0.03 * z]),
+            "I3" => (2, [0.05 * x, -0.015 * (y - 5.0), -0.015 * z]),
+            other => panic!("node {} is in instance {other}", node.id),
+        };
+        count[k] += 1;
+        let got = step.displacement[i];
+        for c in 0..3 {
+            assert!(
+                (got[c] - want[c]).abs() < 1e-12,
+                "node {} ({}) component {c}: {got:?} vs {want:?}",
+                node.id,
+                name(node.id)
+            );
+        }
+        assert_eq!(step.rotation[i], [0.0; 3], "node {}", node.id);
+    }
+    assert_eq!(count, [8, 8, 8]);
+    // One element per instance. The stress is uniform tension: 100, 100 and 50.
+    for (id, sxx) in [(1, 100.0), (2, 100.0), (3, 50.0)] {
+        let s = step.element_stress[model.elements.iter().position(|e| e.id == id).unwrap()];
+        let inst = model.element_instance(id).unwrap().0;
+        assert_eq!(inst.name, format!("I{id}"));
+        assert!((s[0] - sxx).abs() < 1e-8 * sxx, "element {id}: {s:?}");
+        for c in 1..6 {
+            assert!(s[c].abs() < 1e-8 * sxx, "element {id}: {s:?}");
+        }
+    }
+    // The loads add to 150, and the reactions balance them.
+    let rx: f64 = step.reaction.iter().map(|r| r[0]).sum();
+    assert!((rx + 150.0).abs() < 1e-9, "sum of reactions {rx}");
+}
