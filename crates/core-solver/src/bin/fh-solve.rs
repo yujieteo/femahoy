@@ -2,17 +2,18 @@
 //! `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vtk]
 //! [--restart-every N] [--restart-minutes T]`.
 //!
-//! Event lines go to stdout. A `cancel` line on stdin, or the end of stdin,
-//! stops the run. `FH_THREADS` sets the number of element threads.
+//! Event lines go to stdout. A `cancel` line on stdin stops the run. The end of
+//! stdin also stops it when `FH_CANCEL_ON_EOF` is `1`, which the runner sets.
+//! `FH_THREADS` sets the number of element threads.
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use fh_core_solver::{input_hash, input_units, run_model, Formats, Input, Options};
-use fh_solver_api::PROTOCOL_HEADER;
+use fh_solver_api::{watch_stdin, PROTOCOL_HEADER};
 
 /// Exit code of a run that the user cancelled.
 const CANCELLED: u8 = 130;
@@ -106,31 +107,7 @@ fn main() -> ExitCode {
     }
     println!("{PROTOCOL_HEADER}");
     let _ = std::io::stdout().flush();
-    let cancel = Arc::new(AtomicBool::new(false));
-    let flag = cancel.clone();
-    std::thread::spawn(move || {
-        // Read in blocks and keep only the start of each line, so a stream with no
-        // line ends (for example /dev/zero) cannot use memory without limit.
-        let mut stdin = std::io::stdin().lock();
-        let (mut block, mut line) = ([0u8; 4096], Vec::<u8>::new());
-        'read: loop {
-            let n = match stdin.read(&mut block) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => n,
-            };
-            for &b in &block[..n] {
-                if b == b'\n' {
-                    if line.trim_ascii() == b"cancel" {
-                        break 'read;
-                    }
-                    line.clear();
-                } else if line.len() < 64 {
-                    line.push(b);
-                }
-            }
-        }
-        flag.store(true, Ordering::Relaxed);
-    });
+    let cancel = watch_stdin();
     match run(
         Path::new(&args[0]),
         Path::new(&args[1]),

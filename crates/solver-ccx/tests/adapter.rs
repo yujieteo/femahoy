@@ -33,7 +33,7 @@ fn fake_ccx(dir: &Path, body: &str) -> PathBuf {
     exe
 }
 
-/// Start the adapter. The stdin pipe stays open, because its end means cancel.
+/// Start the adapter. The stdin pipe can send a `cancel` line.
 fn start(input: &Path, run: &Path, ccx: &Path) -> Child {
     Command::new(EXE)
         .arg(input)

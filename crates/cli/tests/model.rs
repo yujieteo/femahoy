@@ -227,17 +227,11 @@ fn step_to_results_matches_the_analytical_bar() {
     let made = fh(&["model", p(&msh), "--case", p(&dir), "-o", p(&inp)]);
     assert_eq!(made.status.code(), Some(0), "{}", stderr(&made));
     let results = dir.join("results");
-    // The solver stops at the end of stdin, so keep stdin open until it exits.
-    let mut child = Command::new(&solver)
+    let run = Command::new(&solver)
         .args([p(&inp), p(&results), "--formats", "text,vtu"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+        .stdin(Stdio::null())
+        .output()
         .unwrap();
-    let stdin = child.stdin.take();
-    let run = child.wait_with_output().unwrap();
-    drop(stdin);
     let text = stdout(&run);
     assert!(run.status.success(), "{text}{}", stderr(&run));
     // The largest displacement is at a tip corner: 0.1 mm along x, and the Poisson contraction

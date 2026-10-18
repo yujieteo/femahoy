@@ -350,8 +350,7 @@ fn spawn(inp: &Path, d: &Path, restart: bool) -> std::process::Child {
     if restart {
         c.arg("--restart");
     }
-    // Hold stdin open: the end of stdin is a cancel.
-    c.stdin(Stdio::piped())
+    c.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     c.env("FH_THREADS", "2").spawn().unwrap()
@@ -360,7 +359,6 @@ fn spawn(inp: &Path, d: &Path, restart: bool) -> std::process::Child {
 /// Read the event lines of `child`. `kill` gets each line and returns true to kill the
 /// process at that line. Returns true when the kill happened, and false when the run ended.
 fn run_until(mut child: std::process::Child, kill: &mut dyn FnMut(&str) -> bool) -> bool {
-    let _hold = child.stdin.take();
     let out = BufReader::new(child.stdout.take().unwrap());
     for line in out.lines() {
         let Ok(line) = line else { break };
@@ -470,7 +468,7 @@ fn kill_at_file(inp: &Path, d: &Path, restart: bool, file: &str) {
     let child = c
         .env("FH_THREADS", "2")
         .env("FH_TEST_PAUSE_WRITE", file)
-        .stdin(Stdio::piped())
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()

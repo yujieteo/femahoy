@@ -31,7 +31,9 @@ The core solver `fh-solve` also writes these log lines (DESIGN.md section 9.3):
 
 ## Cancel
 
-The runner sends the line `cancel` on stdin. End of stdin also means cancel.
+The runner sends the line `cancel` on stdin.
+The runner also sets the environment variable `FH_CANCEL_ON_EOF=1`. Then the end of stdin also means cancel, so a solver stops when the runner is gone.
+Without `FH_CANCEL_ON_EOF=1`, the end of stdin does not stop the solver. Thus one shell command with no input, for example `fh-solve model.inp out < /dev/null`, finishes the solve.
 The solver must stop, and exit with a non-zero code. A cancelled run is always an error, also if the solver exits with code 0.
 If the solver is still alive after 5 seconds, the runner kills the whole process group.
 

@@ -226,11 +226,9 @@ fn the_executable_takes_a_formats_option() {
         c.arg(&inp)
             .arg(&d)
             .args(extra)
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::null());
-        let mut child = c.spawn().unwrap();
-        let _keep = child.stdin.take();
-        child.wait().unwrap().code()
+        c.status().unwrap().code()
     };
     assert_eq!(status(&["--formats", "vtk"]), Some(0));
     assert!(d.join("step-1.vtk").is_file());

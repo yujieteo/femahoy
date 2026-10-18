@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use fh_core_solver::solve;
 use fh_io::vtu::{read_pvd, read_vtu};
-use fh_solver_api::{CancelToken, Event, SubprocessSolver};
+use fh_solver_api::{CancelToken, Event, SubprocessSolver, CANCEL_ON_EOF};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(format!(
@@ -153,4 +153,28 @@ fn a_cancel_line_stops_the_solver() {
         .run_with(&inp, &dir.join("run"), &token, &mut |_| {})
         .unwrap_err();
     assert!(e.is_cancelled(), "{e}");
+}
+
+#[test]
+fn a_closed_stdin_lets_one_command_finish() {
+    let dir = run_dir("null-stdin");
+    let solve = |run: &str, on_eof: &str| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_fh-solve"))
+            .arg(fixture("patch-test.inp"))
+            .arg(dir.join(run))
+            .env(CANCEL_ON_EOF, on_eof)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap()
+    };
+    let out = solve("run", "");
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(dir.join("run/results.pvd").is_file());
+    assert!(dir.join("run/summary.toon").is_file());
+    // The runner sets the variable: then the end of stdin is a cancel.
+    assert_eq!(solve("runner", "1").status.code(), Some(130));
 }

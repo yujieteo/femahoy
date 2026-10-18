@@ -9,17 +9,15 @@
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fh_inp::{Boundary, ElementTarget, Model, Target};
 use fh_io::result::{base_grid, element_stress};
 use fh_io::vtu::{write_pvd_units, write_vtu, Field, PvdEntry};
-use fh_solver_api::{PROTOCOL_HEADER, PVD_FILE, SUMMARY_FILE};
+use fh_solver_api::{watch_stdin, PROTOCOL_HEADER, PVD_FILE, SUMMARY_FILE};
 use fh_toon as toon;
 
 /// Exit code of a run that the user cancelled.
@@ -574,26 +572,7 @@ fn main() -> ExitCode {
         }
     };
     println!("{PROTOCOL_HEADER}");
-    let cancel = Arc::new(AtomicBool::new(false));
-    let flag = cancel.clone();
-    std::thread::spawn(move || {
-        // A `cancel` line or the end of stdin stops the run. Only the start of a line is kept.
-        let mut stdin = std::io::stdin().lock();
-        let (mut block, mut line) = ([0u8; 4096], Vec::<u8>::new());
-        'read: while let Ok(n @ 1..) = stdin.read(&mut block) {
-            for &b in &block[..n] {
-                if b == b'\n' {
-                    if line.trim_ascii() == b"cancel" {
-                        break 'read;
-                    }
-                    line.clear();
-                } else if line.len() < 64 {
-                    line.push(b);
-                }
-            }
-        }
-        flag.store(true, Ordering::Relaxed);
-    });
+    let cancel = watch_stdin();
     match run(Path::new(inp), Path::new(run_dir), &cancel) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) if e == "cancelled" => {

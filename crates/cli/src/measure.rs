@@ -35,21 +35,15 @@ impl Subprocess {
     ) -> Result<T, String> {
         let run = std::env::temp_dir().join(format!("fh-validate-{}-{stem}", std::process::id()));
         let _ = std::fs::remove_dir_all(&run);
-        // An open stdin pipe keeps the solver running: end of input means cancel.
-        let mut child = Command::new(&self.exe)
+        let out = Command::new(&self.exe)
             .arg(input)
             .arg(&run)
             // The harness reads the VTU only.
             .args(["--formats", "vtu"])
-            .stdin(Stdio::piped())
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
+            .output()
             .map_err(|e| format!("cannot start {}: {e}", self.exe.display()))?;
-        let _stdin = child.stdin.take();
-        let out = child
-            .wait_with_output()
-            .map_err(|e| format!("cannot wait for {}: {e}", self.exe.display()))?;
         let result = if out.status.success() {
             read(&run)
         } else {
