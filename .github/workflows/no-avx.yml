@@ -1,0 +1,53 @@
+name: no-avx
+
+# E3: the x86-64 checks with no AVX, under QEMU with the Nehalem CPU model
+# (scripts/check-no-avx.sh). The emulator is slow, so the job runs on main, when a person
+# starts it, and on a pull request that changes the files of the job.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/no-avx.yml
+      - scripts/check-no-avx.sh
+      - scripts/check-workflow.sh
+      - scripts/check-threads.py
+      - scripts/check-phase-memory.py
+      - scripts/cad/bar.py
+
+permissions:
+  contents: read
+
+jobs:
+  no-avx:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install QEMU, GNU time and the libraries of gmsh
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user time libglu1-mesa libgl1 \
+            libxcursor1 libxft2 libxinerama1 libxrender1 libxfixes3 libxext6 libfontconfig1 libgomp1
+      - name: Install build123d and gmsh
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet build123d==0.13.0 gmsh==4.15.2
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Checks under QEMU Nehalem
+        env:
+          PYTHON: python
+          FH_CHECK_OUT: ${{ runner.temp }}/no-avx
+        run: scripts/check-no-avx.sh
+      - name: Keep the logs and tables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: no-avx-evidence
+          path: ${{ runner.temp }}/no-avx
+          if-no-files-found: ignore

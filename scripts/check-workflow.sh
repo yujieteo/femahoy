@@ -4,28 +4,67 @@
 # Cases: bar-tension (end displacement, plane sets), and bar-pressure and bar-pressure-m
 # (named regions and a pressure load, in mm and in m, at 2 mesh sizes). The references are
 # analytical. The script also checks that fh refuses the inputs of the M2b gate.
-# Environment: PYTHON (python with build123d), FH_GMSH (gmsh program), KEEP=1 (keep the work folder).
+# Environment: PYTHON (python with build123d), FH_GMSH (gmsh program), KEEP=1 (keep the work folder),
+# FH_WORK (use this folder as the work folder and keep it), FH_BIN (a folder with release fh and
+# fh-solve, so no build), FH_EMULATOR (a command that runs fh, fh-solve, python and gmsh, for
+# example "qemu-x86_64 -cpu Nehalem"; scripts/check-no-avx.sh sets it).
+# With GNU time (Linux), each row also gives the elapsed time and the peak resident memory of the
+# step, and times.tsv in the work folder keeps them. Under FH_EMULATOR, they are emulator values.
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 python="${PYTHON:-python3}"
 gmsh="${FH_GMSH:-gmsh}"
-work="$(mktemp -d "${TMPDIR:-/tmp}/fh-workflow.XXXXXX")"
-[[ "${KEEP:-0}" == 1 ]] || trap 'rm -rf "$work"' EXIT
+if [[ -n "${FH_WORK:-}" ]]; then
+  work="$FH_WORK"
+  mkdir -p "$work"
+else
+  work="$(mktemp -d "${TMPDIR:-/tmp}/fh-workflow.XXXXXX")"
+  [[ "${KEEP:-0}" == 1 ]] || trap 'rm -rf "$work"' EXIT
+fi
+read -ra emulator <<<"${FH_EMULATOR:-}"
+clock=native
+[[ ${#emulator[@]} == 0 ]] || clock=emulator
+timer=()
+/usr/bin/time -v -o /dev/null true >/dev/null 2>&1 && timer=(/usr/bin/time -v -o)
 printf 'Work folder: %s\n' "$work"
+[[ $clock == native ]] || printf 'Emulator: %s. The times are emulator times, not hardware times.\n' "$FH_EMULATOR"
+[[ ${#timer[@]} == 0 ]] || printf 'step\telapsed_s\tpeak_rss_mib\tclock\n' >"$work/times.tsv"
 printf '%-30s %-6s %s\n' step result detail
 failed=0
 row() { printf '%-30s %-6s %s\n' "$1" "$2" "${3:-}"; }
+# run NAME COMMAND...: run the command with its output in NAME.log. With GNU time, NAME.time
+# keeps the time and the memory of the command.
+run() {
+  local name="$1"
+  shift
+  if [[ ${#timer[@]} == 0 ]]; then
+    "$@" >"$work/$name.log" 2>&1
+  else
+    "${timer[@]}" "$work/$name.time" "$@" >"$work/$name.log" 2>&1
+  fi
+}
+# used NAME: ", T s, M MiB" from NAME.time, and a row in times.tsv. Nothing without GNU time.
+used() {
+  [[ -f "$work/$1.time" ]] || return 0
+  awk -F': ' -v name="$1" -v clock="$clock" -v tsv="$work/times.tsv" '
+    /Elapsed \(wall clock\) time/ { n = split($2, t, ":"); s = 0; for (i = 1; i <= n; i++) s = s * 60 + t[i] }
+    /Maximum resident set size/ { kib = $2 }
+    END {
+      printf "%s\t%.2f\t%.1f\t%s\n", name, s, kib / 1024, clock >>tsv
+      printf ", %.2f s, %.1f MiB", s, kib / 1024
+    }' "$work/$1.time"
+}
 # step NAME EXPECTED_EXIT COMMAND...: run the command, compare its exit code, keep its output in a log.
 step() {
   local name="$1" want="$2"
   shift 2
-  "$@" >"$work/$name.log" 2>&1
+  run "$name" "$@"
   local got=$?
   if [[ $got == "$want" ]]; then
-    row "$name" PASS "exit $got"
+    row "$name" PASS "exit $got$(used "$name")"
   else
-    row "$name" FAIL "exit $got, expected $want (log: $work/$name.log)"
+    row "$name" FAIL "exit $got, expected $want (log: $work/$name.log)$(used "$name")"
     tail -n 5 "$work/$name.log"
     failed=1
   fi
@@ -43,14 +82,49 @@ finish() {
   row workflow FAIL
   exit 1
 }
-for tool in cargo "$python" "$gmsh"; do
+# emulate NAME PROGRAM: print the path of a wrapper that runs PROGRAM under FH_EMULATOR. The
+# emulator loads binaries only, so a script runs through the interpreter of its #! line.
+emulate() {
+  local exe line wrapper="$work/emulated/$1"
+  local interpreter=()
+  exe="$(command -v "$2")" || return 1
+  if [[ "$(head -c 2 "$exe")" == '#!' ]]; then
+    IFS= read -r line <"$exe"
+    read -ra interpreter <<<"${line#??}"
+    if [[ ${interpreter[0]##*/} == env ]]; then
+      interpreter=("$(command -v "${interpreter[1]}")" "${interpreter[@]:2}")
+    fi
+  fi
+  mkdir -p "$work/emulated"
+  {
+    printf '#!/usr/bin/env bash\nexec'
+    printf ' %q' "${emulator[@]}" "${interpreter[@]}" "$exe"
+    printf ' "$@"\n'
+  } >"$wrapper"
+  chmod +x "$wrapper"
+  printf '%s\n' "$wrapper"
+}
+tools=("$python" "$gmsh")
+[[ -n "${FH_BIN:-}" ]] || tools+=(cargo)
+[[ $clock == native ]] || tools+=("${emulator[0]}")
+for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null 2>&1 || { row "$tool" FAIL "not found"; exit 1; }
 done
 "$python" -c 'import build123d' >/dev/null 2>&1 || { row build123d FAIL "python cannot import build123d"; exit 1; }
-step build 0 cargo build --release --bin fh --bin fh-solve || finish
-target="${CARGO_TARGET_DIR:-$root/target}/release"
+if [[ -n "${FH_BIN:-}" ]]; then
+  target="$FH_BIN"
+else
+  step build 0 cargo build --release --bin fh --bin fh-solve || finish
+  target="${CARGO_TARGET_DIR:-$root/target}/release"
+fi
 fh="$target/fh"
 export FH_SOLVE="$target/fh-solve"
+if [[ $clock == emulator ]]; then
+  fh="$(emulate fh "$fh")"
+  FH_SOLVE="$(emulate fh-solve "$FH_SOLVE")"
+  python="$(emulate python "$python")"
+  gmsh="$(emulate gmsh "$gmsh")"
+fi
 
 # copy_case NAME ROOT: a scratch repository root that holds the case without its mesh files.
 copy_case() {
@@ -72,12 +146,12 @@ path() {
 }
 # validate NAME ROOT: solve every case under ROOT and compare with the analytical references.
 validate() {
-  "$fh" validate --root "$2" >"$work/$1.log" 2>&1
+  run "$1" "$fh" validate --root "$2"
   local code=$?
   printf '\n'
   cat "$work/$1.log"
   printf '\n'
-  if [[ $code == 0 ]]; then row "$1" PASS "exit 0"; else row "$1" FAIL "exit $code"; failed=1; fi
+  if [[ $code == 0 ]]; then row "$1" PASS "exit 0$(used "$1")"; else row "$1" FAIL "exit $code$(used "$1")"; failed=1; fi
 }
 
 # 1. bar-tension: plane node sets and an end displacement.
