@@ -195,7 +195,7 @@ See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 ## `fh serve`
 
 ```text
-fh serve [--state DIR] [--port N]
+fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH]
 ```
 
 Source: [serve.rs](../../crates/daemon/src/serve.rs). The dispatcher calls it with the solver of `fh validate`.
@@ -204,14 +204,18 @@ The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0
 `--state` defaults to `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy` (`%LOCALAPPDATA%\femahoy` on Windows).
 `--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
+The page has the terminal sidebar ([terminal](../terminal.md)).
+`--panes` selects the pane backend: `auto` (the default) uses herdr when it answers, else plain PTYs of the daemon.
+`--herdr-session` names the herdr session that femahoy owns (default `femahoy`, never `default`). `--herdr` gives the herdr program.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), and the state folder. `DIR/daemon.info` gets the port and the token. | |
+| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the pane backend (for example `fh serve: panes pty (plain PTY panes owned by the daemon)`), and the state folder. `DIR/daemon.info` gets the port and the token. | |
 | Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
-| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running` | 1 |
+| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`, `pane.herdr.session` (`--herdr-session default`), `pane.herdr.absent` (`--panes herdr` and no herdr on `PATH`) or `pane.herdr` (herdr does not answer) | 1 |
 | Missing option value | `fh serve: OPTION needs a value` | 2 |
 | Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
+| Bad pane backend | `fh serve: --panes is auto, herdr or pty, not VALUE` | 2 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
 
 ## `fh view`

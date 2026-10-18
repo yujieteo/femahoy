@@ -1,5 +1,6 @@
 //! The eframe app: a viewport, a results panel, a status bar and the mouse controls. The
-//! same code runs in the native window (`fh view`) and in the browser (`fh serve`).
+//! same code runs in the native window (`fh view`) and in the browser (`fh serve`). In the
+//! browser, the terminal sidebar is beside the viewport.
 
 use std::sync::{Arc, Mutex};
 
@@ -10,6 +11,7 @@ use crate::camera::Camera;
 use crate::gpu::{FrameParams, Geometry, MeshCallback, MeshGpu};
 use crate::mesh::RenderMesh;
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
+use crate::sidebar::Sidebar;
 use crate::view::{self, Contour, ViewState};
 
 /// What the viewer shows.
@@ -46,6 +48,9 @@ pub struct ViewerApp {
     message: Option<(bool, String)>,
     runs: Option<Vec<(String, String)>>,
     slot: Option<ContentSlot>,
+    /// The terminal sidebar: only on the page of `fh serve`.
+    sidebar: Option<Sidebar>,
+    sidebar_open: bool,
 }
 
 impl ViewerApp {
@@ -62,9 +67,16 @@ impl ViewerApp {
             message: None,
             runs: None,
             slot,
+            sidebar: None,
+            sidebar_open: true,
         };
         app.set_content(content);
         app
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_sidebar(&mut self, sidebar: Sidebar) {
+        self.sidebar = Some(sidebar);
     }
 
     fn set_content(&mut self, content: Content) {
@@ -321,8 +333,16 @@ impl eframe::App for ViewerApp {
                     .request_repaint_after(std::time::Duration::from_millis(100));
             }
         }
+        if let Some(s) = &mut self.sidebar {
+            s.poll();
+        }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
+                if self.sidebar.is_some() {
+                    ui.toggle_value(&mut self.sidebar_open, "Terminal")
+                        .on_hover_text("show or hide the terminal sidebar");
+                    ui.separator();
+                }
                 ui.label(self.status_text());
                 ui.separator();
                 ui.weak(
@@ -330,6 +350,14 @@ impl eframe::App for ViewerApp {
                 );
             });
         });
+        if let (Some(s), true) = (&mut self.sidebar, self.sidebar_open) {
+            let width = (ui.available_width() * 0.4).clamp(320.0, 640.0);
+            egui::Panel::right("terminal")
+                .resizable(true)
+                .default_size(width)
+                .min_size(320.0)
+                .show(ui, |ui| s.ui(ui));
+        }
         let has_results = self.shown.as_ref().is_some_and(|s| s.results.is_some());
         if has_results {
             let shown = self.shown.as_mut().expect("has results");
