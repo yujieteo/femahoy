@@ -1,34 +1,24 @@
-# Terminal sidebar and pane backends
+# Terminal sidebar and pane backend
 
 This page describes the terminal sidebar of `fh serve` (DESIGN.md sections 3 and 4.3) as it is built.
-The code is in `crates/daemon` (`pty.rs`, `panes.rs`, `herdr.rs`, `ws.rs`, `screen.rs`, `http.rs`) and in `crates/viewer` (`terminal.rs`, `sidebar.rs`).
+The code is in `crates/daemon` (`pty.rs`, `panes.rs`, `ws.rs`, `screen.rs`, `http.rs`) and in `crates/viewer` (`terminal.rs`, `sidebar.rs`).
 
 ## Summary
 
 - The terminal sidebar is a real shell on this machine. It shows beside the 3D view of the viewer page.
 - The daemon owns the PTY of each terminal. A terminal continues to run when the browser closes. A new browser gets the full screen again.
-- The daemon owns the pane backend. The backend is herdr when herdr is installed and answers, else plain PTYs of the daemon.
+- The daemon owns the pane backend: plain PTYs of the daemon.
 - Each terminal and pane route has the same token and `Origin` rules as the other routes of `fh serve`. The daemon listens on 127.0.0.1 only.
-- femahoy never bundles herdr. It calls the `herdr` program that the user installed. Herdr 0.9.3 is under the Apache License 2.0.
 
 ## Start
 
 ```sh
-fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH]
+fh serve [--state DIR] [--port N]
 ```
 
-| Option | Default | Effect |
-|---|---|---|
-| `--panes auto` | yes | herdr when `herdr status --json` answers, else pty |
-| `--panes herdr` | | herdr, or an error at start (`pane.herdr.absent`, `pane.herdr`) |
-| `--panes pty` | | plain PTYs that the daemon owns, also when herdr is installed |
-| `--herdr-session NAME` | `femahoy` | the herdr session that femahoy owns. `default` is refused at start with each backend (`pane.herdr.session`) |
-| `--herdr PATH` | `herdr` on `PATH` | the herdr program |
-
-`fh serve` prints one line for the backend, for example:
+`fh serve` prints one line for the backend:
 
 ```text
-fh serve: panes herdr, session femahoy (herdr 0.9.3)
 fh serve: panes pty (plain PTY panes owned by the daemon)
 ```
 
@@ -52,11 +42,11 @@ The rules are the rules of `crates/daemon/src/http.rs`:
 The page of `fh serve` shows the sidebar on the right of the 3D view and the results panel.
 
 - The `Terminal` switch in the status bar shows or hides the sidebar. Drag the left edge of the sidebar to change its width.
-- `+ Shell` opens a new sidebar shell. `Herdr` opens the herdr client on the session of femahoy. With the pty backend, `Herdr` is off.
-- Each shell and herdr terminal of the daemon has a tab. The label is the terminal ID, then the title that the program set (or the kind), then the exit code when the program ended.
+- `+ Shell` opens a new sidebar shell.
+- Each shell terminal of the daemon has a tab. The label is the terminal ID, then the title that the program set (or the kind), then the exit code when the program ended.
 - `Close` stops the program of the tab and removes the terminal from the daemon. When you close the browser page, the programs continue to run.
 - When the WebSocket closes, the tab shows the reason and `Connect again`.
-- The `Panes` section shows the backend, each pane, and a form for a new pane (a title and an optional command). `Show` opens a pty pane in a tab. A herdr pane shows in Herdr.
+- The `Panes` section shows the backend, each pane, and a form for a new pane (a title and an optional command). `Show` opens a pane in a tab.
 - The page reads the terminal list and the panes every 5 seconds. Thus a terminal that another page opened, or a terminal that ended, shows without a reload.
 
 Keys and mouse:
@@ -81,11 +71,9 @@ A terminal is one program in one PTY of the daemon.
 | Kind | Program |
 |---|---|
 | `shell` | the sidebar shell |
-| `herdr` | `herdr --session <session>`: the herdr client on the session of femahoy. Only with the herdr backend. There is one at a time: a second request gets the running one. |
-| `pane` | the shell of a PTY pane (pty backend) |
+| `pane` | the shell of a PTY pane |
 
 Each program gets these environment variables: `TERM=xterm-256color`, `COLORTERM=truecolor` and `TERM_PROGRAM=femahoy`.
-The daemon removes each `HERDR_*` variable that it has, so a program never reaches a herdr session around the daemon.
 
 Limits:
 
@@ -98,36 +86,21 @@ Limits:
 
 States: `running`, `exited` (the program ended, the record stays) and `closed`.
 A close sends SIGHUP to the process group of the program. If the program continues, the daemon sends SIGKILL after 1 second. SIGHUP and SIGKILL go to the process group of the program only. A job in another process group that ignores SIGHUP continues, as in other terminal programs.
-When the daemon stops, it closes each terminal. A herdr pane stays in herdr.
+When the daemon stops, it closes each terminal.
 
-## Pane backends
+## Pane backend
 
-All code that shows or drives panes uses the `PaneBackend` trait (`crates/daemon/src/panes.rs`), never herdr directly.
+All code that shows or drives panes uses the `PaneBackend` trait (`crates/daemon/src/panes.rs`).
 
-| Operation | pty backend | herdr backend |
-|---|---|---|
-| open | a new `pane` terminal. The command is typed with Enter. | the root pane of the `femahoy` workspace, then the root pane of a new tab in it. Then `pane rename` and `pane run`. |
-| list, get | the `pane` terminals | the panes of the `femahoy` workspace |
-| read | the last lines of the terminal text | `pane read --source recent-unwrapped --lines N` |
-| send | the text bytes, then the key bytes | `pane send-text`, then `pane send-keys` |
-| close | close the terminal | `pane close` |
+| Operation | pty backend |
+|---|---|
+| open | a new `pane` terminal. The command is typed with Enter. |
+| list, get | the `pane` terminals |
+| read | the last lines of the terminal text |
+| send | the text bytes, then the key bytes |
+| close | close the terminal |
 
-The pane ID of the pty backend is the terminal ID, so the sidebar shows the pane as a terminal.
-A herdr pane shows in herdr, and herdr runs in the sidebar.
-
-### herdr isolation
-
-- Each call is `herdr --session <session> <command>` with `HERDR_SESSION=<session>` and no other `HERDR_*` variable.
-- The session `default` is refused in any case of letters.
-- femahoy runs only these commands: `status --json`, `workspace list`, `workspace create`, `tab create`, `pane list`, `pane get`, `pane read`, `pane rename`, `pane run`, `pane send-text`, `pane send-keys` and `pane close`. Any other command fails with 500 `pane.herdr.refused` before it starts.
-- femahoy never runs a `server` or `session` command, so it never starts or stops a herdr server. The herdr client in the sidebar starts the session.
-- femahoy reads, drives and closes only the panes of its `femahoy` workspace. A pane of another workspace gives 404 `pane.unknown`.
-- A herdr call that takes more than 10 seconds is stopped (504 `pane.herdr.timeout`).
-- herdr 0.9 writes an error as JSON on stderr. femahoy reads `error.code` and `error.message` from it. `pane_not_found`, `workspace_not_found` and `tab_not_found` give 404 `pane.unknown`. Each other error gives 502 `pane.herdr`.
-- `GET /api/v1/terminals` calls no herdr. `GET /api/v1/panes` calls `status --json`, `workspace list` and `pane list`.
-
-When the herdr session does not run, `GET /api/v1/panes` gives `running=no`, and each other pane route fails with 409 `pane.herdr.stopped`.
-To start the session, open Herdr in the terminal sidebar.
+The pane ID is the terminal ID, so the sidebar shows the pane as a terminal.
 
 ### Keys
 
@@ -148,13 +121,13 @@ An unknown name fails with 400 `pane.key`.
 
 | Method and path | Body | Answer |
 |---|---|---|
-| `GET /api/v1/terminals` | | `panes` (the backend), `herdr` (the session or `-`); one item `<t> <kind> <state> <title>` for each terminal |
-| `POST /api/v1/terminals` | `kind` (`shell` or `herdr`) | terminal record |
+| `GET /api/v1/terminals` | | `panes` (the backend); one item `<t> <kind> <state> <title>` for each terminal |
+| `POST /api/v1/terminals` | `kind` (`shell`) | terminal record |
 | `GET /api/v1/terminals/<t>` | | terminal record |
 | `GET /api/v1/terminals/<t>/text?lines=N` | | one item for each line of text (default 50) |
 | `POST /api/v1/terminals/<t>/close` | | terminal record |
 | `GET /api/v1/terminals/<t>/ws` | | WebSocket upgrade, subprotocol `fh.term.v1` |
-| `GET /api/v1/panes` | | `backend`, `session`, `running` (`yes` or `no`), `detail`; one item `<pane> <state> <t or -> <title>` for each pane |
+| `GET /api/v1/panes` | | `backend`, `detail`; one item `<pane> <state> <t or -> <title>` for each pane |
 | `POST /api/v1/panes` | `title`, optional `cwd` and `command` | pane record |
 | `GET /api/v1/panes/<pane>` | | pane record |
 | `GET /api/v1/panes/<pane>/text?lines=N` | | one item for each line of text (default 50) |
@@ -248,8 +221,7 @@ The daemon applies the inverse, dim and hidden attributes to the colours before 
 | Code | Status | Cause |
 |---|---|---|
 | `term.unknown` | 404 | no terminal with this ID |
-| `term.kind` | 400 | a kind that is not `shell` or `herdr` |
-| `term.herdr.absent` | 409 | the backend is pty, so the sidebar has no herdr |
+| `term.kind` | 400 | a kind that is not `shell` |
 | `term.program` | 409 | the program is not on `PATH` |
 | `term.spawn` | 500 | the PTY or the program did not start |
 | `term.ended` | 409 | input to a terminal that ended |
@@ -258,12 +230,6 @@ The daemon applies the inverse, dim and hidden attributes to the colours before 
 | `ws.invalid` | 400 | a WebSocket request with a bad `Upgrade`, `Connection`, version, key or subprotocol |
 | `pane.unknown` | 404 | no pane with this ID in the backend |
 | `pane.title`, `pane.cwd`, `pane.command`, `pane.key` | 400 | a bad pane field |
-| `pane.herdr.absent` | 400 | `--panes herdr`, and herdr is not on `PATH` |
-| `pane.herdr.session` | 400 | a session name that femahoy cannot own, for example `default` |
-| `pane.herdr.stopped` | 409 | the herdr session does not run |
-| `pane.herdr` | 502 | herdr did not start or gave an error |
-| `pane.herdr.timeout` | 504 | a herdr call took more than 10 seconds |
-| `pane.herdr.refused` | 500 | femahoy tried a herdr command that it does not run |
 
 ## Tests
 
@@ -272,8 +238,6 @@ The daemon applies the inverse, dim and hidden attributes to the colours before 
 | `crates/daemon/tests/terminal.rs` `every_terminal_and_pane_route_keeps_the_access_rules` | the access rules on each terminal and pane route |
 | `a_shell_runs_over_the_websocket_and_outlives_its_browser` | input, resize, output, a new browser, the exit code |
 | `pty_panes_run_commands_and_take_keys` | the pty backend and its errors |
-| `the_herdr_backend_calls_only_its_own_session` | with a fake herdr: each call has `--session`, only allowed commands, no `HERDR_*` variable of the daemon, and the `auto` fall-back |
-| `herdr_lab_session` | the real herdr: open, run, read, send and close a pane, and a closed pane gives `pane.unknown`. It is ignored in a normal run. Run it with `cargo test -p fh-daemon --test terminal herdr_lab_session -- --ignored` and `FH_TEST_HERDR_SESSION` set to a provisioned `fm-lab-` session. Without that variable it fails. `FH_TEST_HERDR_PROGRAM` sets the herdr program, for example a wrapper that sends each call through the lab helper. |
-| `crates/daemon/src/pty.rs`, `screen.rs`, `ws.rs`, `json.rs` unit tests | colours, wide text, scrollback, close, the frame rules, the fixture |
+| `crates/daemon/src/pty.rs`, `screen.rs`, `ws.rs` unit tests | colours, wide text, scrollback, close, the frame rules, the fixture |
 | `crates/viewer/src/terminal.rs` unit tests | the decoder against the fixture, a bad message that changes nothing, the client messages, the keys, the paste, the mouse reports, the selection |
 | `crates/viewer/src/sidebar.rs` unit tests | with a fake daemon: the tabs follow the terminal list, open, show, close, the panes form, the error line, the tab label |

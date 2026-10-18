@@ -16,7 +16,7 @@ The crate has the result viewer (`docs/viewer.md`): one eframe app for the nativ
 - The contour values and the deformed positions come from the result files with no change other than `x + scale * U`.
 - The browser sends the token only to its own origin: in the `Authorization` header, and in the WebSocket subprotocol `fh.token.<token>`.
 - The viewer does not use `alacritty_terminal`. The daemon runs the terminal emulator (`crates/daemon/src/pty.rs`) and the viewer only draws its screens.
-- The sidebar reads the panes from the daemon, never from herdr directly (DESIGN.md section 4.3).
+- The sidebar reads the panes from the daemon (DESIGN.md section 4.3).
 
 ## Forbidden actions
 

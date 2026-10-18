@@ -1,11 +1,9 @@
-//! `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME]
-//! [--herdr PATH] [--no-open]`: run the daemon until a stop signal. The daemon listens on
+//! `fh serve [--state DIR] [--port N] [--no-open]`: run the daemon until a stop signal. The daemon listens on
 //! 127.0.0.1 only, and no option changes the address. It makes a random token at each start
 //! and writes the port and the token to `DIR/daemon.info` (mode 0600). Each request must
 //! carry the token, and a request from a page of another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`, with
-//! the terminal sidebar. The pane backend is herdr when herdr answers, else plain PTYs
-//! (`--panes auto`). herdr calls use the session `--herdr-session` (default `femahoy`).
+//! the terminal sidebar. The panes are plain PTYs of the daemon.
 //! At start, `fh serve` opens the page in the browser (`browser` module).
 //!
 //! `fh serve --stop [--state DIR]` stops the daemon of the state folder, for example the
@@ -21,10 +19,9 @@ use fh_solver_api::SubprocessSolver;
 
 use crate::browser::{no_open, open_page};
 use crate::service::LOCK_FILE;
-use crate::{Client, Config, Daemon, Options, PaneChoice};
+use crate::{Client, Config, Daemon, Options};
 
-const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] \
-                     [--herdr-session NAME] [--herdr PATH] [--no-open]\n       \
+const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--no-open]\n       \
                      fh serve --stop [--state DIR]";
 
 /// The longest time that `fh serve --stop` waits for the daemon to end its runs.
@@ -46,10 +43,7 @@ pub fn serve_until(
 ) -> Result<ExitCode, String> {
     let mut state = None;
     let mut port = 0;
-    let mut options = Options {
-        panes: PaneChoice::Auto,
-        ..Options::default()
-    };
+    let mut options = Options::default();
     let (mut no_open_option, mut stop_option, mut start_option) = (false, false, false);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
@@ -64,16 +58,6 @@ pub fn serve_until(
                     .parse()
                     .map_err(|_| format!("--port needs a number from 0 to 65535\n{USAGE}"))?
             }
-            "--panes" => {
-                options.panes = match value()?.as_str() {
-                    "auto" => PaneChoice::Auto,
-                    "herdr" => PaneChoice::Herdr,
-                    "pty" => PaneChoice::Pty,
-                    v => return Err(format!("--panes is auto, herdr or pty, not {v}\n{USAGE}")),
-                }
-            }
-            "--herdr-session" => options.herdr_session = value()?.clone(),
-            "--herdr" => options.herdr_program = Some(PathBuf::from(value()?)),
             "--no-open" => no_open_option = true,
             "--stop" => stop_option = true,
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
@@ -123,15 +107,7 @@ pub fn serve_until(
         ),
     }
     let panes = daemon.panes().status();
-    match (&panes.session, panes.running) {
-        (Some(s), true) => println!("fh serve: panes herdr, session {s} ({})", panes.detail),
-        (Some(s), false) => println!(
-            "fh serve: panes herdr, session {s} ({}). The session is not running: open \
-             Herdr in the terminal sidebar to start it.",
-            panes.detail
-        ),
-        (None, _) => println!("fh serve: panes pty ({})", panes.detail),
-    }
+    println!("fh serve: panes {} ({})", panes.kind, panes.detail);
     println!(
         "fh serve: state folder {}. Stop with Ctrl+C.",
         state_dir.display()

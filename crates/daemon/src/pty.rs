@@ -31,7 +31,6 @@ const END_WAIT: Duration = Duration::from_secs(1);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Shell,
-    Herdr,
     Pane,
 }
 
@@ -39,7 +38,6 @@ impl Kind {
     pub fn name(self) -> &'static str {
         match self {
             Kind::Shell => "shell",
-            Kind::Herdr => "herdr",
             Kind::Pane => "pane",
         }
     }
@@ -155,16 +153,6 @@ pub struct Terminal {
     reaper: Mutex<Option<JoinHandle<()>>>,
 }
 
-pub(crate) fn unset_herdr(vars: impl Iterator<Item = String>) -> Vec<String> {
-    vars.filter(|k| k.starts_with("HERDR_"))
-        .flat_map(|k| ["-u".to_owned(), k])
-        .collect()
-}
-
-pub(crate) fn env_names() -> impl Iterator<Item = String> {
-    std::env::vars_os().filter_map(|(k, _)| k.into_string().ok())
-}
-
 pub fn find_program(program: &str) -> Option<PathBuf> {
     if program.contains('/') {
         let p = Path::new(program);
@@ -195,13 +183,7 @@ impl Terminal {
             env: env.map(|(k, v)| (k.into(), v.into())).into(),
             ..Default::default()
         };
-        options.shell = Some(if cfg!(unix) {
-            let mut args = unset_herdr(env_names());
-            args.extend(argv);
-            tty::Shell::new("/usr/bin/env".into(), args)
-        } else {
-            tty::Shell::new(argv.remove(0), argv)
-        });
+        options.shell = Some(tty::Shell::new(argv.remove(0), argv));
         let (cols, rows) = START_SIZE;
         let pty = tty::new(&options, window(cols, rows), 0)
             .map_err(|e| Error::new(500, "term.spawn", format!("{program}: {e}")))?;
@@ -653,11 +635,6 @@ impl Terminals {
         Ok(())
     }
 
-    pub fn running(&self, kind: Kind) -> Option<Arc<Terminal>> {
-        let list = self.list.lock().unwrap();
-        list.iter().find(|t| t.kind == kind && t.running()).cloned()
-    }
-
     pub fn list(&self) -> Vec<Arc<Terminal>> {
         self.list.lock().unwrap().clone()
     }
@@ -816,18 +793,11 @@ mod tests {
     }
 
     #[test]
-    fn the_program_gets_no_herdr_variable_and_a_missing_program_fails() {
-        let names = ["PATH", "HERDR_PANE_ID", "HERDR_SOCKET_PATH"].map(String::from);
-        assert_eq!(
-            unset_herdr(names.into_iter()),
-            ["-u", "HERDR_PANE_ID", "-u", "HERDR_SOCKET_PATH"]
-        );
+    fn the_program_gets_term_and_a_missing_program_fails() {
         let terms = Terminals::default();
-        let t = terms
-            .open(sh("echo \"[$(env | grep -c ^HERDR_)] $TERM\""))
-            .unwrap();
+        let t = terms.open(sh("echo \"$TERM\"")).unwrap();
         wait_for(&t, |t| !t.running());
-        assert_eq!(t.text(1), "[0] xterm-256color");
+        assert_eq!(t.text(1), "xterm-256color");
         let mut spec = sh("");
         spec.argv = vec!["fh-no-such-program".into()];
         let e = terms.open(spec).err().unwrap();

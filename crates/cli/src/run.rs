@@ -26,8 +26,8 @@ use std::time::{Duration, Instant};
 use fh_daemon::{new_request_id, Client, Error, Event, Outcome, RunRecord, RunState};
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] \
-[--state DIR] [--panes auto|herdr|pty] [--no-open]\n       fh run --example NAME [--size H] \
-[--order 1|2] [--state DIR] [--panes auto|herdr|pty] [--no-open]";
+[--state DIR] [--no-open]\n       fh run --example NAME [--size H] [--order 1|2] \
+[--state DIR] [--no-open]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -82,8 +82,6 @@ struct Options {
     size: Option<String>,
     order: Option<String>,
     state: Option<PathBuf>,
-    /// The `--panes` of a daemon that `fh run` starts.
-    panes: Option<String>,
     no_open: bool,
 }
 
@@ -121,15 +119,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 o.order = Some(order);
             }
             "--state" => o.state = Some(value("a folder")?.into()),
-            "--panes" => {
-                let panes = value("auto, herdr or pty")?;
-                if !["auto", "herdr", "pty"].contains(&panes.as_str()) {
-                    return Err(format!(
-                        "--panes is auto, herdr or pty, not {panes}\n{USAGE}"
-                    ));
-                }
-                o.panes = Some(panes);
-            }
             "--no-open" => o.no_open = true,
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
             s if o.target.is_none() => o.target = Some(s.into()),
@@ -262,8 +251,8 @@ fn answers(state: &Path) -> Option<Client> {
 }
 
 /// The daemon of the state folder: the daemon that answers, else a new `fh serve` in the
-/// background, with `--panes` when `panes` is given. The flag is true for a new daemon.
-fn daemon(state: &Path, panes: Option<&str>) -> Result<(Client, bool), String> {
+/// background. The flag is true for a new daemon.
+fn daemon(state: &Path) -> Result<(Client, bool), String> {
     if let Some(client) = answers(state) {
         return Ok((client, false));
     }
@@ -289,7 +278,6 @@ fn daemon(state: &Path, panes: Option<&str>) -> Result<(Client, bool), String> {
         .arg("--state")
         .arg(state)
         .arg("--no-open")
-        .args(panes.map(|p| ["--panes", p]).into_iter().flatten())
         .current_dir(state)
         .stdin(Stdio::null())
         .stdout(log)
@@ -586,7 +574,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         (None, Some(example)) => resolve(&write_example(&state, example)?)?,
         (None, None) => unreachable!("parse needs a model or an example"),
     };
-    let (client, started) = match daemon(&state, o.panes.as_deref()) {
+    let (client, started) = match daemon(&state) {
         Ok(found) => found,
         Err(e) => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
     };
@@ -733,17 +721,8 @@ mod tests {
         assert!(parse(&args(&["m.inp", "--order", "3"])).is_err());
         assert!(parse(&args(&["m.inp", "--example", "bar-pressure"])).is_err());
         assert!(parse(&args(&[])).is_err());
-        assert!(parse(&args(&["m.inp", "--panes", "tmux"])).is_err());
-        let o = parse(&args(&[
-            "--example",
-            "bar-pressure",
-            "--no-open",
-            "--panes",
-            "pty",
-        ]))
-        .unwrap();
+        let o = parse(&args(&["--example", "bar-pressure", "--no-open"])).unwrap();
         assert!(o.no_open && o.example.as_deref() == Some("bar-pressure"));
-        assert_eq!(o.panes.as_deref(), Some("pty"));
     }
 
     #[test]

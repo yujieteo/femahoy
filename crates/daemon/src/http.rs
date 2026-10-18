@@ -33,13 +33,13 @@
 //! | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
 //! | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events |
 //! | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
-//! | `GET /api/v1/terminals` | | `panes`, `herdr`; one item `<t> <kind> <state> <title>` for each terminal |
-//! | `POST /api/v1/terminals` | `kind` (`shell` or `herdr`) | terminal record |
+//! | `GET /api/v1/terminals` | | `panes`; one item `<t> <kind> <state> <title>` for each terminal |
+//! | `POST /api/v1/terminals` | `kind` (`shell`) | terminal record |
 //! | `GET /api/v1/terminals/<t>` | | terminal record |
 //! | `GET /api/v1/terminals/<t>/text?lines=N` | | one item for each line of text |
 //! | `POST /api/v1/terminals/<t>/close` | | terminal record |
 //! | `GET /api/v1/terminals/<t>/ws` | | WebSocket upgrade, subprotocol `fh.term.v1` (`docs/terminal.md`) |
-//! | `GET /api/v1/panes` | | `backend`, `session`, `running`, `detail`; one item `<pane> <state> <t or -> <title>` for each pane |
+//! | `GET /api/v1/panes` | | `backend`, `detail`; one item `<pane> <state> <t or -> <title>` for each pane |
 //! | `POST /api/v1/panes` | `title`, optional `cwd`, `command` | pane record |
 //! | `GET /api/v1/panes/<pane>` | | pane record |
 //! | `GET /api/v1/panes/<pane>/text?lines=N` | | one item for each line of text |
@@ -505,15 +505,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     match (req.method.as_str(), &segments[..]) {
         ("GET", ["", "viewer", name]) => return viewer_file(ctx.viewer.as_deref(), name),
         ("GET", ["", "api", "v1", "terminals"]) => {
-            m.set(
-                "panes",
-                if sidebar.herdr.is_some() {
-                    "herdr"
-                } else {
-                    "pty"
-                },
-            );
-            m.set("herdr", sidebar.herdr.as_ref().map_or("-", |h| h.session()));
+            m.set("panes", sidebar.panes.status().kind);
             m.items = sidebar
                 .terminals
                 .list()
@@ -540,20 +532,16 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
         ("GET", ["", "api", "v1", "panes"]) => {
             let status = sidebar.panes.status();
             m.set("backend", status.kind);
-            m.set("session", status.session.as_deref().unwrap_or("-"));
-            m.set("running", if status.running { "yes" } else { "no" });
             m.set("detail", &status.detail);
-            if status.running {
-                m.items = sidebar
-                    .panes
-                    .list()?
-                    .iter()
-                    .map(|p| {
-                        let t = p.terminal.as_deref().unwrap_or("-");
-                        format!("{} {} {t} {}", p.id, p.state, p.title)
-                    })
-                    .collect();
-            }
+            m.items = sidebar
+                .panes
+                .list()?
+                .iter()
+                .map(|p| {
+                    let t = p.terminal.as_deref().unwrap_or("-");
+                    format!("{} {} {t} {}", p.id, p.state, p.title)
+                })
+                .collect();
         }
         ("POST", ["", "api", "v1", "panes"]) => {
             let b = body()?;

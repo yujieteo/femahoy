@@ -1,47 +1,30 @@
-//! The pane backend (DESIGN.md section 4.3): the panes where teammates run. The backend
-//! is herdr when herdr is installed (`herdr.rs`), else plain PTYs that the daemon owns.
-//! Everything that shows or drives panes reads them from [`PaneBackend`], never from
-//! herdr directly.
+//! The pane backend (DESIGN.md section 4.3): the panes where teammates run, plain PTYs
+//! that the daemon owns. Everything that shows or drives panes reads them from
+//! [`PaneBackend`].
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::contract::Error;
-use crate::herdr::Herdr;
 use crate::pty::{Kind, Spec, Terminal, Terminals};
 
 pub struct Sidebar {
     pub terminals: Arc<Terminals>,
     pub panes: Box<dyn PaneBackend>,
-    pub herdr: Option<Herdr>,
     pub shell: Vec<String>,
-    pub open_lock: Mutex<()>,
 }
 
 impl Sidebar {
-    /// Open a terminal of `kind` (`shell` or `herdr`). There is one herdr client at a time:
-    /// a second request gets the running one.
+    /// Open a terminal of `kind` (`shell`).
     pub fn open(&self, kind: &str) -> Result<Arc<Terminal>, Error> {
-        let _one_open = self.open_lock.lock().unwrap_or_else(|e| e.into_inner());
-        let (kind, argv) = match (kind, &self.herdr) {
-            ("shell", _) => (Kind::Shell, self.shell.clone()),
-            ("herdr", Some(h)) => match self.terminals.running(Kind::Herdr) {
-                Some(t) => return Ok(t),
-                None => (Kind::Herdr, h.client_argv()),
-            },
-            ("herdr", None) => {
-                return Err(Error::new(
-                    409,
-                    "term.herdr.absent",
-                    "the pane backend is pty, so the sidebar has no herdr; install herdr and start fh serve with --panes herdr",
-                ))
-            }
-            _ => return Err(Error::bad("term.kind", format!("unknown terminal kind {kind:?}; use shell or herdr"))),
-        };
+        if kind != "shell" {
+            let message = format!("unknown terminal kind {kind:?}; use shell");
+            return Err(Error::bad("term.kind", message));
+        }
         self.terminals.open(Spec {
-            kind,
-            name: kind.name().into(),
-            argv,
+            kind: Kind::Shell,
+            name: Kind::Shell.name().into(),
+            argv: self.shell.clone(),
             cwd: None,
         })
     }
@@ -73,8 +56,6 @@ pub struct Pane {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackendStatus {
     pub kind: &'static str,
-    pub session: Option<String>,
-    pub running: bool,
     pub detail: String,
 }
 
@@ -129,8 +110,8 @@ impl Key {
     }
 }
 
-/// The operations on panes. Both backends give the same errors: `pane.unknown` (404) for
-/// a pane that does not exist or that femahoy does not own.
+/// The operations on panes. A pane that does not exist, or that femahoy does not own, gives
+/// `pane.unknown` (404).
 pub trait PaneBackend: Send + Sync {
     fn status(&self) -> BackendStatus;
     fn open(&self, spec: &PaneSpec) -> Result<Pane, Error>;
@@ -206,8 +187,6 @@ impl PaneBackend for PtyPanes {
     fn status(&self) -> BackendStatus {
         BackendStatus {
             kind: "pty",
-            session: None,
-            running: true,
             detail: "plain PTY panes owned by the daemon".into(),
         }
     }

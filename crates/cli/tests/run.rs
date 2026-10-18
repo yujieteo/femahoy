@@ -1,8 +1,6 @@
 //! `fh run` and the browser and stop options of `fh serve`. Each test has its own state
 //! folder and stops its daemon at the end. Each command gets a fake browser program in
-//! `BROWSER` and `FH_NO_OPEN=1`, so that no test opens the browser of the machine. Each
-//! command that can start a daemon gets `--panes pty`, so that no test calls the herdr of the
-//! machine.
+//! `BROWSER` and `FH_NO_OPEN=1`, so that no test opens the browser of the machine.
 //!
 //! The fake gmsh copies `fixtures/msh/bar-pressure.msh`, the output of gmsh 4.15.2 for
 //! `fh mesh validation/cases/bar-pressure/bar.step --case validation/cases/bar-pressure`.
@@ -78,14 +76,10 @@ impl Lab {
         }
     }
 
-    /// `fh ARGS --state STATE --panes pty` with the fake browser, `FH_NO_OPEN=1` and the fake
-    /// gmsh. `fh serve --stop` takes no `--panes`.
+    /// `fh ARGS --state STATE` with the fake browser, `FH_NO_OPEN=1` and the fake gmsh.
     fn cmd(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
         cmd.args(args).args(["--state", p(&self.state)]);
-        if !args.contains(&"--stop") {
-            cmd.args(["--panes", "pty"]);
-        }
         cmd.current_dir(&self.dir)
             .env("BROWSER", self.dir.join("browser"))
             .env("FH_NO_OPEN", "1")
@@ -183,7 +177,7 @@ fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
     assert!(text.contains("&run=run-000001"), "{text}");
     // FH_NO_OPEN=1: no browser.
     assert_eq!(lab.browser_log(), None);
-    // fh run gives its --panes to the daemon that it starts.
+    // The daemon that fh run starts has the pty panes.
     let log = fs::read_to_string(lab.state.join("daemon.log")).unwrap();
     assert!(log.contains("fh serve: panes pty"), "{log}");
 
@@ -595,11 +589,6 @@ fn bad_run_arguments_exit_2() {
         &lab.fh(&["run", "a.inp", "--bogus"]),
         2,
         "unknown option: --bogus",
-    );
-    fails(
-        &lab.fh(&["run", "a.inp", "--panes", "tmux"]),
-        2,
-        "--panes is auto, herdr or pty, not tmux",
     );
     let bar = root().join("validation/cases/bar-pressure/bar.inp");
     for option in ["--size", "--order"] {

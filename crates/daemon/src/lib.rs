@@ -14,8 +14,7 @@
 //!   Clients read events by sequence number, so a slow client never grows a queue.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
 //! - **Terminals and panes.** The daemon owns the PTY of each terminal of the sidebar
-//!   (`pty`) and the pane backend (`panes`): herdr when it is installed (`herdr`), else plain
-//!   PTYs. The browser shows a terminal over a WebSocket (`ws`, `screen`, `docs/terminal.md`).
+//!   (`pty`) and the pane backend (`panes`), plain PTYs of the daemon. The browser shows a terminal over a WebSocket (`ws`, `screen`, `docs/terminal.md`).
 //!
 //! The solve path stays the existing subprocess protocol v2 (`fh-solve`, DESIGN.md
 //! section 9.3). The contract only starts it, cancels it and keeps the record.
@@ -37,9 +36,7 @@
 mod browser;
 mod client;
 mod contract;
-mod herdr;
 mod http;
-mod json;
 mod panes;
 mod pty;
 pub mod screen;
@@ -58,7 +55,6 @@ pub use contract::{
     valid_project, valid_request, valid_run, Ack, Command, Error, Event, Events, Message, Outcome,
     RunRecord, RunState, CONTRACT,
 };
-pub use herdr::{Herdr, ALLOWED as HERDR_COMMANDS};
 pub use panes::{BackendStatus, Key, Pane, PaneBackend, PaneSpec};
 use pty::find_program;
 pub use serve::{default_state_dir, serve, serve_until};
@@ -103,37 +99,13 @@ fn write_private(path: &Path, text: &str) -> Result<(), Error> {
     std::fs::rename(&tmp, path).map_err(err)
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum PaneChoice {
-    Auto,
-    Herdr,
-    /// test never calls the herdr of the machine by accident.
-    #[default]
-    Pty,
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Options {
     pub viewer: Option<PathBuf>,
-    pub panes: PaneChoice,
-    pub herdr_session: String,
-    pub herdr_program: Option<PathBuf>,
     pub shell: Option<Vec<String>>,
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Options {
-            viewer: None,
-            panes: PaneChoice::default(),
-            herdr_session: "femahoy".into(),
-            herdr_program: None,
-            shell: None,
-        }
-    }
-}
-
-fn sidebar(o: &Options) -> Result<panes::Sidebar, Error> {
+fn sidebar(o: &Options) -> panes::Sidebar {
     let shell = o
         .shell
         .clone()
@@ -141,41 +113,15 @@ fn sidebar(o: &Options) -> Result<panes::Sidebar, Error> {
             Ok(sh) if find_program(&sh).is_some() => vec![sh, "-l".into()],
             _ => vec!["/bin/sh".into()],
         });
-    herdr::check_session(&o.herdr_session)?;
     let terminals = Arc::new(pty::Terminals::default());
-    let program = o.herdr_program.clone().or_else(|| find_program("herdr"));
-    let herdr = match (o.panes, program) {
-        (PaneChoice::Pty, _) | (PaneChoice::Auto, None) => None,
-        (PaneChoice::Herdr, None) => {
-            return Err(Error::new(
-                400,
-                "pane.herdr.absent",
-                "herdr is not on PATH; install herdr, or use --panes pty",
-            ))
-        }
-        (choice, Some(program)) => {
-            let h = Herdr::new(program, &o.herdr_session)?;
-            match (h.status(), choice) {
-                (Ok(_), _) => Some(h),
-                (Err(_), PaneChoice::Auto) => None,
-                (Err(e), _) => return Err(e),
-            }
-        }
-    };
-    let panes: Box<dyn PaneBackend> = match &herdr {
-        Some(h) => Box::new(herdr::HerdrPanes(h.clone())),
-        None => Box::new(panes::PtyPanes {
+    panes::Sidebar {
+        panes: Box::new(panes::PtyPanes {
             terminals: terminals.clone(),
             shell: shell.clone(),
         }),
-    };
-    Ok(panes::Sidebar {
         terminals,
-        panes,
-        herdr,
         shell,
-        open_lock: Default::default(),
-    })
+    }
 }
 
 pub struct Daemon {
@@ -212,7 +158,7 @@ impl Daemon {
         options: Options,
     ) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
-        let sidebar = Arc::new(sidebar(&options)?);
+        let sidebar = Arc::new(sidebar(&options));
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32);
         let server = http::Server::start(
