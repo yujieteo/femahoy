@@ -2,19 +2,11 @@ name: no-avx
 
 # E3: the x86-64 checks with no AVX, under QEMU with the Nehalem CPU model
 # (scripts/check-no-avx.sh). The emulator is slow, so the job runs on main, when a person
-# starts it, and on a pull request that changes the files of the job.
+# starts it. A change to the job is tested with workflow_dispatch on its branch.
 on:
   push:
     branches: [main]
   workflow_dispatch:
-  pull_request:
-    paths:
-      - .github/workflows/no-avx.yml
-      - scripts/check-no-avx.sh
-      - scripts/check-workflow.sh
-      - scripts/check-threads.py
-      - scripts/check-phase-memory.py
-      - scripts/cad/bar.py
 
 permissions:
   contents: read

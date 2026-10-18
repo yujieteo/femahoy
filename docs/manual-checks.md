@@ -1,7 +1,7 @@
 # Manual platform checks
 
 GitHub Actions runs the x86-64 Linux checks and an aarch64 macOS job that builds the workspace and runs the workspace tests.
-The workflow `no-avx` runs `scripts/check-no-avx.sh` (below) on x86-64 Linux under an emulator. It runs on each push to `main`, when a person starts it, and on a pull request that changes the files of the job.
+The workflow `no-avx` runs `scripts/check-no-avx.sh` (below) on x86-64 Linux under an emulator. It runs on each push to `main`, and when a person starts it. A change to the job is tested with `workflow_dispatch` on its branch.
 No job runs the memory test or a convergence check.
 Run the scripts below from any directory. Each script uses the repository root and exits non-zero on a failure.
 
