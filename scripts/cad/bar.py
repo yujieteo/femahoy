@@ -3,7 +3,7 @@
 Usage: python bar.py OUT.step [mm|m]
 The STEP length unit is mm (the default) or m. The part is the same in both: in m, the STEP
 file holds 0.1 x 0.02 x 0.01. `fh info OUT.step --case DIR` must agree with the case `units`.
-Install: uv venv -p 3.12 venv && uv pip install -p venv/bin/python build123d
+Install: scripts/install.sh, then run: fh-python bar.py OUT.step
 Decision D-17, see DESIGN.md: femahoy ships no CAD code. The agent writes a script like this.
 """
 import sys

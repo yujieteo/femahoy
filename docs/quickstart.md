@@ -18,7 +18,10 @@ fh run --example bar-pressure
 `scripts/install.sh` builds `fh`, `fh-solve` and the browser viewer (release builds).
 It copies `fh`, `fh-solve` and the folder `viewer` to `~/.local/bin`.
 Use `--prefix DIR` for another folder.
-A second run builds again and updates the files.
+It also uses uv to make a Python 3.12 environment with build123d 0.13.0 in `~/.local/share/femahoy/venv` (`$XDG_DATA_HOME/femahoy/venv` when you set `XDG_DATA_HOME`).
+Use `--venv DIR` for another folder.
+The launcher `fh-python` in the install folder runs the Python of that environment, for example `fh-python part.py`.
+A second run builds again and updates the files and the environment.
 
 The script finds cargo in `~/.cargo/bin` when cargo is not on `PATH`.
 The file `rust-toolchain.toml` sets the Rust version, so rustup needs no default toolchain.
@@ -28,10 +31,11 @@ Before the build, the script checks these tools:
 |---|---|
 | Rust 1.97.0 with rustfmt, clippy and the `wasm32-unknown-unknown` target | `rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy --target wasm32-unknown-unknown` |
 | `wasm-bindgen-cli` at the version of `Cargo.lock` | `cargo install wasm-bindgen-cli --version 0.2.129 --locked` |
+| uv | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | A C linker (macOS: the Xcode command line tools) | `xcode-select --install` |
 
 If a tool is missing, the script shows all the missing tools with their install commands, and builds nothing.
-The script installs no tool itself.
+The script installs no tool itself. uv downloads Python 3.12 and build123d.
 It also tells you when gmsh is missing (`brew install gmsh`), because `fh run` needs gmsh for a STEP file.
 At the end, it shows the installed files and the next command.
 If the folder is not on `PATH`, the next command has the full path, and the script shows the line to add to your shell start file.
@@ -94,14 +98,12 @@ The sections below do the same steps one at a time.
 ## 1. Prepare the programs
 
 Run these commands from the repository root in an interactive terminal.
-`scripts/install.sh` (see [Start](#start)) puts `fh` and `fh-solve` on `PATH`.
-The CAD step needs external Python, uv and build123d.
+`scripts/install.sh` (see [Start](#start)) puts `fh`, `fh-solve` and `fh-python` on `PATH`.
+The CAD step uses `fh-python`, the Python with build123d that the install makes.
 The mesh step needs an external gmsh executable.
 
 ```sh
 WORK=$(mktemp -d)
-uv venv -p 3.12 "$WORK/venv"
-uv pip install -p "$WORK/venv/bin/python" build123d
 fh --help
 ```
 
@@ -114,7 +116,7 @@ The [bar recipe](../scripts/cad/bar.py) makes a 100 × 20 × 10 mm box.
 It exports a STEP file with a millimetre unit record.
 
 ```sh
-"$WORK/venv/bin/python" scripts/cad/bar.py "$WORK/bar.step"
+fh-python scripts/cad/bar.py "$WORK/bar.step"
 ```
 
 Use the existing [bar-tension case TOML](../validation/cases/bar-tension/case.toml) for the unit declaration.

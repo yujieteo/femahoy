@@ -1,35 +1,41 @@
 #!/usr/bin/env bash
 # Install femahoy from this repository: build `fh`, `fh-solve` and the wasm viewer, and copy
-# them to one folder.
+# them to one folder. Make the Python environment of the CAD step with uv.
 #
-#   scripts/install.sh [--prefix DIR]
+#   scripts/install.sh [--prefix DIR] [--venv DIR]
 #
-# DIR (default ~/.local/bin) gets fh, fh-solve, and the folder viewer beside fh, where
-# `fh serve` looks for it. A second run builds again and updates the files.
+# The prefix (default ~/.local/bin) gets fh, fh-solve, the folder viewer beside fh, where
+# `fh serve` looks for it, and fh-python. fh-python runs the Python of the venv (default
+# ${XDG_DATA_HOME:-~/.local/share}/femahoy/venv), which has Python 3.12 and build123d.
+# A second run builds again and updates the files and the venv.
 #
 # The script finds cargo in ~/.cargo/bin ($CARGO_HOME/bin) when cargo is not on PATH. It
 # checks all the tools before the build and shows the install command of each missing tool.
-# It installs no tool and downloads no toolchain (RUSTUP_AUTO_INSTALL=0).
+# It installs no tool and downloads no Rust toolchain (RUSTUP_AUTO_INSTALL=0). uv downloads
+# Python 3.12 and build123d when they are not in its cache.
 set -euo pipefail
 
-usage="usage: scripts/install.sh [--prefix DIR]"
+usage="usage: scripts/install.sh [--prefix DIR] [--venv DIR]"
 prefix=$HOME/.local/bin
+venv=${XDG_DATA_HOME:-$HOME/.local/share}/femahoy/venv
 while [ $# -gt 0 ]; do
   case $1 in
-    --prefix)
+    --prefix | --venv)
       if [ $# -lt 2 ] || [ -z "$2" ]; then
-        printf 'install: --prefix needs a folder\n%s\n' "$usage" >&2
+        printf 'install: %s needs a folder\n%s\n' "$1" "$usage" >&2
         exit 2
       fi
-      prefix=$2
+      if [ "$1" = --prefix ]; then prefix=$2; else venv=$2; fi
       shift 2
       ;;
     --prefix=?*) prefix=${1#--prefix=}; shift ;;
+    --venv=?*) venv=${1#--venv=}; shift ;;
     -h | --help) echo "$usage"; exit 0 ;;
     *) printf 'install: unknown argument: %s\n%s\n' "$1" "$usage" >&2; exit 2 ;;
   esac
 done
 case $prefix in /*) ;; *) prefix=$PWD/$prefix ;; esac
+case $venv in /*) ;; *) venv=$PWD/$venv ;; esac
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 # rustup reads rust-toolchain.toml in the current folder.
@@ -72,6 +78,9 @@ have=$(wasm-bindgen --version 2>/dev/null | awk '{ print $2 }') || true
 if [ "$have" != "$bindgen" ]; then
   missing+=("wasm-bindgen $bindgen (found: ${have:-none}): cargo install wasm-bindgen-cli --version $bindgen --locked")
 fi
+if ! command -v uv >/dev/null 2>&1; then
+  missing+=("uv (it makes the Python environment of the CAD step): curl -LsSf https://astral.sh/uv/install.sh | sh")
+fi
 if [ "$(uname)" = Darwin ] && ! xcode-select -p >/dev/null 2>&1; then
   missing+=("the Xcode command line tools (the C linker): xcode-select --install")
 elif ! command -v cc >/dev/null 2>&1; then
@@ -89,6 +98,10 @@ echo "install: build fh and fh-solve (release)"
 cargo build --release --locked --bin fh --bin fh-solve
 echo "install: build the wasm viewer"
 scripts/build-viewer.sh "$target/release/viewer"
+# The tested version of docs/cad-recipe.md.
+echo "install: make the Python environment with build123d in $venv"
+uv venv --quiet --allow-existing -p 3.12 "$venv"
+uv pip install --quiet -p "$venv/bin/python" build123d==0.13.0
 
 # Copy to a new file in the folder, then rename it. A rename does not change a file that a
 # running program uses, and macOS does not stop a new program for a changed signature.
@@ -109,12 +122,16 @@ done
 for file in fh_viewer.js fh_viewer_bg.wasm; do
   put "$target/release/viewer/$file" "$prefix/viewer/$file" 644
 done
+# The venv path in single quotes, with each quote in it as '\''.
+printf "#!/bin/sh\nexec '%s/bin/python' \"\$@\"\n" "${venv//\'/\'\\\'\'}" >"$target/release/fh-python"
+put "$target/release/fh-python" "$prefix/fh-python" 755
 
 if [ $update = yes ]; then verb=updated; else verb=installed; fi
 echo "install: $verb in $prefix:"
-for file in "fh$exe" "fh-solve$exe" viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
+for file in "fh$exe" "fh-solve$exe" fh-python viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
   echo "  $prefix/$file"
 done
+echo "install: fh-python runs the Python of $venv, with build123d: fh-python part.py"
 if [ $update = yes ]; then
   echo "install: if a daemon runs, it keeps the earlier fh until it stops. Stop it with: fh serve --stop"
 fi

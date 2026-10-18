@@ -6,7 +6,7 @@ Run the scripts below from any directory. Each script uses the repository root a
 ## Apple Silicon macOS
 
 Install Rust with Cargo, rustfmt and clippy. Install the `aarch64-apple-darwin` Rust target.
-Install Python with build123d and a separate gmsh executable as described in [the CAD recipe](cad-recipe.md).
+Run `scripts/install.sh` for `fh-python`, the Python with build123d. Install a separate gmsh executable as described in [the CAD recipe](cad-recipe.md).
 The script does not install these tools.
 
 ```sh
@@ -15,7 +15,7 @@ rustup target add aarch64-apple-darwin
 scripts/check-mac-e2e.sh
 ```
 
-Set `PYTHON` to the Python executable of your build123d environment if necessary.
+The script uses `fh-python` when it is on `PATH`, and `python3` when it is not. Set `PYTHON` to another Python executable with build123d if necessary.
 Set `FH_GMSH` to a gmsh executable outside `PATH` if necessary.
 
 ```sh
