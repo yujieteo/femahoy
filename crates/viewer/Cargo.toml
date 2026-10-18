@@ -1,6 +1,6 @@
 [package]
 name = "fh-viewer"
-description = "eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree"
+description = "eframe app, wgpu mesh and contour renderer, chat panel, teammate tree"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ fh-io = { version = "0.0.0", path = "../io" }
 js-sys = "0.3.106"
 wasm-bindgen = "0.2.129"
 wasm-bindgen-futures = "0.4.79"
-web-sys = { version = "0.3.106", features = ["BinaryType", "CloseEvent", "Headers", "Location", "MessageEvent", "Request", "RequestInit", "Response", "HtmlCanvasElement", "UrlSearchParams", "WebSocket", "Window"] }
+web-sys = { version = "0.3.106", features = ["Headers", "Location", "Request", "RequestInit", "Response", "HtmlCanvasElement", "UrlSearchParams", "Window"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]

@@ -25,7 +25,7 @@ The agent needs:
 
 - `claude` (Claude Code) on `PATH`, with a login. Set `FH_AGENT` to use another program with the same arguments and event stream.
 - gmsh for `fh mesh`.
-- Python with build123d, or `uv`, for the CAD script.
+- `fh-python` on `PATH` for the CAD script. `scripts/install.sh` installs it beside `fh`, with build123d.
 
 ## What the agent does
 
@@ -33,12 +33,12 @@ The daemon starts the agent in the folder `STATE/chat` with:
 
 ```text
 claude -p --output-format stream-json --verbose --append-system-prompt <agent.md>
-  --allowedTools Bash(fh *),Bash(python3 *),Bash(uv run *),Read,Write,Edit,Glob,Grep
+  --allowedTools Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep
   [--resume SESSION]
 ```
 
 The request goes on stdin. The instructions are in `crates/daemon/src/agent.md`: write `part.py` and `case.toml`, then `fh info`, then `fh run .`, which runs `fh mesh`, `fh model` and the solve on the daemon of the page.
-The agent can use only the `fh` commands, Python, `uv run` and the file tools. Claude Code refuses each other tool in headless mode.
+The agent can use only the `fh` commands, `fh-python` and the file tools. Claude Code refuses each other tool in headless mode.
 The environment of the agent has `FH_STATE` (the state folder of the daemon, so that `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first on `PATH`.
 
 ## Routes

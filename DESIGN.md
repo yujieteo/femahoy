@@ -11,7 +11,7 @@ Working name: "femahoy" stays provisional until the trademark, package-name, and
 femahoy is a finite element workflow in Rust. LLM agents and humans use it together.
 
 - The **engine** is the `fh` command-line program.
-- The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport and a terminal sidebar are beside the chat.
+- The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the leader**. It plans the work and gives tasks to teammates. The UI shows each teammate while it runs.
 - The **input** is Abaqus-shaped `.inp` text.
 - **Agent-facing output** is TOON.
@@ -42,7 +42,6 @@ Description rule: say the product is "heavily inspired by Abaqus input conventio
 | Chat | Main interface. One conversation with the leader. Every leader action shows as the `fh` command it ran. |
 | Teammate tree | Shows each teammate, its state (working, blocked, done, idle), and its pane. |
 | 3D viewport | Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector (first milestone). |
-| Terminal sidebar | A real shell in a plain PTY of the daemon. |
 | `fh` CLI | Works alone over SSH and tmux, with no GUI. |
 | Custom panels | Buttons for frequent commands. Each button runs an `fh` command. |
 
@@ -55,22 +54,22 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 ```
  browser (wasm UI)                                  fh CLI (SSH / tmux)
         \                                                /
-         \---- HTTP + WebSocket (127.0.0.1, token) -----/
+         \-------- HTTP (127.0.0.1, token) -------------/
                                 |
                          fh serve (daemon)
-     +-----------+-----------+-----------+-----------+-----------+
-     |  solver   |   PTY     |  panes    |  agents   |  files    |
-     | (in-proc  | (terminal | (plain    | (Claude   | (project, |
-     |  or sub-  |  sidebar) |  PTY)     |  Code,    |  results) |
-     |  process) |           |           |  Codex)   |           |
-     +-----------+-----------+-----------+-----------+-----------+
+             +-----------+-----------+-----------+
+             |  solver   |  agents   |  files    |
+             | (in-proc  | (Claude   | (project, |
+             |  or sub-  |  Code,    |  results) |
+             |  process) |  Codex)   |           |
+             +-----------+-----------+-----------+
 ```
 
 ### 4.1 Daemon (`fh serve`)
 
-- Owns the solver runs, the PTY, the pane backend, the agent processes, the API keys, and the project files.
+- Owns the solver runs, the agent processes, the API keys, and the project files.
 - Binds to 127.0.0.1 only.
-- Makes a random token at start, as Jupyter does. Every HTTP and WebSocket request must carry the token.
+- Makes a random token at start, as Jupyter does. Every HTTP request must carry the token.
 - Rejects any request whose `Origin` is not the daemon's own page.
 - Serves the wasm UI itself, then opens the user's browser at that page.
 - The browser never holds an API key.
@@ -82,7 +81,7 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 
 ### 4.3 Pane backend
 
-The daemon defines a `PaneBackend` interface. Its one implementation is the plain PTY, owned by the daemon. herdr is removed (D-27).
+The daemon has no pane backend. The chat replaced the terminal sidebar, so the sidebar and its plain PTY backend are removed. herdr is removed (D-27). The teammate tree (section 3) will define how the daemon runs teammates.
 
 ---
 
@@ -95,7 +94,7 @@ The daemon defines a `PaneBackend` interface. Its one implementation is the plai
   1. **User's CLI login:** the harness uses the user's own Claude Code or Codex login.
   2. **User's API key:** the daemon passes the key in the process environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
 - The **leader** runs in headless mode with a JSON event stream (for example, `claude -p --output-format stream-json` or `codex exec --json`). The chat renders this stream. Check the exact flags against the current harness docs during M4, because they change between versions.
-- **Teammates** run in panes through `PaneBackend`.
+- **Teammates** are not built. Section 4.3 has the status.
 - The leader starts teammates with `fh team spawn`, so each start is a visible command.
 
 ### 5.2 Roles
@@ -335,10 +334,10 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | `solver-api` | `Solver` trait, subprocess protocol, registry | open API |
 | `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core |
 | `validation` | harness, tolerance classes, manufactured solutions | validated core |
-| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backend, process supervision | app |
+| `daemon` | HTTP server, token auth, process supervision, chat agent | app |
 | `agents` | harness start, JSON stream parsing, skills install, role config | app |
 | `cli` | `fh` commands | app |
-| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | app |
+| `viewer` | eframe app, wgpu mesh and contour renderer, chat panel, teammate tree | app |
 | `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app |
 
 ### 11.1 Key dependencies
@@ -347,7 +346,6 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 |---|---|---|
 | `faer` | sparse linear algebra | pure Rust |
 | `eframe` / `egui` / `wgpu` | UI and 3D renderer, wasm | |
-| `alacritty_terminal` | terminal emulator core | Pin an exact version. Wrap it behind our own interface. |
 | gmsh | meshing | External program. Never linked (GPL). |
 
 ---
@@ -410,7 +408,7 @@ Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip
 ## 12. Platforms and distribution
 
 1. **Web (wasm) first.** The user installs `fh`, runs `fh serve`, and the UI opens in the browser.
-2. **Windows second.** Uses the plain PTY backend.
+2. **Windows second.**
 
 Distribution: a single `fh` binary (Homebrew and a direct download). The static demo is published on a separate web page.
 
@@ -445,7 +443,7 @@ Later, with no milestone yet: a mesher of our own (D-15). The managed LLM tier s
 | TOON summary and query schema | M1 |
 | Validation fixture schema | M1 |
 | Subprocess protocol schema | M2 |
-| Daemon HTTP and WebSocket API | M3 |
+| Daemon HTTP API | M3 |
 | Template mapping format | After the second user test |
 | Friction in contact | After M6 |
 | OS sandbox for subprocess solvers | After M4 |
@@ -469,7 +467,6 @@ Later, with no milestone yet: a mesher of our own (D-15). The managed LLM tier s
 | Leader | The chat. Plans and delegates. Writes no solver code. |
 | Teammate | An agent that the leader starts, with its own role and skills. |
 | Validator | The teammate that runs the suite and gates merges. Separate from the leader. |
-| Pane backend | The interface that runs panes: the plain PTY. |
 | Fixture | One validation case: inputs, reference values, tolerance class, justification. |
 | Template | A user input syntax with a mapping onto the Abaqus-shaped model. |
 | Unvalidated | A result from a solver that has not passed the validation suite. |

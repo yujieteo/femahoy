@@ -1,6 +1,5 @@
 //! The eframe app: a viewport, a results panel, a status bar and the mouse controls, on the
-//! page of `fh serve`. The chat panel is on the left of the viewport and the terminal
-//! sidebar on the right.
+//! page of `fh serve`. The chat panel is on the left of the viewport.
 
 use std::sync::{Arc, Mutex};
 
@@ -11,7 +10,6 @@ use crate::camera::Camera;
 use crate::chat::Chat;
 use crate::gpu::{FrameParams, Geometry, MeshCallback, MeshGpu};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
-use crate::sidebar::Sidebar;
 use crate::view::{self, Contour, ViewState};
 
 /// What the viewer shows.
@@ -45,9 +43,6 @@ pub struct ViewerApp {
     message: Option<(bool, String)>,
     runs: Option<Vec<(String, String)>>,
     slot: Option<ContentSlot>,
-    /// The terminal sidebar: only on the page of `fh serve`.
-    sidebar: Option<Sidebar>,
-    sidebar_open: bool,
     /// The chat with the leader: only on the page of `fh serve`.
     chat: Option<Chat>,
     chat_open: bool,
@@ -67,18 +62,11 @@ impl ViewerApp {
             message: None,
             runs: None,
             slot,
-            sidebar: None,
-            sidebar_open: true,
             chat: None,
             chat_open: true,
         };
         app.set_content(content);
         app
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn set_sidebar(&mut self, sidebar: Sidebar) {
-        self.sidebar = Some(sidebar);
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -318,9 +306,6 @@ impl eframe::App for ViewerApp {
                     .request_repaint_after(std::time::Duration::from_millis(100));
             }
         }
-        if let Some(s) = &mut self.sidebar {
-            s.poll();
-        }
         if let Some(c) = &mut self.chat {
             c.poll();
         }
@@ -329,10 +314,6 @@ impl eframe::App for ViewerApp {
                 if self.chat.is_some() {
                     ui.toggle_value(&mut self.chat_open, "Chat")
                         .on_hover_text("show or hide the chat with the leader");
-                }
-                if self.sidebar.is_some() {
-                    ui.toggle_value(&mut self.sidebar_open, "Terminal")
-                        .on_hover_text("show or hide the terminal sidebar");
                     ui.separator();
                 }
                 ui.label(self.status_text());
@@ -342,14 +323,6 @@ impl eframe::App for ViewerApp {
                 );
             });
         });
-        if let (Some(s), true) = (&mut self.sidebar, self.sidebar_open) {
-            let width = (ui.available_width() * 0.4).clamp(320.0, 640.0);
-            egui::Panel::right("terminal")
-                .resizable(true)
-                .default_size(width)
-                .min_size(320.0)
-                .show(ui, |ui| s.ui(ui));
-        }
         if let (Some(c), true) = (&mut self.chat, self.chat_open) {
             let width = (ui.available_width() * 0.3).clamp(300.0, 560.0);
             egui::Panel::left("chat")

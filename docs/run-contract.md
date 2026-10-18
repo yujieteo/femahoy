@@ -127,15 +127,13 @@ fh serve --stop [--state DIR]
 | `--no-open` | Off: `fh serve` opens its page in the browser. `FH_NO_OPEN` with a value that is not empty and not `0` does the same as `--no-open`. |
 | `--stop` | Stop the daemon that answers for the state folder, and wait until it frees `daemon.lock`. |
 
-The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder, the pane backend and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
+The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
 
 Then `fh serve` opens the page in the browser. The token must not go into the command line of a browser process, because other users of the machine can read a command line. Thus `$BROWSER` (when it is set) and `xdg-open` get the file `<state>/open.html` (mode 0600), which sends the browser on to the address. On macOS, `open` gives the address to the default browser through Launch Services. On Windows, `rundll32` does this. The exact rules are in [`fh serve`](reference/fh.md#fh-serve).
 
-The page holds no token. Its script reads the token from the page address and sends it in the `Authorization` header to fetch the viewer and the results. Thus only `GET /` takes the token in the query. The page has its own content security policy: only its own script (a new nonce for each answer), the viewer module, wasm, fetches to its own origin, and WebSockets to `ws://127.0.0.1:<port>`.
+The page holds no token. Its script reads the token from the page address and sends it in the `Authorization` header to fetch the viewer and the results. Thus only `GET /` takes the token in the query. The page has its own content security policy: only its own script (a new nonce for each answer), the viewer module, wasm, and fetches to its own origin.
 
-The terminal sidebar and the pane backend are in `docs/terminal.md`. Their routes use the same token and `Origin` rules. The WebSocket of a terminal takes the token in the subprotocol `fh.token.<token>`, because a browser cannot set a header on a WebSocket.
-
-SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon.info`, each active run ends as `interrupted`, and each terminal closes. `fh serve --stop` sends SIGTERM (on Windows, `taskkill`). On Windows, Ctrl+C ends the process. That is the path of a failed daemon (see "Which process stays alive").
+SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon.info`, each active run ends as `interrupted`, and the agent of the chat stops. `fh serve --stop` sends SIGTERM (on Windows, `taskkill`). On Windows, Ctrl+C ends the process. That is the path of a failed daemon (see "Which process stays alive").
 
 | Exit | Meaning |
 |---|---|
@@ -166,4 +164,4 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 
 `crates/cli/tests/run.rs` tests `fh run` and the browser and stop options of `fh serve`: an `.inp` file, a case folder, the example, a second run on the same daemon, the browser open and `--no-open`, a missing file, an input that the solver refuses, a failed run, no daemon possible, Ctrl+C, and a second Ctrl+C.
 
-`crates/daemon/tests/serve.rs` tests `fh serve`: a missing token, a wrong token and a wrong `Origin` each fail, the token with no `Origin` or with the own `Origin` passes, a network address of the machine gets no connection, a second daemon on the same state folder fails, and a stop or SIGTERM stops the daemon and removes `daemon.info`. `crates/daemon/tests/terminal.rs` tests the terminal and pane routes and the WebSocket (`docs/terminal.md`).
+`crates/daemon/tests/serve.rs` tests `fh serve`: a missing token, a wrong token and a wrong `Origin` each fail, the token with no `Origin` or with the own `Origin` passes, a network address of the machine gets no connection, a second daemon on the same state folder fails, and a stop or SIGTERM stops the daemon and removes `daemon.info`.

@@ -4,9 +4,43 @@
 //! cost. When a run succeeds during the chat, the panel opens its results in the viewer.
 //! The browser holds no API key: the agent runs in the daemon with the login of the person.
 
+use std::collections::BTreeMap;
+
 use eframe::egui;
 
-use crate::sidebar::{Remote, RemoteEvent, Reply};
+/// The daemon as the chat sees it. `web.rs` has the browser one, and the tests a fake.
+pub trait Remote {
+    /// Send an HTTP request. `body` has the fields in the text form of the run contract. The
+    /// answer comes back from [`Remote::poll`] with the same `id`.
+    fn request(&mut self, id: u64, method: &str, path: &str, body: &str);
+    /// The answers since the last call.
+    fn poll(&mut self) -> Vec<Answer>;
+}
+
+/// The answer to request `id`: the text of the message, or an error for the person.
+pub type Answer = (u64, Result<String, String>);
+
+/// A message in the text form of the run contract: `key=value` lines, then an empty line
+/// and the items.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Reply {
+    pub fields: BTreeMap<String, String>,
+    pub items: Vec<String>,
+}
+
+impl Reply {
+    pub fn parse(text: &str) -> Reply {
+        let (head, items) = text.split_once("\n\n").unwrap_or((text, ""));
+        Reply {
+            fields: head
+                .lines()
+                .filter_map(|l| l.split_once('='))
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect(),
+            items: items.lines().map(str::to_owned).collect(),
+        }
+    }
+}
 
 /// The time between 2 reads of the chat while the agent works, and while it does not.
 const POLL_RUNNING: f64 = 1.0;
@@ -129,10 +163,7 @@ impl Chat {
 
     /// Handle the answers of the daemon.
     pub fn poll(&mut self) {
-        for event in self.remote.poll() {
-            let RemoteEvent::Answer(id, answer) = event else {
-                continue;
-            };
+        for (id, answer) in self.remote.poll() {
             let Some(i) = self.asks.iter().position(|(n, _)| *n == id) else {
                 continue;
             };
@@ -320,7 +351,7 @@ mod tests {
     #[derive(Default)]
     struct Log {
         calls: Vec<String>,
-        events: Vec<RemoteEvent>,
+        events: Vec<Answer>,
         opened: Vec<String>,
     }
 
@@ -331,10 +362,7 @@ mod tests {
             let call = format!("{id} {method} {path} {}", body.trim_end());
             self.0.borrow_mut().calls.push(call.trim_end().to_owned());
         }
-        fn connect(&mut self, _: &str) {}
-        fn send(&mut self, _: &str, _: &[u8]) {}
-        fn disconnect(&mut self, _: &str) {}
-        fn poll(&mut self) -> Vec<RemoteEvent> {
+        fn poll(&mut self) -> Vec<Answer> {
             std::mem::take(&mut self.0.borrow_mut().events)
         }
     }
@@ -347,10 +375,17 @@ mod tests {
     }
 
     fn give(c: &mut Chat, log: &Rc<RefCell<Log>>, id: u64, text: &str) {
-        log.borrow_mut()
-            .events
-            .push(RemoteEvent::Answer(id, Ok(text.into())));
+        log.borrow_mut().events.push((id, Ok(text.into())));
         c.poll();
+    }
+
+    #[test]
+    fn replies_read_fields_and_items() {
+        let r = Reply::parse("a=1\nb=x=y\n\n1 text hello\n2 end done\n");
+        assert_eq!(r.fields.get("a").map(String::as_str), Some("1"));
+        assert_eq!(r.fields.get("b").map(String::as_str), Some("x=y"));
+        assert_eq!(r.items, ["1 text hello", "2 end done"]);
+        assert_eq!(Reply::parse("a=1\n").items, Vec::<String>::new());
     }
 
     #[test]
@@ -407,10 +442,9 @@ mod tests {
         // A refused request shows the error and lets the person send again.
         c.input = "again".into();
         c.send();
-        log.borrow_mut().events.push(RemoteEvent::Answer(
-            5,
-            Err("HTTP 409: busy (chat.busy)".into()),
-        ));
+        log.borrow_mut()
+            .events
+            .push((5, Err("HTTP 409: busy (chat.busy)".into())));
         c.poll();
         assert!(!c.running);
         assert_eq!(c.error.as_deref(), Some("HTTP 409: busy (chat.busy)"));

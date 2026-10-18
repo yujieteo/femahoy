@@ -29,7 +29,7 @@ use crate::service::Service;
 /// The instructions of the agent.
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
-const TOOLS: &str = "Bash(fh *),Bash(python3 *),Bash(uv run *),Read,Write,Edit,Glob,Grep";
+const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep";
 /// The most entries that the daemon keeps. An older entry goes first.
 const MAX_ENTRIES: usize = 4000;
 /// The most characters of one tool result in an entry.

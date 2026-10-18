@@ -176,6 +176,12 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         assert!(args.contains(flag), "{args}");
     }
     assert!(!args.contains("--resume"));
+    // The CAD script runs with the femahoy Python (fh-python) only.
+    assert!(args.contains("Bash(fh-python *)"), "{args}");
+    assert!(
+        !args.contains("python3") && !args.contains("uv run"),
+        "{args}"
+    );
     let env = fs::read_to_string(chat.join("env.txt")).unwrap();
     assert!(
         env.contains(&format!("FH_STATE={}\n", state.display())),

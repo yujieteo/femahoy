@@ -1,6 +1,6 @@
 # Viewer
 
-The viewer shows the results of a run in 3D. `fh serve` serves the viewer as wasm. The page of the daemon is the viewer, with the terminal sidebar on the right (roadmap item M3).
+The viewer shows the results of a run in 3D. `fh serve` serves the viewer as wasm. The page of the daemon is the viewer, with the chat on the left (roadmap items M3 and M4, `docs/chat.md`).
 
 ```
 fh serve                    # the viewer in the browser: fh serve opens its page
@@ -71,13 +71,12 @@ The message names the file, for example `step-2.vtu: not found (results.file.mis
 1. Install `fh` with the viewer: `scripts/install.sh`. It builds the wasm viewer and copies it to the `viewer` folder beside `fh`.
 2. Run `fh run model.inp` (or `fh run --example bar-pressure`). It solves the model and opens the browser on the run.
 3. Or run `fh serve`. It opens the browser on the page of the daemon, with the list of the runs. Click a run in the list. The list shows each run that succeeded. To open a run directly, add `&project=P&run=R` to the address.
-4. Use the terminal sidebar on the right for a shell. The `Terminal` switch in the status bar shows or hides it (`docs/terminal.md`).
 
 `--no-open`, or `FH_NO_OPEN=1`, keeps the browser closed. Then open the address that the command prints, `http://127.0.0.1:PORT/?token=TOKEN`.
 
 To build only the viewer, for example in development, run `scripts/build-viewer.sh`. The script needs the Rust target `wasm32-unknown-unknown` and `wasm-bindgen-cli` at the version of `wasm-bindgen` in `Cargo.lock` (0.2.129). It writes `fh_viewer.js` and `fh_viewer_bg.wasm` to `release/viewer` in the cargo target folder (`$CARGO_TARGET_DIR` or `target`), the folder beside `fh`. `fh serve` finds the viewer in `$FH_VIEWER`, else in the `viewer` folder beside `fh`.
 
-The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/projects/<p>/runs/<r>/files/<name>`. The sidebar uses the terminal and pane routes and one WebSocket for each terminal, with the token in the subprotocol `fh.token.TOKEN`.
+The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/projects/<p>/runs/<r>/files/<name>`.
 
 The browser needs WebGPU or WebGL 2. When the viewer cannot start, the page shows the cause.
 
@@ -93,8 +92,7 @@ The code is in `crates/viewer`:
 | `camera.rs` | the orbit camera |
 | `gpu.rs`, `shader.wgsl` | the thin wgpu layer |
 | `app.rs` | the eframe app of the page |
-| `terminal.rs` | the terminal widget: it decodes the screens of the daemon and encodes the keys, the paste and the mouse |
-| `sidebar.rs` | the terminal sidebar: the tabs, the panes and the requests to the daemon, behind the `Remote` trait |
-| `web.rs` | the browser entry point, the HTTP requests and the WebSockets (wasm only) |
+| `chat.rs` | the chat panel and its requests to the daemon, behind the `Remote` trait |
+| `web.rs` | the browser entry point and the HTTP requests (wasm only) |
 
-`mesh.rs`, `results.rs`, `view.rs`, `camera.rs`, `terminal.rs` and `sidebar.rs` have no GPU types and have unit tests. The sidebar tests use a fake daemon behind `Remote`. The tests read `fixtures/results/cantilever-2step` (2 steps of `fh-solve` output) and compare each displacement and each stress value with the text results of the same run.
+`mesh.rs`, `results.rs`, `view.rs`, `camera.rs` and `chat.rs` have no GPU types and have unit tests. The chat tests use a fake daemon behind `Remote`. The tests read `fixtures/results/cantilever-2step` (2 steps of `fh-solve` output) and compare each displacement and each stress value with the text results of the same run.

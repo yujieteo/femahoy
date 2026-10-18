@@ -1,14 +1,11 @@
 [package]
 name = "fh-daemon"
-description = "HTTP and WebSocket server, token auth, PTY, pane backend, process supervision"
+description = "HTTP server, token auth, process supervision, chat agent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
 [dependencies]
-# The terminal emulator core and the PTY of the terminal sidebar (DESIGN.md section 11.1).
-# Pinned to an exact version and wrapped by `src/pty.rs`.
-alacritty_terminal = { version = "=0.26.0", default-features = false }
 fh-solver-api = { path = "../solver-api" }
 libc = "0.2.190"

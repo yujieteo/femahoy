@@ -1,8 +1,7 @@
 //! The browser entry point. The page of `fh serve` calls `start` with its canvas. The app
 //! reads the token, the project and the run from the page address, and fetches the result
-//! files from the daemon with `Authorization: Bearer <token>`. The terminal sidebar uses
-//! the same token: in the header of each request, and as a subprotocol item of each
-//! WebSocket, because a browser cannot set a header on a WebSocket.
+//! files from the daemon with `Authorization: Bearer <token>`. The chat panel sends the
+//! same header with each request.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -13,9 +12,7 @@ use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::app::{Content, ContentSlot, ViewerApp};
-use crate::chat::Chat;
-use crate::sidebar::{Remote, RemoteEvent, Reply, Sidebar};
-use crate::terminal::{PROTOCOL, TOKEN_PROTOCOL};
+use crate::chat::{Answer, Chat, Remote, Reply};
 use crate::{results, RESULTS_FILE};
 
 /// The query of the page address: `token`, and `project` and `run` to open a run.
@@ -145,122 +142,28 @@ async fn list_runs(token: &str) -> Result<Content, String> {
     Ok(Content::Runs(links))
 }
 
-/// The events of the browser callbacks, in their order, for the sidebar to read.
-type Events = Rc<RefCell<VecDeque<RemoteEvent>>>;
-
-fn push(events: &Events, ctx: &egui::Context, event: RemoteEvent) {
-    events.borrow_mut().push_back(event);
-    ctx.request_repaint();
-}
-
-/// The text for the person when the WebSocket of a terminal closes.
-fn close_reason(code: u16, reason: &str) -> String {
-    let why = match code {
-        1000 => "the daemon closed the connection",
-        1002 | 1003 | 1009 => "the daemon refused a message",
-        1006 => "the connection failed. Make sure that fh serve runs",
-        _ => "the connection closed",
-    };
-    match reason {
-        "" => format!("{why} (code {code})"),
-        _ => format!("{why}: {reason} (code {code})"),
-    }
-}
-
-/// The WebSocket of a terminal and its callbacks, which must live as long as it.
-struct Socket {
-    ws: web_sys::WebSocket,
-    _open: Closure<dyn FnMut()>,
-    _message: Closure<dyn FnMut(web_sys::MessageEvent)>,
-    _close: Closure<dyn FnMut(web_sys::CloseEvent)>,
-}
-
-impl Drop for Socket {
-    fn drop(&mut self) {
-        // A late event of this socket must not change a new socket of the same terminal.
-        self.ws.set_onopen(None);
-        self.ws.set_onmessage(None);
-        self.ws.set_onclose(None);
-        let _ = self.ws.close_with_code(1000);
-    }
-}
-
-/// The daemon of the page, through `fetch` and WebSockets.
+/// The daemon of the page, through `fetch`.
 struct Browser {
     token: String,
-    host: String,
     ctx: egui::Context,
-    events: Events,
-    sockets: HashMap<String, Socket>,
+    answers: Rc<RefCell<VecDeque<Answer>>>,
 }
 
 impl Remote for Browser {
     fn request(&mut self, id: u64, method: &str, path: &str, body: &str) {
         let (token, method, path) = (self.token.clone(), method.to_owned(), path.to_owned());
         let body = (method != "GET").then(|| body.to_owned());
-        let (events, ctx) = (self.events.clone(), self.ctx.clone());
+        let (answers, ctx) = (self.answers.clone(), self.ctx.clone());
         wasm_bindgen_futures::spawn_local(async move {
             let answer = fetch(&token, &method, &path, body.as_deref()).await;
             let answer = answer.and_then(|bytes| text(bytes, &path));
-            push(&events, &ctx, RemoteEvent::Answer(id, answer));
+            answers.borrow_mut().push_back((id, answer));
+            ctx.request_repaint();
         });
     }
 
-    fn connect(&mut self, terminal: &str) {
-        self.sockets.remove(terminal);
-        let id = terminal.to_owned();
-        let url = format!("ws://{}/api/v1/terminals/{id}/ws", self.host);
-        let token = format!("{TOKEN_PROTOCOL}{}", self.token);
-        let protocols = js_sys::Array::of2(&PROTOCOL.into(), &token.into());
-        let ws = match web_sys::WebSocket::new_with_str_sequence(&url, &protocols) {
-            Ok(ws) => ws,
-            Err(e) => {
-                let why = format!("the browser cannot open the WebSocket: {e:?}");
-                return push(&self.events, &self.ctx, RemoteEvent::Closed(id, why));
-            }
-        };
-        ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
-        let (events, ctx, t) = (self.events.clone(), self.ctx.clone(), id.clone());
-        let open = Closure::<dyn FnMut()>::new(move || {
-            push(&events, &ctx, RemoteEvent::Opened(t.clone()));
-        });
-        let (events, ctx, t) = (self.events.clone(), self.ctx.clone(), id.clone());
-        let message = Closure::<dyn FnMut(_)>::new(move |e: web_sys::MessageEvent| {
-            // The daemon sends binary messages only. Other data is a bad message.
-            let bytes = e.data().dyn_into::<js_sys::ArrayBuffer>();
-            let bytes = bytes.map_or_else(|_| Vec::new(), |b| js_sys::Uint8Array::new(&b).to_vec());
-            push(&events, &ctx, RemoteEvent::Message(t.clone(), bytes));
-        });
-        let (events, ctx, t) = (self.events.clone(), self.ctx.clone(), id.clone());
-        let close = Closure::<dyn FnMut(_)>::new(move |e: web_sys::CloseEvent| {
-            let why = close_reason(e.code(), &e.reason());
-            push(&events, &ctx, RemoteEvent::Closed(t.clone(), why));
-        });
-        ws.set_onopen(Some(open.as_ref().unchecked_ref()));
-        ws.set_onmessage(Some(message.as_ref().unchecked_ref()));
-        ws.set_onclose(Some(close.as_ref().unchecked_ref()));
-        let socket = Socket {
-            ws,
-            _open: open,
-            _message: message,
-            _close: close,
-        };
-        self.sockets.insert(id, socket);
-    }
-
-    fn send(&mut self, terminal: &str, message: &[u8]) {
-        // A failed send closes the socket, and its close event tells the person.
-        if let Some(s) = self.sockets.get(terminal) {
-            let _ = s.ws.send_with_u8_array(message);
-        }
-    }
-
-    fn disconnect(&mut self, terminal: &str) {
-        self.sockets.remove(terminal);
-    }
-
-    fn poll(&mut self) -> Vec<RemoteEvent> {
-        self.events.borrow_mut().drain(..).collect()
+    fn poll(&mut self) -> Vec<Answer> {
+        self.answers.borrow_mut().drain(..).collect()
     }
 }
 
@@ -268,7 +171,6 @@ impl Remote for Browser {
 #[wasm_bindgen]
 pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
     let slot: ContentSlot = Arc::new(Mutex::new(None));
-    let host = web_sys::window().and_then(|w| w.location().host().ok());
     let mut token = None;
     let (title, first) = match query() {
         Err(e) => ("femahoy".to_owned(), Content::Failed(e)),
@@ -302,15 +204,12 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
             options,
             Box::new(move |cc| {
                 let mut app = ViewerApp::new(cc, title, first, Some(slot.clone()));
-                if let (Some(token), Some(host)) = (token, host) {
-                    let remote = || Browser {
+                if let Some(token) = token {
+                    let remote = Browser {
                         token: token.clone(),
-                        host: host.clone(),
                         ctx: cc.egui_ctx.clone(),
-                        events: Rc::default(),
-                        sockets: HashMap::new(),
+                        answers: Rc::default(),
                     };
-                    app.set_sidebar(Sidebar::new(Box::new(remote())));
                     // A run that succeeds during the chat opens in the viewer.
                     let (t, ctx) = (token.clone(), cc.egui_ctx.clone());
                     let open = move |p: &str, r: &str| {
@@ -329,7 +228,7 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
                             ctx.request_repaint();
                         });
                     };
-                    app.set_chat(Chat::new(Box::new(remote()), Box::new(open)));
+                    app.set_chat(Chat::new(Box::new(remote), Box::new(open)));
                 }
                 Ok(Box::new(app))
             }),

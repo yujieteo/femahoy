@@ -23,7 +23,7 @@ fn usage() -> String {
          validate  run the validation suite (fh validate [--root DIR] [--convergence PATH])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
          run       solve a model or a case on the daemon and open the results in the browser (fh run MODEL.inp|CASE_DIR|--example NAME)\n  \
-         serve     run the daemon, the browser viewer and the terminal sidebar on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n\n\
+         serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n\n\
                   TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
          Exact values are in the VTU files.\n\n\
          planned subcommands:\n",
