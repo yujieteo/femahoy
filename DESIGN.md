@@ -39,20 +39,22 @@ Description rule: say the product is "heavily inspired by Abaqus input conventio
 
 | Interface | Purpose |
 |---|---|
-| Chat | Main interface. One conversation with the leader. Every leader action shows as the `fh` command it ran. |
+| Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the `fh` command it ran. The text box is always available: a message during the work reaches the leader at its next step. A status shows the current action, the solve and its progress, and each failure. |
 | Teammate tree | Shows each teammate, its state (working, blocked, done, idle), and its pane. |
-| 3D viewport | Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector (first milestone). |
+| 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector (first milestone). |
 | `fh` CLI | Works alone over SSH and tmux, with no GUI. |
 | Custom panels | Buttons for frequent commands. Each button runs an `fh` command. |
 
 Rule: the keyboard is the main input. The mouse is for the viewport and the custom panels.
+
+Rule: the page shows only what helps the work: the chat, the run in the viewport and its controls (D-28).
 
 ---
 
 ## 4. Architecture
 
 ```
- browser (wasm UI)                                  fh CLI (SSH / tmux)
+ browser (page + wasm viewer)                       fh CLI (SSH / tmux)
         \                                                /
          \-------- HTTP (127.0.0.1, token) -------------/
                                 |
@@ -71,12 +73,13 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 - Binds to 127.0.0.1 only.
 - Makes a random token at start, as Jupyter does. Every HTTP request must carry the token.
 - Rejects any request whose `Origin` is not the daemon's own page.
-- Serves the wasm UI itself, then opens the user's browser at that page.
+- Serves the page and the wasm viewer itself, then opens the user's browser at that page.
 - The browser never holds an API key.
 
 ### 4.2 Clients
 
-- **wasm UI:** the only UI, built with `eframe`. The native UI is removed (D-20).
+- **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the Inter font (D-28).
+- **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls. The native UI is removed (D-20).
 - **`fh` CLI:** talks to a running daemon, or runs the solver directly when no daemon runs.
 
 ### 4.3 Pane backend
@@ -94,6 +97,7 @@ The daemon has no pane backend. The chat replaced the terminal sidebar, so the s
   1. **User's CLI login:** the harness uses the user's own Claude Code or Codex login.
   2. **User's API key:** the daemon passes the key in the process environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
 - The **leader** runs in headless mode with a JSON event stream (for example, `claude -p --output-format stream-json` or `codex exec --json`). The chat renders this stream. Check the exact flags against the current harness docs during M4, because they change between versions.
+- The leader process stays alive between the messages, and each message goes to its stdin (`claude -p --input-format stream-json`). Thus a message during the work reaches the leader at its next step (`docs/chat.md`).
 - **Teammates** are not built. Section 4.3 has the status.
 - The leader starts teammates with `fh team spawn`, so each start is a visible command.
 
@@ -334,10 +338,10 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | `solver-api` | `Solver` trait, subprocess protocol, registry | open API |
 | `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core |
 | `validation` | harness, tolerance classes, manufactured solutions | validated core |
-| `daemon` | HTTP server, token auth, process supervision, chat agent | app |
+| `daemon` | HTTP server, token auth, process supervision, chat agent, the page (HTML chat) | app |
 | `agents` | harness start, JSON stream parsing, skills install, role config | app |
 | `cli` | `fh` commands | app |
-| `viewer` | eframe app, wgpu mesh and contour renderer, chat panel, teammate tree | app |
+| `viewer` | eframe app, wgpu mesh and contour renderer, teammate tree | app |
 | `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app |
 
 ### 11.1 Key dependencies
@@ -345,7 +349,8 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | Dependency | Use | Note |
 |---|---|---|
 | `faer` | sparse linear algebra | pure Rust |
-| `eframe` / `egui` / `wgpu` | UI and 3D renderer, wasm | |
+| `eframe` / `egui` / `wgpu` | 3D viewport and its controls, wasm | |
+| Inter | font of the page and the viewer | SIL Open Font License 1.1. In `crates/viewer/fonts`, with its licence. |
 | gmsh | meshing | External program. Never linked (GPL). |
 
 ---
@@ -699,3 +704,15 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** The captain will ask an LLM to do the workflow steps (U1). Thus the workflow from the chat to the results in the page of `fh serve` is the most important problem. Requirements that do not serve it, C3 or B1 wait.
 - **Rejected:** the workflow lock as a gate for M4. An own mesher or the native nonlinear solver before M4.
 - **Reverse if:** the captain changes the order in section 13.
+
+### D-28 An HTML page, with the chat at the side and the model in the center
+- **Decided by:** the captain, 2026-10-19. The captain said: "It should look like ChatGPT somehow", "Use Inter", "Only the renderer requires the egui right?", "Chat should not be in the center. It should be at the side, with the FEM in the center." and "do not disable the textbook I should be able to interrupt the worker just like now".
+- **Choice:**
+  1. The page of `fh serve` is HTML and CSS with a small plain script, and no build tool or package manager. The chat is a panel on the left. The 3D viewport fills the center.
+  2. egui draws only the 3D viewport and its controls. The chat and the list of the runs are HTML.
+  3. The font is Inter, in the viewer. The page loads no file from the network.
+  4. The text box of the chat is always available. A message during the work reaches the leader at its next step. `Stop` ends the work at once.
+  5. While the leader works, the chat shows the current action, the solve and its progress, the time, and each failure.
+- **Reason:** A chat needs normal text: scrolling, selection and copy. egui draws its text on a canvas. The 3D viewport needs the GPU, and egui hosts it well.
+- **Rejected:** a script framework or a package manager for the page. A new renderer.
+- **Reverse if:** the teammate tree or the custom panels need widgets that the page cannot give.

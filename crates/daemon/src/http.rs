@@ -477,7 +477,8 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<(
     stream.flush()
 }
 
-/// The content security policy of the page: its own script (by nonce), inline styles (egui
+/// The content security policy of the page: its own script (by nonce), the viewer module
+/// (a blob), wasm, inline styles (the page and egui), and fetches to its own origin.
 fn page_policy(nonce: &str) -> String {
     format!(
         "default-src 'none'; script-src 'nonce-{nonce}' blob: 'wasm-unsafe-eval'; \
