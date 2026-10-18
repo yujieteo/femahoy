@@ -61,22 +61,39 @@ The README line "`fh run` ... opens the results in the browser" held. Extra inst
 
 | Item | Value |
 |---|---|
-| Date | |
-| Machine | |
-| Tools | |
+| Date | 2026-10-18 |
+| Machine | macOS arm64 (Apple M5). The captain cloned main (`fc8672c`) at 20:53. |
+| Tools | Not recorded. |
+| Own-model part | Not done. The captain did not do sections 1 to 7 of `docs/quickstart.md`. |
 
 ### Steps
 
 | # | Command | Time | Result |
 |---|---|---|---|
-| | | | |
+| 1 | `scripts/install.sh` (default prefix) | About 6 min (20:53 to about 20:59) | Passed with no help. |
+| 2 | `fh run --example bar-pressure` | About 20:59 | Passed. It solved the example and opened the browser. |
+| 3 | Own-model part of the quickstart | | Not done. |
+
+The captain also ran `cargo build`. It failed. That command is not part of the install, and the docs do not ask the user to run it.
 
 ### Problems
 
 | # | Kind | Problem | Follow-up |
 |---|---|---|---|
-| | | | |
+| 1 | Unverified note | `cargo build` failed. The captain did not keep the error text. The likely cause is that `~/.cargo/bin` is not on `PATH` in the terminal (`zsh: command not found: cargo`). `scripts/install.sh` finds cargo in `~/.cargo/bin` by itself. | None. The captain accepts this point as it is. |
+
+### Captain notes
+
+The captain's words, word for word:
+
+> Yes it work without help, it opened a browser, I did not do the quickstart, what is the point? Also it failed cargo build.
+
+> These steps are annoying, ultimately I will ask an LLM to do it anyway, close U1 and it is OK
+
+### Finding
+
+The owner prefers that an LLM does the workflow steps ("ultimately I will ask an LLM to do it anyway"). This record adds no fix for it.
 
 ## Summary
 
-Open until the captain run is recorded.
+U1 is closed on 2026-10-18. The worker run did the full workflow from the docs, and all steps passed. The captain run did the install and the example. The captain decided to close U1 with these 2 runs and the notes above, and accepts the `cargo build` point as it is.
