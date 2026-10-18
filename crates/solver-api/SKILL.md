@@ -24,7 +24,6 @@ Define the `Solver` trait, registry and subprocess protocol v2.
 
 - Do not accept a protocol v1 header or result paths outside the run folder.
 - Mark results from an unvalidated solver as validated (DESIGN.md section 9.2).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

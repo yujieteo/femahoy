@@ -26,9 +26,6 @@ Load case TOML files, measure solver results and compare them with declared refe
 
 - Do not describe `no solver` as a successful validation result.
 - Run Abaqus. No Abaqus licence is available (DESIGN.md section 10.1).
-- Add NAFEMS target values before the leader confirms the legal check (AGENTS.md section 4).
-- Weaken, skip or delete a validation case. Change a tolerance only with a written reason and leader approval (AGENTS.md section 4).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

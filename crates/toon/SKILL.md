@@ -23,7 +23,6 @@ Encode short agent summaries with schemas `fh.check`, `fh.run`, `fh.validate` an
 
 - Do not treat rounded TOON values as exact field data or describe `fh results` as implemented.
 - Write full field arrays into TOON (DESIGN.md section 8).
-- Add a dependency without leader approval. Every dependency needs a permissive licence (AGENTS.md section 3).
 
 ## Validation hooks it must pass
 

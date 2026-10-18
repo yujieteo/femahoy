@@ -21,8 +21,7 @@ Run CalculiX (`ccx`) as a protocol v2 solver: the executable `fh-solve-ccx` (D-1
 
 ## Forbidden actions
 
-- Add a dependency without leader approval (AGENTS.md section 3).
-- Change a validation case or a tolerance so that `ccx` passes.
+The rules of `AGENTS.md` section 4 apply. This crate adds none.
 
 ## Validation hooks it must pass
 

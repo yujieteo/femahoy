@@ -1,7 +1,7 @@
-# Workflow lock: the locked interface
+# The CLI workflow
 
-This page fixes the commands, options, file formats and exit codes of the workflow from a build123d part to validated results.
-The M3 work and the C1 work use these interfaces. A change to a locked item needs a decision from the captain.
+This page gives the commands, options, file formats and exit codes of the workflow from a build123d part to validated results.
+`fh run`, the daemon, `solver-ccx` and the M4 leader use these interfaces. A change to an item on this page also changes this page and `scripts/check-workflow.sh` in the same PR.
 `docs/reference/fh.md` has the full diagnostic tables. `docs/cad-recipe.md` has the CAD steps.
 
 ## The proof
@@ -95,7 +95,3 @@ The cases in mm and in m give the same physical answer.
 Refusal codes in the path: `unit.step.missing`, `unit.step.conflict`, `unit.step.mixed`, `unit.step.mismatch`,
 `unit.mesh.missing`, `unit.mesh.unreadable`, `unit.mesh.conflict`, `unit.mesh.mismatch`, `mesh.empty`, `mesh.mixed`,
 `mesh.jacobian.negative`, `mesh.volume.unnamed`, `mesh.region.missing`, `mesh.region.inner`, `model.missing`, `model.inp.invalid`.
-
-## Open lock items
-
-The lock is reached (2026-10-18). U1 is done (`docs/milestones.md`).
