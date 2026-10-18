@@ -15,4 +15,3 @@ fh-daemon = { path = "../daemon" }
 fh-inp = { path = "../inp" }
 fh-io = { path = "../io" }
 fh-validation = { path = "../validation" }
-fh-viewer = { path = "../viewer" }

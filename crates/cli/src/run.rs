@@ -528,7 +528,6 @@ fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_h
             Err(e) => println!("fh run: no browser ({e}). Open the page above."),
         }
     }
-    println!("fh run: native window: fh view {}", out.display());
     println!("fh run: the daemon stays alive for the browser. Stop it with: {stop_hint}");
 }
 

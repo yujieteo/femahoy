@@ -1,14 +1,8 @@
 # Viewer
 
-The viewer shows a mesh or the results of a run in 3D. The same `eframe` code runs in two places:
-
-- `fh view` opens a native window.
-- `fh serve` serves the viewer as wasm. The page of the daemon is the viewer, with the terminal sidebar on the right (roadmap item M3).
+The viewer shows the results of a run in 3D. `fh serve` serves the viewer as wasm. The page of the daemon is the viewer, with the terminal sidebar on the right (roadmap item M3).
 
 ```
-fh view model.inp           # the mesh only (D-20)
-fh view run/                # the results of a run folder
-fh view run/results.pvd     # the same
 fh serve                    # the viewer in the browser: fh serve opens its page
 fh run model.inp            # solve, then open the results of the run in the browser
 ```
@@ -85,7 +79,7 @@ To build only the viewer, for example in development, run `scripts/build-viewer.
 
 The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/projects/<p>/runs/<r>/files/<name>`. The sidebar uses the terminal and pane routes and one WebSocket for each terminal, with the token in the subprotocol `fh.token.TOKEN`.
 
-The browser needs WebGPU or WebGL 2. When the viewer cannot start, the page shows the cause. The native window needs a GPU with Metal, Vulkan or DX12.
+The browser needs WebGPU or WebGL 2. When the viewer cannot start, the page shows the cause.
 
 ## Code
 
@@ -98,7 +92,7 @@ The code is in `crates/viewer`:
 | `view.rs` | the view state: the step, the scale, the field and the vertex data |
 | `camera.rs` | the orbit camera |
 | `gpu.rs`, `shader.wgsl` | the thin wgpu layer |
-| `app.rs` | the eframe app, the same for the window and the browser |
+| `app.rs` | the eframe app of the page |
 | `terminal.rs` | the terminal widget: it decodes the screens of the daemon and encodes the keys, the paste and the mouse |
 | `sidebar.rs` | the terminal sidebar: the tabs, the panes and the requests to the daemon, behind the `Remote` trait |
 | `web.rs` | the browser entry point, the HTTP requests and the WebSockets (wasm only) |

@@ -1,7 +1,6 @@
-//! The eframe app: a viewport, a results panel, a status bar and the mouse controls. The
-//! same code runs in the native window (`fh view`) and in the browser (`fh serve`). In the
-//! browser, the chat panel is on the left of the viewport and the terminal sidebar on the
-//! right.
+//! The eframe app: a viewport, a results panel, a status bar and the mouse controls, on the
+//! page of `fh serve`. The chat panel is on the left of the viewport and the terminal
+//! sidebar on the right.
 
 use std::sync::{Arc, Mutex};
 
@@ -11,15 +10,12 @@ use eframe::egui_wgpu;
 use crate::camera::Camera;
 use crate::chat::Chat;
 use crate::gpu::{FrameParams, Geometry, MeshCallback, MeshGpu};
-use crate::mesh::RenderMesh;
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
 use crate::sidebar::Sidebar;
 use crate::view::{self, Contour, ViewState};
 
 /// What the viewer shows.
 pub enum Content {
-    /// A mesh with no results (`fh view MODEL.inp`).
-    Mesh(RenderMesh),
     /// The results of a run.
     Results(Box<Results>),
     /// The runs with results that the page can open: a label and a page address each.
@@ -34,9 +30,8 @@ pub enum Content {
 pub type ContentSlot = Arc<Mutex<Option<Content>>>;
 
 struct Shown {
-    results: Option<Box<Results>>,
-    mesh_only: Option<RenderMesh>,
-    view: Option<ViewState>,
+    results: Box<Results>,
+    view: ViewState,
     geometry: Option<Arc<Geometry>>,
     version: u64,
     camera: Camera,
@@ -95,48 +90,38 @@ impl ViewerApp {
         if !matches!(content, Content::Runs(_)) {
             self.runs = None;
         }
-        let mesh = match &content {
-            Content::Mesh(m) => m,
-            Content::Results(r) => &r.mesh,
+        let r = match content {
+            Content::Results(r) => r,
             Content::Runs(links) => {
                 self.message = None;
-                self.runs = Some(links.clone());
+                self.runs = Some(links);
                 return;
             }
             Content::Loading(text) => {
-                self.message = Some((false, text.clone()));
+                self.message = Some((false, text));
                 return;
             }
             Content::Failed(text) => {
-                self.message = Some((true, text.clone()));
+                self.message = Some((true, text));
                 self.shown = None;
                 return;
             }
         };
         if let Some(rs) = self.render_state.as_ref() {
-            let gpu = MeshGpu::new(rs, mesh);
+            let gpu = MeshGpu::new(rs, &r.mesh);
             rs.renderer.write().callback_resources.insert(gpu);
         }
-        let home = Camera::fit(mesh.bounds);
+        let home = Camera::fit(r.mesh.bounds);
         self.message = None;
         let mut shown = Shown {
-            results: None,
-            mesh_only: None,
-            view: None,
+            view: ViewState::new(&r),
+            results: r,
             geometry: None,
             version: 0,
             camera: home,
             home,
         };
-        match content {
-            Content::Mesh(m) => shown.mesh_only = Some(m),
-            Content::Results(r) => {
-                shown.view = Some(ViewState::new(&r));
-                shown.results = Some(r);
-                shown.refresh();
-            }
-            _ => unreachable!("handled above"),
-        }
+        shown.refresh();
         self.shown = Some(shown);
     }
 
@@ -144,7 +129,7 @@ impl ViewerApp {
         let Some(s) = &self.shown else {
             return self.title.clone();
         };
-        let m = s.mesh();
+        let m = &s.results.mesh;
         let mut text = format!(
             "{}: {} nodes, {} elements, {} surface triangles",
             self.title,
@@ -163,34 +148,19 @@ impl ViewerApp {
 }
 
 impl Shown {
-    fn mesh(&self) -> &RenderMesh {
-        match (&self.results, &self.mesh_only) {
-            (Some(r), _) => &r.mesh,
-            (None, Some(m)) => m,
-            (None, None) => unreachable!("one of the two is set"),
-        }
-    }
-
     /// Make new vertex data after a change of the view state.
     fn refresh(&mut self) {
-        if let (Some(r), Some(v)) = (&self.results, &self.view) {
-            self.version += 1;
-            self.geometry = Some(Arc::new(v.geometry(r, self.version)));
-        }
+        self.version += 1;
+        self.geometry = Some(Arc::new(self.view.geometry(&self.results, self.version)));
     }
 
     fn contour_on(&self) -> bool {
-        match (self.results.as_ref(), self.view.as_ref()) {
-            (Some(r), Some(v)) => matches!(v.contour(r), Contour::On { .. }),
-            _ => false,
-        }
+        matches!(self.view.contour(&self.results), Contour::On { .. })
     }
 
     /// The results panel. Returns true when the view state changed.
     fn panel(&mut self, ui: &mut egui::Ui) -> bool {
-        let (Some(r), Some(v)) = (&self.results, &mut self.view) else {
-            return false;
-        };
+        let (r, v) = (&self.results, &mut self.view);
         let before = v.clone();
         ui.heading("Results");
         ui.label(format!("Units: {}", r.units));
@@ -389,9 +359,7 @@ impl eframe::App for ViewerApp {
                 .max_size(width.max(560.0))
                 .show(ui, |ui| c.ui(ui));
         }
-        let has_results = self.shown.as_ref().is_some_and(|s| s.results.is_some());
-        if has_results {
-            let shown = self.shown.as_mut().expect("has results");
+        if let Some(shown) = self.shown.as_mut() {
             egui::Panel::right("results")
                 .resizable(false)
                 .min_size(250.0)
@@ -440,7 +408,7 @@ impl eframe::App for ViewerApp {
             if response.double_clicked() {
                 shown.camera = shown.home;
             }
-            let deformed = shown.view.as_ref().is_some_and(|v| v.deformed && v.ghost);
+            let deformed = shown.view.deformed && shown.view.ghost;
             let params = FrameParams {
                 view_proj: shown
                     .camera
@@ -459,23 +427,4 @@ impl eframe::App for ViewerApp {
             ));
         });
     }
-}
-
-/// Open a window and run until it closes.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn run(title: String, content: Content) -> Result<(), String> {
-    let options = eframe::NativeOptions {
-        renderer: eframe::Renderer::Wgpu,
-        depth_buffer: crate::gpu::DEPTH_BITS,
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 780.0])
-            .with_title(format!("fh view {title}")),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "fh view",
-        options,
-        Box::new(move |cc| Ok(Box::new(ViewerApp::new(cc, title, content, None)))),
-    )
-    .map_err(|e| e.to_string())
 }

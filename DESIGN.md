@@ -53,8 +53,8 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 ## 4. Architecture
 
 ```
- browser (wasm UI)        native UI (eframe)        fh CLI (SSH / tmux)
-        \                       |                        /
+ browser (wasm UI)                                  fh CLI (SSH / tmux)
+        \                                                /
          \---- HTTP + WebSocket (127.0.0.1, token) -----/
                                 |
                          fh serve (daemon)
@@ -77,8 +77,7 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 
 ### 4.2 Clients
 
-- **wasm UI:** the first build target. The same `eframe` code as the native UI.
-- **Native UI:** the same code, built for macOS and then for Windows.
+- **wasm UI:** the only UI, built with `eframe`. The native UI is removed (D-20).
 - **`fh` CLI:** talks to a running daemon, or runs the solver directly when no daemon runs.
 
 ### 4.3 Pane backend
@@ -347,7 +346,7 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | Dependency | Use | Note |
 |---|---|---|
 | `faer` | sparse linear algebra | pure Rust |
-| `eframe` / `egui` / `wgpu` | UI and 3D renderer, native and wasm | |
+| `eframe` / `egui` / `wgpu` | UI and 3D renderer, wasm | |
 | `alacritty_terminal` | terminal emulator core | Pin an exact version. Wrap it behind our own interface. |
 | gmsh | meshing | External program. Never linked (GPL). |
 
@@ -411,8 +410,7 @@ Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip
 ## 12. Platforms and distribution
 
 1. **Web (wasm) first.** The user installs `fh`, runs `fh serve`, and the UI opens in the browser.
-2. **Native macOS second.**
-3. **Windows third.** Uses the plain PTY backend.
+2. **Windows second.** Uses the plain PTY backend.
 
 Distribution: a single `fh` binary (Homebrew and a direct download). The static demo is published on a separate web page.
 
@@ -427,7 +425,7 @@ Order of the work (D-27):
 1. **Now: the basic LLM workflow (M4).** The user asks the chat for a model. The leader builds the CAD, meshes it, solves it and shows the results. The user sees each step in the page of `fh serve`. One focused agent is the default. The user can add more agents later. Every action shows as an `fh` command.
 2. **Now: CalculiX for thermal strain, several materials and warpage (C3).**
 3. **Now: the workflow benchmark records (B1).** They measure the workflow from the request to the results.
-4. **Later:** the native nonlinear solver (M5 to M7), the other CalculiX capabilities (C2), the platforms (M10, M11) and the second user test.
+4. **Later:** the native nonlinear solver (M5 to M7), the other CalculiX capabilities (C2), the Windows platform (M11) and the second user test.
 
 Rules:
 
@@ -450,7 +448,7 @@ Later, with no milestone yet: a mesher of our own (D-15). The managed LLM tier s
 | Daemon HTTP and WebSocket API | M3 |
 | Template mapping format | After the second user test |
 | Friction in contact | After M6 |
-| OS sandbox for subprocess solvers | After M10 |
+| OS sandbox for subprocess solvers | After M4 |
 | Managed LLM tier (proxy, accounts, billing) | After the second user test |
 | NAFEMS cases | After the legal check |
 
@@ -643,7 +641,8 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** The interface to the harness workflow must ship soon. The viewer needs no daemon and does not change the validated solver path.
 - **Rejected:** results, deformed shape, contours, the daemon, chat and the wasm build in this step. These stay in track 2.
 - **Reverse if:** the viewer work delays a track 1 item.
-- **Built:** `crates/viewer` and `fh view` (`docs/viewer.md`). The M3 wasm viewer grew from this code: the same app shows results in the browser and in `fh view`.
+- **Built:** `crates/viewer` and `fh view` (`docs/viewer.md`). The M3 wasm viewer grew from this code.
+- **Reversed:** the captain, 2026-10-18. `fh view`, the native window and M10 (native macOS) are removed. The wasm viewer on the page of `fh serve` is the only viewer. Thus the `fh` binary does not link eframe and wgpu.
 
 ### D-21 C1 does not wait for the workflow lock
 - **Decided by:** the captain, 2026-10-18.

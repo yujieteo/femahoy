@@ -1,10 +1,10 @@
 //! eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree.
 //!
-//! Built so far: the viewer behind `fh view` and the page of `fh serve`, with the chat panel
-//! and the terminal sidebar on the page. `mesh`, `camera`, `results` and `view` are plain
-//! functions with no GPU types. `terminal` decodes the screens of the daemon and encodes the
-//! keys, `sidebar` holds the tabs and the panes, and `chat` shows the actions of the leader.
-//! `gpu` and `app` are the thin window layer. `web` is the browser entry point.
+//! Built so far: the page of `fh serve`, with the chat panel and the terminal sidebar on the
+//! page. `mesh`, `camera`, `results` and `view` are plain functions with no GPU types.
+//! `terminal` decodes the screens of the daemon and encodes the keys, `sidebar` holds the tabs
+//! and the panes, and `chat` shows the actions of the leader. `gpu` and `app` are the thin
+//! window layer. `web` is the browser entry point.
 
 mod app;
 pub mod camera;
@@ -18,101 +18,7 @@ pub mod view;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
-pub use app::Content;
+pub use app::{Content, ContentSlot, ViewerApp};
 
 /// The results file of a run folder.
 pub const RESULTS_FILE: &str = "results.pvd";
-
-/// Read the results of a run from a run folder or its `results.pvd`.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn load_run(path: &std::path::Path) -> Result<results::Results, String> {
-    let pvd_path = if path.extension().is_some_and(|e| e == "pvd") {
-        path.to_path_buf()
-    } else {
-        path.join(RESULTS_FILE)
-    };
-    let dir = match pvd_path.parent() {
-        Some(p) if !p.as_os_str().is_empty() => p.to_path_buf(),
-        _ => std::path::PathBuf::from("."),
-    };
-    let pvd =
-        std::fs::read_to_string(&pvd_path).map_err(|e| format!("{}: {e}", pvd_path.display()))?;
-    results::load(&pvd_path.display().to_string(), &pvd, |file| {
-        std::fs::read(dir.join(file)).map_err(|e| e.to_string())
-    })
-    .map_err(|e| {
-        if e.file == pvd_path.display().to_string() {
-            e.to_string()
-        } else {
-            format!("{}: {e}", dir.display())
-        }
-    })
-}
-
-/// Open the viewer on an `.inp` model, on a run folder, or on a `results.pvd`. Returns when
-/// the window closes.
-#[cfg(not(target_arch = "wasm32"))]
-pub fn view_file(path: &std::path::Path) -> Result<(), String> {
-    let title = path.file_name().map_or_else(
-        || path.display().to_string(),
-        |n| n.to_string_lossy().into_owned(),
-    );
-    let is_results = path.is_dir() || path.extension().is_some_and(|e| e == "pvd");
-    if is_results {
-        let r = load_run(path)?;
-        return app::run(title, Content::Results(Box::new(r)));
-    }
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let model = fh_inp::parse(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-    let render = mesh::build(&model);
-    if render.triangles.is_empty() {
-        return Err(format!(
-            "{}: no C3D4, C3D8 or C3D10 elements to draw ({} nodes, {} elements)",
-            path.display(),
-            render.node_count,
-            render.element_count
-        ));
-    }
-    app::run(title, Content::Mesh(render))
-}
-
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn load_run_takes_the_folder_or_the_pvd() {
-        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/results/cantilever-2step");
-        let a = load_run(&dir).unwrap();
-        let b = load_run(&dir.join(RESULTS_FILE)).unwrap();
-        assert_eq!(a, b);
-        assert_eq!(a.steps.len(), 2);
-    }
-
-    #[test]
-    fn load_run_names_the_current_folder_for_a_bare_file_name() {
-        let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/results/cantilever-2step");
-        let dir = std::env::temp_dir().join(format!("fh-viewer-bare-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::copy(src.join("results.pvd"), dir.join("results.pvd")).unwrap();
-        std::fs::copy(src.join("step-1.vtu"), dir.join("step-1.vtu")).unwrap();
-        let previous = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&dir).unwrap();
-        let e = load_run(std::path::Path::new("results.pvd"));
-        std::env::set_current_dir(previous).unwrap();
-        std::fs::remove_dir_all(&dir).unwrap();
-        let e = e.unwrap_err();
-        assert!(
-            e.starts_with(". : step-2.vtu") || e.starts_with(".: step-2.vtu"),
-            "{e}"
-        );
-    }
-
-    #[test]
-    fn load_run_names_a_missing_folder() {
-        let e = load_run(std::path::Path::new("/no/such/run")).unwrap_err();
-        assert!(e.starts_with("/no/such/run/results.pvd: "), "{e}");
-    }
-}
