@@ -5,7 +5,7 @@ It requires a successful solve and a peak at most 16,000,000,000 bytes (decimal 
 This limit is below 16 GiB.
 The box has 100 elements on each axis, one fixed face, and one transverse point load on the opposite face.
 The material has E = 1000 and nu = 0.3.
-All 3 result formats and the default restart output are on.
+Only the default result output (VTU with PVD) and the default restart output are on.
 The script does not change the solver physics or the validation fixtures.
 
 Use a new scratch folder outside the repository:

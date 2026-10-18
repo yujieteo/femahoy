@@ -27,7 +27,7 @@ The core solver `fh-solve` also writes these log lines (DESIGN.md section 9.3):
 - `step N max_u=... max_mises=... max_rf=... free_dofs=... method=... iterations=...` at the end of each step.
 - `stats ...` and `timing assemble=... factor=... solve=...` at the end of the run.
 
-`fh-solve` also takes `--formats text,vtu,vtk`, `--restart-every N` and `--restart-minutes T`. The runner does not pass these options.
+`fh-solve` also takes `--formats text,vtu,vtk` (default `vtu`; `all` selects the 3), `--restart-every N` and `--restart-minutes T`. The runner does not pass these options.
 
 ## Cancel
 
