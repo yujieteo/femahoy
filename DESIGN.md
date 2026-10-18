@@ -430,7 +430,7 @@ This section is the one current roadmap. It holds the plan only. `docs/milestone
 
 The roadmap has two tracks (D-16):
 
-1. **Track 1, the validated workflow.** One part goes from a text-to-CAD script, through the units check and gmsh, to a solved result that passes validation. Track 1 uses the CLI only. It ends at the **workflow lock**, when every track 1 item is done.
+1. **Track 1, the validated workflow.** One part goes from a text-to-CAD script, through the units check and gmsh, to a solved result that passes validation. Track 1 uses the CLI only. It ends at the **workflow lock**, when U1 is done and `scripts/check-workflow.sh` passes.
 2. **Track 2, the later milestones.** It holds the daemon, the viewer, the chat, the CalculiX adapter, the nonlinear work and the platform milestones. All track 2 items come after the workflow lock. This includes M3 and M4. Exceptions: the captain approved D1, M3 and C1 before the workflow lock (see their rows).
 
 Rules:
@@ -450,22 +450,22 @@ Rules:
 | P1 Build coverage | CI builds and tests each change on aarch64 (D-07) and on x86-64 (D-06). | M0 | From M2.1 on, the CI checks pass on both architectures. |
 | M2.1 First linear path | `C3D10` (D-19). `Material` trait with elasticity, and steps that keep the later analysis types possible (D-10). DOF elimination for fixed boundary conditions (`*BOUNDARY`). Point loads (`*CLOAD`). Reactions. Sparse solver (`faer` Cholesky). VTU with PVD (D-04). | M1, E1 | The linear cases pass with `C3D10` meshes against their analytical values. The `C3D10` manufactured-solution rate passes. The reactions balance the loads. The VTU values read back at full precision. |
 | M2b Geometry and units | The CAD to mesh contract, for 1 part with 1 material and named load and support regions. A Python script (build123d, D-17) makes the part and writes STEP. gmsh reads the STEP file through OpenCASCADE and writes the mesh through a fixed script contract: MSH 4.1 ASCII, complete quadratic tetrahedra (`C3D10`), an explicit STEP target unit, and a physical group for each volume and each named region. The import keeps each named region as a node set, an element set or an element-face surface. A pressure load (`*DSLOAD`) acts on a named surface. The case TOML declares the units (D-18). The result files and the TOON summary state the declared units. The record of the stage gives the tested versions of Python, build123d and gmsh. Not in M2b: general CAD editing and the general `fh mesh` command. That command comes later and uses the same contract. | M2.1 | One scripted part goes through the full path to `C3D10` results, and its analytical check passes. A new mesh at 2 sizes keeps the same named support and pressure regions. The total pressure force and the reactions balance. Equivalent models in metres and in millimetres give the same physical answer. `fh` refuses each of these cases with a clear error: no unit in the case, a units mismatch, a STEP file with no unit record, a lost or renamed region, a volume with no physical group, and a failure of an external program. |
-| U1 First user test | A user runs the M2b workflow with the CLI, the case files, the TOON summaries and ParaView. | M2.1, M2b | A record of the test shows whether the user can install the tools, declare the units and the regions, solve the model and read the result. The record lists each problem that the test found. |
+| U1 First user test | A user runs the M2b workflow with the CLI, the case files and the TOON summaries, and reads the results in the browser viewer. ParaView is optional. | M2.1, M2b | A record of the test shows whether the user can install the tools, declare the units and the regions, solve the model and read the result. The record lists each problem that the test found. |
 | M2.2 Hex elements | `C3D8I` and `C3D8`. | M2.1 | The linear cases pass for each element. Each element has its own convergence gate and manufactured-solution rate. |
 | M2.3 Loads and constraints | The other boundary conditions and loads of the linear keyword subset. `*COUPLING`, `*EQUATION`, `*MPC`, through DOF elimination. | M2.1 | Each constraint type has its own case, and each case passes. |
 | M2.4 Restart | Restart that is safe against partial files (D-09). | M2.1 | The restart test passes. A restart never reads a partial file. |
 | M2.5 Result formats and protocol | Plain text and legacy VTK (D-04), next to VTU with PVD. Subprocess protocol v2 (section 9.3). | M2.1 | Each format has a test that reads the values back. A protocol test runs a solver as a subprocess, from the input file to the results. |
 | M2.6 Scale | The sparse solver fits 1 million `C3D8` elements in 16 GB (D-06). | M2.2, E1 | A model of 1 million `C3D8` elements solves with a measured peak memory below 16 GB. |
 | M2 Linear solver | Stages M2.1 to M2.6. | M2.1 to M2.6 | All linear fixtures pass. Manufactured-solution rates pass. Restart test passes. Builds and passes on aarch64 (D-07). |
-| E2 C3D10 workload | The memory test for the default `C3D10` workload (D-19). Named workloads: a graded tet10 mesh, a slender structure and a material-contrast case. The memory count includes parse, assembly, solve, restart and output. The case file of each workload states its limits before the run. | M2, M2b | Each named workload stays inside the limits for peak memory, time, solver iterations and disk use, with no swap. |
-| **Workflow lock** | Every item above is done. | All track 1 items | Track 2 can start. |
+| **Workflow lock** | U1 is done and `scripts/check-workflow.sh` passes. | U1 | Track 2 can start. |
 
 ### 13.2 Track 2: after the workflow lock, except D1, M3 and C1
 
 | Item | Content | Needs | Done when |
 |---|---|---|---|
 | C1 CalculiX adapter (`solver-ccx`) | The new crate `solver-ccx` (D-13). It writes the `ccx` input for a supported keyword subset, runs the user's `ccx` as a separate program, reads the `.frd` results with our own Rust reader, and writes VTU with PVD and a TOON summary (section 9.1). | M2b. Exception: the captain approved C1 before the workflow lock (D-21). | A linear case goes through `.inp`, `ccx`, `.frd`, VTU with PVD and TOON, and passes against its analytical reference. Tests cover no `ccx` on the path, a failed run, cancel and an invalid result file. An unsupported keyword fails with a clear error. The record of the stage gives the tested `ccx` version and the supported keyword subset. |
-| C2 CalculiX capabilities | The M6 to M9 capabilities through `ccx`, one at a time (D-14): plasticity, contact with the penalty rule and sweep (D-13), large displacement, model change and submodel. | C1 | Each capability passes its own case against an independent reference (section 10.2). Agreement with another solver is never the only evidence. The contact case passes the sweep of penalty value and mesh size. |
+| C2 CalculiX capabilities | The M6 and M7 capabilities through `ccx`, one at a time (D-14): plasticity, contact with the penalty rule and sweep (D-13) and large displacement. | C1 | Each capability passes its own case against an independent reference (section 10.2). Agreement with another solver is never the only evidence. The contact case passes the sweep of penalty value and mesh size. |
+| E2 C3D10 workload | The memory measure for the default `C3D10` workload (D-19). Named workloads: a graded tet10 mesh, a slender structure and a material-contrast case. The memory count includes parse, assembly, solve, restart and output. The case file of each workload states its limits before the run. The benchmark records against CalculiX measure these workloads after the workflow lock. | C1, M2b | Each named workload stays inside the limits for peak memory, time, solver iterations and disk use. |
 | D1 Daemon run contract | The run and reconnect contract, before the M3 terminal work. Project IDs, fixed input revisions, run IDs, run states and command acknowledgement. One `fh run` contract for the CLI and the UI. Token authentication for a client with no `Origin`, such as the CLI. Bounded event queues and logs. The rule for which process stays alive when the browser closes or the daemon fails. | Workflow lock. Exception: the captain approved the start of D1 before the workflow lock, in parallel with the open M2 work. | Browser close, CLI reconnect, a duplicate submission, cancel and a daemon restart each keep one correct run record. A request from a foreign browser `Origin` fails. A request from an authorized CLI passes. |
 | M3 Daemon and viewer | `fh serve` with token and `Origin` checks. wasm viewer: mesh, outlines, deformed shape, one contour field, step selector. Terminal sidebar. Both pane backends. | D1. Exception: the captain approved M3 before the workflow lock. It starts after the D1 PR merges, in this order: `fh serve`, the wasm viewer, the terminal sidebar with both pane backends. | The viewer shows the M2 results in a browser. Herdr runs in the sidebar. |
 | M4 Chat and agents | Leader in headless mode in the chat. Teammates in panes. Teammate tree. `femahoy.toml`. `fh init` installs skills. Both connection paths. | M3 | The leader builds and solves a cantilever model from one chat request, and every action shows as an `fh` command. |
@@ -475,12 +475,10 @@ Rules:
 | N2 Finite-strain formulation | A study before M6 plasticity. It defines the stress measure, the strain measure, the tangent convention, the state variables and the linearization of pressure loads (section 7.1). The full M7 milestone stays later. | M5 | A rotated elastic body gives zero stress. A rotated plastic load path keeps the physical response. A numerical derivative agrees with the full residual tangent. |
 | M6 Plasticity and contact | J2 plasticity with isotropic hardening, through the `Material` trait. Contact is a separate contribution to the system, not part of the element. Augmented Lagrange node-to-surface contact. | N2 | Hill cylinder, uniaxial bar and Hertz cases pass. Plasticity and contact pass their gates separately. |
 | M7 Large displacement | `NLGEOM=YES` through the deformation gradient, so that elements and materials use one path. It uses the N2 formulation. | M6 | Elastica and rigid-rotation cases pass. |
-| M8 Birth and death | `*MODEL CHANGE`. | M7 | Statically determinate cases pass. |
-| M9 Submodelling | `*SUBMODEL`, `*BOUNDARY, SUBMODEL`. | M8 | Lamé sub-region passes against both references. |
 
 ### 13.3 Platform milestones
 
-Platform work is separate from solver features. M10 and M11 do not wait for M5 to M9. P1 (section 13.1) is the platform item of track 1.
+Platform work is separate from solver features. M10 and M11 do not wait for M5 to M7. P1 (section 13.1) is the platform item of track 1.
 
 | Item | Content | Needs | Done when |
 |---|---|---|---|
@@ -665,7 +663,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-16 Two tracks: the validated workflow first
 - **Decided by:** the captain.
-- **Choice:** The roadmap has two tracks (section 13). Track 1 is one complete validated workflow with the CLI: text-to-CAD, units check, gmsh, built-in solver, validated results. Track 2 holds the later milestones: the viewer, the chat, the external solvers and the nonlinear work. Track 2 starts after the workflow lock. Exceptions: D1, M3 and C1.
+- **Choice:** The roadmap has two tracks (section 13). Track 1 is one complete validated workflow with the CLI: text-to-CAD, units check, gmsh, built-in solver, validated results. Track 2 holds the later milestones: the viewer, the chat, the external solvers and the nonlinear work. Track 2 starts after the workflow lock. Exceptions: D1, M3 and C1. The lock needs U1 and the passing `scripts/check-workflow.sh` proof only (D-26).
 - **Reason:** One trusted base comes before more features are built on it.
 - **Rejected:** the viewer, the chat or the nonlinear work before the workflow is validated, and the first user test only after M4.
 - **Reverse if:** the first user test shows that the workflow needs a track 2 item before the workflow lock.
@@ -732,3 +730,14 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Choice:** Birth and death (M8) and submodelling (M9) are on a "not now" list (section 7.1). A mesher of our own and a heavy built-in solver are not in the validated path until they are measured against gmsh and CalculiX (D-12, D-15).
 - **Reason:** These items are not required now.
 - **Built:** the text of section 7.1, D-12, D-15, `README.md` and `crates/io/SKILL.md` changed.
+
+### D-26 Remove dumb requirements
+- **Decided by:** the captain, 2026-10-18. The captain said: "Remove dumb requirements."
+- **Choice:** Remove these 5 requirements:
+  1. E2 no longer requires "no swap". A shared Mac cannot prove it. D-22 removed the same proof from the 1M run.
+  2. E2 is not in track 1. The benchmark records against CalculiX measure its workloads after the workflow lock.
+  3. The lock needs U1 and the passing `scripts/check-workflow.sh` proof only. E2, the open part of P1 and the hex8 rule in the run command are not lock gates. The hex8 rule (D-19) stays. The CI gap of P1 (CI has no gmsh) is a small separate task.
+  4. U1 uses the browser viewer. ParaView is optional.
+  5. M8 and M9 are not in the track 2 tables or in the scope of C2. The "not now" list (section 7.1, D-25) holds them.
+- **Reason:** These requirements blocked the focus work and a shared Mac cannot prove them.
+- **Built:** the text of section 13, D-16 and `docs/milestones.md` changed.

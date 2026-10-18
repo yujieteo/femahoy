@@ -102,7 +102,7 @@ Plasticity, contact and large displacement are not built yet.
 
 - CalculiX (`ccx`) is the first external solver. It runs as a separate program in a new crate, `solver-ccx`. The user installs it. Reason: its input is closest to our `.inp`, and it passed all 6 capability tests (linear, plasticity, contact, large movement, model change, submodel). It stays a separate program because it is GPL.
 - Contact in `ccx` uses the penalty method. A rule sets the penalty value, and a sweep in the validation case tests it. Our own Rust reader reads the `ccx` `.frd` result files. Reason: `ccx` supports only penalty contact. A bad penalty value gave a 10 percent error, so a rule and a sweep guard it.
-- The built-in solver gets the M5 Newton work. `ccx` serves M6 to M9 first and cross-checks the built-in results. Reason: nonlinear features arrive early, and `ccx` cross-checks the built-in results.
+- The built-in solver gets the M5 Newton work. `ccx` serves M6 and M7 first and cross-checks the built-in results. Reason: nonlinear features arrive early, and `ccx` cross-checks the built-in results.
 
 ## Documents
 

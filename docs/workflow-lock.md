@@ -98,7 +98,4 @@ Refusal codes in the path: `unit.step.missing`, `unit.step.conflict`, `unit.step
 
 ## Open lock items
 
-The lock is not complete. These items stay open in other tasks:
-
-- The hex8 rule in the run command.
-- The open parts of P1, U1, E2 and the M2 stages (`docs/milestones.md`).
+The lock is not complete. U1 is open (`docs/milestones.md`).
