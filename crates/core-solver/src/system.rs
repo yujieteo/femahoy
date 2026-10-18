@@ -412,6 +412,26 @@ pub fn solve_from(
     if model.steps.iter().any(|s| s.nlgeom) {
         return Err(SolverError::new("NLGEOM=YES is not available before M7"));
     }
+    // Thermal strain runs through CalculiX only. Never ignore the input.
+    let thermal = [
+        (
+            model.materials.iter().any(|m| m.expansion.is_some()),
+            "*EXPANSION",
+        ),
+        (
+            !model.initial_temperatures.is_empty(),
+            "*INITIAL CONDITIONS, TYPE=TEMPERATURE",
+        ),
+        (
+            model.steps.iter().any(|s| !s.temperatures.is_empty()),
+            "*TEMPERATURE",
+        ),
+    ];
+    if let Some((_, k)) = thermal.iter().find(|(used, _)| *used) {
+        return Err(SolverError::new(format!(
+            "{k}: fh-solve has no thermal strain. Run this model with fh-solve-ccx (CalculiX)"
+        )));
+    }
     let threads = match options.threads {
         0 => std::thread::available_parallelism().map_or(1, |n| n.get()),
         n => n,

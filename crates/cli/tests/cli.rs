@@ -109,11 +109,33 @@ fn check_with_a_missing_file_exits_1() {
     assert_eq!(fh(&["check", "/nonexistent/x.inp"]).status.code(), Some(1));
 }
 
+/// True when `ccx` (`FH_CCX`, else `ccx` on PATH) starts. The `bimetal-strip` case needs it.
+fn ccx_found() -> bool {
+    let exe = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
+    let found = Command::new(exe).arg("-v").output().is_ok();
+    if !found {
+        eprintln!("ccx not found: bimetal-strip must be skipped. Set FH_CCX to run it");
+    }
+    found
+}
+
 #[test]
 fn validate_runs_every_case_through_the_solver() {
     let out = fh(&["validate", "--root", &root()]);
     let stdout = text(out.stdout);
+    // FH_SOLVE names fh-solve. The case bimetal-strip uses fh-solve-ccx all the same.
+    // Without ccx, the case is skipped and the other cases decide the exit code.
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
+    if ccx_found() {
+        assert!(stdout.contains("bimetal-strip\tN\tpass"), "{stdout}");
+        assert!(stdout.contains("17 cases: 17 pass, 0 fail"), "{stdout}");
+    } else {
+        assert!(
+            stdout.contains("bimetal-strip\tN\tskipped, no ccx"),
+            "{stdout}"
+        );
+        assert!(stdout.contains("17 cases: 16 pass, 0 fail"), "{stdout}");
+    }
     for id in [
         "bar-pressure",
         "bar-pressure-m",
@@ -135,13 +157,35 @@ fn validate_runs_every_case_through_the_solver() {
         let row = format!("{id}\t");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("16 cases: 16 pass, 0 fail"), "{stdout}");
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
     assert!(!stdout.contains("no solver"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("tip_deflection_z"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
+}
+
+#[test]
+fn without_ccx_a_ccx_case_is_skipped_and_the_other_cases_still_fail() {
+    let dir = copy_root("noccx");
+    let path = dir.join("validation/cases/patch-test/case.toml");
+    let toml = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, toml.replacen("u9_x = 0.000325", "u9_x = 0.5", 1)).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["validate", "--root", dir.to_str().unwrap()])
+        .env("FH_SOLVE", solver_path())
+        .env("FH_CCX", "/nonexistent/ccx")
+        .output()
+        .unwrap();
+    let stdout = text(out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert!(
+        stdout.contains("bimetal-strip\tN\tskipped, no ccx"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("patch-test\tN\tfail"), "{stdout}");
+    assert!(stdout.contains("17 cases: 15 pass, 1 fail"), "{stdout}");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -221,7 +265,8 @@ fn convergence_on_the_case_folder_skips_class_n() {
         "patch-test\tN\tskipped, one mesh",
         "bar-tension\tN\tskipped, one mesh",
         "mms-c3d10\tR\t3 meshes\tpass",
-        "16 cases: 10 pass, 0 fail",
+        "bimetal-strip\tN\tskipped, one mesh",
+        "17 cases: 10 pass, 0 fail",
     ] {
         assert!(stdout.contains(row), "{stdout}");
     }

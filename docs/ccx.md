@@ -22,7 +22,7 @@ The summary says `solver: "ccx <version>, unvalidated"`.
 
 ## Keyword subset
 
-`*NODE`, `*ELEMENT` (`C3D8`, `C3D8I`, `C3D10`), `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*SOLID SECTION`, `*BOUNDARY`, `*STEP`, `*STATIC`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, and `*PART`, `*ASSEMBLY`, `*INSTANCE` (flattened).
+`*NODE`, `*ELEMENT` (`C3D8`, `C3D8I`, `C3D10`), `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*EXPANSION`, `*SOLID SECTION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE`, `*BOUNDARY`, `*STEP`, `*STATIC`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*TEMPERATURE`, and `*PART`, `*ASSEMBLY`, `*INSTANCE` (flattened).
 The adapter refuses `*EQUATION`, `*MPC`, `*COUPLING`, `*SURFACE, TYPE=NODE` and `NLGEOM` with a clear error.
 
 Changes for `ccx`:
@@ -30,6 +30,19 @@ Changes for `ccx`:
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
 - Each step is one linear increment. The adapter ignores the `*STATIC` data line.
 - The element stress `S` is the volume mean of the `ccx` integration point stress, as in `fh-solve` (`docs/solver-protocol.md`, "Result contract").
+
+## Thermal strain
+
+Only the adapter solves thermal strain. `fh-solve` refuses `*EXPANSION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE` and `*TEMPERATURE` with an error that names the keyword.
+The adapter writes these keywords to `job.inp` with the same data, so `ccx` gives them the CalculiX meaning:
+
+- `*EXPANSION`: the thermal strain is alpha (T - T0), with T0 the initial temperature of the node.
+- `*INITIAL CONDITIONS, TYPE=TEMPERATURE`: the start temperature. Give a value to each node. Else `ccx` stops with `no initial temperature`.
+- `*TEMPERATURE`: the temperature at the end of the step. A node with no value in a step keeps its last temperature.
+
+A model with several materials needs one `*SOLID SECTION` for each element set.
+The case `validation/cases/bimetal-strip` has the key `solver = "fh-solve-ccx"`, so `fh validate` runs it with `fh-solve-ccx`.
+If `ccx` does not start, `fh validate` skips the case and shows `skipped, no ccx`. The other cases decide the exit code. Any other error of `fh-solve-ccx` or `ccx` is a failure.
 
 ## Limits
 
@@ -51,3 +64,13 @@ Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
 | `bar-pressure` | rf_x (N) | -20000.01 | -20000.00 | -20000, pass |
 | `bar-pressure` | s_xx (MPa) | 100.0000 | 100.0000 | 100, pass |
 | `patch-test` | s_xx (MPa) | 327.6000 | 327.6000 | 327.6, pass |
+
+## Record of the thermal strain change (2026-10-18)
+
+Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
+`fh validate` and `FH_SOLVE=fh-solve-ccx fh validate`: 17 of 17 cases pass. The 16 earlier cases give the same numbers as before.
+
+| Case | Quantity | `ccx` | Reference |
+|---|---|---|---|
+| `bimetal-strip` | u3 at `P20` (mm) | -1.53425e-1 | -1.5342466e-1, pass |
+| `bimetal-strip` | u1 at `P20` (mm) | 1.80548e-2 | 1.8054795e-2, pass |

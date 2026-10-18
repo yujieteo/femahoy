@@ -35,7 +35,7 @@ run() {
 run format cargo fmt --check
 run clippy cargo clippy --workspace --all-targets --target "$target" -- -D warnings
 run tests cargo test --workspace --target "$target"
-run release cargo build --release --target "$target" --target-dir "$CARGO_TARGET_DIR" --bin fh --bin fh-solve
+run release cargo build --release --target "$target" --target-dir "$CARGO_TARGET_DIR" --bin fh --bin fh-solve --bin fh-solve-ccx
 fh="$CARGO_TARGET_DIR/$target/release/fh"
 export FH_SOLVE="$CARGO_TARGET_DIR/$target/release/fh-solve"
 run validation "$fh" validate

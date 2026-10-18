@@ -217,6 +217,30 @@ fn no_ccx_is_a_clear_error() {
 }
 
 #[test]
+fn the_thermal_keywords_go_to_ccx() {
+    let dir = scratch("thermal");
+    let input = dir.join("thermal.inp");
+    let text = CUBE
+        .replace(
+            "*STEP",
+            "*NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8\n\
+             *INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 20\n*STEP",
+        )
+        .replace("0.3\n", "0.3\n*EXPANSION\n1.2e-5\n")
+        .replace("*END STEP", "*TEMPERATURE\nALL, 120\n8, 100\n*END STEP");
+    std::fs::write(&input, text).unwrap();
+    run(&input, &dir.join("run"), &dir.join("no-ccx"));
+    let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
+    for part in [
+        "*ELASTIC\n2.10000000000000e5, 3.00000000000000e-1\n*EXPANSION\n1.20000000000000e-5\n",
+        "*INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 2.00000000000000e1\n*STEP\n",
+        "*TEMPERATURE\nALL, 1.20000000000000e2\n8, 1.00000000000000e2\n*NODE FILE",
+    ] {
+        assert!(job.contains(part), "{part} is not in {job}");
+    }
+}
+
+#[test]
 fn a_failed_ccx_run_is_an_error_with_the_ccx_message() {
     let dir = scratch("failed");
     let ccx = fake_ccx(&dir, "echo ' *ERROR in readinput: bad card'\nexit 201");

@@ -14,7 +14,7 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use fh_inp::{Boundary, ElementTarget, Model, Target};
+use fh_inp::{Boundary, ElementTarget, Model, Target, Temperature};
 use fh_io::result::{base_grid, element_stress};
 use fh_io::vtu::{write_pvd_units, write_vtu, Field, PvdEntry};
 use fh_solver_api::{watch_stdin, PROTOCOL_HEADER, PVD_FILE, SUMMARY_FILE};
@@ -58,6 +58,16 @@ fn boundaries(out: &mut String, list: &[Boundary]) {
             b.last_dof,
             real(b.value)
         );
+    }
+}
+
+/// Node temperatures under `keyword`, with the same meaning in `ccx`.
+fn temperatures(out: &mut String, keyword: &str, list: &[Temperature]) {
+    if !list.is_empty() {
+        let _ = writeln!(out, "{keyword}");
+    }
+    for t in list {
+        let _ = writeln!(out, "{}, {}", target(&t.target), real(t.value));
     }
 }
 
@@ -123,6 +133,9 @@ fn ccx_input(model: &Model) -> Result<String, String> {
             real(e.youngs_modulus),
             real(e.poissons_ratio)
         );
+        if let Some(alpha) = m.expansion {
+            let _ = writeln!(out, "*EXPANSION\n{}", real(alpha));
+        }
     }
     out.push_str("*ELSET, ELSET=FH_ALL\n");
     id_lines(
@@ -144,6 +157,11 @@ fn ccx_input(model: &Model) -> Result<String, String> {
         );
     }
     boundaries(&mut out, &model.boundaries);
+    temperatures(
+        &mut out,
+        "*INITIAL CONDITIONS, TYPE=TEMPERATURE",
+        &model.initial_temperatures,
+    );
     for step in &model.steps {
         out.push_str("*STEP\n*STATIC\n");
         boundaries(&mut out, &step.boundaries);
@@ -175,6 +193,7 @@ fn ccx_input(model: &Model) -> Result<String, String> {
         for d in &step.dsloads {
             let _ = writeln!(out, "{}, P, {}", d.surface, real(d.pressure));
         }
+        temperatures(&mut out, "*TEMPERATURE", &step.temperatures);
         out.push_str("*NODE FILE\nU, RF\n*EL PRINT, ELSET=FH_ALL\nS\n*END STEP\n");
     }
     Ok(out)

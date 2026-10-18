@@ -42,6 +42,40 @@ fn nlgeom_yes_is_refused() {
     assert_eq!(e, "NLGEOM=YES is not available before M7");
 }
 
+#[test]
+fn thermal_input_is_refused_with_the_keyword_and_the_ccx_solver() {
+    let step = format!("*STEP\n*STATIC\n*BOUNDARY\n{FIX}*END STEP\n");
+    for (keyword, text) in [
+        (
+            "*EXPANSION",
+            format!(
+                "{CUBE}{}{step}",
+                MAT.replace("0.3\n", "0.3\n*EXPANSION\n1e-5\n")
+            ),
+        ),
+        (
+            "*INITIAL CONDITIONS, TYPE=TEMPERATURE",
+            format!("{CUBE}{MAT}*INITIAL CONDITIONS, TYPE=TEMPERATURE\n1, 20\n{step}"),
+        ),
+        (
+            "*TEMPERATURE",
+            format!(
+                "{CUBE}{MAT}{}",
+                step.replace("*END", "*TEMPERATURE\n1, 20\n*END")
+            ),
+        ),
+    ] {
+        let e = solve(&parse(&text).unwrap()).unwrap_err().to_string();
+        assert_eq!(
+            e,
+            format!(
+                "{keyword}: fh-solve has no thermal strain. \
+                 Run this model with fh-solve-ccx (CalculiX)"
+            )
+        );
+    }
+}
+
 // ---- A5 ----
 
 fn coupled(dofs: &str) -> Model {
@@ -843,6 +877,7 @@ fn the_default_material_refuses_elastic_constants_out_of_range() {
             youngs_modulus: e,
             poissons_ratio: nu,
         }),
+        expansion: None,
     };
     let factory = MaterialFactory::elastic();
     let mut bad = Vec::new();

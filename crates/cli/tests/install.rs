@@ -63,7 +63,7 @@ impl Lab {
                  *wasm32-unknown-unknown*) d=$CARGO_TARGET_DIR/wasm32-unknown-unknown/release\n\
                    mkdir -p $d && echo wasm > $d/fh_viewer.wasm ;;\n\
                  *) mkdir -p $CARGO_TARGET_DIR/release\n\
-                   for b in fh fh-solve; do printf '#!/bin/sh\\necho %s\\n' $b > $CARGO_TARGET_DIR/release/$b; done ;;\n\
+                   for b in fh fh-solve fh-solve-ccx; do printf '#!/bin/sh\\necho %s\\n' $b > $CARGO_TARGET_DIR/release/$b; done ;;\n\
                  esac\n"
             ),
         );
@@ -238,6 +238,7 @@ fn the_install_builds_copies_and_then_updates() {
         "fh",
         "fh-solve",
         "fh-python",
+        "fh-solve-ccx",
         "viewer/fh_viewer.js",
         "viewer/fh_viewer_bg.wasm",
     ] {
@@ -290,7 +291,7 @@ fn the_install_builds_copies_and_then_updates() {
         );
     }
     assert!(
-        log.contains("--release --locked --bin fh --bin fh-solve"),
+        log.contains("--release --locked --bin fh --bin fh-solve --bin fh-solve-ccx"),
         "{log}"
     );
 
@@ -308,7 +309,7 @@ fn the_install_builds_copies_and_then_updates() {
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(left.len(), 4, "no temporary files: {left:?}");
+    assert_eq!(left.len(), 5, "no temporary files: {left:?}");
     // The second run updates the venv too.
     let uv_again = fs::read_to_string(lab.dir.join("uv.log")).unwrap();
     assert_eq!(uv_again, format!("{uv}{uv}"));

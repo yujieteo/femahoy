@@ -15,8 +15,8 @@ fh run --example bar-pressure
 
 ### The install
 
-`scripts/install.sh` builds `fh`, `fh-solve` and the browser viewer (release builds).
-It copies `fh`, `fh-solve` and the folder `viewer` to `~/.local/bin`.
+`scripts/install.sh` builds `fh`, `fh-solve`, `fh-solve-ccx` and the browser viewer (release builds).
+It copies `fh`, `fh-solve`, `fh-solve-ccx` and the folder `viewer` to `~/.local/bin`.
 Use `--prefix DIR` for another folder.
 It also uses uv to make a Python 3.12 environment with build123d 0.13.0 in `~/.local/share/femahoy/venv` (`$XDG_DATA_HOME/femahoy/venv` when you set `XDG_DATA_HOME`).
 Use `--venv DIR` for another folder.
@@ -97,7 +97,7 @@ The sections below do the same steps one at a time.
 ## 1. Prepare the programs
 
 Run these commands from the repository root in an interactive terminal.
-`scripts/install.sh` (see [Start](#start)) puts `fh`, `fh-solve` and `fh-python` on `PATH`.
+`scripts/install.sh` (see [Start](#start)) puts `fh`, `fh-solve`, `fh-solve-ccx` and `fh-python` on `PATH`.
 The CAD step uses `fh-python`, the Python with build123d that the install makes.
 The mesh step needs an external gmsh executable.
 
