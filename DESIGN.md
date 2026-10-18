@@ -361,7 +361,7 @@ Rules:
 | `faer` | sparse linear algebra | pure Rust |
 | `eframe` / `egui` / `wgpu` | UI and 3D renderer, native and wasm | |
 | `alacritty_terminal` | terminal emulator core | Pin an exact version. Wrap it behind our own interface. |
-| herdr | pane backend | External program. Never bundled. Confirm its licence. |
+| herdr | pane backend | External program. Never bundled. Apache-2.0 (0.9.3). |
 | gmsh | meshing | External program. Never linked (GPL). |
 
 ---
@@ -530,7 +530,7 @@ The managed LLM tier is a separate track. It starts after the second user test.
 
 - A lawyer checks: the "heavily inspired by Abaqus" wording, use of Abaqus element and keyword names, the CLA text, and the NAFEMS use.
 - Trademark, package-name (crates.io, npm, PyPI), GitHub org, and domain checks for "femahoy".
-- Read herdr's `LICENSE` file. Sources disagree (Apache-2.0 or AGPL-3.0-or-later). If it is AGPL, the commercial edition must not bundle it. The current design never bundles it.
+- herdr 0.9.3 is under the Apache License 2.0. Its `LICENSE` and `Cargo.toml` at tag `v0.9.3` say so (read 2026-10-18). femahoy never bundles herdr. Before public launch, check the licence again for the herdr version in use.
 - Check the Anthropic and OpenAI terms for the managed tier.
 
 ---
