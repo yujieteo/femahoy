@@ -42,7 +42,7 @@ Description rule: say the product is "heavily inspired by Abaqus input conventio
 | Chat | Main interface. One conversation with the leader. Every leader action shows as the `fh` command it ran. |
 | Teammate tree | Shows each teammate, its state (working, blocked, done, idle), and its pane. |
 | 3D viewport | Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector (first milestone). |
-| Terminal sidebar | A real shell. Herdr runs here unchanged. |
+| Terminal sidebar | A real shell in a plain PTY of the daemon. |
 | `fh` CLI | Works alone over SSH and tmux, with no GUI. |
 | Custom panels | Buttons for frequent commands. Each button runs an `fh` command. |
 
@@ -60,9 +60,9 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
                          fh serve (daemon)
      +-----------+-----------+-----------+-----------+-----------+
      |  solver   |   PTY     |  panes    |  agents   |  files    |
-     | (in-proc  | (terminal | (herdr or | (Claude   | (project, |
-     |  or sub-  |  sidebar) |  plain    |  Code,    |  results) |
-     |  process) |           |  PTY)     |  Codex)   |           |
+     | (in-proc  | (terminal | (plain    | (Claude   | (project, |
+     |  or sub-  |  sidebar) |  PTY)     |  Code,    |  results) |
+     |  process) |           |           |  Codex)   |           |
      +-----------+-----------+-----------+-----------+-----------+
 ```
 
@@ -83,12 +83,7 @@ Rule: the keyboard is the main input. The mouse is for the viewport and the cust
 
 ### 4.3 Pane backend
 
-The daemon defines a `PaneBackend` interface with two implementations:
-
-1. **herdr**, the default when it is installed. The daemon drives it through herdr's CLI and socket.
-2. **Plain PTY**, owned by the daemon. This is used when herdr is not installed, and on Windows while herdr's Windows support is beta.
-
-The teammate tree reads from `PaneBackend`, never from herdr directly. femahoy never bundles herdr.
+The daemon defines a `PaneBackend` interface. Its one implementation is the plain PTY, owned by the daemon. herdr is removed (D-27). A separate PR removes its code.
 
 ---
 
@@ -354,7 +349,6 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | `faer` | sparse linear algebra | pure Rust |
 | `eframe` / `egui` / `wgpu` | UI and 3D renderer, native and wasm | |
 | `alacritty_terminal` | terminal emulator core | Pin an exact version. Wrap it behind our own interface. |
-| herdr | pane backend | External program. Never bundled. Apache-2.0 (0.9.3). |
 | gmsh | meshing | External program. Never linked (GPL). |
 
 ---
@@ -418,7 +412,7 @@ Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip
 
 1. **Web (wasm) first.** The user installs `fh`, runs `fh serve`, and the UI opens in the browser.
 2. **Native macOS second.**
-3. **Windows third.** Uses the plain PTY backend until herdr's Windows support is stable.
+3. **Windows third.** Uses the plain PTY backend.
 
 Distribution: a single `fh` binary (Homebrew and a direct download). The static demo is published on a separate web page.
 
@@ -430,7 +424,7 @@ Distribution: a single `fh` binary (Homebrew and a direct download). The static 
 
 Order of the work (D-27):
 
-1. **Now: the basic LLM workflow (M4).** The user asks the chat for a model. The leader builds the CAD, meshes it, solves it and shows the results. The user sees each step and each teammate in the page of `fh serve`. Every action shows as an `fh` command.
+1. **Now: the basic LLM workflow (M4).** The user asks the chat for a model. The leader builds the CAD, meshes it, solves it and shows the results. The user sees each step in the page of `fh serve`. One focused agent is the default. The user can add more agents later. Every action shows as an `fh` command.
 2. **Now: CalculiX for thermal strain, several materials and warpage (C3).**
 3. **Now: the workflow benchmark records (B1).** They measure the workflow from the request to the results.
 4. **Later:** the native nonlinear solver (M5 to M7), the other CalculiX capabilities (C2), the platforms (M10, M11) and the second user test.
@@ -442,7 +436,7 @@ Rules:
 - A capability that `ccx` gives (D-14) does not close the native milestone for that capability.
 - The captain can change the order at any time.
 
-Later, with no milestone yet: a mesher of our own (D-15) and a GPU backend (Metal first, D-08). The managed LLM tier starts after the second user test.
+Later, with no milestone yet: a mesher of our own (D-15). The managed LLM tier starts after the second user test.
 
 ---
 
@@ -466,7 +460,6 @@ Later, with no milestone yet: a mesher of our own (D-15) and a GPU backend (Meta
 
 - A lawyer checks: the "heavily inspired by Abaqus" wording, use of Abaqus element and keyword names, the CLA text, and the NAFEMS use.
 - Trademark, package-name (crates.io, npm, PyPI), GitHub org, and domain checks for "femahoy".
-- herdr 0.9.3 is under the Apache License 2.0. Its `LICENSE` and `Cargo.toml` at tag `v0.9.3` say so (read 2026-10-18). femahoy never bundles herdr. Before public launch, check the licence again for the herdr version in use.
 - Check the Anthropic and OpenAI terms for the managed tier.
 
 ---
@@ -478,7 +471,7 @@ Later, with no milestone yet: a mesher of our own (D-15) and a GPU backend (Meta
 | Leader | The chat. Plans and delegates. Writes no solver code. |
 | Teammate | An agent that the leader starts, with its own role and skills. |
 | Validator | The teammate that runs the suite and gates merges. Separate from the leader. |
-| Pane backend | The interface that runs teammates: herdr or plain PTY. |
+| Pane backend | The interface that runs panes: the plain PTY. |
 | Fixture | One validation case: inputs, reference values, tolerance class, justification. |
 | Template | A user input syntax with a mapping onto the Abaqus-shaped model. |
 | Unvalidated | A result from a solver that has not passed the validation suite. |
@@ -546,6 +539,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Built:** a rule for all crates. The M2 gate passes on an Apple M5 (aarch64). CI builds and tests each change on aarch64 macOS (P1, docs/milestones.md).
 
 ### D-08 GPU later, with neutral interfaces
+- **Removed:** by the captain, 2026-10-18. The GPU backend is not on the roadmap.
 - **Decided by:** the captain.
 - **Choice:** The solver must work on a GPU later. Interfaces stay neutral. Metal is the GPU API on the Mac. CUDA alone is not enough.
 - **Reason:** The test machine has a Metal GPU.
@@ -692,7 +686,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Built:** the text of section 13, D-14, D-16 and `docs/milestones.md` changed.
 
 ### D-27 The basic LLM workflow first
-- **Decided by:** the captain, 2026-10-18. The captain said: "biggest problem is getting the basic workflow to work?" and "make requirements less dumb".
+- **Decided by:** the captain, 2026-10-18. The captain said: "biggest problem is getting the basic workflow to work?", "make requirements less dumb", "Delete herdr, I just want to talk" and "1 focused agent focusing on the right thing with the option to add more agents is OK".
 - **Choice:**
   1. M4 starts now. The two tracks and the workflow lock are removed (this replaces D-16). `scripts/check-workflow.sh` stays the proof of the CLI workflow.
   2. The M4 exit test is the basic LLM workflow: one chat request gives a solved cantilever, and the page of `fh serve` shows each step. M4 needs one connection path, the user's CLI login. The API key path comes after the M4 exit test.
@@ -702,6 +696,9 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
   6. gmsh is the mesher now. A mesher of our own is a main advantage for later, with no milestone yet (D-15). The native solver is a main advantage (D-12).
   7. `docs/milestones.md` is the one roadmap. Section 13 holds the order and the rules only. The second user test does not need the static demo.
   8. A crate `SKILL.md` does not repeat a rule of `AGENTS.md`. `README.md` does not repeat the decision log.
+  9. herdr is removed. The terminal sidebar uses the plain PTY backend. A separate PR removes the herdr code.
+  10. M4 uses 1 focused agent by default, with the option to add more agents later.
+  11. The GPU backend is removed from the roadmap (D-08).
 - **Reason:** The captain will ask an LLM to do the workflow steps (U1). Thus the workflow from the chat to the results in the page of `fh serve` is the most important problem. Requirements that do not serve it, C3 or B1 wait.
 - **Rejected:** the workflow lock as a gate for M4. An own mesher or the native nonlinear solver before M4.
 - **Reverse if:** the captain changes the order in section 13.
