@@ -130,7 +130,7 @@ fn element_nodes(element_type: &str) -> Option<usize> {
     match element_type {
         "C3D4" => Some(4),
         "C3D8" | "C3D8I" => Some(8),
-        "C3D10" | "C3D10M" => Some(10),
+        "C3D10" => Some(10),
         _ => None,
     }
 }
@@ -894,7 +894,7 @@ impl Parser {
             };
             for id in ids {
                 let max = match types.get(&id).copied() {
-                    Some("C3D10" | "C3D10M") => 4,
+                    Some("C3D10") => 4,
                     _ => 6,
                 };
                 if !(1..=max).contains(&face) {
@@ -1372,11 +1372,12 @@ mod tests {
             err(&missing),
             "line 11, *ELEMENT: node 99 is not defined (INP009)"
         );
-        let ty = format!("{MESH}*ELEMENT, TYPE=S4R\n");
-        assert_eq!(
-            err(&ty),
-            "line 10, *ELEMENT: unsupported element type S4R (INP005)"
-        );
+        for ty in ["S4R", "C3D10M"] {
+            assert_eq!(
+                err(&format!("{MESH}*ELEMENT, TYPE={ty}\n")),
+                format!("line 10, *ELEMENT: unsupported element type {ty} (INP005)")
+            );
+        }
     }
 
     #[test]

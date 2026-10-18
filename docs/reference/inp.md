@@ -57,7 +57,6 @@ Repeated definitions of a node or element ID fail. Repeated definitions of a set
 | `C3D8` | 8 | Accepted | Solved: hex8 with B-bar. Do not use 1 element through the depth of a section in bending. See the [mesh rule](../compatibility.md#c3d8-mesh-rule-for-bending). |
 | `C3D8I` | 8 | Accepted | Solved: hex8 with incompatible modes |
 | `C3D10` | 10 | Accepted | Solved: tet10 with 4 integration points |
-| `C3D10M` | 10 | Accepted | Parsed only. The solver reports that the type is not available yet. |
 
 The parser rejects every other element type. A parsed model does not establish solver support.
 `fh check` parses input. `fh validate` uses the separate `fh-solve` binary.

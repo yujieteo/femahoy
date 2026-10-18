@@ -18,7 +18,7 @@ Sources: [fixture reader](../../crates/validation/src/fixture.rs),
 | `class` | Non-empty string | Exactly `L`, `N`, or `R`. |
 | `justification` | Non-empty string | The reason for the class and tolerances. |
 | `derivation` | Non-empty string | Path to an existing file with the reference derivation. |
-| `element_types` | Non-empty array of strings | Each entry is `C3D8`, `C3D8I`, `C3D10`, or `C3D10M`. Parser acceptance does not establish solver support. |
+| `element_types` | Non-empty array of strings | Each entry is `C3D8`, `C3D8I` or `C3D10`. Parser acceptance does not establish solver support. |
 | `mesh` | Array of strings | Paths to existing input files, coarse to fine. Class L needs at least 3. N needs exactly 1. R needs at least 2. |
 | `[ref]` | Non-empty table | Each entry maps a reference name to a finite number. |
 | `[quantity.<name>]` | Table for each reference name | Defines the measurement for the matching entry in `[ref]`. |

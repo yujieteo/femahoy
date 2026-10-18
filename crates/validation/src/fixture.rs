@@ -77,7 +77,7 @@ pub struct Reference {
 }
 
 /// The element types a case may name.
-pub const ELEMENT_TYPES: [&str; 4] = ["C3D8", "C3D8I", "C3D10", "C3D10M"];
+pub const ELEMENT_TYPES: [&str; 3] = ["C3D8", "C3D8I", "C3D10"];
 
 /// The unit system of a case (decision D-12, see DESIGN.md). The case declares it. `fh` never
 /// takes a unit from a file.

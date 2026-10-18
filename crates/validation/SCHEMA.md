@@ -20,7 +20,7 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 | `class` | 1 | `"L"`, `"N"` or `"R"`. |
 | `justification` | 1 | Why the class and the tolerance are right (string). |
 | `derivation` | 1 | A file in the folder that shows how the reference values were derived. |
-| `element_types` | 1 | Array of the element types of the meshes (`C3D8`, `C3D8I`, `C3D10`, `C3D10M`). The case runs once for each type. `fh validate` fails if a mesh holds another type. |
+| `element_types` | 1 | Array of the element types of the meshes (`C3D8`, `C3D8I`, `C3D10`). The case runs once for each type. `fh validate` fails if a mesh holds another type. |
 | `solver` | 0 or 1 | The solver program: `"fh-solve"` (the default) or `"fh-solve-ccx"` (CalculiX). `fh validate` runs the case with this program. If `ccx` does not start, `fh validate` skips an `fh-solve-ccx` case. |
 | `mesh` | 1 | Array of input files, path relative to the folder, coarse to fine. |
 | `[ref]` | class L and N: 1 table, 1 or more entries. Not in class R. | `name = value`. The reference values. |
