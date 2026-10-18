@@ -1,0 +1,523 @@
+//! CalculiX (`ccx`) as a protocol v2 solver: `fh-solve-ccx <input.inp> <run-dir> [--formats vtu]`.
+//! Decision D-13, see DESIGN.md.
+//!
+//! The adapter writes the model as `ccx` input in `<run-dir>/ccx`, runs the user's `ccx`
+//! (`$FH_CCX`, else `ccx` on PATH), reads the `.frd` results and writes one VTU file for each
+//! step, `results.pvd` and `summary.toon`. `ccx` is GPL, so femahoy only starts it as a
+//! separate program. The results are unvalidated.
+
+use std::collections::{HashMap, HashSet};
+use std::fmt::Write as _;
+use std::fs;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::process::{Command, ExitCode, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use fh_inp::{Boundary, ElementTarget, Model, Target};
+use fh_io::vtu::{
+    write_pvd_units, write_vtu, Field, Grid, PvdEntry, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA,
+};
+use fh_solver_api::{PROTOCOL_HEADER, PVD_FILE, SUMMARY_FILE};
+use fh_toon as toon;
+
+/// Exit code of a run that the user cancelled.
+const CANCELLED: u8 = 130;
+/// Name of the `ccx` job in `<run-dir>/ccx`.
+const JOB: &str = "job";
+
+/// A real for `ccx` input. `ccx` reads at most 20 characters for each number.
+fn real(x: f64) -> String {
+    format!("{x:.14e}")
+}
+
+fn target(t: &Target) -> String {
+    match t {
+        Target::Node(n) => n.to_string(),
+        Target::Set(s) => s.clone(),
+    }
+}
+
+/// Write `ids` 16 to a line.
+fn id_lines(out: &mut String, ids: &[u32]) {
+    for chunk in ids.chunks(16) {
+        let line: Vec<String> = chunk.iter().map(u32::to_string).collect();
+        let _ = writeln!(out, "{}", line.join(", "));
+    }
+}
+
+fn boundaries(out: &mut String, list: &[Boundary]) {
+    if !list.is_empty() {
+        out.push_str("*BOUNDARY\n");
+    }
+    for b in list {
+        let _ = writeln!(
+            out,
+            "{}, {}, {}, {}",
+            target(&b.target),
+            b.first_dof,
+            b.last_dof,
+            real(b.value)
+        );
+    }
+}
+
+/// The `ccx` input for `model`. The parser has already flattened `*PART` and `*INSTANCE`.
+/// Anything outside the linear subset is an error that names the keyword.
+fn ccx_input(model: &Model) -> Result<String, String> {
+    let unsupported = [
+        (!model.equations.is_empty(), "*EQUATION"),
+        (!model.mpcs.is_empty(), "*MPC"),
+        (!model.couplings.is_empty(), "*COUPLING"),
+        (!model.surfaces.is_empty(), "*SURFACE, TYPE=NODE"),
+        (model.steps.iter().any(|s| s.nlgeom), "*STEP, NLGEOM"),
+    ];
+    if let Some((_, k)) = unsupported.iter().find(|(used, _)| *used) {
+        return Err(format!(
+            "{k} is not in the keyword subset of the ccx adapter"
+        ));
+    }
+    let mut out = String::from("*NODE\n");
+    for n in &model.nodes {
+        let [x, y, z] = n.xyz.map(real);
+        let _ = writeln!(out, "{}, {x}, {y}, {z}", n.id);
+    }
+    let mut kind = String::new();
+    for e in &model.elements {
+        let t = e.element_type.to_ascii_uppercase();
+        if !matches!(t.as_str(), "C3D8" | "C3D8I" | "C3D10") {
+            return Err(format!(
+                "element {}: type {t} is not in the keyword subset of the ccx adapter",
+                e.id
+            ));
+        }
+        if t != kind {
+            let _ = writeln!(out, "*ELEMENT, TYPE={t}");
+        }
+        kind = t;
+        let nodes: Vec<String> = e.nodes.iter().map(u32::to_string).collect();
+        let _ = writeln!(out, "{}, {}", e.id, nodes.join(", "));
+    }
+    for s in &model.nsets {
+        let _ = writeln!(out, "*NSET, NSET={}", s.name);
+        id_lines(&mut out, &s.ids);
+    }
+    for s in &model.elsets {
+        let _ = writeln!(out, "*ELSET, ELSET={}", s.name);
+        id_lines(&mut out, &s.ids);
+    }
+    for s in &model.element_surfaces {
+        let _ = writeln!(out, "*SURFACE, NAME={}, TYPE=ELEMENT", s.name);
+        for (e, f) in &s.faces {
+            let _ = writeln!(out, "{e}, S{f}");
+        }
+    }
+    for m in &model.materials {
+        let e = m
+            .elastic
+            .as_ref()
+            .ok_or_else(|| format!("material {} has no *ELASTIC", m.name))?;
+        let _ = writeln!(
+            out,
+            "*MATERIAL, NAME={}\n*ELASTIC\n{}, {}",
+            m.name,
+            real(e.youngs_modulus),
+            real(e.poissons_ratio)
+        );
+    }
+    // `ccx` needs a section. The femahoy subset gives the only material to all elements.
+    if model.sections.is_empty() {
+        let [m] = model.materials.as_slice() else {
+            return Err("the model has no *SOLID SECTION and more than one material".into());
+        };
+        out.push_str("*ELSET, ELSET=FH_ALL\n");
+        id_lines(
+            &mut out,
+            &model.elements.iter().map(|e| e.id).collect::<Vec<_>>(),
+        );
+        let _ = writeln!(out, "*SOLID SECTION, ELSET=FH_ALL, MATERIAL={}", m.name);
+    }
+    for s in &model.sections {
+        let _ = writeln!(
+            out,
+            "*SOLID SECTION, ELSET={}, MATERIAL={}",
+            s.elset, s.material
+        );
+    }
+    boundaries(&mut out, &model.boundaries);
+    for step in &model.steps {
+        out.push_str("*STEP\n*STATIC\n");
+        boundaries(&mut out, &step.boundaries);
+        if !step.cloads.is_empty() {
+            out.push_str("*CLOAD\n");
+        }
+        for c in &step.cloads {
+            let _ = writeln!(
+                out,
+                "{}, {}, {}",
+                target(&c.target),
+                c.dof,
+                real(c.magnitude)
+            );
+        }
+        if !step.dloads.is_empty() {
+            out.push_str("*DLOAD\n");
+        }
+        for d in &step.dloads {
+            let t = match &d.target {
+                ElementTarget::Element(e) => e.to_string(),
+                ElementTarget::Set(s) => s.clone(),
+            };
+            let _ = writeln!(out, "{t}, P{}, {}", d.face, real(d.pressure));
+        }
+        if !step.dsloads.is_empty() {
+            out.push_str("*DSLOAD\n");
+        }
+        for d in &step.dsloads {
+            let _ = writeln!(out, "{}, P, {}", d.surface, real(d.pressure));
+        }
+        out.push_str("*NODE FILE\nU, RF\n*EL FILE\nS\n*END STEP\n");
+    }
+    Ok(out)
+}
+
+/// The last increment of one step in the `.frd` file: node values by node id.
+#[derive(Debug, Default)]
+struct FrdStep {
+    time: f64,
+    increments: u64,
+    disp: HashMap<u32, Vec<f64>>,
+    forc: HashMap<u32, Vec<f64>>,
+    stress: HashMap<u32, Vec<f64>>,
+}
+
+/// Read the ASCII `.frd` result blocks DISP, FORC and STRESS. Step `i` of the model is
+/// entry `i`. A later increment of a step replaces the values of the one before.
+fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
+    let bad = |n: usize, why: &str| format!("{JOB}.frd line {}: {why}", n + 1);
+    let mut steps: Vec<FrdStep> = Vec::new();
+    let (mut step, mut inc, mut time) = (0usize, 0u64, 0.0);
+    let mut block: Option<&str> = None;
+    let mut ended = false;
+    for (n, line) in text.lines().enumerate() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words.first().copied() {
+            Some("1PSTEP") => {
+                let num = |i: usize| words.get(i).and_then(|w| w.parse().ok());
+                (inc, step) = match (num(2), num(3)) {
+                    (Some(i), Some(s)) if s > 0 => (i, s as usize),
+                    _ => return Err(bad(n, "bad PSTEP line")),
+                };
+            }
+            Some("100CL") => {
+                time = words
+                    .get(2)
+                    .and_then(|w| w.parse().ok())
+                    .ok_or_else(|| bad(n, "bad time"))?;
+            }
+            Some("-4") => {
+                block = match words.get(1).copied() {
+                    Some(b @ ("DISP" | "FORC" | "STRESS")) if step > 0 => Some(b),
+                    _ => None,
+                };
+                if let Some(b) = block {
+                    if steps.len() < step {
+                        steps.resize_with(step, FrdStep::default);
+                    }
+                    let s = &mut steps[step - 1];
+                    (s.time, s.increments) = (time, inc);
+                    match b {
+                        "DISP" => s.disp.clear(),
+                        "FORC" => s.forc.clear(),
+                        _ => s.stress.clear(),
+                    }
+                }
+            }
+            Some("-3") => block = None,
+            Some("9999") => ended = true,
+            _ if line.starts_with(" -1") && block.is_some() => {
+                // Fixed columns: " -1", the node in 10 characters, then values of 12.
+                let id = line.get(3..13).and_then(|s| s.trim().parse().ok());
+                let values: Option<Vec<f64>> = (13..line.len())
+                    .step_by(12)
+                    .map(|i| line.get(i..(i + 12).min(line.len()))?.trim().parse().ok())
+                    .collect();
+                let (Some(id), Some(values)) = (id, values) else {
+                    return Err(bad(n, "bad value line"));
+                };
+                let s = &mut steps[step - 1];
+                let map = match block {
+                    Some("DISP") => &mut s.disp,
+                    Some("FORC") => &mut s.forc,
+                    _ => &mut s.stress,
+                };
+                map.insert(id, values);
+            }
+            _ => {}
+        }
+    }
+    if !ended {
+        return Err(format!("{JOB}.frd has no end line 9999"));
+    }
+    Ok(steps)
+}
+
+/// Write the VTU file of each step, the PVD collection and the summary. Each file is written
+/// under a temporary name and renamed (D-09).
+fn write_results(
+    model: &Model,
+    frd: &[FrdStep],
+    run_dir: &Path,
+    header: toon::Header,
+    solver: String,
+    wall: f64,
+) -> Result<(), String> {
+    let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
+        let tmp = run_dir.join(format!("{file}.tmp"));
+        fs::write(&tmp, bytes)
+            .and_then(|()| fs::rename(&tmp, run_dir.join(file)))
+            .map_err(|e| format!("{file}: {e}"))
+    };
+    let index: HashMap<u32, u32> = (model.nodes.iter().enumerate())
+        .map(|(i, n)| (n.id, i as u32))
+        .collect();
+    let mut base = Grid {
+        points: model.nodes.iter().map(|n| n.xyz).collect(),
+        ..Grid::default()
+    };
+    for e in &model.elements {
+        base.cell_types.push(if e.nodes.len() == 10 {
+            VTK_QUADRATIC_TETRA
+        } else {
+            VTK_HEXAHEDRON
+        });
+        base.cells.push(e.nodes.iter().map(|n| index[n]).collect());
+    }
+    let ids = |v: Vec<u32>| v.into_iter().map(|i| i as i32).collect();
+    base.point_data.push(Field::i32(
+        "NODE_ID",
+        ids(model.nodes.iter().map(|n| n.id).collect()),
+    ));
+    base.cell_data.push(Field::i32(
+        "ELEMENT_ID",
+        ids(model.elements.iter().map(|e| e.id).collect()),
+    ));
+    for s in &model.nsets {
+        let set: HashSet<u32> = s.ids.iter().copied().collect();
+        let flags = model.nodes.iter().map(|n| set.contains(&n.id) as i32);
+        base.point_data
+            .push(Field::i32(&format!("NSET_{}", s.name), flags.collect()));
+    }
+    for s in &model.elsets {
+        let set: HashSet<u32> = s.ids.iter().copied().collect();
+        let flags = model.elements.iter().map(|e| set.contains(&e.id) as i32);
+        base.cell_data
+            .push(Field::i32(&format!("ELSET_{}", s.name), flags.collect()));
+    }
+    let mut entries = Vec::new();
+    let mut steps = Vec::new();
+    let mut increments = Vec::new();
+    for (i, step) in model.steps.iter().enumerate() {
+        let r = frd
+            .get(i)
+            .filter(|r| !r.disp.is_empty())
+            .ok_or_else(|| format!("{JOB}.frd has no displacement of step {}", i + 1))?;
+        let node = |map: &HashMap<u32, Vec<f64>>, id: u32, k: usize| -> Vec<f64> {
+            let v = map.get(&id).map_or(&[][..], Vec::as_slice);
+            (0..k).map(|c| v.get(c).copied().unwrap_or(0.0)).collect()
+        };
+        let mut g = base.clone();
+        for (name, map) in [("U", &r.disp), ("RF", &r.forc)] {
+            let v = model.nodes.iter().flat_map(|n| node(map, n.id, 3));
+            g.point_data.push(Field::f64(name, 3, v.collect()));
+        }
+        // The element stress is the mean of the nodal stress that `ccx` extrapolates.
+        let (mut s, mut mises) = (Vec::new(), Vec::new());
+        for e in &model.elements {
+            let mut m = [0.0; 6];
+            for n in &e.nodes {
+                for (c, v) in node(&r.stress, *n, 6).into_iter().enumerate() {
+                    m[c] += v / e.nodes.len() as f64;
+                }
+            }
+            let [xx, yy, zz, xy, yz, zx] = m;
+            let d = (xx - yy).powi(2) + (yy - zz).powi(2) + (zz - xx).powi(2);
+            mises.push((0.5 * d + 3.0 * (xy * xy + yz * yz + zx * zx)).sqrt());
+            s.extend(m);
+        }
+        g.cell_data.push(Field::f64("S", 6, s));
+        g.cell_data.push(Field::f64("MISES", 1, mises));
+        let file = format!("step-{}.vtu", i + 1);
+        atomic(&file, &write_vtu(&g).map_err(|e| e.to_string())?)?;
+        entries.push(PvdEntry { time: r.time, file });
+        let name = step
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("Step-{}", i + 1));
+        steps.push(toon::RunStep {
+            name: name.clone(),
+            status: "converged".into(),
+            reached: 1.0,
+            increments: r.increments,
+        });
+        increments.push(toon::Increment {
+            step: name,
+            inc: r.increments,
+            iters: 0,
+            result: toon::IncResult::Ok,
+        });
+    }
+    atomic(
+        PVD_FILE,
+        write_pvd_units(&entries, &header.units).as_bytes(),
+    )?;
+    let run = toon::Run {
+        header,
+        run_id: run_dir
+            .file_name()
+            .map_or_else(|| "run".into(), |n| n.to_string_lossy().to_string()),
+        solver,
+        results: PVD_FILE.into(),
+        wall_s: wall,
+        steps,
+        increments,
+        contact: None,
+        failure: None,
+        diagnostics: Vec::new(),
+        next: Vec::new(),
+    };
+    let text = run
+        .render(&toon::Opts::default())
+        .map_err(|e| e.to_string())?;
+    atomic(SUMMARY_FILE, text.as_bytes())
+}
+
+/// The units that the input declares in a `** units:` comment before the first keyword (D-18).
+fn input_units(text: &str) -> String {
+    let comment = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map_while(|l| l.strip_prefix("**"));
+    for c in comment {
+        if let Some(u) = c.trim().strip_prefix("units:") {
+            if matches!(u.trim(), "SI-mm" | "SI-m") {
+                return u.trim().into();
+            }
+        }
+    }
+    "unspecified".into()
+}
+
+fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
+    let clock = Instant::now();
+    let text = fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;
+    let model = fh_inp::parse_file(&inp.display().to_string(), &text)
+        .map_err(|e| fh_inp::join_errors(&e))?;
+    let input = ccx_input(&model)?;
+    let work = run_dir.join("ccx");
+    fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
+    fs::write(work.join(format!("{JOB}.inp")), input).map_err(|e| format!("{JOB}.inp: {e}"))?;
+    let exe = std::env::var_os("FH_CCX").map_or_else(|| PathBuf::from("ccx"), PathBuf::from);
+    let log = fs::File::create(work.join(format!("{JOB}.log"))).map_err(|e| e.to_string())?;
+    let mut child = Command::new(&exe)
+        .args(["-i", JOB])
+        .current_dir(&work)
+        .stdin(Stdio::null())
+        .stdout(log.try_clone().map_err(|e| e.to_string())?)
+        .stderr(log)
+        .spawn()
+        .map_err(|e| {
+            format!(
+                "cannot start {}: {e}. Install CalculiX and put ccx on PATH, or set FH_CCX",
+                exe.display()
+            )
+        })?;
+    let status = loop {
+        if cancel.load(Ordering::Relaxed) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("cancelled".into());
+        }
+        match child.try_wait().map_err(|e| e.to_string())? {
+            Some(s) => break s,
+            None => std::thread::sleep(Duration::from_millis(20)),
+        }
+    };
+    let log = fs::read_to_string(work.join(format!("{JOB}.log"))).unwrap_or_default();
+    let error = log.lines().find(|l| l.contains("*ERROR"));
+    if !status.success() || error.is_some() {
+        return Err(format!(
+            "ccx failed ({status}): {}",
+            error.map_or("see ccx/job.log", str::trim)
+        ));
+    }
+    let frd = fs::read_to_string(work.join(format!("{JOB}.frd")))
+        .map_err(|e| format!("{JOB}.frd: {e}"))?;
+    let version = log
+        .split("CalculiX Version ")
+        .nth(1)
+        .and_then(|v| v.split([',', ' ', '\n']).next())
+        .unwrap_or("unknown");
+    let hash = text.bytes().fold(0xcbf2_9ce4_8422_2325, |h: u64, b| {
+        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
+    });
+    let header = toon::Header {
+        source: inp
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().to_string()),
+        source_hash: format!("{hash:016x}"),
+        units: input_units(&text),
+        status: toon::Status::Ok,
+    };
+    let solver = format!("ccx {version}, unvalidated");
+    let wall = clock.elapsed().as_secs_f64();
+    write_results(&model, &read_frd(&frd)?, run_dir, header, solver, wall)
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // `fh validate` asks for VTU only, which is all that the adapter writes.
+    let (inp, run_dir) = match args.as_slice() {
+        [i, r] => (i, r),
+        [i, r, f, v] if f == "--formats" && v == "vtu" => (i, r),
+        _ => {
+            eprintln!("usage: fh-solve-ccx <input.inp> <run-dir> [--formats vtu]");
+            return ExitCode::from(2);
+        }
+    };
+    println!("{PROTOCOL_HEADER}");
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = cancel.clone();
+    std::thread::spawn(move || {
+        // A `cancel` line or the end of stdin stops the run. Only the start of a line is kept.
+        let mut stdin = std::io::stdin().lock();
+        let (mut block, mut line) = ([0u8; 4096], Vec::<u8>::new());
+        'read: while let Ok(n @ 1..) = stdin.read(&mut block) {
+            for &b in &block[..n] {
+                if b == b'\n' {
+                    if line.trim_ascii() == b"cancel" {
+                        break 'read;
+                    }
+                    line.clear();
+                } else if line.len() < 64 {
+                    line.push(b);
+                }
+            }
+        }
+        flag.store(true, Ordering::Relaxed);
+    });
+    match run(Path::new(inp), Path::new(run_dir), &cancel) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) if e == "cancelled" => {
+            eprintln!("cancelled");
+            ExitCode::from(CANCELLED)
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}

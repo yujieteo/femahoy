@@ -637,7 +637,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Heavy kernels already exist as open tools, so the product focuses on the interface. Separate programs keep GPL code out of the product (D-02).
 - **Rejected:** link or bundle another solver, a heavy built-in kernel in the validated path.
 - **Reverse if:** the captain changes the focus of the product from the interface to the solver kernel.
-- **Built:** not yet. No adapter crate exists. Stage C1 adds the first one (D-13).
+- **Built:** yes. `solver-ccx` is the first adapter crate (D-13).
 
 ### D-13 CalculiX is the first external solver
 - **Decided by:** the captain.
@@ -645,7 +645,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Its input is closest to our `.inp`. It passed all 6 capability tests (linear, plasticity, contact, large movement, model change, submodel). It is GPL, so it stays a separate program. `ccx` supports only penalty contact, and a bad penalty value gave a 10 percent error.
 - **Rejected:** link or bundle `ccx`, contact with no rule for the penalty value.
 - **Reverse if:** `ccx` cannot pass the C1 stage, or its licence or input format changes.
-- **Built:** not yet. No `solver-ccx` crate exists. Stage C1 builds it (section 13). It does not wait for the workflow lock (D-21).
+- **Built:** in part. Stage C1 built `solver-ccx` for linear static (`docs/ccx.md`). Contact and the penalty rule come in stage C2.
 
 ### D-14 `ccx` serves M6 to M9 first
 - **Decided by:** the captain.
