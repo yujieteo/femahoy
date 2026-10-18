@@ -61,6 +61,8 @@ On failure the solver exits with a non-zero code and prints the reason on stderr
 
 - The default time limit is 10 minutes.
 - The default memory limit is 85% of the machine RAM. If the RAM is not known, there is no limit.
+- A validation case can set its own limits with `time_limit_s` and `memory_limit_mib`.
+- The error at a limit tells the user to use a coarser mesh. A solver that a signal stops, with no error text, gets the same advice, because a full memory is the usual cause.
 - The runner starts the solver in its own process group, and kills the whole group on a timeout, a memory limit or a cancel.
 - The memory check sums the resident memory of the whole group (Linux: `/proc`, macOS: `ps`, Windows: the process).
 - Linux: the runner also sets a hard address space limit (limit + 256 MiB). Windows: a job object with a process memory limit.

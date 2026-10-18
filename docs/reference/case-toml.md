@@ -24,6 +24,15 @@ Sources: [fixture reader](../../crates/validation/src/fixture.rs),
 | `[quantity.<name>]` | Table for each reference name | Defines the measurement for the matching entry in `[ref]`. |
 
 Relative `derivation` and `mesh` paths start at the case directory. Absolute paths remain absolute.
+
+These fields are optional. They set the limits of each solve of the case in `fh validate`:
+
+| Field | Type | Accepted value or rule |
+|---|---|---|
+| `time_limit_s` | Number above 0 | The time limit in seconds. The default is the limit of the runner, 600 s. |
+| `memory_limit_mib` | Number above 0 | The memory limit in MiB. The default is the limit of the runner, 85% of the RAM. |
+
+At a limit, the runner stops the solver, and the case row is `cannot run: REASON` with the limit.
 `SI-mm` uses mm, N, MPa, tonne, and s. `SI-m` uses m, N, Pa, kg, and s.
 The reader rejects unknown top-level keys and class fields that belong to another class.
 

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -25,9 +25,15 @@ const CANCELLED: u8 = 130;
 /// Name of the `ccx` job in `<run-dir>/ccx`.
 const JOB: &str = "job";
 
-/// A real for `ccx` input. `ccx` reads at most 20 characters for each number.
+/// A real for `ccx` input. `ccx` reads at most 20 characters for each number, and a longer
+/// number loses the end of its exponent. Thus a negative number with a 2-digit exponent
+/// gets one digit less.
 fn real(x: f64) -> String {
-    format!("{x:.14e}")
+    (0..=14)
+        .rev()
+        .map(|digits| format!("{x:.digits$e}"))
+        .find(|s| s.len() <= 20)
+        .unwrap_or_else(|| format!("{x:e}"))
 }
 
 fn target(t: &Target) -> String {
@@ -197,6 +203,130 @@ fn ccx_input(model: &Model) -> Result<String, String> {
         out.push_str("*NODE FILE\nU, RF\n*EL PRINT, ELSET=FH_ALL\nS\n*END STEP\n");
     }
     Ok(out)
+}
+
+/// The rigid body motions, in the order of the support check.
+const MOTIONS: [&str; 6] = [
+    "translation in x",
+    "translation in y",
+    "translation in z",
+    "rotation about x",
+    "rotation about y",
+    "rotation about z",
+];
+
+/// `ccx` solves a model that can move as a rigid body with no error, and the result is wrong.
+/// Thus in each step, the supports of each connected part of the mesh must hold the 6 rigid
+/// body motions: on the held components, the 6 motions must be linearly independent.
+fn check_support(model: &Model) -> Result<(), String> {
+    fn root(up: &mut [usize], mut i: usize) -> usize {
+        while up[i] != i {
+            up[i] = up[up[i]];
+            i = up[i];
+        }
+        i
+    }
+    let n = model.nodes.len();
+    let index: HashMap<u32, usize> = (model.nodes.iter().enumerate())
+        .map(|(i, node)| (node.id, i))
+        .collect();
+    let (mut up, mut used): (Vec<usize>, _) = ((0..n).collect(), vec![false; n]);
+    for e in &model.elements {
+        let nodes: Vec<usize> = e
+            .nodes
+            .iter()
+            .filter_map(|id| index.get(id).copied())
+            .collect();
+        for pair in nodes.windows(2) {
+            let (a, b) = (root(&mut up, pair[0]), root(&mut up, pair[1]));
+            up[a] = b;
+        }
+        nodes.into_iter().for_each(|i| used[i] = true);
+    }
+    let part: Vec<usize> = (0..n).map(|i| root(&mut up, i)).collect();
+    // The centre and the size of each part, so that the motions have the same scale.
+    let (mut centre, mut size) = (vec![[0.0; 3]; n], vec![0.0_f64; n]);
+    let mut count = vec![0.0; n];
+    for i in (0..n).filter(|&i| used[i]) {
+        let c = &mut centre[part[i]];
+        (0..3).for_each(|k| c[k] += model.nodes[i].xyz[k]);
+        count[part[i]] += 1.0;
+    }
+    for i in (0..n).filter(|&i| used[i]) {
+        let c = centre[part[i]].map(|x| x / count[part[i]]);
+        let d = (0..3)
+            .map(|k| (model.nodes[i].xyz[k] - c[k]).powi(2))
+            .sum::<f64>();
+        size[part[i]] = size[part[i]].max(d.sqrt());
+    }
+    let hold = |held: &mut [u8], list: &[Boundary]| {
+        for b in list {
+            let ids = match &b.target {
+                Target::Node(id) => vec![*id],
+                Target::Set(s) => model.nset(s).map(|s| s.ids.clone()).unwrap_or_default(),
+            };
+            for i in ids.iter().filter_map(|id| index.get(id)) {
+                (b.first_dof..=b.last_dof.min(3)).for_each(|d| held[*i] |= 1 << (d - 1));
+            }
+        }
+    };
+    let mut held = vec![0u8; n];
+    hold(&mut held, &model.boundaries);
+    for (s, step) in model.steps.iter().enumerate() {
+        hold(&mut held, &step.boundaries);
+        // For each part, the sum of r r^T over the held components r of the 6 motions.
+        let mut gram: HashMap<usize, [[f64; 6]; 6]> = HashMap::new();
+        for i in (0..n).filter(|&i| used[i]) {
+            let p = part[i];
+            let g = gram.entry(p).or_insert([[0.0; 6]; 6]);
+            let c = centre[p].map(|x| x / count[p]);
+            let d: [f64; 3] = std::array::from_fn(|k| (model.nodes[i].xyz[k] - c[k]) / size[p]);
+            for k in (0..3).filter(|k| held[i] >> k & 1 == 1) {
+                // The component k of each motion: a unit translation, or e x d.
+                let r: [f64; 6] = std::array::from_fn(|m| match m {
+                    0..3 => f64::from(u8::from(m == k)),
+                    _ if k == (m + 1) % 3 => -d[(m + 2) % 3],
+                    _ if k == (m + 2) % 3 => d[(m + 1) % 3],
+                    _ => 0.0,
+                });
+                for (a, row) in g.iter_mut().enumerate() {
+                    row.iter_mut().zip(r).for_each(|(v, rb)| *v += r[a] * rb);
+                }
+            }
+        }
+        for (p, g) in &gram {
+            if let Some(m) = free_motion(g) {
+                let name = step
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("Step-{}", s + 1));
+                return Err(format!(
+                    "step {name}: the part with node {} can move as a rigid body ({}). ccx \
+                     gives no error for such a model, but its result is wrong. Add a \
+                     *BOUNDARY (in a case: a [[model.boundary]]) that holds this motion",
+                    model.nodes[*p].id, MOTIONS[m]
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The first motion that the held components do not hold apart from the motions before it:
+/// a Cholesky factor of `g` with a pivot test relative to the diagonal.
+fn free_motion(g: &[[f64; 6]; 6]) -> Option<usize> {
+    let mut l = [[0.0; 6]; 6];
+    for k in 0..6 {
+        let pivot = g[k][k] - (0..k).map(|j| l[k][j] * l[k][j]).sum::<f64>();
+        if pivot <= 1e-12 * g[k][k] {
+            return Some(k);
+        }
+        l[k][k] = pivot.sqrt();
+        for i in k + 1..6 {
+            l[i][k] = (g[i][k] - (0..k).map(|j| l[i][j] * l[k][j]).sum::<f64>()) / l[k][k];
+        }
+    }
+    None
 }
 
 /// The last increment of one step in the `.frd` file: node values by node id.
@@ -508,12 +638,44 @@ fn input_units(text: &str) -> String {
     "unspecified".into()
 }
 
+/// Why `ccx` failed and what to do, from its exit status and its output `log`.
+fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
+    let see = format!("The full ccx output is in {}", log_file.display());
+    // The first `*ERROR` message: its line and the lines after it, up to an empty line.
+    let mut lines = log.lines().skip_while(|l| !l.contains("*ERROR"));
+    if let Some(first) = lines.next() {
+        let rest = lines.take_while(|l| !l.trim().is_empty() && !l.contains("*ERROR"));
+        let words: Vec<&str> = std::iter::once(first)
+            .chain(rest)
+            .flat_map(str::split_whitespace)
+            .collect();
+        return format!(
+            "ccx failed ({status}): {}. Correct the model as the message tells. {see}",
+            words.join(" ")
+        );
+    }
+    #[cfg(unix)]
+    if let Some(signal) = std::os::unix::process::ExitStatusExt::signal(&status) {
+        return format!(
+            "ccx stopped on signal {signal} and gave no error message. Usually the cause is \
+             too little memory for the model. Use a coarser mesh, or a computer with more \
+             memory. {see}"
+        );
+    }
+    let last = log.lines().map(str::trim).rfind(|l| !l.is_empty());
+    format!(
+        "ccx failed ({status}) with no *ERROR message. The last ccx line is: {}. {see}",
+        last.unwrap_or("(no output)")
+    )
+}
+
 fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
     let clock = Instant::now();
     let text = fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;
     let model = fh_inp::parse_file(&inp.display().to_string(), &text)
         .map_err(|e| fh_inp::join_errors(&e))?;
     let input = ccx_input(&model)?;
+    check_support(&model)?;
     let work = run_dir.join("ccx");
     fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     fs::write(work.join(format!("{JOB}.inp")), input).map_err(|e| format!("{JOB}.inp: {e}"))?;
@@ -543,13 +705,10 @@ fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
             None => std::thread::sleep(Duration::from_millis(20)),
         }
     };
-    let log = fs::read_to_string(work.join(format!("{JOB}.log"))).unwrap_or_default();
-    let error = log.lines().find(|l| l.contains("*ERROR"));
-    if !status.success() || error.is_some() {
-        return Err(format!(
-            "ccx failed ({status}): {}",
-            error.map_or("see ccx/job.log", str::trim)
-        ));
+    let log_file = work.join(format!("{JOB}.log"));
+    let log = fs::read_to_string(&log_file).unwrap_or_default();
+    if !status.success() || log.contains("*ERROR") {
+        return Err(ccx_failure(status, &log, &log_file));
     }
     let read = |ext: &str| {
         fs::read_to_string(work.join(format!("{JOB}.{ext}")))

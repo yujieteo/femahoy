@@ -1,30 +1,46 @@
 //! Run the solver of a case on a mesh and read one number per reference from the result files.
 
 use fh_io::vtu::{read_vtu, Grid, Values};
+use fh_solver_api::SubprocessSolver;
 use fh_validation::{Case, Field, Manufactured, Op, Quantity, Solve};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::time::Duration;
 
-/// Runs a solver binary in a scratch folder for every mesh.
+/// Runs a solver binary in a scratch folder for every mesh, through the runner of the solver
+/// protocol. The runner stops the solver at the time and memory limits.
 pub struct Subprocess {
-    pub exe: PathBuf,
+    pub solver: SubprocessSolver,
 }
 
 impl Subprocess {
     /// The solver is `$FH_SOLVE`, or `fh-solve` next to the `fh` binary.
     pub fn locate() -> Self {
         match std::env::var_os("FH_SOLVE") {
-            Some(exe) => Subprocess { exe: exe.into() },
+            Some(exe) => Subprocess::new(exe.into()),
             None => Subprocess::next_to_fh("fh-solve"),
         }
     }
 
-    /// The solver of `case`. `fh-solve` is [`Subprocess::locate`]. `$FH_SOLVE` does not
-    /// change another solver: it is the binary of that name next to `fh`.
+    /// The solver of `case`, with the limits of the case. `fh-solve` is
+    /// [`Subprocess::locate`]. `$FH_SOLVE` does not change another solver: it is the binary of
+    /// that name next to `fh`.
     pub fn for_case(case: &Case) -> Self {
-        match case.solver.as_str() {
+        let mut s = match case.solver.as_str() {
             "fh-solve" => Subprocess::locate(),
             name => Subprocess::next_to_fh(name),
+        };
+        if let Some(t) = case.time_limit_s {
+            s.solver.timeout = Duration::from_secs_f64(t);
+        }
+        if let Some(mib) = case.memory_limit_mib {
+            s.solver.memory_limit = (mib * f64::from(1 << 20)) as u64;
+        }
+        s
+    }
+
+    fn new(exe: PathBuf) -> Self {
+        Subprocess {
+            solver: SubprocessSolver::new(exe),
         }
     }
 
@@ -32,7 +48,7 @@ impl Subprocess {
         let exe = std::env::current_exe()
             .map(|me| me.with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
             .unwrap_or_else(|_| PathBuf::from(name));
-        Subprocess { exe }
+        Subprocess::new(exe)
     }
 }
 
@@ -47,25 +63,17 @@ impl Subprocess {
     ) -> Result<T, String> {
         let run = std::env::temp_dir().join(format!("fh-validate-{}-{stem}", std::process::id()));
         let _ = std::fs::remove_dir_all(&run);
-        let out = Command::new(&self.exe)
-            .arg(input)
-            .arg(&run)
-            // The harness reads the VTU only.
-            .args(["--formats", "vtu"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .output()
-            .map_err(|e| format!("cannot start {}: {e}", self.exe.display()))?;
-        let result = if out.status.success() {
-            read(&run)
-        } else {
-            let err = String::from_utf8_lossy(&out.stderr);
-            Err(format!(
-                "{} exited with {}: {}",
-                self.exe.file_name().unwrap_or_default().to_string_lossy(),
-                out.status,
-                err.lines().last().unwrap_or("")
-            ))
+        // The solvers write VTU only by default, and the harness reads VTU only.
+        let result = match self.solver.run(input, &run) {
+            Ok(_) => read(&run),
+            Err(e) => Err(format!(
+                "{}: {e}",
+                self.solver
+                    .exe
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            )),
         };
         let _ = std::fs::remove_dir_all(&run);
         result

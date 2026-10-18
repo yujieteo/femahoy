@@ -30,6 +30,24 @@ Changes for `ccx`:
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
 - Each step is one linear increment. The adapter ignores the `*STATIC` data line.
 - The element stress `S` is the volume mean of the `ccx` integration point stress, as in `fh-solve` (`docs/solver-protocol.md`, "Result contract").
+- Each number in `job.inp` has 20 characters or fewer, because `ccx` reads only the first 20 characters of a number.
+  A longer number lost the end of its exponent with no error. For example, `-1.33027879758290e-17` became -0.133.
+- Before `ccx` starts, the adapter checks the supports of each step. They must hold the 6 rigid motions of each connected part of the mesh.
+  `ccx` solves a model that can move as a rigid body with no error, and its result is wrong.
+  Thus the adapter stops with an error that names a node of the part and the free motion.
+
+## Errors
+
+Each failure of `ccx` gives a message that tells why and what to do:
+
+| Condition | Message |
+|---|---|
+| `job.log` has `*ERROR` | `ccx failed (STATUS): TEXT. Correct the model as the message tells.` `TEXT` is the full first `*ERROR` message, with its next lines. |
+| A signal stops `ccx` | `ccx stopped on signal N and gave no error message. Usually the cause is too little memory for the model. Use a coarser mesh, or a computer with more memory.` |
+| Any other exit code | `ccx failed (STATUS) with no *ERROR message. The last ccx line is: LINE.` |
+
+Each message ends with the path of `job.log`.
+The runner adds the time limit and the memory limit (`docs/solver-protocol.md`, "Limits"). At a limit, it stops `fh-solve-ccx` and `ccx` together.
 
 ## Thermal strain
 
@@ -111,3 +129,22 @@ FH_CCX=/path/to/ccx fh-python scripts/check-warpage-copper.py /tmp/warpage-coppe
 The finest mesh gives 0.67738 µm/K, 3.2% below the measured value.
 The bilayer plate theory with the same inputs gives 0.67813 µm/K. Thus the solve adds almost no error. The difference comes from the inputs, the model assumptions and the measurement.
 The main causes are the low silicon modulus of the paper, the thin layers that the model leaves out, and the moiré accuracy.
+
+## Plate on its edge (2026-10-19)
+
+`validation/cases/plate-on-edge` is the steel plate of a chat: 3756 x 1000 x 2.4 mm, on its edge, with 2 fixed ends, 2 pins and 4 loads.
+The own solver did not solve it. The first solve reached the time limit, and the second solve did not converge.
+The case uses the 20 mm C3D10 mesh of the chat, without the back-face support that the third solve added.
+It has `time_limit_s = 120` and `memory_limit_mib = 6144`.
+
+The reference comes from a separate graded hex model at 3 levels, with Richardson extrapolation.
+The [derivation](../validation/cases/plate-on-edge/derivation.md) gives the model, the reference and the mesh study.
+On a laptop with 16 GB of memory, `ccx` 2.23 gives these values:
+
+| Mesh | Time (s) | Memory (GiB) | Right pin (N) | Left pin (N) |
+|---|---:|---:|---:|---:|
+| 20 mm, 139395 nodes | 12.0 | 2.91 | 2355.62 | -1322.91 |
+| 10 mm, 527176 nodes | 77.5 | 7.50 | 2321.01 | -1299.85 |
+| Reference | | | 2279.2 | -1274.6 |
+
+The 20 mm mesh is 3.4% and 3.8% from the reference. The case tolerance is 5%.

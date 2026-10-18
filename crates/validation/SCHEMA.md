@@ -23,6 +23,8 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 | `element_types` | 1 | Array of the element types of the meshes (`C3D8`, `C3D8I`, `C3D10`). The case runs once for each type. `fh validate` fails if a mesh holds another type. |
 | `solver` | 0 or 1 | The solver program: `"fh-solve"` (the default) or `"fh-solve-ccx"` (CalculiX). `fh validate` runs the case with this program. If `ccx` does not start, `fh validate` skips an `fh-solve-ccx` case. |
 | `mesh` | 1 | Array of input files, path relative to the folder, coarse to fine. |
+| `time_limit_s` | 0 or 1 | The time limit of each solve in `fh validate`, in seconds (above 0). The default is the limit of the runner, 600 s. |
+| `memory_limit_mib` | 0 or 1 | The memory limit of each solve in `fh validate`, in MiB (above 0). The default is the limit of the runner, 85 % of the RAM. |
 | `[ref]` | class L and N: 1 table, 1 or more entries. Not in class R. | `name = value`. The reference values. |
 | `[quantity.<name>]` | class L and N: 1 table for each `[ref]` entry. Not in class R. | What to measure for that reference. See below. |
 | `ratio`, `reference_error` | class L | Mesh size ratio (above 1), and the relative error of the reference (0 or more). |

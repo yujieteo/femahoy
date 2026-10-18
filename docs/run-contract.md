@@ -151,7 +151,7 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 
 1. It finds or starts the daemon (rule 6 of "Which process stays alive").
 2. It registers the folder of the input as a project, and submits the input with a new request ID. A retry after a lost connection keeps the request ID. For a case, the submit has the `solver` of `case.toml`, unless `FH_SOLVE` is set.
-3. It reads the events with `wait_ms=500` and shows them, until the run is final.
+3. It reads the events with `wait_ms=500` and shows them, until the run is final. The state event of a run that fails also gives the reason: `state failed: REASON`. `REASON` is the `message` of the record. Thus `events.log` tells why a run failed.
 4. On Ctrl+C, it sends a cancel command with a new request ID and continues to read the events. A second Ctrl+C ends `fh run`. The run continues in the daemon until the cancel ends it.
 5. It reads the record. For a run that succeeded, it shows the result folder and `summary.toon`, and opens the page on `&project=P&run=R`.
 

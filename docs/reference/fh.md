@@ -183,6 +183,7 @@ The case fails if the error does not fall from one mesh to the next.
 The solver of a case is its `solver` key. For `fh-solve` (the default), the solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 For `fh-solve-ccx`, the solver is `fh-solve-ccx` beside `fh`. `FH_SOLVE` does not change it.
 If `ccx` (`FH_CCX`, else `ccx` on PATH) does not start, each `fh-solve-ccx` case is skipped. The other cases decide the exit code.
+A case can set `time_limit_s` and `memory_limit_mib` ([case fields](case-toml.md)). At a limit, the runner stops the solver and the case cannot run.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|

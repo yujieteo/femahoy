@@ -112,7 +112,9 @@ fn time_limit_kills_the_solver() {
     let mut s = SubprocessSolver::new(exe);
     s.timeout = Duration::from_millis(200);
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
-    assert!(e.to_string().contains("time limit"), "{e}");
+    assert_eq!(e.code, fh_solver_api::code::TIME_LIMIT);
+    assert!(e.message.contains("time limit of 0.2 s"), "{e}");
+    assert!(e.message.contains("coarser mesh"), "{e}");
 }
 
 #[test]
@@ -127,7 +129,21 @@ fn memory_limit_kills_the_solver() {
     let mut s = SubprocessSolver::new(exe);
     s.memory_limit = 50 << 20;
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
-    assert!(e.to_string().contains("memory limit"), "{e}");
+    assert_eq!(e.code, fh_solver_api::code::MEMORY);
+    assert!(e.message.contains("memory limit of 50 MiB"), "{e}");
+    assert!(e.message.contains("coarser mesh"), "{e}");
+}
+
+/// A solver that stops on a signal writes no message. The error tells why and what to do.
+#[test]
+fn a_solver_stopped_by_a_signal_gives_a_reason() {
+    let dir = scratch("signal");
+    let s = solver(&dir, "echo \"fh-solver-protocol 2\"\nkill -9 $$");
+    let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
+    assert_eq!(e.code, fh_solver_api::code::SOLVER_FAILED);
+    for part in ["signal 9", "no error message", "memory", "coarser mesh"] {
+        assert!(e.message.contains(part), "{part} is not in {e}");
+    }
 }
 
 fn solver(dir: &Path, body: &str) -> SubprocessSolver {
@@ -702,7 +718,9 @@ fn estimate_above_the_limit_stops_the_solver_early() {
     );
     s.memory_limit = 1 << 30;
     let e = s.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
-    assert!(e.to_string().contains("expects to need"), "{e}");
+    assert!(e.message.contains("expects to need 8.4 GiB"), "{e}");
+    assert!(e.message.contains("memory limit of 1.0 GiB"), "{e}");
+    assert!(e.message.contains("coarser mesh"), "{e}");
 }
 
 #[test]

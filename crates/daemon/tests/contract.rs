@@ -224,6 +224,10 @@ fn a_submit_that_names_a_solver_runs_that_solver_from_the_solver_folders() {
         "{}",
         record.message
     );
+    // The last event tells why, also to a client that reads only the events.
+    let events = c.events(&project, &ack.run, 0, Duration::ZERO).unwrap();
+    let last = events.items.last().map(|e| e.text.clone());
+    assert_eq!(last, Some(format!("state failed: {}", record.message)));
     assert_eq!(lab.starts(), 0);
 
     let ccx = bin.join("fh-solve-ccx");

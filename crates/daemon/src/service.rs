@@ -341,10 +341,14 @@ impl Shared {
         if state.is_final() {
             live.record.finished_ms = now_ms();
         }
-        if !message.is_empty() {
+        // The state event has the reason, so that a client that reads only the events (or
+        // the event log) sees why a run failed.
+        if message.is_empty() {
+            live.push(&format!("state {state}"));
+        } else {
             live.record.message = message.to_owned();
+            live.push(&format!("state {state}: {message}"));
         }
-        live.push(&format!("state {state}"));
         // A record that cannot be written keeps its earlier state on disk. The next daemon
         // start then marks the run interrupted, so the record never shows a false success.
         let _ = self.save(&live.record);
