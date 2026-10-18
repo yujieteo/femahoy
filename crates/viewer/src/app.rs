@@ -12,7 +12,7 @@ use eframe::egui_wgpu;
 use crate::camera::{self, Camera};
 use crate::chat::Chat;
 use crate::gpu::{face_vertices, FrameParams, Geometry, MeshCallback, MeshGpu};
-use crate::mesh::RenderMesh;
+use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
 use crate::view::{self, Contour, ViewState};
@@ -133,7 +133,7 @@ impl ViewerApp {
             let gpu = MeshGpu::new(rs, shown.mesh());
             rs.renderer.write().callback_resources.insert(gpu);
         }
-        shown.home = Camera::fit(shown.mesh().bounds);
+        shown.home = Camera::fit(shown.view_bounds());
         shown.camera = shown.home;
         self.message = None;
         shown.refresh();
@@ -166,6 +166,23 @@ impl ViewerApp {
 }
 
 impl Shown {
+    /// The bounds of the mesh and of the arrows of the loads, for the first view.
+    fn view_bounds(&self) -> Option<Bounds> {
+        let mut b = self.mesh().bounds?;
+        let p = match &self.body {
+            Body::Preview(p) => p,
+            Body::Results(_, _, Loads { preview: Ok(p), .. }) => p,
+            Body::Results(..) => return Some(b),
+        };
+        for (tail, head) in p.items.iter().filter_map(|i| p.arrow(i)) {
+            for x in [tail, head] {
+                b.min = std::array::from_fn(|k| b.min[k].min(x[k]));
+                b.max = std::array::from_fn(|k| b.max[k].max(x[k]));
+            }
+        }
+        Some(b)
+    }
+
     fn mesh(&self) -> &RenderMesh {
         match &self.body {
             Body::Results(r, ..) => &r.mesh,
@@ -359,6 +376,15 @@ fn loads_overlay(
         let galley = painter.layout_no_wrap(item.label.clone(), font, text);
         let place =
             egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
+        // Keep the label in the view.
+        let inner = rect.shrink(4.0);
+        let dx = (inner.right() - place.right())
+            .min(0.0)
+            .max(inner.left() - place.left());
+        let dy = (inner.bottom() - place.bottom())
+            .min(0.0)
+            .max(inner.top() - place.top());
+        let place = place.translate(egui::vec2(dx, dy));
         painter.rect_filled(place.expand(3.0), 3.0, color);
         painter.galley(place.min, galley, text);
     }
