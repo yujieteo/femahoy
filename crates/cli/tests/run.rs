@@ -72,7 +72,12 @@ impl Lab {
 
     /// `fh ARGS --state STATE` with the fake browser, `FH_NO_OPEN=1` and the fake gmsh.
     fn cmd(&self, args: &[&str]) -> Command {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
+        self.cmd_of(Path::new(env!("CARGO_BIN_EXE_fh")), args)
+    }
+
+    /// [`Lab::cmd`] for the `fh` program at `fh`.
+    fn cmd_of(&self, fh: &Path, args: &[&str]) -> Command {
+        let mut cmd = Command::new(fh);
         cmd.args(args).args(["--state", p(&self.state)]);
         cmd.current_dir(&self.dir)
             .env("BROWSER", self.dir.join("browser"))
@@ -483,6 +488,60 @@ fn a_case_folder_runs_mesh_model_and_solve_and_does_not_change() {
     succeeds(&lab.fh(&["run", p(&case.join("case.toml"))]));
     succeeds(&lab.fh(&["run", p(&case.join("bar.step"))]));
     assert_eq!(fs::read_dir(lab.state.join("cases")).unwrap().count(), 1);
+}
+
+#[test]
+fn a_case_runs_on_the_solver_that_its_case_toml_names() {
+    let lab = Lab::new("run-case-solver");
+    // A copy of fh in its own folder: the solvers beside fh are the solvers of the test.
+    let bin = lab.dir.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    let fh = bin.join("fh");
+    fs::copy(env!("CARGO_BIN_EXE_fh"), &fh).unwrap();
+    let case = root().join("validation/cases/bar-pressure");
+    let dir = lab.dir.join("bar-ccx");
+    fs::create_dir_all(&dir).unwrap();
+    for file in ["bar.step", "derivation.md"] {
+        fs::copy(case.join(file), dir.join(file)).unwrap();
+    }
+    let toml = fs::read_to_string(case.join("case.toml")).unwrap();
+    let toml = toml.replace("\nmesh = ", "\nsolver = \"fh-solve-ccx\"\nmesh = ");
+    fs::write(dir.join("case.toml"), toml).unwrap();
+    let run = |path: &str| {
+        let mut cmd = lab.cmd_of(&fh, &["run", p(&dir)]);
+        cmd.env_remove("FH_SOLVE").env("PATH", path);
+        cmd.output().unwrap()
+    };
+
+    // No fh-solve-ccx beside fh or on PATH: fh run stops before a daemon starts.
+    let out = run("/usr/bin:/bin");
+    fails(
+        &out,
+        1,
+        "the solver fh-solve-ccx is not beside fh or on PATH",
+    );
+    fails(&out, 1, "docs/ccx.md (run.solver.missing)");
+    assert!(!lab.state.join("daemon.info").exists());
+
+    // fh-solve-ccx beside fh. The fake writes a line and runs fh-solve.
+    let log = lab.dir.join("ccx.log");
+    script(
+        &bin.join("fh-solve-ccx"),
+        &format!(
+            "#!/bin/sh\necho ccx >> {}\nexec {} \"$@\"\n",
+            p(&log),
+            p(&lab.solver)
+        ),
+    );
+    let out = run(&std::env::var("PATH").unwrap());
+    succeeds(&out);
+    assert!((logged(&out, "max_mises") - 100.0).abs() < 1e-6);
+    assert_eq!(fs::read_to_string(&log).unwrap(), "ccx\n");
+
+    // FH_SOLVE wins over the solver of the case.
+    succeeds(&lab.fh(&["serve", "--stop"]));
+    succeeds(&lab.fh(&["run", p(&dir)]));
+    assert_eq!(fs::read_to_string(&log).unwrap(), "ccx\n");
 }
 
 #[test]

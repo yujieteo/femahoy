@@ -43,6 +43,8 @@ The adapter writes these keywords to `job.inp` with the same data, so `ccx` give
 A model with several materials needs one `*SOLID SECTION` for each element set.
 The case `validation/cases/bimetal-strip` has the key `solver = "fh-solve-ccx"`, so `fh validate` runs it with `fh-solve-ccx`.
 If `ccx` does not start, `fh validate` skips the case and shows `skipped, no ccx`. The other cases decide the exit code. Any other error of `fh-solve-ccx` or `ccx` is a failure.
+`fh run` also runs such a case with `fh-solve-ccx`. It finds `fh-solve-ccx` beside `fh`, else on `PATH`. You do not set `FH_SOLVE`.
+If `fh-solve-ccx` is not there, `fh run` stops with `run.solver.missing`. Then run `scripts/install.sh`, which puts `fh-solve-ccx` beside `fh`.
 
 ## Limits
 

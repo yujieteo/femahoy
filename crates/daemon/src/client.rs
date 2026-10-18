@@ -155,8 +155,21 @@ impl Client {
     }
 
     pub fn submit(&self, project: &str, request: &str, input: &str) -> Result<Ack, Error> {
+        self.submit_with_solver(project, request, input, "")
+    }
+
+    /// A submit for the solver `solver`, a name of [`crate::SOLVERS`]. An empty name is the
+    /// solver of the daemon.
+    pub fn submit_with_solver(
+        &self,
+        project: &str,
+        request: &str,
+        input: &str,
+        solver: &str,
+    ) -> Result<Ack, Error> {
         let path = format!("/api/v1/projects/{project}/runs");
-        Ack::from_message(&self.post(&path, &[("request", request), ("input", input)])?)
+        let fields = [("request", request), ("input", input), ("solver", solver)];
+        Ack::from_message(&self.post(&path, &fields)?)
     }
 
     pub fn cancel(&self, project: &str, run: &str, request: &str) -> Result<Ack, Error> {

@@ -129,8 +129,8 @@ A material group name cannot equal a node set name or a surface region name.
 The initial temperature is 0 at every node. The final temperature equals the change.
 `fh model` writes `*EXPANSION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE` and `*TEMPERATURE`.
 The native solver refuses thermal input. Use the CalculiX adapter.
-The top-level `solver = "fh-solve-ccx"` selects the adapter for `fh validate`.
-For `fh run`, set `FH_SOLVE` before the private daemon starts.
+The top-level `solver = "fh-solve-ccx"` selects the adapter for `fh validate` and `fh run`.
+`fh run` finds `fh-solve-ccx` beside `fh`, else on `PATH` ([`fh run`](fh.md#fh-run)).
 
 A `[[model.set]]` can use `point = [x, y, z]` instead of `axis` and `at`.
 The point selector uses the default tolerance of 1e-6 of the largest mesh extent.

@@ -52,7 +52,10 @@ pub use client::{new_request_id, Client};
 pub use contract::{Ack, Error, Event, Events, Message, Outcome, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
-pub use service::{Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
+pub use service::{
+    find_solver, missing_solver, solver_dirs, Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT,
+    MAX_QUEUED, SOLVERS,
+};
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";
