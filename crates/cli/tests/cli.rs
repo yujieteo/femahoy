@@ -1,7 +1,6 @@
 mod common;
 use common::{p, scratch};
 use std::process::{Command, Output};
-const PLANNED: [&str; 5] = ["results", "plot", "init", "team", "skills"];
 
 fn solver_path() -> std::path::PathBuf {
     let fh = std::path::Path::new(env!("CARGO_BIN_EXE_fh"));
@@ -21,16 +20,12 @@ fn fh_with_solver(args: &[&str], solver: &str) -> Output {
 }
 
 #[test]
-fn help_prints_usage_and_planned_subcommands_and_exits_0() {
+fn help_prints_usage_and_exits_0() {
     for flag in ["--help", "-h"] {
         let out = fh(&[flag]);
         assert_eq!(out.status.code(), Some(0), "exit code for {flag}");
         let stdout = String::from_utf8(out.stdout).unwrap();
         assert!(stdout.starts_with("usage: fh"), "usage line for {flag}");
-        for name in PLANNED {
-            let line = format!("  {name:<10}not implemented");
-            assert!(stdout.contains(&line), "missing `{line}` for {flag}");
-        }
     }
 }
 
@@ -42,14 +37,6 @@ fn unknown_argument_prints_usage_to_stderr_and_exits_2() {
     let stderr = String::from_utf8(out.stderr).unwrap();
     assert!(stderr.contains("unknown argument: --bogus"));
     assert!(stderr.contains("usage: fh"));
-}
-
-#[test]
-fn planned_subcommand_is_reported_as_not_implemented_and_exits_2() {
-    let out = fh(&["results"]);
-    assert_eq!(out.status.code(), Some(2));
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    assert!(stderr.contains("fh results: not implemented"));
 }
 
 fn root() -> String {
@@ -65,7 +52,6 @@ fn help_lists_check_and_validate_as_commands() {
     let out = text(fh(&["--help"]).stdout);
     assert!(out.contains("  check     "));
     assert!(out.contains("  validate  "));
-    assert!(!out.contains("check     not implemented"));
 }
 
 #[test]

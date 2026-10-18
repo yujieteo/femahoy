@@ -28,7 +28,6 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, runs
 - STEP mesh checks refuse missing, mixed or mismatched length units.
 - gmsh must be at least 4.8. The tested release line is 4.15.
 - Mesh runs fail on gmsh errors, timeout, unreadable output or output without supported volume elements.
-- `results`, `plot`, `init`, `team` and `skills` are not implemented.
 - `fh serve` has no option for the listen address. The daemon binds to 127.0.0.1 only (DESIGN.md section 4.1).
 - The binary is `fh`. Never `fea` (CLAUDE.md).
 - Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
