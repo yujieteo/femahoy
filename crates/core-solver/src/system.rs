@@ -50,7 +50,7 @@ pub enum Method {
     Pcg,
 }
 
-/// The result file formats of a run. All three are on by default.
+/// The result file formats of a run. Only VTU (with PVD) is on by default.
 /// Decision D-04, see DESIGN.md.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Formats {
