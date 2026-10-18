@@ -196,6 +196,23 @@ fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
 }
 
 #[test]
+fn the_daemon_log_has_mode_0600_for_an_old_and_a_new_log() {
+    let lab = Lab::new("run-log-mode");
+    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let log = lab.state.join("daemon.log");
+    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+    fs::create_dir_all(&lab.state).unwrap();
+    fs::write(&log, "old\n").unwrap();
+    fs::set_permissions(&log, fs::Permissions::from_mode(0o644)).unwrap();
+    succeeds(&lab.fh(&["run", p(&bar)]));
+    assert_eq!(mode(&log), 0o600);
+    succeeds(&lab.fh(&["serve", "--stop"]));
+    fs::remove_file(&log).unwrap();
+    succeeds(&lab.fh(&["run", p(&bar)]));
+    assert_eq!(mode(&log), 0o600);
+}
+
+#[test]
 fn a_relative_state_folder_names_the_folder_in_the_current_folder() {
     let lab = Lab::new("run-relative-state");
     let bar = root().join("validation/cases/bar-pressure/bar.inp");

@@ -268,11 +268,19 @@ fn daemon(state: &Path, panes: Option<&str>) -> Result<(Client, bool), String> {
         return Ok((client, false));
     }
     let log_path = state.join(LOG_FILE);
-    let log = OpenOptions::new()
-        .create(true)
-        .append(true)
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let log = options
         .open(&log_path)
         .map_err(|e| format!("cannot write {}: {e}", log_path.display()))?;
+    #[cfg(unix)]
+    fs::set_permissions(
+        &log_path,
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
+    )
+    .map_err(|e| format!("cannot protect {}: {e}", log_path.display()))?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let exe = std::env::current_exe().map_err(|e| format!("cannot find the fh program: {e}"))?;
     let mut command = Command::new(exe);

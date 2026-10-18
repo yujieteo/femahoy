@@ -90,7 +90,7 @@ The daemon owns every run. A browser, the native UI and the CLI are only clients
 3. The solver never lives longer than the daemon. A daemon that stops cancels its runs, and they end as `interrupted`. A daemon that fails closes the stdin of the solver, and protocol v2 then stops the solver.
 4. At the next start, the daemon marks each run that was still active as `interrupted`. A run with a pending cancel becomes `cancelled`. The daemon never starts such a run again by itself. The run folder keeps the restart file of the solver.
 5. One daemon at a time uses a state folder. The lock file `daemon.lock` makes this sure.
-6. `fh run` uses the daemon that answers for the state folder. If no daemon answers, `fh run` starts `fh serve --state DIR --no-open` (with `--panes MODE` from `fh run --panes MODE`) in the background, in its own process group, with its output in `DIR/daemon.log`. That daemon stays alive when `fh run` ends, so the browser keeps the results. `fh serve --stop` stops it. When 2 `fh run` commands start a daemon at the same time, the lock lets one start, and both use it. The other `fh run` stops the `fh serve` that it started, so that this `fh serve` cannot take the lock later.
+6. `fh run` uses the daemon that answers for the state folder. If no daemon answers, `fh run` starts `fh serve --state DIR --no-open` (with `--panes MODE` from `fh run --panes MODE`) in the background, in its own process group, with its output in `DIR/daemon.log`. This file has mode 0600, because it holds the page address with the token. That daemon stays alive when `fh run` ends, so the browser keeps the results. `fh serve --stop` stops it. When 2 `fh run` commands start a daemon at the same time, the lock lets one start, and both use it. The other `fh run` stops the `fh serve` that it started, so that this `fh serve` cannot take the lock later.
 
 ## Store
 
@@ -104,7 +104,7 @@ The daemon owns every run. A browser, the native UI and the CLI are only clients
 <state>/projects/<p>/runs/<r>/events.log
 <state>/projects/<p>/runs/<r>/out/          protocol v2 run folder
 <state>/open.html                           the page that sends the browser on to the page of the daemon (mode 0600)
-<state>/daemon.log                          the output of a daemon that fh run started
+<state>/daemon.log                          the output of a daemon that fh run started (mode 0600)
 <state>/examples/<name>/                    the case files of fh run --example
 <state>/cases/<name>-<hash>/                the mesh and the input of a case folder of fh run
 ```

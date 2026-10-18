@@ -217,7 +217,7 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 | `--panes auto\|herdr\|pty` | Sent to a daemon that `fh run` starts, as `fh serve --panes`. The `fh serve` default (`auto`). A daemon that runs keeps its pane backend. |
 | `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
 
-`fh run` uses the daemon of the state folder when one answers. Else it starts `fh serve --state DIR --no-open` (and `--panes MODE` when given) in the background, in its own process group, with its output in `DIR/daemon.log`, and waits up to 20 seconds for it. When another daemon answers first, for example the daemon of an `fh run` that started at the same time, `fh run` stops its own `fh serve` and uses the daemon that answers.
+`fh run` uses the daemon of the state folder when one answers. Else it starts `fh serve --state DIR --no-open` (and `--panes MODE` when given) in the background, in its own process group, with its output in `DIR/daemon.log`, and waits up to 20 seconds for it. The file has mode 0600, because it holds the page address with the token. When another daemon answers first, for example the daemon of an `fh run` that started at the same time, `fh run` stops its own `fh serve` and uses the daemon that answers.
 That daemon stays alive when `fh run` ends. The browser keeps the results, and the next `fh run` uses the same daemon. `fh serve --stop` stops it.
 A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_SOLVE` and `FH_VIEWER`. `fh mesh` uses `FH_GMSH`.
 
