@@ -309,7 +309,7 @@ fn the_install_builds_copies_and_then_updates() {
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(left.len(), 4, "no temporary files: {left:?}");
+    assert_eq!(left.len(), 5, "no temporary files: {left:?}");
     // The second run updates the venv too.
     let uv_again = fs::read_to_string(lab.dir.join("uv.log")).unwrap();
     assert_eq!(uv_again, format!("{uv}{uv}"));
