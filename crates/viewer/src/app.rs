@@ -1,6 +1,7 @@
 //! The eframe app: a viewport, a results panel, a status bar and the mouse controls. The
 //! same code runs in the native window (`fh view`) and in the browser (`fh serve`). In the
-//! browser, the terminal sidebar is beside the viewport.
+//! browser, the chat panel is on the left of the viewport and the terminal sidebar on the
+//! right.
 
 use std::sync::{Arc, Mutex};
 
@@ -8,6 +9,7 @@ use eframe::egui;
 use eframe::egui_wgpu;
 
 use crate::camera::Camera;
+use crate::chat::Chat;
 use crate::gpu::{FrameParams, Geometry, MeshCallback, MeshGpu};
 use crate::mesh::RenderMesh;
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
@@ -51,6 +53,9 @@ pub struct ViewerApp {
     /// The terminal sidebar: only on the page of `fh serve`.
     sidebar: Option<Sidebar>,
     sidebar_open: bool,
+    /// The chat with the leader: only on the page of `fh serve`.
+    chat: Option<Chat>,
+    chat_open: bool,
 }
 
 impl ViewerApp {
@@ -69,6 +74,8 @@ impl ViewerApp {
             slot,
             sidebar: None,
             sidebar_open: true,
+            chat: None,
+            chat_open: true,
         };
         app.set_content(content);
         app
@@ -79,7 +86,15 @@ impl ViewerApp {
         self.sidebar = Some(sidebar);
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_chat(&mut self, chat: Chat) {
+        self.chat = Some(chat);
+    }
+
     fn set_content(&mut self, content: Content) {
+        if !matches!(content, Content::Runs(_)) {
+            self.runs = None;
+        }
         let mesh = match &content {
             Content::Mesh(m) => m,
             Content::Results(r) => &r.mesh,
@@ -336,8 +351,15 @@ impl eframe::App for ViewerApp {
         if let Some(s) = &mut self.sidebar {
             s.poll();
         }
+        if let Some(c) = &mut self.chat {
+            c.poll();
+        }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
+                if self.chat.is_some() {
+                    ui.toggle_value(&mut self.chat_open, "Chat")
+                        .on_hover_text("show or hide the chat with the leader");
+                }
                 if self.sidebar.is_some() {
                     ui.toggle_value(&mut self.sidebar_open, "Terminal")
                         .on_hover_text("show or hide the terminal sidebar");
@@ -357,6 +379,15 @@ impl eframe::App for ViewerApp {
                 .default_size(width)
                 .min_size(320.0)
                 .show(ui, |ui| s.ui(ui));
+        }
+        if let (Some(c), true) = (&mut self.chat, self.chat_open) {
+            let width = (ui.available_width() * 0.3).clamp(300.0, 560.0);
+            egui::Panel::left("chat")
+                .resizable(true)
+                .default_size(width)
+                .min_size(260.0)
+                .max_size(width.max(560.0))
+                .show(ui, |ui| c.ui(ui));
         }
         let has_results = self.shown.as_ref().is_some_and(|s| s.results.is_some());
         if has_results {

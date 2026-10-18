@@ -13,6 +13,7 @@ use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::app::{Content, ContentSlot, ViewerApp};
+use crate::chat::Chat;
 use crate::sidebar::{Remote, RemoteEvent, Reply, Sidebar};
 use crate::terminal::{PROTOCOL, TOKEN_PROTOCOL};
 use crate::{results, RESULTS_FILE};
@@ -300,16 +301,35 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement) -> Result<(), JsValue> {
             canvas,
             options,
             Box::new(move |cc| {
-                let mut app = ViewerApp::new(cc, title, first, Some(slot));
+                let mut app = ViewerApp::new(cc, title, first, Some(slot.clone()));
                 if let (Some(token), Some(host)) = (token, host) {
-                    let remote = Browser {
-                        token,
-                        host,
+                    let remote = || Browser {
+                        token: token.clone(),
+                        host: host.clone(),
                         ctx: cc.egui_ctx.clone(),
                         events: Rc::default(),
                         sockets: HashMap::new(),
                     };
-                    app.set_sidebar(Sidebar::new(Box::new(remote)));
+                    app.set_sidebar(Sidebar::new(Box::new(remote())));
+                    // A run that succeeds during the chat opens in the viewer.
+                    let (t, ctx) = (token.clone(), cc.egui_ctx.clone());
+                    let open = move |p: &str, r: &str| {
+                        let (t, p, r, fill, ctx) = (
+                            t.clone(),
+                            p.to_owned(),
+                            r.to_owned(),
+                            slot.clone(),
+                            ctx.clone(),
+                        );
+                        wasm_bindgen_futures::spawn_local(async move {
+                            let content = load_run(&t, &p, &r).await;
+                            if let Ok(mut s) = fill.lock() {
+                                *s = Some(content.unwrap_or_else(Content::Failed));
+                            }
+                            ctx.request_repaint();
+                        });
+                    };
+                    app.set_chat(Chat::new(Box::new(remote()), Box::new(open)));
                 }
                 Ok(Box::new(app))
             }),

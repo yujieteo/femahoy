@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal, opens its page in the browser (`src/browser.rs`), and stops a running daemon with `--stop`. `crates/cli` only calls it. Its page loads the wasm viewer of `crates/viewer`. The daemon also owns the terminal sidebar: the PTY of each sidebar shell, the pane backend (plain PTYs) and the WebSocket of each terminal (`docs/terminal.md`).
+The crate has the D1 run contract: one contract for runs that the CLI and the UI share. `serve` (`src/serve.rs`) is the `fh serve` command. It runs `Daemon` until a stop signal, opens its page in the browser (`src/browser.rs`), and stops a running daemon with `--stop`. `crates/cli` only calls it. Its page loads the wasm viewer of `crates/viewer`. The daemon also owns the terminal sidebar: the PTY of each sidebar shell, the pane backend (plain PTYs) and the WebSocket of each terminal (`docs/terminal.md`). It runs the agent of the chat (`src/chat.rs`, `docs/chat.md`).
 
 ## Inputs and outputs
 
@@ -12,6 +12,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - The text form, the routes and the access rules are in `src/contract.rs`, `src/http.rs` and `docs/run-contract.md`.
 - A run starts the protocol v2 solver (`fh-solve`) through `fh_solver_api::SubprocessSolver` on a fixed input revision.
 - `src/pty.rs` runs a program in a PTY with `alacritty_terminal`. `src/screen.rs` encodes its screen in the protocol `fh.term.v1`, and `src/ws.rs` sends it on the WebSocket.
+- `src/chat.rs` runs 1 agent (Claude Code, `claude -p --output-format stream-json`) with the instructions of `src/agent.md`, and keeps its actions as chat entries for `/api/v1/chat`.
 - `src/panes.rs` has the `PaneBackend` trait and the pty backend. The routes `/api/v1/terminals` and `/api/v1/panes` use them.
 
 ## Invariants the code must keep
@@ -25,6 +26,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - The solver never lives longer than the daemon. At start, the daemon marks each active run of an earlier daemon `interrupted`, or `cancelled` when a cancel was pending. It never starts such a run again by itself.
 - One daemon at a time uses a state folder (`daemon.lock`).
 - The browser never holds an API key (DESIGN.md section 4.1).
+- femahoy has no agent loop of its own. The agent is a separate harness process (DESIGN.md section 5.1). A chat entry never holds the token.
 - Each terminal and pane route, the WebSocket included, has the same token and `Origin` rules as the other routes. Only the WebSocket takes the token in the subprotocol `fh.token.<token>`.
 - `alacritty_terminal` is pinned to an exact version and only `src/pty.rs` uses it (DESIGN.md section 11.1).
 - Other code reads the panes from `PaneBackend` (DESIGN.md section 4.3).
@@ -39,7 +41,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/terminal.rs` tests the terminal and pane routes and the WebSocket: the access rules, the shell and the pty backend. `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`.
+Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` tests `fh serve`: no token, a wrong token, a wrong `Origin`, loopback only and the stop. `tests/contract.rs` has the D1 exit checks: browser close, CLI reconnect, a duplicate submission, cancel, a daemon stop and a daemon failure (SIGKILL), the foreign `Origin` and the authorized CLI. `tests/viewer.rs` tests the page, the viewer files, the project list and the result files, each with the token and `Origin` rules. `tests/terminal.rs` tests the terminal and pane routes and the WebSocket: the access rules, the shell and the pty backend. `tests/chat.rs` tests the chat routes with a fake agent that prints a recorded event stream. No test calls a real LLM. `crates/cli/tests/run.rs` tests the browser open, `--no-open`, `FH_NO_OPEN` and `--stop` through `fh`.
 
 ## Examples
 

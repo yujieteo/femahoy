@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The crate has the result viewer (`docs/viewer.md`): one eframe app for the native window (`fh view`) and for the browser (wasm, the page of `fh serve`). In the browser, the page also has the terminal sidebar (`docs/terminal.md`): `terminal.rs` is the terminal widget and `sidebar.rs` holds the tabs and the panes. The chat panel and the teammate tree are not built.
+The crate has the result viewer (`docs/viewer.md`): one eframe app for the native window (`fh view`) and for the browser (wasm, the page of `fh serve`). In the browser, the page also has the terminal sidebar (`docs/terminal.md`): `terminal.rs` is the terminal widget and `sidebar.rs` holds the tabs and the panes. `chat.rs` is the chat panel (`docs/chat.md`): the request, each action of the agent, and the results of a new run in the viewer. The teammate tree is not built.
 
 ## Inputs and outputs
 
@@ -20,7 +20,7 @@ The crate has the result viewer (`docs/viewer.md`): one eframe app for the nativ
 
 ## Forbidden actions
 
-- Do not describe the chat panel or the teammate tree as available.
+- Do not describe the teammate tree as available.
 - Hold an API key in the browser (DESIGN.md section 4.1).
 
 ## Validation hooks it must pass

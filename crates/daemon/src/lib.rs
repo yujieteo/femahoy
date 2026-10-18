@@ -15,6 +15,8 @@
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
 //! - **Terminals and panes.** The daemon owns the PTY of each terminal of the sidebar
 //!   (`pty`) and the pane backend (`panes`), plain PTYs of the daemon. The browser shows a terminal over a WebSocket (`ws`, `screen`, `docs/terminal.md`).
+//! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
+//!   its actions as chat entries for the page (`chat`, `docs/chat.md`).
 //!
 //! The solve path stays the existing subprocess protocol v2 (`fh-solve`, DESIGN.md
 //! section 9.3). The contract only starts it, cancels it and keeps the record.
@@ -34,9 +36,11 @@
 //! 5. One daemon at a time uses a state folder. A lock file makes this sure.
 
 mod browser;
+mod chat;
 mod client;
 mod contract;
 mod http;
+mod json;
 mod panes;
 mod pty;
 pub mod screen;
@@ -122,6 +126,7 @@ fn sidebar(o: &Options) -> panes::Sidebar {
 pub struct Daemon {
     service: Arc<Service>,
     sidebar: Arc<panes::Sidebar>,
+    chat: Arc<chat::Chat>,
     server: http::Server,
     token: String,
     info: PathBuf,
@@ -137,12 +142,15 @@ impl Daemon {
         options: Options,
     ) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
+        let state_dir = config.state_dir.clone();
         let sidebar = Arc::new(sidebar(&options));
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32);
+        let chat = chat::Chat::new(service.clone(), state_dir, token.clone());
         let server = http::Server::start(
             service.clone(),
             sidebar.clone(),
+            chat.clone(),
             port,
             token.clone(),
             options.viewer,
@@ -157,6 +165,7 @@ impl Daemon {
         Ok(Daemon {
             service,
             sidebar,
+            chat,
             server,
             token,
             info,
@@ -185,6 +194,7 @@ impl Drop for Daemon {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.info);
         self.server.stop();
+        self.chat.stop();
         self.sidebar.terminals.close_all();
         self.service.stop();
     }
