@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The `fh` binary checks models, runs external gmsh, checks units and meshes, and runs validation cases.
+The `fh` binary checks models, runs external gmsh, checks units and meshes, runs validation cases, and solves models on the daemon (`fh run`).
 
 ## Inputs and outputs
 
@@ -19,7 +19,8 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 - STEP checks report units. With `--case`, they refuse a mismatch against `case.toml`.
 - MSH checks report counts, bounds, volume and minimum scaled Jacobian. They refuse empty solid meshes and nonpositive corner Jacobians.
 - `fh validate [--root DIR] [--convergence PATH]` uses `FH_SOLVE` or the adjacent `fh-solve` binary.
-- `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH]` calls `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
+- `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH] [--no-open]` and `fh serve --stop [--state DIR]` call `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
+- `fh run MODEL.inp|CASE_DIR|PART.step` and `fh run --example NAME` (`src/run.rs`) solve on the daemon of the state folder through `fh_daemon::Client`, and start `fh serve --no-open` in the background when no daemon answers. `fh run --panes MODE` gives `--panes MODE` to that daemon. A case folder goes through `mesh::run` and `model::run` in `STATE/cases/NAME-HASH`. The example files come from `validation/cases/bar-pressure` (`include_bytes!`). Exit codes: 0, 1 (failed or refused), 2 (usage or input), 3 (no daemon), 130 (cancelled), in `docs/reference/fh.md`.
 
 ## Invariants the code must keep
 
@@ -31,7 +32,9 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 - `fh serve` has no option for the listen address. The daemon binds to 127.0.0.1 only (DESIGN.md section 4.1).
 - The binary is `fh`. Never `fea` (CLAUDE.md).
 - Each command works over SSH and tmux, with no GUI (DESIGN.md section 3).
-- Line budget: 3k lines, tests included (DESIGN.md section 11).
+- `fh run` checks the arguments and the input before it starts a daemon. It never changes a case folder of the user.
+- A test never opens the browser of the machine. Tests set `FH_NO_OPEN=1` and a fake `BROWSER`, and use a scratch state folder.
+- Line budget: 4.8k lines, tests included, up from 3k for `fh run` with captain approval (DESIGN.md section 11).
 
 ## Forbidden actions
 
@@ -42,7 +45,7 @@ The `fh` binary checks models, runs external gmsh, checks units and meshes, and 
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-cli` and `cargo test -p fh-cli`. `fh --help` lists available commands.
+Run `cargo check -p fh-cli` and `cargo test -p fh-cli`. `fh --help` lists available commands. `tests/run.rs` has a test for each exit code of `fh run`. `tests/install.rs` tests `scripts/install.sh` with fake tools.
 
 ## Examples
 
@@ -53,4 +56,6 @@ fh model part.msh --case validation/cases/bar-tension -o part.inp
 fh info part.step --case validation/cases/cantilever
 fh info part.msh --case validation/cases/cantilever
 fh validate --root .
+fh run --example bar-pressure
+fh run validation/cases/bar-pressure --no-open
 ```

@@ -34,6 +34,7 @@
 //!    itself. The run folder keeps the restart file of the solver.
 //! 5. One daemon at a time uses a state folder. A lock file makes this sure.
 
+mod browser;
 mod client;
 mod contract;
 mod herdr;
@@ -51,6 +52,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use browser::{no_open, open_page, NO_OPEN, OPEN_FILE};
 pub use client::{new_request_id, Client, TermSocket};
 pub use contract::{
     valid_project, valid_request, valid_run, Ack, Command, Error, Event, Events, Message, Outcome,
@@ -59,7 +61,7 @@ pub use contract::{
 pub use herdr::{Herdr, ALLOWED as HERDR_COMMANDS};
 pub use panes::{BackendStatus, Key, Pane, PaneBackend, PaneSpec};
 use pty::find_program;
-pub use serve::{serve, serve_until};
+pub use serve::{default_state_dir, serve, serve_until};
 pub use service::{
     Config, Service, EVENT_BATCH, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_ACKS, MAX_QUEUED,
     MAX_WAIT,

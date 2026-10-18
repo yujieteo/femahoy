@@ -344,7 +344,7 @@ Cargo workspace. The cap is **85k lines of Rust, tests included**. Data files do
 | `validation` | harness, tolerance classes, manufactured solutions | validated core | 6k |
 | `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | app | 7k |
 | `agents` | harness start, JSON stream parsing, skills install, role config | app | 4k |
-| `cli` | `fh` commands | app | 3k |
+| `cli` | `fh` commands | app | 4.8k (3k before `fh run`) |
 | `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | app | 12k, provisional |
 | `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app | 3k, provisional |
 | **Total** | | | **85k cap** |
@@ -352,6 +352,7 @@ Cargo workspace. The cap is **85k lines of Rust, tests included**. Data files do
 Rules:
 - The crate budgets add up to 85k or less. The total cap stays 85k. The `viewer` budget (12k, down from 15k) and the `solver-ccx` budget (3k) are provisional until they are measured at the budget review of the first user test. At that review, `scripts/check-budget.sh` and the crate `SKILL.md` files change. Stage C1 adds `solver-ccx` to the CI budget check.
 - A crate that goes over budget needs a written reason before it grows more.
+- The `cli` budget is 4.8k, up from 3k. Reason: `fh run` (the CLI client of the run contract, with case folders and the `bar-pressure` example) and the tests of `fh run` and `scripts/install.sh` added 1.6k lines. The captain approved going over the crate budgets for this work on 2026-10-18 ("You can go over the limit."). With this budget, the crate budgets add up to 86.8k, over the 85k cap. The cap stays 85k. The measured total was 35k lines. The budget review at the first user test settles the sum.
 - Review the whole budget at the first user test, with real line counts.
 
 ### 11.1 Key dependencies

@@ -1,23 +1,34 @@
 //! `fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME]
-//! [--herdr PATH]`: run the daemon until a stop signal. The daemon listens on 127.0.0.1
-//! only, and no option changes the address. It makes a random token at each start and
-//! writes the port and the token to `DIR/daemon.info` (mode 0600). Each request must carry
-//! the token, and a request from a page of another `Origin` fails (`http` module).
+//! [--herdr PATH] [--no-open]`: run the daemon until a stop signal. The daemon listens on
+//! 127.0.0.1 only, and no option changes the address. It makes a random token at each start
+//! and writes the port and the token to `DIR/daemon.info` (mode 0600). Each request must
+//! carry the token, and a request from a page of another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`, with
 //! the terminal sidebar. The pane backend is herdr when herdr answers, else plain PTYs
 //! (`--panes auto`). herdr calls use the session `--herdr-session` (default `femahoy`).
+//! At start, `fh serve` opens the page in the browser (`browser` module).
+//!
+//! `fh serve --stop [--state DIR]` stops the daemon of the state folder, for example the
+//! daemon that `fh run` started in the background.
 
-use std::path::PathBuf;
+use std::fs::OpenOptions;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use fh_solver_api::SubprocessSolver;
 
-use crate::{Config, Daemon, Options, PaneChoice};
+use crate::browser::{no_open, open_page};
+use crate::service::LOCK_FILE;
+use crate::{Client, Config, Daemon, Options, PaneChoice};
 
 const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] \
-                     [--herdr-session NAME] [--herdr PATH]";
+                     [--herdr-session NAME] [--herdr PATH] [--no-open]\n       \
+                     fh serve --stop [--state DIR]";
+
+/// The longest time that `fh serve --stop` waits for the daemon to end its runs.
+const STOP_WAIT: Duration = Duration::from_secs(30);
 
 /// Run `fh serve` with the arguments after `serve`, until SIGINT, SIGTERM or SIGHUP.
 /// `solver` is the protocol v2 solver, for example `fh-solve`.
@@ -39,6 +50,7 @@ pub fn serve_until(
         panes: PaneChoice::Auto,
         ..Options::default()
     };
+    let (mut no_open_option, mut stop_option, mut start_option) = (false, false, false);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         let mut value = || {
@@ -62,12 +74,22 @@ pub fn serve_until(
             }
             "--herdr-session" => options.herdr_session = value()?.clone(),
             "--herdr" => options.herdr_program = Some(PathBuf::from(value()?)),
+            "--no-open" => no_open_option = true,
+            "--stop" => stop_option = true,
             _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
         }
+        // The options other than --state and --stop are for a start.
+        start_option |= !matches!(arg.as_str(), "--state" | "--stop");
     }
     let state_dir = state
         .or_else(default_state_dir)
         .ok_or_else(|| format!("no home folder, so give the state folder\n{USAGE}"))?;
+    if stop_option {
+        if start_option {
+            return Err(format!("--stop takes only --state DIR\n{USAGE}"));
+        }
+        return Ok(stop_daemon(&state_dir));
+    }
     let config = Config {
         state_dir: state_dir.clone(),
         solver: SubprocessSolver::new(solver),
@@ -79,14 +101,20 @@ pub fn serve_until(
         Err(e) => {
             let dir = state_dir.display();
             eprintln!("fh serve: {dir}: {} ({})", e.message, e.code);
+            if let Some(c) = Client::discover(&state_dir)
+                .ok()
+                .filter(|c| c.status().is_ok())
+            {
+                eprintln!(
+                    "fh serve: its page is {}. Stop it with: fh serve --stop --state {dir}",
+                    c.page_url("")
+                );
+            }
             return Ok(ExitCode::from(1));
         }
     };
-    println!(
-        "fh serve: http://127.0.0.1:{}/?token={}",
-        daemon.port(),
-        daemon.token()
-    );
+    let url = daemon.client().page_url("");
+    println!("fh serve: {url}");
     match &viewer {
         Some(dir) => println!("fh serve: viewer {}", dir.display()),
         None => println!(
@@ -108,6 +136,12 @@ pub fn serve_until(
         "fh serve: state folder {}. Stop with Ctrl+C.",
         state_dir.display()
     );
+    if !no_open(no_open_option) {
+        match open_page(&state_dir, &url) {
+            Ok(()) => println!("fh serve: opened the page in the browser"),
+            Err(e) => println!("fh serve: no browser ({e}). Open the address above."),
+        }
+    }
     while !stop.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -127,9 +161,50 @@ fn viewer_dir() -> Option<PathBuf> {
     dir.join("fh_viewer_bg.wasm").is_file().then_some(dir)
 }
 
+/// `fh serve --stop`: send a stop signal to the daemon that answers for `state_dir`, then
+/// wait until it frees the state folder. The daemon ends its active runs as `interrupted`
+/// (the run contract). No daemon to stop is not an error.
+fn stop_daemon(state_dir: &Path) -> ExitCode {
+    let dir = state_dir.display();
+    // Only the daemon with the token of daemon.info answers, so the pid is its own.
+    let status = Client::discover(state_dir).and_then(|c| c.status());
+    let pid = match status {
+        Ok(m) => m.get("pid").and_then(|p| p.parse::<u32>().ok()),
+        Err(e) => {
+            println!("fh serve: no daemon answers for {dir} ({})", e.code);
+            return ExitCode::SUCCESS;
+        }
+    };
+    let Some(pid) = pid else {
+        eprintln!("fh serve: the daemon of {dir} gives no pid");
+        return ExitCode::from(1);
+    };
+    if let Err(e) = stop::terminate(pid) {
+        eprintln!("fh serve: cannot stop the daemon (pid {pid}): {e}");
+        return ExitCode::from(1);
+    }
+    let deadline = Instant::now() + STOP_WAIT;
+    while Instant::now() < deadline {
+        let lock = OpenOptions::new()
+            .write(true)
+            .open(state_dir.join(LOCK_FILE));
+        // The daemon frees the lock when its runs have ended.
+        if lock.is_ok_and(|f| f.try_lock().is_ok()) {
+            println!("fh serve: stopped the daemon (pid {pid}) of {dir}");
+            return ExitCode::SUCCESS;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    eprintln!(
+        "fh serve: the daemon (pid {pid}) did not stop in {} s",
+        STOP_WAIT.as_secs()
+    );
+    ExitCode::from(1)
+}
+
 /// `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows
 /// `%LOCALAPPDATA%\femahoy`.
-fn default_state_dir() -> Option<PathBuf> {
+pub fn default_state_dir() -> Option<PathBuf> {
     let var = |name| std::env::var_os(name).filter(|v| !v.is_empty());
     let base = if cfg!(windows) {
         PathBuf::from(var("LOCALAPPDATA")?)
@@ -168,4 +243,33 @@ mod stop {
 
     #[cfg(not(unix))]
     pub fn install() {}
+
+    /// Send SIGTERM to the process `pid`.
+    #[cfg(unix)]
+    pub fn terminate(pid: u32) -> Result<(), String> {
+        extern "C" {
+            fn kill(pid: i32, sig: i32) -> i32;
+        }
+        let pid = i32::try_from(pid).map_err(|_| format!("bad pid {pid}"))?;
+        // SAFETY: kill only sends a signal. The pid comes from the daemon that answered.
+        match unsafe { kill(pid, 15) } {
+            0 => Ok(()),
+            _ => Err(std::io::Error::last_os_error().to_string()),
+        }
+    }
+
+    /// End the process `pid`. Windows has no stop signal, so its runs end as after a daemon
+    /// failure (`interrupted` at the next start).
+    #[cfg(not(unix))]
+    pub fn terminate(pid: u32) -> Result<(), String> {
+        let pid = pid.to_string();
+        let status = std::process::Command::new("taskkill")
+            .args(["/PID", &pid, "/F"])
+            .status()
+            .map_err(|e| e.to_string())?;
+        status
+            .success()
+            .then_some(())
+            .ok_or_else(|| format!("taskkill: {status}"))
+    }
 }

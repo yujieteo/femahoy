@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `check`, `mesh`, `model`, `validate`, `info`, `serve`, and `view`.
+`fh` implements `check`, `mesh`, `model`, `validate`, `info`, `run`, `serve`, and `view`.
 This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
 The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
@@ -192,10 +192,67 @@ Convergence case rows also contain the mesh count.
 Read or solver failures, absent result fields, empty sets, and invalid reductions can supply the failure reason.
 See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 
+## `fh run`
+
+```text
+fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--state DIR] [--panes auto|herdr|pty] [--no-open]
+fh run --example NAME [--size H] [--order 1|2] [--state DIR] [--panes auto|herdr|pty] [--no-open]
+```
+
+Source: [run.rs](../../crates/cli/src/run.rs).
+
+The command solves a model on the daemon of the [run contract](../run-contract.md), shows the events of the run, and opens the run in the browser.
+
+| Input | What `fh run` does |
+|---|---|
+| `MODEL.inp` (the extension in any case) | Solves the file as it is. The folder of the file is the project root. |
+| `CASE_DIR`, `CASE_DIR/case.toml`, or `CASE_DIR/PART.step` (`.step` or `.stp`) | Runs `fh mesh PART.step --case CASE_DIR` and `fh model` in the work folder `STATE/cases/NAME-HASH`, then solves the input. The work folder is the project root, so the case folder does not change. A folder must hold one STEP file. |
+| `--example NAME` | Writes an example case that `fh` holds to `STATE/examples/NAME`, then runs it as a case folder. It works from any folder. The example is `bar-pressure` (mesh size 8). |
+
+| Option | Default or rule |
+|---|---|
+| `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder, 8 for `bar-pressure`. |
+| `--order 1\|2` | Sent to `fh mesh`. The `fh mesh` default (2). |
+| `--state DIR` | The state folder of the daemon, the same default as `fh serve`. |
+| `--panes auto\|herdr\|pty` | Sent to a daemon that `fh run` starts, as `fh serve --panes`. The `fh serve` default (`auto`). A daemon that runs keeps its pane backend. |
+| `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
+
+`fh run` uses the daemon of the state folder when one answers. Else it starts `fh serve --state DIR --no-open` (and `--panes MODE` when given) in the background, in its own process group, with its output in `DIR/daemon.log`, and waits up to 20 seconds for it.
+That daemon stays alive when `fh run` ends. The browser keeps the results, and the next `fh run` uses the same daemon. `fh serve --stop` stops it.
+A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_SOLVE` and `FH_VIEWER`. `fh mesh` uses `FH_GMSH`.
+
+The browser opens on `http://127.0.0.1:PORT/?token=TOKEN&project=P&run=R`, the same way as for [`fh serve`](#fh-serve).
+Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
+Before a daemon starts, `fh run` checks the arguments and the input. Thus a usage error starts no daemon.
+
+| Condition | Diagnostic or output | Exit |
+|---|---|---:|
+| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), `native window: fh view DIR`, and the stop command. | 0 |
+| The solver refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder, for example `bad.inp: line 3, *BOGUS: unsupported keyword (INP002)`. | 1 |
+| The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
+| `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
+| The daemon refused the project or the run | `fh run: the daemon refused the project: MESSAGE (CODE)` or `the daemon refused the run: ...`, for example `queue.full` | 1 |
+| No input, unknown option, bad value (for example `--panes is auto, herdr or pty, not VALUE`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
+| `--size` or `--order` with an `.inp` file | `fh run: --size and --order go to fh mesh, ... (run.option.mesh)` | 2 |
+| The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
+| The input is not an `.inp` file, a folder, `case.toml` or a STEP file | `fh run: PATH: ... (run.input.kind)` | 2 |
+| A folder with no `case.toml` | `fh run: DIR: no case.toml, so this is not a case folder (run.case.missing)` | 2 |
+| A case folder with no STEP file, or with more than 1 | `(run.case.step.missing)`, or `(run.case.step.many)` with the names | 2 |
+| An unknown example | `fh run: unknown example NAME. The examples: bar-pressure (run.example.unknown)` | 2 |
+| A case that `fh mesh` or `fh model` cannot read | `fh run: mesh: MESSAGE` or `fh run: model: MESSAGE` | 2 |
+| The state folder cannot be made | `fh run: no daemon: cannot make the state folder DIR: ERROR` | 3 |
+| No daemon answers and `fh serve` does not start one | `fh run: no daemon: fh serve did not start a daemon for DIR`, then the last 5 lines of `DIR/daemon.log`, for example `another daemon uses this state folder (daemon.running)` | 3 |
+| The daemon does not answer for 10 seconds during the run | `fh run: RUN: the daemon does not answer: ...` | 3 |
+| Ctrl+C, and the run ended as cancelled | stdout: `cancel: cancel-requested`. stderr: `fh run: RUN was cancelled` | 130 |
+| A second Ctrl+C | stdout: `fh run: Ctrl+C again: fh run ends. The cancel of RUN continues in the daemon.` | 130 |
+
+`crates/cli/tests/run.rs` has a test for each refusal, with a fake browser, `FH_NO_OPEN=1`, a fake gmsh and `--panes pty`.
+
 ## `fh serve`
 
 ```text
-fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH]
+fh serve [--state DIR] [--port N] [--panes auto|herdr|pty] [--herdr-session NAME] [--herdr PATH] [--no-open]
+fh serve --stop [--state DIR]
 ```
 
 Source: [serve.rs](../../crates/daemon/src/serve.rs). The dispatcher calls it with the solver of `fh validate`.
@@ -208,14 +265,30 @@ The page has the terminal sidebar ([terminal](../terminal.md)).
 `--panes` selects the pane backend: `auto` (the default) uses herdr when it answers, else plain PTYs of the daemon.
 `--herdr-session` names the herdr session that femahoy owns (default `femahoy`, never `default`). `--herdr` gives the herdr program.
 
+After the start, `fh serve` opens its page in the browser. `--no-open`, or a value of `FH_NO_OPEN` that is not empty and not `0`, stops this, for tests and for a machine with no screen.
+The address holds the token, so it does not go into the command line of a browser process, where other users of the machine can read it:
+
+| Browser program | What it gets |
+|---|---|
+| `$BROWSER`, when it is set | the file `STATE/open.html` (mode 0600), which sends the browser on to the address |
+| macOS | `open URL`: Launch Services gives the address to the default browser |
+| Windows | `rundll32 url.dll,FileProtocolHandler URL` |
+| Other Unix systems | `xdg-open STATE/open.html` |
+
+`fh serve --stop` sends SIGTERM to the daemon that answers for the state folder (`taskkill` on Windows), then waits up to 30 seconds until the daemon releases `daemon.lock`.
+
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the pane backend (for example `fh serve: panes pty (plain PTY panes owned by the daemon)`), and the state folder. `DIR/daemon.info` gets the port and the token. | |
+| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the pane backend (for example `fh serve: panes pty (plain PTY panes owned by the daemon)`), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). `DIR/daemon.info` gets the port and the token. | |
 | Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
-| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`, `pane.herdr.session` (`--herdr-session default`), `pane.herdr.absent` (`--panes herdr` and no herdr on `PATH`) or `pane.herdr` (herdr does not answer) | 1 |
+| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`, `pane.herdr.session` (`--herdr-session default`), `pane.herdr.absent` (`--panes herdr` and no herdr on `PATH`) or `pane.herdr` (herdr does not answer). When another daemon answers: `its page is URL. Stop it with: fh serve --stop --state DIR` | 1 |
+| `--stop` stopped the daemon | stdout: `fh serve: stopped the daemon (pid PID) of DIR` | 0 |
+| `--stop` and no daemon answers | stdout: `fh serve: no daemon answers for DIR (CODE)` | 0 |
+| `--stop` and the daemon does not stop in 30 seconds | stderr: `fh serve: the daemon (pid PID) did not stop in 30 s` | 1 |
 | Missing option value | `fh serve: OPTION needs a value` | 2 |
 | Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
 | Bad pane backend | `fh serve: --panes is auto, herdr or pty, not VALUE` | 2 |
+| `--stop` with an option other than `--state` | `fh serve: --stop takes only --state DIR` | 2 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
 
 ## `fh view`
