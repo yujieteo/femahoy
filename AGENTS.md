@@ -12,24 +12,18 @@ This file is for the agents that build femahoy itself. The product design is in 
 | Teammate | One agent per task | Does one task in its own worktree, returns a report |
 | Validator | Opus 5.5, separate session | Reviews each change and runs the gate. Never the same session as the author. |
 
-## 2. Model per area
+## 2. Model
 
-| Area | Model |
-|---|---|
-| `inp`, `io`, `toon`, `solver-api`, `cli`, `daemon`, `agents`, `viewer`, tests, fixtures | Haiku 5.5 medium |
-| `core-solver`: element formulations, contact, plasticity, NLGEOM, Newton and cutback, DOF elimination, submodel interpolation | Opus 5.5 or Sonnet 5.5 |
-| Validator for every merge | Opus 5.5 |
-
-If a Haiku task enters a numerical area in `core-solver`, stop and report to the leader. Do not continue.
+The leader chooses the model for each task. The validator for every merge is Opus 5.5.
 
 ## 3. Task rules
 
 1. One task per branch and worktree.
-2. One crate per task. Change another crate only when the leader approves it in the task.
+2. One roadmap item per task. List each changed crate in the hand-back.
 3. Read the crate's `SKILL.md` before you write code in that crate.
 4. Do not add a dependency unless the leader approves it. Every dependency must be under MIT, Apache-2.0, BSD, ISC, Zlib, or a similar permissive licence. The commercial licence (`DESIGN.md` section 2) needs this. Never link GPL or AGPL code.
-5. Stay inside the crate's line budget (`DESIGN.md` section 11). Report the line change in your hand-back.
-6. Stop at the end of a milestone and report. Do not start the next milestone.
+5. Keep the code small. Delete code that is not needed. Prefer a deletion to an addition.
+6. The order of the roadmap items is in `DESIGN.md` section 13.
 
 ## 4. Forbidden
 
@@ -59,7 +53,6 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 fh validate                      # from M1; full suite
 fh validate --convergence <path> # for each changed solver path
-tokei budget check               # CI script, per crate
 ```
 
 Then the validator reviews the diff and the hand-back.
@@ -76,7 +69,6 @@ branch:        <name>
 files:         <changed files>
 commands:      <each gate command and pass/fail>
 validation:    <case id, value, reference, tolerance, pass/fail>
-lines:         <crate: before -> after>
 risks:         <open problems, or "none">
 ```
 
@@ -106,7 +98,3 @@ Each crate has `crates/<name>/SKILL.md` with these sections:
 ```
 
 Other sections are free-form.
-
-## 10. Milestone order
-
-Follow `DESIGN.md` section 13. Start with M0. Stop after M0 and report.

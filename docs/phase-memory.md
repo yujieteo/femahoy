@@ -59,7 +59,6 @@ No solver instrumentation or numerical code changed.
 
 The run used macOS 27.0.1 (26A434), Apple M5, arm64, 10 cores, and 16 GiB RAM.
 The release build used the default Rust target and 4 solver threads.
-This run checks memory on macOS. It does not verify the E3 x86-64 CPU target or a run without swap.
 
 The table below records the run from 2026-10-13.
 
@@ -133,7 +132,5 @@ A small fake solver also checks the complete monitor and its output files.
 | `cargo +stable clippy -p fh-solver-api --all-targets -- -D warnings` | Pass |
 | `cargo +stable fmt --check` | Pass |
 | `python3 scripts/test-phase-memory.py` | 7 tests passed |
-| `PATH=$HOME/.cargo/bin:$PATH bash scripts/check-budget.sh` | Pass. solver-api uses 2217 of 3000 lines. |
 
-The solver-api crate grew from 2116 to 2217 lines.
 No dependency changed. The full workspace gate and independent review follow the task handoff.

@@ -18,7 +18,6 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 - The parser does not declare units. Validation cases declare units in `case.toml`.
 - Each unsupported keyword fails with a clear error that names the keyword and the line number (DESIGN.md section 7.3).
 - Each difference from Abaqus is listed in `docs/compatibility.md`, and a test covers it (DESIGN.md section 7.4).
-- Line budget: 9k lines, tests included (DESIGN.md section 11).
 
 ## Forbidden actions
 

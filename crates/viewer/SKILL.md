@@ -15,7 +15,6 @@ The crate has the result viewer (`docs/viewer.md`): one eframe app for the nativ
 - `mesh`, `results`, `view`, `camera`, `terminal` and `sidebar` have no GPU or file types, so their tests run with no window.
 - The contour values and the deformed positions come from the result files with no change other than `x + scale * U`.
 - The browser sends the token only to its own origin: in the `Authorization` header, and in the WebSocket subprotocol `fh.token.<token>`.
-- Line budget: 12k lines, tests included (DESIGN.md section 11).
 - The viewer does not use `alacritty_terminal`. The daemon runs the terminal emulator (`crates/daemon/src/pty.rs`) and the viewer only draws its screens.
 - The sidebar reads the panes from the daemon, never from herdr directly (DESIGN.md section 4.3).
 

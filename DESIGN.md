@@ -1,6 +1,6 @@
 # femahoy: Product Design
 
-Status: agreed design. M0 and M1 are built. The M2 linear solver is on main ([PR 10](https://github.com/yujieteo/femahoy/pull/10)), but M2.6 is open, so M2 is open (section 13).
+Status: agreed design. The status of each milestone is in `docs/milestones.md`.
 Scope: this file describes the product only. The rules for the agents that build femahoy are in `AGENTS.md`.
 Working name: "femahoy" stays provisional until the trademark, package-name, and domain checks are done (section 15).
 
@@ -142,7 +142,7 @@ Rules:
 
 - v1 imports meshes from `.inp` files made by other tools, and from gmsh `.msh` files.
 - The daemon can call gmsh as an external program, so agents can mesh geometry. Users install gmsh themselves. femahoy never links gmsh, because gmsh is GPL.
-- femahoy has no mesher of its own.
+- A mesher of our own is not in the validated path until it is measured against gmsh.
 
 ### 6.3 User templates
 
@@ -156,7 +156,7 @@ Rules:
 
 ### 7.1 Core capabilities
 
-All of these are required. They arrive one per release after the workflow lock (section 13).
+These arrive one per release after the workflow lock (section 13), except the items on the "not now" list below.
 
 | Capability | Method |
 |---|---|
@@ -167,8 +167,8 @@ All of these are required. They arrive one per release after the workflow lock (
 | Contact | Frictionless normal contact, active-set loop, augmented Lagrange, node-to-surface |
 | Plasticity | J2 with isotropic hardening, hypoelastic-plastic, corotational stress rate, updated Lagrangian |
 | Large displacement | `NLGEOM=YES` through the deformation gradient F, which is passed to the material. The exact finite-strain formulation (corotational or other) is chosen before M6 plasticity (section 13, N2). |
-| Element birth and death | `*MODEL CHANGE`. Removed elements leave the stiffness, and their stresses are set to zero. The mesh stays fixed. |
-| Submodelling | Displacement-driven boundary. Global displacements are interpolated at the driven nodes with the global mesh's shape functions. |
+
+Not now: element birth and death (`*MODEL CHANGE`, M8) and submodelling (M9).
 
 ### 7.2 Elements
 
@@ -303,7 +303,6 @@ Command line: `fh-solve <input.inp> <run-dir> [--restart] [--formats text,vtu,vt
 | Plasticity | Elastic-plastic thick cylinder (Hill), uniaxial bar |
 | Large displacement | Cantilever large deflection (elastica), rigid rotation (zero stress) |
 | Birth and death | Statically determinate structures where removing a member gives a reaction change you can calculate by hand |
-| Submodelling | Lamé cylinder sub-region, compared with the analytical field and with a fine global model |
 | All elements | Method of manufactured solutions, to check the convergence rate |
 
 ### 10.3 Tolerance classes
@@ -330,30 +329,23 @@ Contact cases compare integrated values: total contact force, contact area or ra
 
 ---
 
-## 11. Workspace and budget
+## 11. Workspace
 
-Cargo workspace. The cap is **85k lines of Rust, tests included**. Data files do not count: fixture `.inp` files, reference values, VTU files, and generated code. CI counts lines with `tokei` and fails when a crate goes over its budget.
+Cargo workspace. Keep the code small. Delete code that is not needed, and prefer a deletion to an addition.
 
-| Crate | Scope | Licence role | Budget |
-|---|---|---|---|
-| `inp` | `.inp` reader and writer, Abaqus-shaped model, template mapping | open API | 9k |
-| `io` | gmsh `.msh` import, VTU and PVD write and read | open API | 5k |
-| `toon` | agent-facing summaries and queries | open API | 3k |
-| `solver-api` | `Solver` trait, subprocess protocol, registry | open API | 3k |
-| `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core | 30k |
-| `validation` | harness, tolerance classes, manufactured solutions | validated core | 6k |
-| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | app | 7.3k (7k before `fh run`) |
-| `agents` | harness start, JSON stream parsing, skills install, role config | app | 4k |
-| `cli` | `fh` commands | app | 4.8k (3k before `fh run`) |
-| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | app | 12k, provisional |
-| `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app | 3k, provisional |
-| **Total** | | | **85k cap** |
-
-Rules:
-- The crate budgets add up to 85k or less, with one exception. The `cli` and `daemon` budgets for `fh run` (a later rule in this list) put the sum at 87.1k until the budget review at the first user test. The total cap stays 85k. The `viewer` budget (12k, down from 15k) and the `solver-ccx` budget (3k) are provisional until they are measured at the budget review of the first user test. At that review, `scripts/check-budget.sh` and the crate `SKILL.md` files change. Stage C1 adds `solver-ccx` to the CI budget check.
-- A crate that goes over budget needs a written reason before it grows more.
-- The `cli` budget is 4.8k, up from 3k, and the `daemon` budget is 7.3k, up from 7k. Reason: `fh run` (the CLI client of the run contract, with case folders and the `bar-pressure` example) and the tests of `fh run` and `scripts/install.sh` added 1.7k lines to `cli`. The browser open and `fh serve --stop` added 0.2k lines to `daemon`. The captain approved going over the crate budgets for this work on 2026-10-18 ("You can go over the limit."). With these budgets, the crate budgets add up to 87.1k, over the 85k cap. The cap stays 85k. The measured total was 40.8k lines. The budget review at the first user test settles the sum.
-- Review the whole budget at the first user test, with real line counts.
+| Crate | Scope | Licence role |
+|---|---|---|
+| `inp` | `.inp` reader and writer, Abaqus-shaped model, template mapping | open API |
+| `io` | gmsh `.msh` import, VTU and PVD write and read | open API |
+| `toon` | agent-facing summaries and queries | open API |
+| `solver-api` | `Solver` trait, subprocess protocol, registry | open API |
+| `core-solver` | elements, DOF elimination, Newton with cutback, contact, plasticity, NLGEOM, birth and death, submodelling | validated core |
+| `validation` | harness, tolerance classes, manufactured solutions | validated core |
+| `daemon` | HTTP and WebSocket server, token auth, PTY, pane backends, process supervision | app |
+| `agents` | harness start, JSON stream parsing, skills install, role config | app |
+| `cli` | `fh` commands | app |
+| `viewer` | eframe app, wgpu mesh and contour renderer, terminal widget, chat panel, teammate tree | app |
+| `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app |
 
 ### 11.1 Key dependencies
 
@@ -369,14 +361,13 @@ Rules:
 
 ### 11.2 Target machine, memory and the solver switch
 
-**Target machine:** a workstation of 2010. x86-64 with SSE4.2 and no AVX, 4 to 6 cores, 16 GB RAM, a hard disk or a slow SSD. Input files are small. Results files are not: write them in pieces.
+**Target machine:** 16 GB RAM, 4 to 6 cores, a hard disk or a slow SSD. Input files are small. Results files are not: write them in pieces.
 
 Requirements:
 
 1. A model of 1M `C3D8` elements (about 3.1M dofs) solves inside 16 GB. Measured peak memory footprint: 6 063 MiB, or 5.9 GiB (below).
-2. The build uses the baseline x86-64 target (`-C target-cpu=nehalem` is the test setting: SSE4.2, no AVX). `faer` and its dense kernels pick AVX2 and AVX-512 code at run time with CPU feature detection, so a CPU without AVX uses the SSE code. The femahoy crates contain no SIMD code of their own. The check (PR 10): a search of the crates and the CI files finds no `std::arch`, `core::arch`, `target_feature`, `asm!` or `target-cpu`, and the repo has no `.cargo/config`. No x86-64 build with `-C target-cpu=nehalem` and no run on a CPU without AVX has been done yet. Do both on real hardware in E3 (section 13), before the workflow lock.
-3. If the matrix does not fit, the iterative solver is used. Its memory is about the size of the matrix. The out-of-core scheme is not needed so far, and is not built.
-4. The default memory limit of a run is 85 percent of the RAM of the machine.
+2. If the matrix does not fit, the iterative solver is used. Its memory is about the size of the matrix. The out-of-core scheme is not needed so far, and is not built.
+3. The default memory limit of a run is 85 percent of the RAM of the machine.
 
 **Assembly:** the sparse pattern is built once from the node adjacency of the elements and the contribution groups (no triplets of the whole model). A slot map holds, for each element, the position in the matrix values of each entry of its lower triangle. Values are added in place through the slot map, with no search. The pattern stays across steps and Newton iterations, and is rebuilt only when the constraint structure changes (section 7.5). Element work runs in chunks of 256 entries on all threads. The main thread adds the chunks in entry order, so the matrix is bit-identical for any thread count.
 
@@ -411,7 +402,7 @@ The factor 1.35 covers allocator slack and the input text. The measured peak mem
 
 For PCG, "Factor" is the row copy and the preconditioner. The PCG solve is bound by memory bandwidth, so 10 threads give 4.3 times the speed at 100k elements and 2.2 times at 1M elements. The results of 1 thread and 10 threads are bit-identical (all result files of the 100k run compared). The test `crates/core-solver/tests/threads.rs` compares the result files and the restart files of 1, 2, 4 and all threads, for PCG and for Cholesky.
 
-For the 1M-element model the estimate is 7 442 MiB (7.3 GiB) against a measured peak of 6 063 MiB (5.9 GiB). All files of the run (3 formats, PVD, restart file and summary) take 2.28 GB. A 2010 machine has slower cores, less memory bandwidth and a slower disk, so expect longer times. The memory numbers do not depend on the CPU.
+For the 1M-element model the estimate is 7 442 MiB (7.3 GiB) against a measured peak of 6 063 MiB (5.9 GiB). All files of the run (3 formats, PVD, restart file and summary) take 2.28 GB. The memory numbers do not depend on the CPU.
 
 Switch rule measurements (before the parallel PCG, generated `C3D8` box, one tip load, 10 cores, peak is the resident set size):
 
@@ -435,12 +426,12 @@ Distribution: a single `fh` binary (Homebrew and a direct download). The static 
 
 ## 13. Milestones
 
-This section is the one current roadmap. `docs/milestones.md` copies its tables and adds the status of each item. Change the two files together.
+This section is the one current roadmap. It holds the plan only. `docs/milestones.md` copies the tables and holds the status of each item. Change the two files together.
 
 The roadmap has two tracks (D-16):
 
 1. **Track 1, the validated workflow.** One part goes from a text-to-CAD script, through the units check and gmsh, to a solved result that passes validation. Track 1 uses the CLI only. It ends at the **workflow lock**, when every track 1 item is done.
-2. **Track 2, the later milestones.** It holds the daemon, the viewer, the chat, the CalculiX adapter, the nonlinear work and the platform milestones. All track 2 items come after the workflow lock. This includes M3 and M4. Exception: the captain approved D1 and M3 before the workflow lock (see their rows).
+2. **Track 2, the later milestones.** It holds the daemon, the viewer, the chat, the CalculiX adapter, the nonlinear work and the platform milestones. All track 2 items come after the workflow lock. This includes M3 and M4. Exceptions: the captain approved D1, M3 and C1 before the workflow lock (see their rows).
 
 Rules:
 
@@ -453,33 +444,32 @@ Rules:
 
 | Item | Content | Needs | Done when |
 |---|---|---|---|
-| M0 Skeleton | Workspace with all crates. `fh --help`. CI: fmt, clippy, test, `tokei` budget check. | None | CI is green. |
+| M0 Skeleton | Workspace with all crates. `fh --help`. CI: fmt, clippy, test. | None | CI is green. |
 | M1 Parser and harness | `inp` reads the keyword subset for linear static. Gmsh `.msh` import. Validation harness with the first three fixtures (patch test, cantilever, Lamé). TOON summary schema v1. Fixture schema. | M0 | `fh check` works on all fixtures. `fh validate` runs and reports "no solver". |
 | E1 Memory feasibility | An early experiment for the 16 GB target (D-06), before most of the M2 solver work. It uses a pinned `faer` version and representative 3D stiffness matrices. The report states the mesh shape, the constraints, the element count, the thread count and the method that measures the peak process memory. The mesh size increases in steps, from small meshes to 1 million `C3D8` elements, inside the limit of the available machine. | M1 | A report gives measured values for each mesh size: the peak process memory, and the memory and time of assembly, ordering, factorization, solve and result output. An extrapolated value is not a pass. If a size goes over 16 GB, stop the M2 solver work and ask the captain for a review of D-06 or of the solver method. The target stays the same until the captain approves a change. |
-| P1 Build coverage | CI builds and tests each change on aarch64 (D-07) and on x86-64 (D-06). | M0 | From M2.1 on, the CI checks pass on both architectures.<br>Status: Part done. CI builds and tests each push and pull request on both architectures. Job `check` runs on x86-64 Linux with format, clippy, workspace tests and the line budget. Job `test-aarch64` runs on macOS arm64 (`macos-14`) with the workspace build and workspace tests. Both jobs skip the tests that need gmsh, because neither runner has gmsh. `scripts/check-mac-e2e.sh` stays the full manual check on Apple Silicon macOS with format, clippy, tests, release builds, validation, convergence, CAD mesh checks and separate fixture solves. Open: the mesh-to-solver input link of that script is a known gap. |
-| M2.1 First linear path | `C3D10` (D-19). `Material` trait with elasticity, and steps that keep the later analysis types possible (D-10). DOF elimination for fixed boundary conditions (`*BOUNDARY`). Point loads (`*CLOAD`). Reactions. Sparse solver (`faer` Cholesky). VTU with PVD (D-04). | M1, E1 | The linear cases pass with `C3D10` meshes against their analytical values. The `C3D10` manufactured-solution rate passes. The reactions balance the loads. The VTU values read back at full precision.<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Done. The linear cases pass with `C3D10` meshes (`fh validate`: 16 cases, 16 pass). The `C3D10` manufactured-solution rate passes (case `mms-c3d10`). |
-| M2b Geometry and units | The CAD to mesh contract, for 1 part with 1 material and named load and support regions. A Python script (build123d, D-17) makes the part and writes STEP. gmsh reads the STEP file through OpenCASCADE and writes the mesh through a fixed script contract: MSH 4.1 ASCII, complete quadratic tetrahedra (`C3D10`), an explicit STEP target unit, and a physical group for each volume and each named region. The import keeps each named region as a node set, an element set or an element-face surface. A pressure load (`*DSLOAD`) acts on a named surface. The case TOML declares the units (D-18). The result files and the TOON summary state the declared units. The record of the stage gives the tested versions of Python, build123d and gmsh. Not in M2b: general CAD editing and the general `fh mesh` command. That command comes later and uses the same contract. | M2.1 | One scripted part goes through the full path to `C3D10` results, and its analytical check passes. A new mesh at 2 sizes keeps the same named support and pressure regions. The total pressure force and the reactions balance. Equivalent models in metres and in millimetres give the same physical answer. `fh` refuses each of these cases with a clear error: no unit in the case, a units mismatch, a STEP file with no unit record, a lost or renamed region, a volume with no physical group, and a failure of an external program.<br>Status: Done on macOS arm64 (Apple M5). `scripts/check-workflow.sh` takes one scripted bar from build123d to `C3D10` results, in mm (case `bar-pressure`) and in m (case `bar-pressure-m`), at 2 mesh sizes. Each mesh keeps the 4 named regions as node sets and element-face surfaces. A pressure (`*DSLOAD`) acts on the named face `LOAD`. The analytical checks pass in both unit systems: mean stress, reaction sum and tip displacement. The reaction sum is -20000 N, and the total pressure force is 20000 N. `fh` refuses the 7 inputs of the gate. The result files and the TOON summary state the units. `docs/workflow-lock.md` gives the tested versions. |
-| U1 First user test | A user runs the M2b workflow with the CLI, the case files, the TOON summaries and ParaView. Budget review with real line counts (section 11). | M2.1, M2b | A record of the test shows whether the user can install the tools, declare the units and the regions, solve the model and read the result. The record lists each problem that the test found. |
-| M2.2 Hex elements | `C3D8I` and `C3D8`. | M2.1 | The linear cases pass for each element. Each element has its own convergence gate and manufactured-solution rate.<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Done. `C3D8` cases pass: `patch-test`, `cantilever-c3d8`, `lame-cylinder`. `C3D8I` cases pass: `patch-test-c3d8i`, `cantilever`, `lame-cylinder-c3d8i`. `fh validate --convergence` passes the 4 convergence cases `cantilever-c3d8`, `lame-cylinder`, `cantilever` and `lame-cylinder-c3d8i`, and the 2 rate cases. Rates: `mms-c3d8` 1.68 against 1.7, `mms-c3d8i` 1.59 against 1.6. The mesh rule for `C3D8` in bending is in [PR 47](https://github.com/yujieteo/femahoy/pull/47). |
-| M2.3 Loads and constraints | The other boundary conditions and loads of the linear keyword subset. `*COUPLING`, `*EQUATION`, `*MPC`, through DOF elimination. | M2.1 | Each constraint type has its own case, and each case passes.<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Done. At the gate check, `*MPC` type `BEAM` had no test of its own, because `mpc_types` (`crates/inp/tests/m2_keywords.rs`) only parses it. The tests of [PR 51](https://github.com/yujieteo/femahoy/pull/51) close that gap. The tests are in `crates/core-solver/tests/linear.rs`: `*EQUATION` (`equation_ties_two_dofs`), `*KINEMATIC` (`kinematic_coupling_moves_slaves_rigidly`), `*DISTRIBUTING` (`distributing_coupling_averages_the_slaves`), `*MPC` `TIE` (`mpc_tie_equalises_translations`), `LINK` (`mpc_link_keeps_the_distance`), `PIN` (`mpc_pin_transfers_load_and_equalises_all_translations`) and `BEAM` (`mpc_beam_moves_the_slave_with_the_rotation_of_the_master` and `mpc_beam_carries_an_axial_load_into_the_body_and_the_reactions_balance`). The fixture `fixtures/inp/m2-instances.inp` and the test `three_instances_of_one_part_solve_to_the_exact_field_of_each_instance` solve a model with 3 `*INSTANCE` blocks of one `*PART`. `*CLOAD`, `*DLOAD` and `*DSLOAD` have tests in `linear.rs` and `surfaces.rs`. These tests are the only proof: `validation/cases` has no case for a constraint. |
-| M2.4 Restart | Restart that is safe against partial files (D-09). | M2.1 | The restart test passes. A restart never reads a partial file.<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Done. The restart tests in `crates/core-solver/tests/restart.rs` pass. Kill tests: `killing_fh_solve_three_times_and_resuming_gives_the_same_result`, `sigkill_in_the_middle_of_three_writes_and_a_resume_give_the_same_bytes` and `sigkill_in_the_middle_of_three_increments_and_a_resume_give_the_same_bytes` ([PR 35](https://github.com/yujieteo/femahoy/pull/35)). Partial files: `one_flipped_bit_fails_the_checksum`, `a_bad_newest_restart_file_falls_back_to_the_older_one`, `a_run_killed_during_a_restart_write_leaves_a_usable_folder` and `a_restart_refuses_a_damaged_or_missing_result_of_a_committed_increment`. |
-| M2.5 Result formats and protocol | Plain text and legacy VTK (D-04), next to VTU with PVD. Subprocess protocol v2 (section 9.3). | M2.1 | Each format has a test that reads the values back. A protocol test runs a solver as a subprocess, from the input file to the results.<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Done. Text: `text_and_vtk_hold_the_numbers_of_the_vtu` (`crates/core-solver/tests/formats.rs`). Legacy VTK: `doubles_survive_a_round_trip` (`crates/io/tests/vtk.rs`). VTU and PVD: `vtu_round_trip_keeps_every_value` and `pvd_round_trip` (`crates/io/tests/vtu.rs`). Protocol: `cantilever_runs_through_protocol_v2` (`crates/core-solver/tests/protocol.rs`) runs `fh-solve` as a subprocess from the input file to the results. The solve step of `scripts/check-mac-e2e.sh` also read back the text and VTU files of 3 models. |
-| M2.6 Scale | The sparse solver fits 1 million `C3D8` elements in 16 GB (D-06). | M2.2, E1 | A model of 1 million `C3D8` elements solves with a measured peak memory below 16 GB, with no swap. E3 repeats the run on the D-06 machine.<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Part done. Done: a model of 1 million `C3D8` elements solves below 16 GB. `scripts/check-phase-memory.py` (4 threads, all 3 formats) gave a kernel peak footprint of 6 015 046 696 bytes (5.6 GiB) against the limit of 16 000 000 000 bytes, status pass, 64 s. `DESIGN.md` section 11.2 has the first measurement of 5.9 GiB ([PR 32](https://github.com/yujieteo/femahoy/pull/32)). Open: no gate proves "no swap". The script does not check swap, and `docs/phase-memory.md` says so. `vm.swapusage` showed 378 MiB used before the run and 559 MiB after it, with other work on the machine. Open: the repeat on the D-06 machine waits for E3. |
-| M2 Linear solver | Stages M2.1 to M2.6. | M2.1 to M2.6 | All linear fixtures pass. Manufactured-solution rates pass. Restart test passes. Builds and passes on aarch64 (D-07).<br>Status: Gate checked on main 0b11eff (2026-10-18, macOS arm64, Apple M5). Open. Done: all 16 linear fixtures pass (`fh validate`: 16 cases, 16 pass, 0 fail). The rates pass (`mms-c3d10`, `mms-c3d8`, `mms-c3d8i`). The restart tests pass (M2.4). The aarch64 build and tests pass by a manual run of `scripts/check-mac-e2e.sh`: format, clippy, `cargo test --workspace` (574 tests, 0 fail), release build, validation and convergence. The `test-aarch64` CI job ([PR 48](https://github.com/yujieteo/femahoy/pull/48)) builds and tests each change on aarch64. The CAD step of that script did not run, because `build123d` is not installed in this environment. Open: M2.6 (no swap, and the repeat on the D-06 machine waits for E3). M2.3 is done. |
+| P1 Build coverage | CI builds and tests each change on aarch64 (D-07) and on x86-64 (D-06). | M0 | From M2.1 on, the CI checks pass on both architectures. |
+| M2.1 First linear path | `C3D10` (D-19). `Material` trait with elasticity, and steps that keep the later analysis types possible (D-10). DOF elimination for fixed boundary conditions (`*BOUNDARY`). Point loads (`*CLOAD`). Reactions. Sparse solver (`faer` Cholesky). VTU with PVD (D-04). | M1, E1 | The linear cases pass with `C3D10` meshes against their analytical values. The `C3D10` manufactured-solution rate passes. The reactions balance the loads. The VTU values read back at full precision. |
+| M2b Geometry and units | The CAD to mesh contract, for 1 part with 1 material and named load and support regions. A Python script (build123d, D-17) makes the part and writes STEP. gmsh reads the STEP file through OpenCASCADE and writes the mesh through a fixed script contract: MSH 4.1 ASCII, complete quadratic tetrahedra (`C3D10`), an explicit STEP target unit, and a physical group for each volume and each named region. The import keeps each named region as a node set, an element set or an element-face surface. A pressure load (`*DSLOAD`) acts on a named surface. The case TOML declares the units (D-18). The result files and the TOON summary state the declared units. The record of the stage gives the tested versions of Python, build123d and gmsh. Not in M2b: general CAD editing and the general `fh mesh` command. That command comes later and uses the same contract. | M2.1 | One scripted part goes through the full path to `C3D10` results, and its analytical check passes. A new mesh at 2 sizes keeps the same named support and pressure regions. The total pressure force and the reactions balance. Equivalent models in metres and in millimetres give the same physical answer. `fh` refuses each of these cases with a clear error: no unit in the case, a units mismatch, a STEP file with no unit record, a lost or renamed region, a volume with no physical group, and a failure of an external program. |
+| U1 First user test | A user runs the M2b workflow with the CLI, the case files, the TOON summaries and ParaView. | M2.1, M2b | A record of the test shows whether the user can install the tools, declare the units and the regions, solve the model and read the result. The record lists each problem that the test found. |
+| M2.2 Hex elements | `C3D8I` and `C3D8`. | M2.1 | The linear cases pass for each element. Each element has its own convergence gate and manufactured-solution rate. |
+| M2.3 Loads and constraints | The other boundary conditions and loads of the linear keyword subset. `*COUPLING`, `*EQUATION`, `*MPC`, through DOF elimination. | M2.1 | Each constraint type has its own case, and each case passes. |
+| M2.4 Restart | Restart that is safe against partial files (D-09). | M2.1 | The restart test passes. A restart never reads a partial file. |
+| M2.5 Result formats and protocol | Plain text and legacy VTK (D-04), next to VTU with PVD. Subprocess protocol v2 (section 9.3). | M2.1 | Each format has a test that reads the values back. A protocol test runs a solver as a subprocess, from the input file to the results. |
+| M2.6 Scale | The sparse solver fits 1 million `C3D8` elements in 16 GB (D-06). | M2.2, E1 | A model of 1 million `C3D8` elements solves with a measured peak memory below 16 GB. |
+| M2 Linear solver | Stages M2.1 to M2.6. | M2.1 to M2.6 | All linear fixtures pass. Manufactured-solution rates pass. Restart test passes. Builds and passes on aarch64 (D-07). |
 | E2 C3D10 workload | The memory test for the default `C3D10` workload (D-19). Named workloads: a graded tet10 mesh, a slender structure and a material-contrast case. The memory count includes parse, assembly, solve, restart and output. The case file of each workload states its limits before the run. | M2, M2b | Each named workload stays inside the limits for peak memory, time, solver iterations and disk use, with no swap. |
-| E3 Target hardware and determinism | A release build with an explicit x86-64 baseline (SSE4.2, no AVX), not `target-cpu=native`. The full CLI workflow runs on a real x86-64 machine with no AVX, or on an emulator that rejects AVX. The record gives the CPU flags that each external program needs. The test compares the result bytes at 1, 2, 4 and 6 threads in the same build (D-11). | M2, M2b, P1 | The workflow passes on the machine with no AVX, and the record gives the elapsed time and the peak memory. The matrix, the displacements, the residuals and the restarted results are byte-equal at 1, 2, 4 and 6 threads. If exact equality conflicts with D-06, report the measurements to the captain.<br>Status: Part done. `scripts/check-no-avx.sh` manually builds release `fh` and `fh-solve` for x86-64 with SSE4.2 and no AVX. `fh validate` and each solver subprocess run under QEMU Nehalem. An AVX probe must fail with SIGILL. CI runs no heavy checks. The full CLI workflow, elapsed time, peak memory, external CPU flags and byte equality at 1, 2, 4 and 6 threads remain unchecked. |
-| **Workflow lock** | Every item above is done. | All track 1 items | Track 2 can start.<br>Status: Not reached. Proven on macOS arm64 by `scripts/check-workflow.sh`: case `bar-tension` (plane sets and an end displacement), and cases `bar-pressure` and `bar-pressure-m` (named regions and `*DSLOAD`, in mm and in m, at 2 mesh sizes). The path is build123d, STEP, `fh info`, `fh mesh` with a declared unit, `fh model`, `fh-solve`, `fh validate` against analytical references. The script also checks the refusals of the M2b gate. `docs/workflow-lock.md` fixes the command names, options, file formats and exit codes that the M3 work uses. Kirsch plate (T6) has case `kirsch-plate-c3d10`. The manufactured-solution cases (T7) are `mms-c3d10`, `mms-c3d8` and `mms-c3d8i`. Open: the hex8 rule in the run command, and the open parts of P1, E3, U1, E2 and the M2 stages. |
+| **Workflow lock** | Every item above is done. | All track 1 items | Track 2 can start. |
 
-### 13.2 Track 2: after the workflow lock
+### 13.2 Track 2: after the workflow lock, except D1, M3 and C1
 
 | Item | Content | Needs | Done when |
 |---|---|---|---|
-| C1 CalculiX adapter (`solver-ccx`) | The new crate `solver-ccx` (D-13). It writes the `ccx` input for a supported keyword subset, runs the user's `ccx` as a separate program, reads the `.frd` results with our own Rust reader, and writes VTU with PVD and a TOON summary (section 9.1). | Workflow lock | A linear case goes through `.inp`, `ccx`, `.frd`, VTU with PVD and TOON, and passes against its analytical reference. Tests cover no `ccx` on the path, a failed run, cancel and an invalid result file. An unsupported keyword fails with a clear error. The record of the stage gives the tested `ccx` version and the supported keyword subset. |
+| C1 CalculiX adapter (`solver-ccx`) | The new crate `solver-ccx` (D-13). It writes the `ccx` input for a supported keyword subset, runs the user's `ccx` as a separate program, reads the `.frd` results with our own Rust reader, and writes VTU with PVD and a TOON summary (section 9.1). | M2b. Exception: the captain approved C1 before the workflow lock (D-21). | A linear case goes through `.inp`, `ccx`, `.frd`, VTU with PVD and TOON, and passes against its analytical reference. Tests cover no `ccx` on the path, a failed run, cancel and an invalid result file. An unsupported keyword fails with a clear error. The record of the stage gives the tested `ccx` version and the supported keyword subset. |
 | C2 CalculiX capabilities | The M6 to M9 capabilities through `ccx`, one at a time (D-14): plasticity, contact with the penalty rule and sweep (D-13), large displacement, model change and submodel. | C1 | Each capability passes its own case against an independent reference (section 10.2). Agreement with another solver is never the only evidence. The contact case passes the sweep of penalty value and mesh size. |
 | D1 Daemon run contract | The run and reconnect contract, before the M3 terminal work. Project IDs, fixed input revisions, run IDs, run states and command acknowledgement. One `fh run` contract for the CLI and the UI. Token authentication for a client with no `Origin`, such as the CLI. Bounded event queues and logs. The rule for which process stays alive when the browser closes or the daemon fails. | Workflow lock. Exception: the captain approved the start of D1 before the workflow lock, in parallel with the open M2 work. | Browser close, CLI reconnect, a duplicate submission, cancel and a daemon restart each keep one correct run record. A request from a foreign browser `Origin` fails. A request from an authorized CLI passes. |
-| M3 Daemon and viewer | `fh serve` with token and `Origin` checks. wasm viewer: mesh, outlines, deformed shape, one contour field, step selector. Terminal sidebar. Both pane backends. | D1. Exception: the captain approved M3 before the workflow lock. It starts after the D1 PR merges, in this order: `fh serve`, the wasm viewer, the terminal sidebar with both pane backends. | The viewer shows the M2 results in a browser. Herdr runs in the sidebar.<br>Status: In progress. Started before the workflow lock as a captain-approved exception. Built: `fh serve` on 127.0.0.1 with the token and `Origin` checks (`docs/run-contract.md`). `crates/daemon/tests/serve.rs` tests a missing token, a wrong token and a wrong `Origin`. Built: the wasm viewer (`docs/viewer.md`). The page of `fh serve` loads it, and it shows the mesh, the outlines, the deformed shape, one contour field and a step selector for a run of the daemon. `scripts/build-viewer.sh` builds it. `crates/viewer` tests compare the displacements and the stresses with the text results, and `crates/daemon/tests/viewer.rs` tests the viewer routes with the token and `Origin` rules. Shown in a headless Chrome on the `bar-pressure` results and on a 2-step cantilever. `fh view` shows the same results in a native window. Built: the terminal sidebar and both pane backends (`docs/terminal.md`). The daemon owns the PTY of each sidebar shell and the pane backend. The backend is herdr on a session that femahoy owns, never `default`, else plain PTYs of the daemon. The page of `fh serve` shows the sidebar beside the 3D view, with a tab for each terminal, a Herdr button and the panes. Each terminal and pane route, the WebSocket included, has the token and `Origin` rules. `crates/daemon/tests/terminal.rs` tests a missing token, a wrong token and a wrong `Origin` on each. Shown in a headless Chrome on macOS arm64: a command and its output in the sidebar shell, herdr 0.9.3 on a lab session in the sidebar, and the pty backend. All M3 items are built. |
+| M3 Daemon and viewer | `fh serve` with token and `Origin` checks. wasm viewer: mesh, outlines, deformed shape, one contour field, step selector. Terminal sidebar. Both pane backends. | D1. Exception: the captain approved M3 before the workflow lock. It starts after the D1 PR merges, in this order: `fh serve`, the wasm viewer, the terminal sidebar with both pane backends. | The viewer shows the M2 results in a browser. Herdr runs in the sidebar. |
 | M4 Chat and agents | Leader in headless mode in the chat. Teammates in panes. Teammate tree. `femahoy.toml`. `fh init` installs skills. Both connection paths. | M3 | The leader builds and solves a cantilever model from one chat request, and every action shows as an `fh` command. |
-| **Second user test** | M3 and M4, plus the static demo. A test of the chat and the agents. Budget review. | M4 | A record of the test and of the budget review. |
+| **Second user test** | M3 and M4, plus the static demo. A test of the chat and the agents. | M4 | A record of the test. |
 | N1 Nonlinear matrix classes | A decision before M5. It states the matrix classes that the nonlinear solver supports, and the physical cases that it does not support. It uses a small compressed-column case and a check of the follower-pressure tangent. Their results choose the smallest solver extension, or a rule that rejects the case. | Workflow lock | Each supported tangent has a numerical symmetry check, a directional derivative check, and a solver that accepts its matrix class. |
 | M5 Nonlinear solver | Newton with load stepping and cutback. A linear fallback for the same model. Assembly stays ready for parallel work. `C3D10M`. | N1. The nonlinear case and its reference are chosen before M5 starts. | Nonlinear fixtures pass. A linear case gives the same result in both paths. |
 | N2 Finite-strain formulation | A study before M6 plasticity. It defines the stress measure, the strain measure, the tangent convention, the state variables and the linearization of pressure loads (section 7.1). The full M7 milestone stays later. | M5 | A rotated elastic body gives zero stress. A rotated plastic load path keeps the physical response. A numerical derivative agrees with the full residual tangent. |
@@ -490,7 +480,7 @@ Rules:
 
 ### 13.3 Platform milestones
 
-Platform work is separate from solver features. M10 and M11 do not wait for M5 to M9. P1 and E3 (section 13.1) are the platform items of track 1.
+Platform work is separate from solver features. M10 and M11 do not wait for M5 to M9. P1 (section 13.1) is the platform item of track 1.
 
 | Item | Content | Needs | Done when |
 |---|---|---|---|
@@ -503,11 +493,10 @@ Platform work is separate from solver features. M10 and M11 do not wait for M5 t
 |---|---|---|---|
 | R1 Licence and rights review | A planned review for the commercial licence (section 2). It records the exact versions, the sources, the licences (also transitive ones), the notices and the contribution rights of each dependency and each external program. A lawyer checks the CLA and the file-based adapters for external programs (section 15). | None. It can start at any time. | A rights record exists for each dependency and each external program. A lawyer checked the CLA. The review closes before any commercial distribution. |
 
-Later, with no milestone number yet: a GPU backend (Metal first, D-08). femahoy has no mesher of its own (D-15).
+Later, with no milestone number yet: a GPU backend (Metal first, D-08). A mesher of our own is not in the validated path (D-15).
 
 The managed LLM tier is a separate track. It starts after the second user test.
 
-**Status on main:** M0 and M1 are done. The M2 solver is on main ([PR 10](https://github.com/yujieteo/femahoy/pull/10)). The gate check of 2026-10-18 on main 0b11eff passed M2.1, M2.2, M2.4 and M2.5. M2.3 passed after that check ([PR 51](https://github.com/yujieteo/femahoy/pull/51)). M2.6 is open, and so is M2. E1 is done on aarch64 macOS: section 11.2 and `docs/phase-memory.md` have the measurements. P1 is part done: CI builds and tests each change on x86-64 Linux and on aarch64 macOS. All other items are not started. `docs/milestones.md` has the status of each item. The decision log (section 17) states the build status of each decision.
 
 ---
 
@@ -596,11 +585,11 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-06 Target machine
 - **Decided by:** the captain.
-- **Choice:** The target is x86-64 with SSE4.2 and no AVX, 4 to 6 cores, 16 GB of RAM, and a slow disk. A model with 1 million C3D8 elements must solve within 16 GB.
+- **Choice:** The target is 4 to 6 cores, 16 GB of RAM, and a slow disk. A model with 1 million C3D8 elements must solve within 16 GB.
 - **Reason:** This is the machine of the expected user.
-- **Rejected:** code that needs AVX, solvers that need more than 16 GB or fast disk swap.
+- **Rejected:** solvers that need more than 16 GB or fast disk swap.
 - **Reverse if:** the captain changes the target machine.
-- **Built:** M2 (PR 10): the memory estimate, the solver switch rule and the parallel PCG. The 1M-element run is measured in section 11.2. No run on a CPU without AVX has been done yet. E1, M2.6, E2 and E3 test it (section 13).
+- **Built:** M2 (PR 10): the memory estimate, the solver switch rule and the parallel PCG. The 1M-element run is measured in section 11.2. E1, M2.6 and E2 test it (section 13).
 
 ### D-07 Code builds and passes on aarch64
 - **Decided by:** the captain.
@@ -639,14 +628,14 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Choice:** Parallel work must scale. The parallel solver gives the same bits for any thread count. Assembly uses a reduction in a fixed order.
 - **Reason:** Results must not depend on the machine. Byte-equal results make crash-resume and tests exact.
 - **Rejected:** results that change with the thread count.
-- **Reverse if:** a measured conflict with D-06 makes the captain choose speed over exact equality (section 13, E3).
-- **Built:** M2 (PR 10). `crates/core-solver/tests/threads.rs` compares the result files and the restart files of 1, 2, 4 and all threads. E3 checks the rule on the target machine.
+- **Reverse if:** a measured conflict with D-06 makes the captain choose speed over exact equality.
+- **Built:** M2 (PR 10). `crates/core-solver/tests/threads.rs` compares the result files and the restart files of 1, 2, 4 and all threads.
 
 ### D-12 The built-in solver stays light, other solvers are separate programs
 - **Decided by:** the captain.
-- **Choice:** The built-in solver stays light on resources. Other open solvers can come later, as separate programs that the user installs. femahoy adds an adapter crate for each one. "One package" means one femahoy package with the adapters. It never contains the solver programs.
+- **Choice:** A heavy built-in solver is not in the validated path until it is measured against gmsh and CalculiX. Other open solvers can come later, as separate programs that the user installs. femahoy adds an adapter crate for each one. "One package" means one femahoy package with the adapters. It never contains the solver programs.
 - **Reason:** Heavy kernels already exist as open tools, so the product focuses on the interface. Separate programs keep GPL code out of the product (D-02).
-- **Rejected:** link or bundle another solver, a heavy built-in kernel.
+- **Rejected:** link or bundle another solver, a heavy built-in kernel in the validated path.
 - **Reverse if:** the captain changes the focus of the product from the interface to the solver kernel.
 - **Built:** not yet. No adapter crate exists. Stage C1 adds the first one (D-13).
 
@@ -656,7 +645,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Its input is closest to our `.inp`. It passed all 6 capability tests (linear, plasticity, contact, large movement, model change, submodel). It is GPL, so it stays a separate program. `ccx` supports only penalty contact, and a bad penalty value gave a 10 percent error.
 - **Rejected:** link or bundle `ccx`, contact with no rule for the penalty value.
 - **Reverse if:** `ccx` cannot pass the C1 stage, or its licence or input format changes.
-- **Built:** not yet. No `solver-ccx` crate exists. Stage C1 builds it (section 13).
+- **Built:** not yet. No `solver-ccx` crate exists. Stage C1 builds it (section 13). It does not wait for the workflow lock (D-21).
 
 ### D-14 `ccx` serves M6 to M9 first
 - **Decided by:** the captain.
@@ -664,11 +653,11 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Nonlinear features arrive early, and `ccx` cross-checks the built-in results.
 - **Rejected:** M6 to M9 in the built-in solver before users get these capabilities.
 - **Reverse if:** `ccx` fails the C2 case of a capability. Then the built-in milestone for that capability comes first.
-- **Built:** not yet.
+- **Built:** not yet. Stage C1 does not wait for the workflow lock (D-21).
 
-### D-15 No mesher of our own
+### D-15 No mesher of our own in the validated path
 - **Decided by:** the captain.
-- **Choice:** femahoy has no mesher of its own. The plan for a mesher written in Rust is removed (this changes D-02). Users install gmsh and other tools. These tools run as separate programs and are never bundled or linked.
+- **Choice:** A mesher of our own is not in the validated path until it is measured against gmsh. The plan for a mesher written in Rust is removed (this changes D-02). Users install gmsh and other tools. These tools run as separate programs and are never bundled or linked.
 - **Reason:** Open meshers already exist, and the product focuses on the interface (D-12). gmsh is GPL, and the commercial licence rules out GPL code in the product (D-02).
 - **Rejected:** a mesher written in Rust, link or bundle gmsh.
 - **Reverse if:** users cannot install gmsh or another mesher on a supported platform.
@@ -676,7 +665,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-16 Two tracks: the validated workflow first
 - **Decided by:** the captain.
-- **Choice:** The roadmap has two tracks (section 13). Track 1 is one complete validated workflow with the CLI: text-to-CAD, units check, gmsh, built-in solver, validated results. Track 2 holds the later milestones: the viewer, the chat, the external solvers and the nonlinear work. Track 2 starts after the workflow lock.
+- **Choice:** The roadmap has two tracks (section 13). Track 1 is one complete validated workflow with the CLI: text-to-CAD, units check, gmsh, built-in solver, validated results. Track 2 holds the later milestones: the viewer, the chat, the external solvers and the nonlinear work. Track 2 starts after the workflow lock. Exceptions: D1, M3 and C1.
 - **Reason:** One trusted base comes before more features are built on it.
 - **Rejected:** the viewer, the chat or the nonlinear work before the workflow is validated, and the first user test only after M4.
 - **Reverse if:** the first user test shows that the workflow needs a track 2 item before the workflow lock.
@@ -713,3 +702,33 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Rejected:** results, deformed shape, contours, the daemon, chat and the wasm build in this step. These stay in track 2.
 - **Reverse if:** the viewer work delays a track 1 item.
 - **Built:** `crates/viewer` and `fh view` (`docs/viewer.md`). The M3 wasm viewer grew from this code: the same app shows results in the browser and in `fh view`.
+
+### D-21 C1 does not wait for the workflow lock
+- **Decided by:** the captain, 2026-10-18.
+- **Choice:** C1 (`solver-ccx`) starts before the workflow lock. This is an exception to D-16.
+- **Reason:** `solver-ccx` is a new, separate crate. It cannot change the validated solver path.
+- **Built:** not yet.
+
+### D-22 No gates for the 2010 machine
+- **Decided by:** the captain, 2026-10-18.
+- **Choice:** Remove the no-AVX x86-64 target (SSE4.2, no AVX, 2010 workstation) and its gates: item E3, `scripts/check-no-avx.sh`, a run on a real CPU with no AVX, the repeat of the 1M `C3D8` run on x86-64 under an emulator, and the "no swap" proof for the 1M run. The 16 GB target of D-06 and its evidence stay. The thread-count test and the same-bits rule (D-11) stay.
+- **Reason:** The gates cost much and add little.
+- **Built:** the text of D-06, M2.6, section 11.2 and the workflow lock changed. No build flag or config existed only for this target.
+
+### D-23 No line budget
+- **Decided by:** the captain, 2026-10-18.
+- **Choice:** Remove the line budget: the 85k cap, the budget of each crate, `scripts/check-budget.sh` and its CI step. Delete code that is not needed. Prefer a deletion to an addition.
+- **Reason:** A line count does not measure quality.
+- **Built:** the script, the CI step and every budget text are removed.
+
+### D-24 Fewer rules for build agents
+- **Decided by:** the captain, 2026-10-18.
+- **Choice:** `AGENTS.md` has no model table, no "one crate per task" rule and no "stop after M0" rule. The leader chooses the model. One task is one roadmap item. Milestone status is only in `docs/milestones.md`.
+- **Reason:** The rules were stale.
+- **Built:** `AGENTS.md` and section 13 changed.
+
+### D-25 Birth and death, submodelling, own mesher and own heavy solver
+- **Decided by:** the captain, 2026-10-18.
+- **Choice:** Birth and death (M8) and submodelling (M9) are on a "not now" list (section 7.1). A mesher of our own and a heavy built-in solver are not in the validated path until they are measured against gmsh and CalculiX (D-12, D-15).
+- **Reason:** These items are not required now.
+- **Built:** the text of section 7.1, D-12, D-15, `README.md` and `crates/io/SKILL.md` changed.
