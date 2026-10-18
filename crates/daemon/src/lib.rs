@@ -49,19 +49,14 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use browser::{no_open, open_page, NO_OPEN, OPEN_FILE};
-pub use client::{new_request_id, Client, TermSocket};
-pub use contract::{
-    valid_project, valid_request, valid_run, Ack, Command, Error, Event, Events, Message, Outcome,
-    RunRecord, RunState, CONTRACT,
-};
-pub use panes::{BackendStatus, Key, Pane, PaneBackend, PaneSpec};
+pub use browser::{no_open, open_page};
+pub use client::{new_request_id, Client};
+pub use contract::{Ack, Error, Event, Events, Message, Outcome, RunRecord, RunState};
+pub use panes::{BackendStatus, PaneBackend};
 use pty::find_program;
 pub use serve::{default_state_dir, serve, serve_until};
-pub use service::{
-    Config, Service, EVENT_BATCH, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_ACKS, MAX_QUEUED,
-    MAX_WAIT,
-};
+use service::Service;
+pub use service::{Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";
@@ -134,24 +129,8 @@ pub struct Daemon {
 
 impl Daemon {
     /// Open the service, make a random token, listen on 127.0.0.1 at `port` (0 for any free
-    /// port) and write `daemon.info` for the clients.
-    pub fn start(config: Config, port: u16) -> Result<Daemon, Error> {
-        Daemon::start_with_viewer(config, port, None)
-    }
-
-    /// `start`, and serve the wasm viewer from the folder `viewer` (see `fh serve`).
-    pub fn start_with_viewer(
-        config: Config,
-        port: u16,
-        viewer: Option<PathBuf>,
-    ) -> Result<Daemon, Error> {
-        let options = Options {
-            viewer,
-            ..Options::default()
-        };
-        Daemon::start_with_options(config, port, options)
-    }
-
+    /// port) and write `daemon.info` for the clients. `options.viewer` is the folder of the
+    /// wasm viewer (see `fh serve`).
     pub fn start_with_options(
         config: Config,
         port: u16,
@@ -192,10 +171,6 @@ impl Daemon {
         &self.token
     }
 
-    pub fn service(&self) -> &Service {
-        &self.service
-    }
-
     pub fn panes(&self) -> &dyn PaneBackend {
         &*self.sidebar.panes
     }
@@ -204,8 +179,6 @@ impl Daemon {
     pub fn client(&self) -> Client {
         Client::new(self.port(), &self.token)
     }
-
-    pub fn stop(self) {}
 }
 
 impl Drop for Daemon {

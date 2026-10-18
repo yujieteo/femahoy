@@ -44,8 +44,6 @@ impl fmt::Display for LoadError {
     }
 }
 
-impl std::error::Error for LoadError {}
-
 fn fail<T>(code: &'static str, file: &str, message: impl Into<String>) -> Result<T, LoadError> {
     Err(LoadError {
         code,
@@ -468,13 +466,6 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/results/cantilever-2step")
     }
 
-    fn load_dir(dir: &std::path::Path) -> Result<Results, LoadError> {
-        let pvd = std::fs::read_to_string(dir.join("results.pvd")).unwrap();
-        load("results.pvd", &pvd, |f| {
-            std::fs::read(dir.join(f)).map_err(|e| e.to_string())
-        })
-    }
-
     /// The text results of one step: node id to (U, RF), element id to (S, MISES).
     struct Text {
         nodes: HashMap<i32, [f64; 6]>,
@@ -531,7 +522,7 @@ mod tests {
 
     #[test]
     fn fixture_has_two_steps_with_units_and_times() {
-        let r = load_dir(&fixture_dir()).unwrap();
+        let r = crate::load_run(&fixture_dir()).unwrap();
         assert_eq!(r.units, "SI-mm");
         assert_eq!(r.steps.len(), 2);
         assert_eq!((r.steps[0].time, r.steps[1].time), (1.0, 2.0));
@@ -557,7 +548,7 @@ mod tests {
     #[test]
     fn values_match_the_text_results() {
         let dir = fixture_dir();
-        let r = load_dir(&dir).unwrap();
+        let r = crate::load_run(&dir).unwrap();
         for (i, step) in r.steps.iter().enumerate() {
             let text = read_text(dir.join(format!("step-{}.txt", i + 1)));
             let node_ids = ids(&dir, &step.file, "NODE_ID", true);
@@ -597,7 +588,7 @@ mod tests {
 
     #[test]
     fn deformed_positions_add_the_scaled_displacement() {
-        let r = load_dir(&fixture_dir()).unwrap();
+        let r = crate::load_run(&fixture_dir()).unwrap();
         let step = &r.steps[1];
         let scale = 50.0;
         let moved = deformed_positions(&r.mesh, step, scale);
@@ -620,7 +611,7 @@ mod tests {
 
     #[test]
     fn auto_scale_shows_the_largest_displacement_as_a_tenth_of_the_size() {
-        let r = load_dir(&fixture_dir()).unwrap();
+        let r = crate::load_run(&fixture_dir()).unwrap();
         let s = auto_scale(&r);
         let size = 2.0 * f64::from(r.mesh.bounds.unwrap().radius());
         let max = r.steps[1].max_displacement();
@@ -637,7 +628,7 @@ mod tests {
 
     #[test]
     fn triangle_values_use_the_node_or_the_owning_element() {
-        let r = load_dir(&fixture_dir()).unwrap();
+        let r = crate::load_run(&fixture_dir()).unwrap();
         let step = &r.steps[0];
         let mises = step.field("MISES").unwrap();
         let vals = triangle_values(&r.mesh, mises, 0.0, 1.0);

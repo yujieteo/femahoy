@@ -21,12 +21,6 @@ pub struct Camera {
     pub radius: f32,
 }
 
-impl Default for Camera {
-    fn default() -> Self {
-        Self::fit(None)
-    }
-}
-
 impl Camera {
     /// An isometric-like view of the whole bounding box.
     pub fn fit(bounds: Option<Bounds>) -> Self {
@@ -231,7 +225,7 @@ mod tests {
 
     #[test]
     fn empty_model_gets_a_default_view() {
-        let cam = Camera::default();
+        let cam = Camera::fit(None);
         assert!(cam.distance.is_finite() && cam.distance > 0.0);
     }
 }

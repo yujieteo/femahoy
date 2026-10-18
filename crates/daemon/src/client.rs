@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::contract::{Ack, Error, Events, Message, RunRecord, RunState};
 use crate::screen::{PROTOCOL, TOKEN_PROTOCOL};
-use crate::ws::{self, Incoming, WsError};
+use crate::ws::{self, Incoming};
 use crate::{random_hex, INFO_FILE};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
@@ -287,18 +287,8 @@ impl TermSocket {
                     let code = code.map_or("none".into(), |c| c.to_string());
                     return Err(Error::new(0, "ws.closed", code));
                 }
-                Err(WsError::Io(e)) => return Err(transport(e)),
                 Err(e) => return Err(transport(e)),
             }
         }
-    }
-
-    pub fn close(mut self) {
-        let _ = ws::write_frame(
-            &mut self.stream,
-            ws::OP_CLOSE,
-            &ws::close_payload(1000),
-            Some([0; 4]),
-        );
     }
 }

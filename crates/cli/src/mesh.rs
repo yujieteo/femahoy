@@ -90,11 +90,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 o.numbers.push((name.to_string(), value));
             }
             "--units" => {
-                o.units = match it.next().map(String::as_str) {
-                    Some("SI-mm") => Some(Units::SiMm),
-                    Some("SI-m") => Some(Units::SiM),
-                    _ => return Err("--units needs SI-mm or SI-m".into()),
-                }
+                let units = it.next().and_then(|t| Units::parse(t));
+                o.units = Some(units.ok_or("--units needs SI-mm or SI-m")?);
             }
             "--case" => o.case = Some(it.next().ok_or("--case needs a directory")?.into()),
             "--timeout" => {

@@ -19,8 +19,6 @@ pub trait Solve {
 /// The result of one case.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outcome {
-    /// No solver was given, so the case cannot run.
-    NoSolver,
     Pass,
     Fail(String),
 }

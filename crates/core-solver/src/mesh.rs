@@ -393,7 +393,7 @@ impl<'a> Mesh<'a> {
                         "*MPC LINK: the distance between the nodes is not finite",
                     ));
                 }
-                let len = norm(r);
+                let len = crate::step::norm(&r);
                 if len == 0.0 {
                     return Err(SolverError::new("*MPC LINK joins two nodes at one point"));
                 }
@@ -737,15 +737,4 @@ fn sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
 
 fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
-}
-
-/// The length of `a`, scaled by its largest component so that the squares do not
-/// overflow or underflow.
-fn norm(a: [f64; 3]) -> f64 {
-    let m = a.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
-    if m == 0.0 || !m.is_finite() {
-        return m;
-    }
-    let s = a.map(|x| x / m);
-    m * dot(s, s).sqrt()
 }

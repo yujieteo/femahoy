@@ -1,8 +1,8 @@
 //! Tests for the tolerance classes, the fixture schema and the shipped cases.
 
 use fh_validation::{
-    check_l, check_n, check_r, load_all, richardson, run_case, run_convergence, Case, Class, Field,
-    Op, Outcome,
+    check_l, check_n, check_r, load_all, richardson, run_convergence_with, Case, Class, Field, Op,
+    Outcome, Solve,
 };
 use std::path::PathBuf;
 
@@ -627,23 +627,21 @@ fn shipped_cases_load_and_have_existing_inputs() {
 }
 
 #[test]
-fn run_case_reports_no_solver() {
-    for c in load_all(&root()).unwrap() {
-        assert_eq!(run_case(&c), Outcome::NoSolver, "{}", c.id);
+fn convergence_needs_a_mesh_sequence() {
+    struct Unused;
+    impl Solve for Unused {
+        fn measure(&self, _: &Case, _: &std::path::Path) -> Result<Vec<f64>, String> {
+            Err("not called".into())
+        }
     }
-}
-
-#[test]
-fn convergence_needs_a_mesh_sequence_and_reports_no_solver() {
     for c in load_all(&root()).unwrap() {
-        let out = run_convergence(&c);
-        match c.class {
-            Class::N { .. } => assert!(
+        if let Class::N { .. } = c.class {
+            let out = run_convergence_with(&c, &Unused).outcome;
+            assert!(
                 matches!(out, Outcome::Fail(ref m) if m.contains("class N")),
                 "{}",
                 c.id
-            ),
-            _ => assert_eq!(out, Outcome::NoSolver, "{}", c.id),
+            );
         }
     }
 }

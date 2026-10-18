@@ -84,10 +84,6 @@ fn print_reports(reports: &[(&Case, String, Report)], total: usize) -> ExitCode 
                     format!("fail: {why}")
                 }
             }
-            Outcome::NoSolver => {
-                fail += 1;
-                "cannot run: no solver".to_owned()
-            }
         };
         lines.push_str(&format!(
             "{}\t{}\t{prefix}{status}\n",

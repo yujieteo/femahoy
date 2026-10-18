@@ -36,8 +36,11 @@ echo restart > restart.txt
 printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon"#;
 
 fn run(name: &str, body: &str) -> Result<RunReport, String> {
-    let dir = scratch(name);
-    let exe = script(&dir, body);
+    run_in(&scratch(name), body)
+}
+
+fn run_in(dir: &Path, body: &str) -> Result<RunReport, String> {
+    let exe = script(dir, body);
     SubprocessSolver::new(exe)
         .run(&dir.join("a.inp"), &dir.join("run"))
         .map_err(|e| e.to_string())
@@ -542,13 +545,6 @@ fn a_pvd_that_is_not_a_collection_is_rejected() {
         let e = run("pvd-bad", &with_pvd(&pvd)).unwrap_err();
         assert!(e.contains("results.pvd: not a PVD collection"), "{pvd}: {e}");
     }
-}
-
-fn run_in(dir: &Path, body: &str) -> Result<RunReport, String> {
-    let exe = script(dir, body);
-    SubprocessSolver::new(exe)
-        .run(&dir.join("a.inp"), &dir.join("run"))
-        .map_err(|e| e.to_string())
 }
 
 #[test]

@@ -16,15 +16,11 @@ pub const VTK_QUADRATIC_TETRA: u8 = 24;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VtuError {
     pub code: &'static str,
-    pub file: Option<String>,
     pub message: String,
 }
 
 impl fmt::Display for VtuError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(file) = &self.file {
-            write!(f, "{file}: ")?;
-        }
         write!(f, "{} ({})", self.message, self.code)
     }
 }
@@ -33,15 +29,8 @@ impl VtuError {
     pub fn new(code: &'static str, message: impl Into<String>) -> Self {
         VtuError {
             code,
-            file: None,
             message: message.into(),
         }
-    }
-
-    /// The same error with the name of the file that has the problem.
-    pub fn with_file(mut self, file: impl Into<String>) -> Self {
-        self.file = Some(file.into());
-        self
     }
 }
 
@@ -216,8 +205,14 @@ fn field_array(f: &Field) -> Array<'_> {
     }
 }
 
-/// Each point index of each cell must name a point of the grid.
-pub(crate) fn check_cells(grid: &Grid) -> Result<(), VtuError> {
+/// The first problem that stops a grid from being written.
+pub(crate) fn check(grid: &Grid) -> Result<(), VtuError> {
+    if grid.cells.len() != grid.cell_types.len() {
+        return err(
+            code::VTU_INVALID_GRID,
+            "cells and cell_types differ in length",
+        );
+    }
     for (i, cell) in grid.cells.iter().enumerate() {
         if let Some(p) = cell.iter().find(|p| **p as usize >= grid.points.len()) {
             return err(
@@ -229,39 +224,20 @@ pub(crate) fn check_cells(grid: &Grid) -> Result<(), VtuError> {
             );
         }
     }
-    Ok(())
-}
-
-/// All the problems that stop a grid from being written, in one list.
-pub fn check_grid(grid: &Grid) -> Vec<VtuError> {
-    let mut errors = Vec::new();
-    let mut add = |message: String| errors.push(VtuError::new(code::VTU_INVALID_GRID, message));
-    if grid.cells.len() != grid.cell_types.len() {
-        add("cells and cell_types differ in length".into());
-    }
-    if let Err(e) = check_cells(grid) {
-        add(e.message);
-    }
-    for (kind, list) in [("point", &grid.point_data), ("cell", &grid.cell_data)] {
-        let n = if kind == "point" {
-            grid.points.len()
-        } else {
-            grid.cells.len()
-        };
+    for (kind, list, n) in [
+        ("point", &grid.point_data, grid.points.len()),
+        ("cell", &grid.cell_data, grid.cells.len()),
+    ] {
         for f in list {
             if f.components == 0 || n.checked_mul(f.components) != Some(f.values.len()) {
-                add(format!("{kind} field {} has the wrong length", f.name));
+                return err(
+                    code::VTU_INVALID_GRID,
+                    format!("{kind} field {} has the wrong length", f.name),
+                );
             }
         }
     }
-    errors
-}
-
-fn check(grid: &Grid) -> Result<(), VtuError> {
-    match check_grid(grid).into_iter().next() {
-        Some(e) => Err(e),
-        None => Ok(()),
-    }
+    Ok(())
 }
 
 /// Write a grid as a VTU file with appended raw data.
@@ -710,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn check_grid_collects_every_problem_with_a_code() {
+    fn check_gives_the_first_problem_with_a_code() {
         let field = |name: &str| Field {
             name: name.into(),
             components: 1,
@@ -723,9 +699,9 @@ mod tests {
             point_data: vec![field("a")],
             cell_data: vec![field("b")],
         };
-        let errors = check_grid(&grid);
-        assert_eq!(errors.len(), 3);
-        assert!(errors.iter().all(|e| e.code == "VTU001"));
+        let e = check(&grid).unwrap_err();
+        assert_eq!(e.code, "VTU001");
+        assert!(e.message.contains("differ in length"), "{e}");
         assert!(write_vtu(&grid)
             .unwrap_err()
             .to_string()

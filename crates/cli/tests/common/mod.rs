@@ -1,6 +1,7 @@
 //! Helpers that the `fh` test files share. Each file uses only some of them.
 #![allow(dead_code)]
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -22,6 +23,14 @@ pub fn scratch(name: &str) -> PathBuf {
 /// The path as an argument.
 pub fn p(path: &Path) -> &str {
     path.to_str().unwrap()
+}
+
+/// Write an executable script at `path`.
+pub fn script(path: &Path, text: &str) -> PathBuf {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, text).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path.to_path_buf()
 }
 
 pub fn cmd() -> Command {

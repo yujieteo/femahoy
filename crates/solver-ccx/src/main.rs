@@ -463,8 +463,6 @@ fn write_results(
         wall_s: wall,
         steps,
         increments,
-        contact: None,
-        failure: None,
         diagnostics: Vec::new(),
         next: Vec::new(),
     };

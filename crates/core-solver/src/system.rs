@@ -268,9 +268,6 @@ pub struct Summary {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Solution {
     pub steps: Vec<StepResult>,
-    pub total_dofs: usize,
-    /// Dofs left after elimination, per step.
-    pub free_dofs: Vec<usize>,
     pub summary: Summary,
 }
 
@@ -388,8 +385,6 @@ pub fn solve_options(model: &Model, options: &Options) -> Result<Solution, Solve
     let summary = solve_with(model, options, &mut collect)?;
     Ok(Solution {
         steps: collect.0,
-        total_dofs: summary.total_dofs,
-        free_dofs: summary.steps.iter().map(|s| s.free_dofs).collect(),
         summary,
     })
 }

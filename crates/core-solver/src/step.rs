@@ -292,7 +292,7 @@ fn for_elements<S: Sync>(
 
 /// The Euclidean norm. The values are divided by the largest one first, so that the squares
 /// cannot overflow: the norm of a finite vector is finite. A NaN gives NaN.
-fn norm(v: &[f64]) -> f64 {
+pub(crate) fn norm(v: &[f64]) -> f64 {
     let m = v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
     if m == 0.0 || m.is_infinite() {
         return m;
@@ -998,7 +998,7 @@ impl Run<'_> {
         let mut fint0: Option<Vec<f64>> = None;
         if !c.built {
             c.matrix.clear();
-            let tangent = Some((c.matrix.values_mut(), &c.map));
+            let tangent = Some((&mut c.matrix.values[..], &c.map));
             let sweep = self.sweep(observer, idx, "assemble", true, &u0, tangent, false)?;
             self.stats.assemblies += 1;
             c.built = true;
@@ -1085,7 +1085,7 @@ impl Run<'_> {
             let u = c.t.expand(&ur);
             let sweep = if !opts.modified_newton || *solves == 0 {
                 c.matrix.clear();
-                let tangent = Some((c.matrix.values_mut(), &c.map));
+                let tangent = Some((&mut c.matrix.values[..], &c.map));
                 let s = self.sweep(observer, idx, "newton", false, &u, tangent, true)?;
                 self.stats.assemblies += 1;
                 c.built = true;

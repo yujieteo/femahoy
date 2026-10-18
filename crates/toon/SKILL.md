@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Encode short agent summaries with schemas `fh.check`, `fh.run`, `fh.validate` and `fh.validate.case`.
+Encode short agent summaries with schema `fh.run`. The other schemas of `toon-schema.md` have no code until a command uses them.
 
 ## Inputs and outputs
 
 - Schema version is `1.1.0`.
 - Every schema header includes `precision`, which defaults to 4 significant figures.
-- `Opts` sets row limits, precision and the comma or tab delimiter. These are library options, not implemented `fh` flags.
+- `Opts` sets row limits and precision. These are library options, not implemented `fh` flags.
 - Exact field values remain in VTU files. `fh check` and `fh validate` currently print plain text.
 
 ## Invariants the code must keep
@@ -30,4 +30,4 @@ Run `cargo check -p fh-toon` and `cargo test -p fh-toon`. Schema tests compare o
 
 ## Examples
 
-Use `Opts::default()` for 20 rows, 4 significant figures and comma delimiters.
+Use `Opts::default()` for 20 rows and 4 significant figures.

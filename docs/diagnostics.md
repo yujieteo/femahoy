@@ -12,7 +12,7 @@ The `file` field names the file when the caller knows it.
 - `fh_inp::parse_file(name, text)` does the same and puts `name` in each error.
 - `fh_inp::parse(text)` returns only the first error.
 - A block reports its first error only. An error in one block can cause errors in later blocks, for example an undefined node.
-- `fh_io::vtu::check_grid(grid)` returns all problems of a grid.
+- `fh_io::vtu` and `fh_io::vtk` refuse a grid at its first problem.
 - The runner reports all missing VTU files of a PVD file in one `API008` error.
 - The `.msh` reader and the other runner checks stop at the first error. `fh_io::MshError::with_file` names the file.
 

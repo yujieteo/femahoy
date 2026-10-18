@@ -20,8 +20,6 @@ increments[2]{step,inc,iters,result}:
   Step-1,4,12,cutback
   Step-1,9,3,ok
 increments_more: 7
-contact[1]{pair,closed,max_pen,force}:
-  CP-1,214,0.00021,1520
 diagnostics[0]:
 diagnostics_note: no diagnostics
 next[1]{cmd,why}:

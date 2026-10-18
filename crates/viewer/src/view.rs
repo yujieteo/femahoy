@@ -155,13 +155,8 @@ mod tests {
     use std::path::PathBuf;
 
     fn fixture() -> Results {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/results/cantilever-2step");
-        let pvd = std::fs::read_to_string(dir.join("results.pvd")).unwrap();
-        results::load("results.pvd", &pvd, |f| {
-            std::fs::read(dir.join(f)).map_err(|e| e.to_string())
-        })
-        .unwrap()
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        crate::load_run(&dir.join("../../fixtures/results/cantilever-2step")).unwrap()
     }
 
     #[test]

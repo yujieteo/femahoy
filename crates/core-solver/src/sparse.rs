@@ -199,11 +199,6 @@ impl Matrix {
         }
     }
 
-    /// The values of the lower triangle, in the order of the pattern. A slot map points into them.
-    pub fn values_mut(&mut self) -> &mut [f64] {
-        &mut self.values
-    }
-
     /// Position in `values` of the entry at row `a`, column `b`, with `a >= b`.
     pub fn position(&self, a: u32, b: u32) -> Option<u32> {
         let (s, e) = (
