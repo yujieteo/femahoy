@@ -175,7 +175,7 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
 }
 
 /// In a distorted element the points have different weights times Jacobian, so `S` is the
-/// volume mean of the points, as in `fh-solve`, and not the plain mean.
+/// volume mean of the points, and not the plain mean.
 #[test]
 fn the_element_stress_is_the_volume_mean_of_the_points() {
     let dir = scratch("volume-mean");
@@ -211,7 +211,7 @@ fn no_ccx_is_a_clear_error() {
     let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &dir.join("no-ccx"));
     assert_eq!(code, Some(1));
     assert!(
-        err.contains("cannot start") && err.contains("FH_CCX"),
+        err.contains("cannot start") && err.contains("FH_CCX") && err.contains("docs/ccx.md"),
         "{err}"
     );
 }
@@ -404,12 +404,17 @@ fn cancel_stops_ccx() {
     assert!(clock.elapsed() < Duration::from_secs(10));
 }
 
-/// The real `ccx` from `FH_CCX` or PATH, or `None` with a message when it is absent.
+/// The real `ccx` from `FH_CCX` or PATH, or `None` with a message when it is absent. With
+/// `FH_REQUIRE_CCX=1`, as in CI, an absent `ccx` fails the test.
 fn real_ccx() -> Option<PathBuf> {
     let exe = std::env::var_os("FH_CCX").map_or_else(|| PathBuf::from("ccx"), PathBuf::from);
     if Command::new(&exe).arg("-v").output().is_ok() {
         return Some(exe);
     }
+    assert!(
+        std::env::var_os("FH_REQUIRE_CCX").is_none_or(|v| v != "1"),
+        "FH_REQUIRE_CCX=1, but ccx does not start"
+    );
     eprintln!("skipped: ccx not found. Set FH_CCX or put ccx on PATH to run this test");
     None
 }

@@ -1,10 +1,9 @@
-//! The `Solver` trait, the registry and the subprocess protocol (version 2).
+//! The subprocess protocol (version 2) and its runner.
 //!
 //! # Protocol v2
 //!
 //! The runner starts `exe <input.inp> <run-dir>` with `run-dir` as the working
-//! folder. For a restart it adds `--restart` as the third argument. The runner
-//! leaves the files of the earlier run in place then. The solver must:
+//! folder. The solver must:
 //!
 //! 1. print `fh-solver-protocol 2` as the first line on stdout,
 //! 2. print events on stdout while it works (see below),
@@ -23,7 +22,6 @@
 //! |---|---|
 //! | `progress step=<i>/<n> phase=<name> fraction=<0..1>` | work done in the step |
 //! | `estimate bytes=<n>` | the solver expects to need `n` bytes of memory |
-//! | `restart <file>` | a restart marker in `run-dir`: the solver can continue from it |
 //!
 //! ## Cancel
 //!
@@ -49,7 +47,6 @@
 mod pvd;
 mod sys;
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
@@ -58,8 +55,6 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
-
-use fh_inp::Model;
 
 pub use sys::total_memory;
 
@@ -89,8 +84,6 @@ pub mod code {
     pub const SOLVER_FAILED: &str = "API007";
     pub const BAD_RESULT: &str = "API008";
     pub const PATH_OUTSIDE: &str = "API009";
-    pub const SOLVER_OUTPUT: &str = "API010";
-    pub const DUPLICATE_SOLVER: &str = "API011";
 }
 
 /// An error of the runner. It has a stable code and, when a file is the cause,
@@ -126,11 +119,6 @@ impl ApiError {
     pub fn with_file(mut self, file: impl Into<String>) -> Self {
         self.file = Some(file.into());
         self
-    }
-
-    /// An error that a solver reports about its own output or input.
-    pub fn solver_output(message: impl Into<String>) -> Self {
-        ApiError::new(code::SOLVER_OUTPUT, message)
     }
 
     /// The error of a run that the user cancelled.
@@ -187,8 +175,6 @@ pub struct RunReport {
     pub summary: String,
     /// False until the solver passes the validation suite.
     pub validated: bool,
-    /// The last restart marker that the solver reported, if any.
-    pub restart: Option<PathBuf>,
 }
 
 /// An event line from a solver.
@@ -203,7 +189,6 @@ pub enum Event {
     Estimate {
         bytes: u64,
     },
-    Restart(String),
     Log(String),
 }
 
@@ -245,9 +230,6 @@ impl Event {
                 .find_map(|w| key_value(w, "bytes"))
                 .and_then(|b| b.parse().ok())
                 .map_or_else(log, |bytes| Event::Estimate { bytes }),
-            Some("restart") => words
-                .next()
-                .map_or_else(log, |f| Event::Restart(f.to_owned())),
             _ => log(),
         }
     }
@@ -300,48 +282,6 @@ pub fn watch_stdin() -> Arc<AtomicBool> {
         }
     });
     cancel
-}
-
-/// A trusted solver that runs inside the process.
-pub trait Solver {
-    fn name(&self) -> &str;
-    /// True when the solver passed the validation suite.
-    fn validated(&self) -> bool;
-    /// Solve `model` and write the protocol files in `run_dir`.
-    fn solve(&self, model: &Model, run_dir: &Path) -> Result<RunReport, ApiError>;
-}
-
-/// Solvers by name.
-#[derive(Default)]
-pub struct Registry {
-    solvers: BTreeMap<String, Box<dyn Solver>>,
-}
-
-impl Registry {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Add a solver. A second solver with the same name is an error.
-    pub fn register(&mut self, solver: Box<dyn Solver>) -> Result<(), ApiError> {
-        let name = solver.name().to_owned();
-        if self.solvers.contains_key(&name) {
-            return fail(
-                code::DUPLICATE_SOLVER,
-                format!("solver {name} is already registered"),
-            );
-        }
-        self.solvers.insert(name, solver);
-        Ok(())
-    }
-
-    pub fn get(&self, name: &str) -> Option<&dyn Solver> {
-        self.solvers.get(name).map(|b| &**b)
-    }
-
-    pub fn names(&self) -> Vec<&str> {
-        self.solvers.keys().map(String::as_str).collect()
-    }
 }
 
 /// 85 % of the machine RAM. If the system does not tell the RAM, there is no limit.
@@ -403,38 +343,6 @@ impl SubprocessSolver {
         cancel: &CancelToken,
         on_event: &mut dyn FnMut(&Event),
     ) -> Result<RunReport, ApiError> {
-        self.execute(inp, run_dir, false, cancel, on_event)
-    }
-
-    /// Continue an earlier run in `run_dir` from its restart marker.
-    pub fn resume_with(
-        &self,
-        inp: &Path,
-        run_dir: &Path,
-        cancel: &CancelToken,
-        on_event: &mut dyn FnMut(&Event),
-    ) -> Result<RunReport, ApiError> {
-        self.execute(inp, run_dir, true, cancel, on_event)
-    }
-
-    fn time_limit(&self) -> ApiError {
-        ApiError::new(
-            code::TIME_LIMIT,
-            format!(
-                "solver stopped after the time limit of {} s. {SMALLER}",
-                self.timeout.as_secs_f64()
-            ),
-        )
-    }
-
-    fn execute(
-        &self,
-        inp: &Path,
-        run_dir: &Path,
-        restart: bool,
-        cancel: &CancelToken,
-        on_event: &mut dyn FnMut(&Event),
-    ) -> Result<RunReport, ApiError> {
         // A token that is cancelled before the start must stop the run, even for a model that
         // would finish before the first poll.
         if cancel.is_cancelled() {
@@ -462,18 +370,16 @@ impl SubprocessSolver {
         if exe.components().count() > 1 && !exe.is_file() {
             return Err(cannot_start(&"no such file"));
         }
-        let run_dir = prepare_run_dir(run_dir, restart, &inp)?;
+        let run_dir = prepare_run_dir(run_dir, &inp)?;
         let open = |name: &str| {
             fs::File::create(run_dir.join(name))
                 .map_err(|e| ApiError::new(code::RUN_FOLDER, e.to_string()).with_file(name))
         };
         let limited = self.memory_limit != u64::MAX;
         let mut cmd = Command::new(&exe);
-        cmd.arg(&inp).arg(&run_dir);
-        if restart {
-            cmd.arg("--restart");
-        }
-        cmd.current_dir(&run_dir)
+        cmd.arg(&inp)
+            .arg(&run_dir)
+            .current_dir(&run_dir)
             .env(CANCEL_ON_EOF, "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -530,7 +436,6 @@ impl SubprocessSolver {
 
         let start = Instant::now();
         let mut header_seen = false;
-        let mut restart_file = None;
         let mut cancel_sent: Option<Instant> = None;
         let mut last_probe = Instant::now();
         let status = loop {
@@ -561,9 +466,6 @@ impl SubprocessSolver {
                             size(self.memory_limit)
                         )));
                     }
-                }
-                if let Event::Restart(f) = &event {
-                    restart_file = Some(f.clone());
                 }
                 on_event(&event);
                 if batch.elapsed() >= POLL {
@@ -639,11 +541,7 @@ impl SubprocessSolver {
                 header_seen = true;
                 continue;
             }
-            let event = Event::parse(&line);
-            if let Event::Restart(f) = &event {
-                restart_file = Some(f.clone());
-            }
-            on_event(&event);
+            on_event(&Event::parse(&line));
             // The backlog is short, but a process outside the tree can keep the pipe and
             // write without end. The time limit and a cancel also stop this read.
             if cancel.is_cancelled() {
@@ -674,16 +572,21 @@ impl SubprocessSolver {
         check_summary(&summary)?;
         let pvd = run_dir.join(PVD_FILE);
         check_pvd(&run_dir, &pvd)?;
-        let restart = restart_file
-            .map(|f| inside(&run_dir, &f))
-            .transpose()?
-            .filter(|p| p.is_file());
         Ok(RunReport {
             pvd,
             summary,
             validated: self.validated,
-            restart,
         })
+    }
+
+    fn time_limit(&self) -> ApiError {
+        ApiError::new(
+            code::TIME_LIMIT,
+            format!(
+                "solver stopped after the time limit of {} s. {SMALLER}",
+                self.timeout.as_secs_f64()
+            ),
+        )
     }
 }
 
@@ -752,11 +655,11 @@ fn stop(tree: &mut Tree, reason: ApiError) -> Result<RunReport, ApiError> {
 /// Make the run folder ready. A folder with files in it must be a run folder of
 /// this runner (it has the marker file), or the call fails. A fresh run clears it,
 /// so the input `inp` (a real path) must be outside it.
-fn prepare_run_dir(run_dir: &Path, restart: bool, inp: &Path) -> Result<PathBuf, ApiError> {
+fn prepare_run_dir(run_dir: &Path, inp: &Path) -> Result<PathBuf, ApiError> {
     let err = |e: std::io::Error| ApiError::new(code::RUN_FOLDER, format!("run folder: {e}"));
     fs::create_dir_all(run_dir).map_err(err)?;
     let dir = fs::canonicalize(run_dir).map_err(err)?;
-    if !restart && inp.starts_with(&dir) {
+    if inp.starts_with(&dir) {
         return fail(
             code::RUN_FOLDER,
             format!(
@@ -767,18 +670,6 @@ fn prepare_run_dir(run_dir: &Path, restart: bool, inp: &Path) -> Result<PathBuf,
     }
     let marked = dir.join(RUN_MARKER).is_file();
     let empty = fs::read_dir(&dir).map_err(err)?.next().is_none();
-    if restart {
-        if !marked {
-            return fail(code::RUN_FOLDER, "run folder has no earlier run to restart");
-        }
-        // The summary marks a complete run. Only the restart can write a new one, so an old
-        // summary cannot pass as the result of the restart. The other files stay for the solver.
-        match fs::remove_file(dir.join(SUMMARY_FILE)) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(err(e)),
-            _ => {}
-        }
-        return Ok(dir);
-    }
     if !empty && !marked {
         return fail(
             code::RUN_FOLDER,

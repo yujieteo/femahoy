@@ -27,7 +27,7 @@ const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--no-open]\n     
 const STOP_WAIT: Duration = Duration::from_secs(30);
 
 /// Run `fh serve` with the arguments after `serve`, until SIGINT, SIGTERM or SIGHUP.
-/// `solver` is the protocol v2 solver, for example `fh-solve`.
+/// `solver` is the protocol v2 solver, for example `fh-solve-ccx`.
 pub fn serve(args: &[String], solver: PathBuf) -> Result<ExitCode, String> {
     stop::install();
     serve_until(args, solver, &stop::STOP)

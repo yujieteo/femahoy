@@ -1,10 +1,8 @@
 [package]
 name = "fh-solver-api"
-description = "`Solver` trait, subprocess protocol, registry"
+description = "subprocess protocol v2 and its runner"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[dependencies]
-fh-inp = { path = "../inp" }

@@ -234,8 +234,8 @@ pub struct RunRecord {
     pub input: String,
     /// The request ID of the submit command.
     pub request: String,
-    /// The solver that the submit named, for example `fh-solve-ccx`. Empty means the solver
-    /// of the daemon (`fh-solve`).
+    /// The solver that the submit named, a name of `SOLVERS` after the first. Empty means the
+    /// solver of the daemon (`FH_SOLVE`, else `fh-solve-ccx`).
     pub solver: String,
     pub state: RunState,
     /// Times in milliseconds since the Unix epoch. 0 means not yet.

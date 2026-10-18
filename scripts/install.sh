@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Install femahoy from this repository: build `fh`, `fh-solve`, `fh-solve-ccx` and the wasm
-# viewer, and copy them to one folder. `fh-solve-ccx` needs CalculiX (`ccx`), see docs/ccx.md.
+# Install femahoy from this repository: build `fh`, `fh-solve-ccx` and the wasm viewer, and
+# copy them to one folder. `fh-solve-ccx` is the solver. It needs CalculiX (`ccx`), see docs/ccx.md.
 # Make the Python environment of the CAD step with uv.
 #
 #   scripts/install.sh [--prefix DIR] [--venv DIR]
 #
-# The prefix (default ~/.local/bin) gets fh, fh-solve, fh-solve-ccx, the folder viewer beside fh, where
+# The prefix (default ~/.local/bin) gets fh, fh-solve-ccx, the folder viewer beside fh, where
 # `fh serve` looks for it, and fh-python. fh-python runs the Python of the venv (default
 # ${XDG_DATA_HOME:-~/.local/share}/femahoy/venv), which has Python 3.12 and build123d.
-# A second run builds again and updates the files and the venv.
+# A second run builds again and updates the files and the venv. It removes the fh-solve of an
+# earlier install: femahoy has no native solver now.
 #
 # The script finds cargo in ~/.cargo/bin ($CARGO_HOME/bin) when cargo is not on PATH. It
 # checks all the tools before the build and shows the install command of each missing tool.
@@ -95,8 +96,8 @@ if [ ${#missing[@]} -gt 0 ]; then
   exit 1
 fi
 
-echo "install: build fh, fh-solve and fh-solve-ccx (release)"
-cargo build --release --locked --bin fh --bin fh-solve --bin fh-solve-ccx
+echo "install: build fh and fh-solve-ccx (release)"
+cargo build --release --locked --bin fh --bin fh-solve-ccx
 echo "install: build the wasm viewer"
 scripts/build-viewer.sh "$target/release/viewer"
 # The tested version of docs/cad-recipe.md.
@@ -117,9 +118,10 @@ if [ -e "$prefix/fh" ]; then update=yes; fi
 mkdir -p "$prefix/viewer"
 exe=
 if [[ $(uname -s) == MINGW* || $(uname -s) == MSYS* || $(uname -s) == CYGWIN* ]]; then exe=.exe; fi
-for bin in fh fh-solve fh-solve-ccx; do
+for bin in fh fh-solve-ccx; do
   put "$target/release/$bin$exe" "$prefix/$bin$exe" 755
 done
+rm -f "$prefix/fh-solve$exe"
 for file in fh_viewer.js fh_viewer_bg.wasm; do
   put "$target/release/viewer/$file" "$prefix/viewer/$file" 644
 done
@@ -129,12 +131,15 @@ put "$target/release/fh-python" "$prefix/fh-python" 755
 
 if [ $update = yes ]; then verb=updated; else verb=installed; fi
 echo "install: $verb in $prefix:"
-for file in "fh$exe" "fh-solve$exe" "fh-solve-ccx$exe" fh-python viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
+for file in "fh$exe" "fh-solve-ccx$exe" fh-python viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
   echo "  $prefix/$file"
 done
 echo "install: fh-python runs the Python of $venv, with build123d: fh-python part.py"
 if [ $update = yes ]; then
   echo "install: if a daemon runs, it keeps the earlier fh until it stops. Stop it with: fh serve --stop"
+fi
+if ! command -v "${FH_CCX:-ccx}" >/dev/null 2>&1; then
+  echo "install: ccx (CalculiX) is not installed. Each solve needs it: apt install calculix-ccx (Debian, Ubuntu), or see docs/ccx.md"
 fi
 if ! command -v gmsh >/dev/null 2>&1 && [ ! -x /Applications/Gmsh.app/Contents/MacOS/gmsh ]; then
   echo "install: gmsh is not installed. fh run needs it for a case folder and the example: brew install gmsh (macOS), or see https://gmsh.info"

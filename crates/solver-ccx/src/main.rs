@@ -690,7 +690,7 @@ fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
         .spawn()
         .map_err(|e| {
             format!(
-                "cannot start {}: {e}. Install CalculiX and put ccx on PATH, or set FH_CCX",
+                "cannot start {}: {e}. Install CalculiX (docs/ccx.md) and put ccx on PATH, or set FH_CCX",
                 exe.display()
             )
         })?;

@@ -13,22 +13,29 @@ pub struct Subprocess {
 }
 
 impl Subprocess {
-    /// The solver is `$FH_SOLVE`, or `fh-solve` next to the `fh` binary.
+    /// The solver is `$FH_SOLVE`, else `fh-solve-ccx` next to the `fh` binary or on `PATH`.
+    /// When it is in neither place, the path next to `fh` gives the error.
     pub fn locate() -> Self {
         match std::env::var_os("FH_SOLVE") {
             Some(exe) => Subprocess::new(exe.into()),
-            None => Subprocess::next_to_fh("fh-solve"),
+            None => {
+                let name = fh_daemon::SOLVERS[0];
+                let exe =
+                    fh_daemon::find_solver(&fh_daemon::solver_dirs(), name).unwrap_or_else(|| {
+                        std::env::current_exe()
+                            .map(|me| {
+                                me.with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX))
+                            })
+                            .unwrap_or_else(|_| PathBuf::from(name))
+                    });
+                Subprocess::new(exe)
+            }
         }
     }
 
-    /// The solver of `case`, with the limits of the case. `fh-solve` is
-    /// [`Subprocess::locate`]. `$FH_SOLVE` does not change another solver: it is the binary of
-    /// that name next to `fh`.
+    /// The solver of `case`: [`Subprocess::locate`], with the limits of the case.
     pub fn for_case(case: &Case) -> Self {
-        let mut s = match case.solver.as_str() {
-            "fh-solve" => Subprocess::locate(),
-            name => Subprocess::next_to_fh(name),
-        };
+        let mut s = Subprocess::locate();
         if let Some(t) = case.time_limit_s {
             s.solver.timeout = Duration::from_secs_f64(t);
         }
@@ -42,13 +49,6 @@ impl Subprocess {
         Subprocess {
             solver: SubprocessSolver::new(exe),
         }
-    }
-
-    fn next_to_fh(name: &str) -> Self {
-        let exe = std::env::current_exe()
-            .map(|me| me.with_file_name(format!("{name}{}", std::env::consts::EXE_SUFFIX)))
-            .unwrap_or_else(|_| PathBuf::from(name));
-        Subprocess::new(exe)
     }
 }
 

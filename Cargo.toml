@@ -5,7 +5,6 @@ members = [
     "crates/io",
     "crates/toon",
     "crates/solver-api",
-    "crates/core-solver",
     "crates/solver-ccx",
     "crates/validation",
     "crates/daemon",

@@ -16,10 +16,17 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # The solver is fh-solve-ccx, which runs CalculiX (docs/ccx.md). Only this job installs
+      # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
+      - name: Install ccx
+        run: sudo apt-get update && sudo apt-get install -y calculix-ccx
       - name: Test
         run: cargo test --workspace
+        env:
+          FH_REQUIRE_CCX: "1"
 
-  # aarch64 build and tests (D-07, P1). The check job keeps fmt, clippy and the tests.
+  # aarch64 build and tests (D-07, P1). The check job keeps fmt, clippy and the tests. This
+  # job has no ccx, so the tests that solve through the real ccx skip here.
   test-aarch64:
     runs-on: macos-14
     steps:

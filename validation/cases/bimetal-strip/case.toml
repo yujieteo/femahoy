@@ -6,7 +6,6 @@ class = "N"
 justification = "Both materials have nu = 0, so the curvature far from the free end is exactly the Timoshenko (1925) value. C3D8I on a regular mesh gives pure bending exactly. Thus the tolerance covers only the 6 significant digits of the ccx .frd file."
 derivation = "derivation.md"
 element_types = ["C3D8I"]
-# fh-solve has no thermal strain. CalculiX solves this case.
 solver = "fh-solve-ccx"
 # strip.inp is the output of: python3 scripts/gen-bimetal-strip.py
 mesh = ["strip.inp"]

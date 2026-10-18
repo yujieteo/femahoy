@@ -58,14 +58,15 @@ const INPUT_FILE: &str = "input.inp";
 const OUT_DIR: &str = "out";
 const STOPPED: &str = "the daemon stopped before the run ended";
 
-/// The solvers that a submit can name. The first one is the solver of [`Config`].
-pub const SOLVERS: [&str; 2] = ["fh-solve", "fh-solve-ccx"];
+/// The solvers that a submit can name. The first one is the solver of [`Config`]. Add the
+/// name of another protocol v2 solver here to let a submit name it.
+pub const SOLVERS: [&str; 1] = ["fh-solve-ccx"];
 
 /// The settings of a run service.
 pub struct Config {
     /// The folder of the store. One daemon at a time uses it.
     pub state_dir: PathBuf,
-    /// The protocol v2 solver, for example `fh-solve`, with its limits.
+    /// The protocol v2 solver, for example `fh-solve-ccx`, with its limits.
     pub solver: SubprocessSolver,
     /// The folders, in order, where a run finds another solver of [`SOLVERS`] that its
     /// submit names. `fh serve` gives [`solver_dirs`].
@@ -240,7 +241,6 @@ fn solver_text(event: &SolverEvent) -> String {
             fraction,
         } => format!("progress step={step}/{steps} phase={phase} fraction={fraction}"),
         SolverEvent::Estimate { bytes } => format!("estimate bytes={bytes}"),
-        SolverEvent::Restart(file) => format!("restart {file}"),
         SolverEvent::Log(line) => format!("log {line}"),
     }
 }
@@ -653,7 +653,7 @@ impl Service {
     ///
     /// A retry with the same request ID gets the same run. A submit of a revision that
     /// already has an active run in the project with the same solver gets that run, with the
-    /// outcome `existing`. `solver` is a name of [`SOLVERS`], or empty for `fh-solve`.
+    /// outcome `existing`. `solver` is a name of [`SOLVERS`], or empty for the solver of [`Config`].
     pub fn submit(
         &self,
         project: &str,

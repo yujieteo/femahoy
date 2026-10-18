@@ -33,6 +33,24 @@ pub fn script(path: &Path, text: &str) -> PathBuf {
     path.to_path_buf()
 }
 
+/// `fh-solve-ccx` beside `fh`, when it is built and `ccx` (`FH_CCX`, else `ccx` on PATH) starts.
+/// Else `None` with a message, and the test does not solve. With `FH_REQUIRE_CCX=1`, as in CI,
+/// a missing one fails the test.
+pub fn ccx_solver() -> Option<PathBuf> {
+    let solver = Path::new(env!("CARGO_BIN_EXE_fh"))
+        .with_file_name(format!("fh-solve-ccx{}", std::env::consts::EXE_SUFFIX));
+    let ccx = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
+    let found = solver.is_file() && Command::new(ccx).arg("-v").output().is_ok();
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_CCX").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_CCX=1, but fh-solve-ccx is not built or ccx does not start"
+        );
+        eprintln!("skipped: fh-solve-ccx is not built or ccx does not start. Set FH_CCX");
+    }
+    found.then_some(solver)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

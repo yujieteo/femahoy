@@ -1,14 +1,12 @@
 mod common;
-use common::{p, scratch};
+use common::{ccx_solver, p, scratch};
 use std::process::{Command, Output};
 
-fn solver_path() -> std::path::PathBuf {
-    let fh = std::path::Path::new(env!("CARGO_BIN_EXE_fh"));
-    fh.with_file_name(format!("fh-solve{}", std::env::consts::EXE_SUFFIX))
-}
+/// A solver that does not exist. A test that does not solve uses it.
+const NO_SOLVER: &str = "/nonexistent/solver";
 
 fn fh(args: &[&str]) -> Output {
-    fh_with_solver(args, solver_path().to_str().unwrap())
+    fh_with_solver(args, NO_SOLVER)
 }
 
 fn fh_with_solver(args: &[&str], solver: &str) -> Output {
@@ -95,44 +93,17 @@ fn check_with_a_missing_file_exits_1() {
     assert_eq!(fh(&["check", "/nonexistent/x.inp"]).status.code(), Some(1));
 }
 
-/// True when `ccx` (`FH_CCX`, else `ccx` on PATH) starts. The `bimetal-strip` case needs it.
-fn ccx_found() -> bool {
-    let exe = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
-    let found = Command::new(exe).arg("-v").output().is_ok();
-    if !found {
-        eprintln!("ccx not found: bimetal-strip must be skipped. Set FH_CCX to run it");
-    }
-    found
-}
-
 #[test]
-fn validate_runs_every_case_through_the_solver() {
-    let out = fh(&["validate", "--root", &root()]);
+fn validate_runs_every_case_through_ccx() {
+    let Some(solver) = ccx_solver() else { return };
+    let out = fh_with_solver(&["validate", "--root", &root()], p(&solver));
     let stdout = text(out.stdout);
-    // FH_SOLVE names fh-solve. The case bimetal-strip uses fh-solve-ccx all the same.
-    // Without ccx, the case is skipped and the other cases decide the exit code.
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
-    if ccx_found() {
-        assert!(stdout.contains("bimetal-strip\tN\tpass"), "{stdout}");
-        assert!(stdout.contains("warpage-strip\tN\tpass"), "{stdout}");
-        assert!(stdout.contains("warpage-thick-copper\tN\tpass"), "{stdout}");
-        assert!(stdout.contains("plate-on-edge\tN\tpass"), "{stdout}");
-        assert!(stdout.contains("20 cases: 20 pass, 0 fail"), "{stdout}");
-    } else {
-        assert!(
-            stdout.contains("bimetal-strip\tN\tskipped, no ccx"),
-            "{stdout}"
-        );
-        assert!(
-            stdout.contains("plate-on-edge\tN\tskipped, no ccx"),
-            "{stdout}"
-        );
-        assert!(stdout.contains("20 cases: 16 pass, 0 fail"), "{stdout}");
-    }
     for id in [
         "bar-pressure",
         "bar-pressure-m",
         "bar-tension",
+        "bimetal-strip",
         "cantilever",
         "cantilever-c3d10",
         "cantilever-c3d8",
@@ -146,64 +117,87 @@ fn validate_runs_every_case_through_the_solver() {
         "patch-test",
         "patch-test-c3d10",
         "patch-test-c3d8i",
+        "plate-on-edge",
+        "warpage-strip",
+        "warpage-thick-copper",
     ] {
         let row = format!("{id}\t");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
+    assert!(stdout.contains("20 cases: 20 pass, 0 fail"), "{stdout}");
     assert!(stdout.contains("mms-c3d10\trate\t"), "{stdout}");
     assert!(stdout.contains("errors="), "{stdout}");
-    assert!(!stdout.contains("no solver"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("tip_deflection_z"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
 }
 
 #[test]
-fn without_ccx_a_ccx_case_is_skipped_and_the_other_cases_still_fail() {
-    let dir = copy_root("noccx");
-    let path = dir.join("validation/cases/patch-test/case.toml");
-    let toml = std::fs::read_to_string(&path).unwrap();
-    std::fs::write(&path, toml.replacen("u9_x = 0.000325", "u9_x = 0.5", 1)).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
-        .args(["validate", "--root", dir.to_str().unwrap()])
-        .env("FH_SOLVE", solver_path())
-        .env("FH_CCX", "/nonexistent/ccx")
-        .output()
-        .unwrap();
-    let stdout = text(out.stdout);
-    assert_eq!(out.status.code(), Some(1), "{stdout}");
-    assert!(
-        stdout.contains("bimetal-strip\tN\tskipped, no ccx"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("patch-test\tN\tfail"), "{stdout}");
-    assert!(stdout.contains("20 cases: 15 pass, 1 fail"), "{stdout}");
-    let _ = std::fs::remove_dir_all(dir);
+fn without_ccx_validate_stops_and_tells_how_to_install_it() {
+    let case = format!("{}/validation/cases/cantilever", root());
+    for args in [
+        vec!["validate", "--root", &root()],
+        vec!["validate", "--convergence", &case],
+    ] {
+        // FH_SOLVE is not set, so the solver is fh-solve-ccx. A path to it needs ccx also.
+        for solver in [None, Some("/somewhere/fh-solve-ccx")] {
+            let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
+            cmd.args(&args).env("FH_CCX", "/nonexistent/ccx");
+            match solver {
+                Some(path) => cmd.env("FH_SOLVE", path),
+                None => cmd.env_remove("FH_SOLVE"),
+            };
+            let out = cmd.output().unwrap();
+            let (stdout, stderr) = (text(out.stdout), text(out.stderr));
+            assert_eq!(out.status.code(), Some(1), "{stdout}{stderr}");
+            assert!(stderr.contains("cannot start ccx"), "{stderr}");
+            assert!(stderr.contains("docs/ccx.md"), "{stderr}");
+            assert!(!stdout.contains("pass"), "{stdout}");
+        }
+    }
+}
+
+/// Like [`copy_root`], with only the case `id`, so that a solve stays short.
+fn copy_case(tag: &str, id: &str) -> std::path::PathBuf {
+    let dir = copy_root(tag);
+    let cases = dir.join("validation/cases");
+    for entry in std::fs::read_dir(&cases).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() && !path.ends_with(id) {
+            std::fs::remove_dir_all(path).unwrap();
+        }
+    }
+    dir
 }
 
 #[test]
 fn validate_exits_1_when_a_reference_is_wrong() {
-    let dir = copy_root("badref");
+    let Some(solver) = ccx_solver() else { return };
+    let dir = copy_case("badref", "patch-test");
     let path = dir.join("validation/cases/patch-test/case.toml");
     let text_in = std::fs::read_to_string(&path).unwrap();
     let broken = text_in.replacen("u9_x = 0.000325", "u9_x = 0.5", 1);
     assert_ne!(broken, text_in);
     std::fs::write(&path, broken).unwrap();
-    let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
-    assert_eq!(out.status.code(), Some(1), "{}", text(out.stdout));
+    let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&solver));
+    let stdout = text(out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert!(stdout.contains("patch-test\tN\tfail"), "{stdout}");
+    assert!(stdout.contains("1 cases: 0 pass, 1 fail"), "{stdout}");
     let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn validate_exits_1_when_a_class_r_rate_is_outside_the_band() {
-    let dir = copy_root("badrate");
+    let Some(solver) = ccx_solver() else { return };
+    let dir = copy_case("badrate", "mms-c3d8");
     let path = dir.join("validation/cases/mms-c3d8/case.toml");
     let text_in = std::fs::read_to_string(&path).unwrap();
     let broken = text_in.replacen("rate = 1.7", "rate = 4", 1);
     assert_ne!(broken, text_in);
     std::fs::write(&path, broken).unwrap();
     let case = dir.join("validation/cases/mms-c3d8");
-    let out = fh(&["validate", "--convergence", case.to_str().unwrap()]);
+    let out = fh_with_solver(&["validate", "--convergence", p(&case)], p(&solver));
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(1), "{stdout}");
     assert!(stdout.contains("mms-c3d8\tR\t3 meshes\tfail"), "{stdout}");
@@ -257,7 +251,7 @@ fn validate_stops_a_case_at_its_time_and_memory_limits() {
 
 #[test]
 fn validate_exits_1_when_the_solver_is_missing() {
-    let out = fh_with_solver(&["validate", "--root", &root()], "/nonexistent/fh-solve");
+    let out = fh(&["validate", "--root", &root()]);
     assert_eq!(out.status.code(), Some(1));
     let stdout = text(out.stdout);
     assert!(stdout.contains("cannot run"), "{stdout}");
@@ -282,8 +276,9 @@ fn validate_rejects_an_unknown_option_with_exit_2() {
 
 #[test]
 fn convergence_on_a_class_l_case_runs_the_solver() {
+    let Some(solver) = ccx_solver() else { return };
     let case = format!("{}/validation/cases/cantilever", root());
-    let out = fh(&["validate", "--convergence", &case]);
+    let out = fh_with_solver(&["validate", "--convergence", &case], p(&solver));
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     assert!(stdout.contains("cantilever\tL\t4 meshes\tpass"), "{stdout}");
@@ -293,8 +288,9 @@ fn convergence_on_a_class_l_case_runs_the_solver() {
 
 #[test]
 fn convergence_on_the_case_folder_skips_class_n() {
+    let Some(solver) = ccx_solver() else { return };
     let dir = format!("{}/validation/cases", root());
-    let out = fh(&["validate", "--convergence", &dir]);
+    let out = fh_with_solver(&["validate", "--convergence", &dir], p(&solver));
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}");
     for row in [
@@ -312,11 +308,27 @@ fn convergence_on_the_case_folder_skips_class_n() {
 #[test]
 fn convergence_exits_1_when_the_solver_is_missing() {
     let case = format!("{}/validation/cases/cantilever", root());
-    let out = fh_with_solver(
-        &["validate", "--convergence", &case],
-        "/nonexistent/fh-solve",
-    );
+    let out = fh(&["validate", "--convergence", &case]);
     assert_eq!(out.status.code(), Some(1));
+}
+
+#[test]
+fn convergence_exits_1_when_every_case_is_skipped() {
+    let dir = copy_case("allskipped", "patch-test");
+    let out = fh(&[
+        "validate",
+        "--convergence",
+        p(&dir.join("validation/cases")),
+    ]);
+    let stdout = text(out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert!(
+        stdout.contains("patch-test\tN\tskipped, one mesh"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("1 cases: 0 pass, 0 fail"), "{stdout}");
+    assert!(text(out.stderr).contains("no case ran"));
+    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
@@ -364,8 +376,7 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[test]
 fn validate_checks_each_quantity_against_the_meshes() {
-    // The shipped cases pass (sets, steps and element types exist in every mesh).
-    assert_eq!(fh(&["validate", "--root", &root()]).status.code(), Some(0));
+    // The shipped cases pass these checks: validate_runs_every_case_through_ccx.
     // Each edit of the cantilever case: the text, its replacement and the expected error.
     let cases: [(&str, &str, &str); 4] = [
         ("set = \"tip\"", "set = \"nope\"", "no node set `nope`"),

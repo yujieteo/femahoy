@@ -4,11 +4,11 @@
 //! case folder inside PATH. A class N case has one mesh, so it is skipped in a folder of cases
 //! and it is an error when named directly.
 //!
-//! Each case runs through its `solver`: `fh-solve` (`$FH_SOLVE`, or the binary next to `fh`), or
-//! `fh-solve-ccx` next to `fh`. A table shows
-//! every quantity with its computed value, reference, tolerance and margin.
-//! A bad fixture, a case that fails, or a case that cannot run gives exit code 1.
-//! If `ccx` does not start, an `fh-solve-ccx` case is skipped. The other cases decide the exit code.
+//! Each case runs through the solver: `$FH_SOLVE`, else `fh-solve-ccx` next to `fh` or on
+//! `PATH`. A table shows every quantity with its computed value, reference, tolerance and margin.
+//! A bad fixture, a case that fails, a case that cannot run, or a run in which no case ran
+//! gives exit code 1. If the solver is `fh-solve-ccx` and `ccx` does not start, `fh validate`
+//! stops before the first case and tells how to install CalculiX.
 
 use crate::measure::Subprocess;
 use fh_validation::{
@@ -17,18 +17,30 @@ use fh_validation::{
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
-/// The reason to skip `case`: it needs `ccx`, and `ccx` (`$FH_CCX`, else `ccx` on PATH) does not
-/// start. Any other problem of `fh-solve-ccx` or `ccx` is a failure of the case.
-fn skip_reason(case: &Case) -> Option<&'static str> {
+/// Prints the error and gives false when the solver is `fh-solve-ccx` and `ccx` (`$FH_CCX`,
+/// else `ccx` on PATH) does not start. Another solver from `$FH_SOLVE` needs no `ccx`.
+fn solver_ready() -> bool {
+    let solver = Subprocess::locate();
+    if solver
+        .solver
+        .exe
+        .file_stem()
+        .is_none_or(|s| s != fh_daemon::SOLVERS[0])
+    {
+        return true;
+    }
     let exe = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
-    let starts = || {
-        Command::new(exe)
-            .arg("-v")
-            .stdin(Stdio::null())
-            .output()
-            .is_ok()
-    };
-    (case.solver == "fh-solve-ccx" && !starts()).then_some("no ccx")
+    match Command::new(&exe).arg("-v").stdin(Stdio::null()).output() {
+        Ok(_) => true,
+        Err(e) => {
+            eprintln!(
+                "fh validate: cannot start ccx ({}): {e}. fh-solve-ccx needs CalculiX: install \
+                 it as docs/ccx.md tells, then put ccx on PATH or set FH_CCX",
+                Path::new(&exe).display()
+            );
+            false
+        }
+    }
 }
 
 pub fn run(args: &[String]) -> Result<ExitCode, String> {
@@ -58,17 +70,19 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
-    let mut reports: Vec<(&Case, String, Report)> = Vec::new();
-    for case in &cases {
-        match skip_reason(case) {
-            Some(why) => println!("{}\t{}\tskipped, {why}", case.id, case.class.letter()),
-            None => reports.push((
+    if !solver_ready() {
+        return Ok(ExitCode::from(1));
+    }
+    let reports: Vec<(&Case, String, Report)> = cases
+        .iter()
+        .map(|case| {
+            (
                 case,
                 String::new(),
                 run_case_with(case, &Subprocess::for_case(case)),
-            )),
-        }
-    }
+            )
+        })
+        .collect();
     Ok(print_reports(&reports, cases.len()))
 }
 
@@ -87,7 +101,8 @@ fn fixtures_ok(cases: &[Case]) -> bool {
     ok
 }
 
-/// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure.
+/// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure,
+/// and when no case ran.
 fn print_reports(reports: &[(&Case, String, Report)], total: usize) -> ExitCode {
     let (mut pass, mut fail) = (0, 0);
     let mut lines = String::new();
@@ -121,7 +136,10 @@ fn print_reports(reports: &[(&Case, String, Report)], total: usize) -> ExitCode 
     }
     print!("{lines}{tables}");
     println!("{total} cases: {pass} pass, {fail} fail");
-    if fail == 0 {
+    if pass + fail == 0 {
+        eprintln!("fh validate: no case ran");
+    }
+    if fail == 0 && pass > 0 {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
@@ -148,13 +166,14 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
     if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
+    if !solver_ready() {
+        return Ok(ExitCode::from(1));
+    }
     let mut reports: Vec<(&Case, String, Report)> = Vec::new();
     let mut skipped = Vec::new();
     for case in &cases {
         if matches!(case.class, Class::N { .. }) && !single {
             skipped.push((case, "one mesh"));
-        } else if let Some(why) = skip_reason(case) {
-            skipped.push((case, why));
         } else {
             let report = run_convergence_with(case, &Subprocess::for_case(case));
             if let Outcome::Fail(why) = &report.outcome {
