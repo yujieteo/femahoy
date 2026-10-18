@@ -670,7 +670,6 @@ fn run<const M: usize, Mt: Material + ?Sized>(
     out.fabs[..M].fill(0.0);
     let mut kuu = [[0.0; M]; M];
     let mut kua = [[0.0; 9]; M];
-    let mut mean = [0.0; 6];
     let mut vol = 0.0;
     for (i, p) in pts.iter().enumerate() {
         let r = &resp[i];
@@ -689,9 +688,6 @@ fn run<const M: usize, Mt: Material + ?Sized>(
                 let cg = a_b(&r.tangent, g);
                 add_at_b(&mut kua, p.w, &p.b, &cg);
             }
-        }
-        for (m, s) in mean.iter_mut().zip(&r.stress) {
-            *m += p.w * s;
         }
         vol += p.w;
     }
@@ -722,7 +718,8 @@ fn run<const M: usize, Mt: Material + ?Sized>(
         }
     }
     out.volume = vol;
-    out.mean_stress = mean.map(|v| v / vol);
+    out.mean_stress =
+        fh_io::result::element_stress(resp.iter().zip(pts).map(|(r, p)| (r.stress, p.w)));
     for (dst, r) in out.ip_stress.iter_mut().zip(&resp) {
         *dst = r.stress;
     }
