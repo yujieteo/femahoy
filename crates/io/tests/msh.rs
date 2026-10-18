@@ -146,5 +146,8 @@ fn a_volume_with_no_physical_group_is_reported() {
     assert!(m.model.elset("body").is_none());
     // With no physical group at all, gmsh writes every element, so nothing is lost.
     let none = unnamed.replace("1 0 0 0 1 1 0 1 7 0", "1 0 0 0 1 1 0 0 0");
-    assert!(fh_io::read_msh_mesh(&none).unwrap().unnamed_volumes.is_empty());
+    assert!(fh_io::read_msh_mesh(&none)
+        .unwrap()
+        .unnamed_volumes
+        .is_empty());
 }

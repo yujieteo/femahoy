@@ -123,7 +123,11 @@ fn a_dsload_on_a_tet10_face_gives_the_exact_tension() {
         let u = sol.steps[0].displacement[i];
         let exact = [0.01 * p[0], -0.003 * p[1], -0.003 * p[2]];
         for k in 0..3 {
-            assert!((u[k] - exact[k]).abs() < 1e-12, "node {} {u:?} {exact:?}", i + 1);
+            assert!(
+                (u[k] - exact[k]).abs() < 1e-12,
+                "node {} {u:?} {exact:?}",
+                i + 1
+            );
         }
     }
     // The reactions on x = 0 balance the load: pressure 10 times area 1.
@@ -181,8 +185,14 @@ fn a_dsload_on_a_curved_tet10_bore_balances_the_reactions() {
     // The plane x = 0 is t = 1. The plane y = 0 is t = 0.
     let (rf_x, rf_y) = (sum(1.0, 0), sum(0.0, 1));
     let force = p * a * len;
-    assert!((rf_x + force).abs() < 1e-9 * force, "rf_x {rf_x}, load {force}");
-    assert!((rf_y + force).abs() < 1e-9 * force, "rf_y {rf_y}, load {force}");
+    assert!(
+        (rf_x + force).abs() < 1e-9 * force,
+        "rf_x {rf_x}, load {force}"
+    );
+    assert!(
+        (rf_y + force).abs() < 1e-9 * force,
+        "rf_y {rf_y}, load {force}"
+    );
     // Lame, plane strain: u_r(a) = (1 + nu) / E * ((1 - 2 nu) A a + B / a),
     // A = p a^2 / (b^2 - a^2), B = p a^2 b^2 / (b^2 - a^2). E = 1000, nu = 0.3.
     let (e, nu) = (1000.0, 0.3);
@@ -195,7 +205,11 @@ fn a_dsload_on_a_curved_tet10_bore_balances_the_reactions() {
             let u = step.displacement[i];
             let ur = (u[0] * n[0] + u[1] * n[1]) / a;
             // 4 x 8 quadratic cells: the discretisation error of u_r is below 1 percent.
-            assert!((ur - exact).abs() < 0.01 * exact, "node {} u_r {ur}, exact {exact}", i + 1);
+            assert!(
+                (ur - exact).abs() < 0.01 * exact,
+                "node {} u_r {ur}, exact {exact}",
+                i + 1
+            );
         }
     }
 }

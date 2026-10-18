@@ -159,17 +159,21 @@ fn an_extruded_hex_block_gives_c3d8i_elements() {
 }
 
 /// The bar-tension case with the region TIP (the face x = 4 of the block fixture, a gmsh
-/// physical surface) and a pull on it.
+/// physical surface) and a pull on it. The plane set TIP of the case becomes END, because a
+/// region name must not repeat a set name.
 fn region_case(name: &str, region: &str) -> PathBuf {
     case(name, |t| {
-        t.replace("at = 100.0", "at = 4.0").replace(
-            "[[model.boundary]]\nset = \"FIXED\"",
-            &format!(
-                "[[model.region]]\nname = \"{region}\"\naxis = \"x\"\nat = 4.0\n\n\
+        t.replace("at = 100.0", "at = 4.0")
+            .replace("name = \"TIP\"", "name = \"END\"")
+            .replace("set = \"TIP\"", "set = \"END\"")
+            .replace(
+                "[[model.boundary]]\nset = \"FIXED\"",
+                &format!(
+                    "[[model.region]]\nname = \"{region}\"\naxis = \"x\"\nat = 4.0\n\n\
 [[model.dsload]]\nsurface = \"{region}\"\npressure = -10.0\n\n\
 [[model.boundary]]\nset = \"FIXED\""
-            ),
-        )
+                ),
+            )
     })
 }
 
@@ -204,7 +208,11 @@ fn a_lost_or_renamed_region_is_refused() {
     let dir = region_case("lost", "PULL");
     let out = model(&block("block-tet10.msh"), &dir, &["--mesh-units", "SI-mm"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(stderr(&out).contains("mesh.region.missing"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("mesh.region.missing"),
+        "{}",
+        stderr(&out)
+    );
     assert!(!dir.join("out.inp").exists());
 }
 
@@ -219,7 +227,11 @@ fn a_volume_with_no_physical_group_is_refused() {
     std::fs::write(&msh, unnamed).unwrap();
     let out = model(&msh, &dir, &["--mesh-units", "SI-mm"]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(stderr(&out).contains("mesh.volume.unnamed"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("mesh.volume.unnamed"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]
@@ -228,7 +240,12 @@ fn the_workflow_commands_run_before_the_mesh_file_of_the_case_exists() {
     let dir = case("before", |t| t);
     std::fs::remove_file(dir.join("bar.inp")).unwrap();
     let step = dir.join("bar.step");
-    let info = fh(&["info", step.to_str().unwrap(), "--case", dir.to_str().unwrap()]);
+    let info = fh(&[
+        "info",
+        step.to_str().unwrap(),
+        "--case",
+        dir.to_str().unwrap(),
+    ]);
     assert_eq!(info.status.code(), Some(0), "{}", stderr(&info));
     let out = model(&block("block-tet10.msh"), &dir, &["--mesh-units", "SI-mm"]);
     assert_eq!(out.status.code(), Some(1));
@@ -357,13 +374,24 @@ fn fh_mesh_makes_a_physical_group_for_each_region() {
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let report = String::from_utf8_lossy(&out.stdout);
     for region in ["SUPPORT", "SYM_Y", "SYM_Z", "LOAD"] {
-        assert!(report.contains(&format!("surface\t{region}\t")), "{region}: {report}");
+        assert!(
+            report.contains(&format!("surface\t{region}\t")),
+            "{region}: {report}"
+        );
     }
     assert!(report.contains("elset\tSOLID\t"), "{report}");
     // A region on a plane with no face of the part is refused.
     let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
-    std::fs::write(dir.join("case.toml"), toml.replace("at = 100.0", "at = 150.0")).unwrap();
+    std::fs::write(
+        dir.join("case.toml"),
+        toml.replace("at = 100.0", "at = 150.0"),
+    )
+    .unwrap();
     let out = fh(&args(&dir).each_ref().map(String::as_str));
     assert_eq!(out.status.code(), Some(1));
-    assert!(stderr(&out).contains("mesh.region.missing"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("mesh.region.missing"),
+        "{}",
+        stderr(&out)
+    );
 }

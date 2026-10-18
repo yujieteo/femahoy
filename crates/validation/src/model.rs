@@ -253,7 +253,10 @@ impl FixtureReader<'_> {
         for t in self.rows(table, "dsload")? {
             self.only_keys(t, "model.dsload", &["surface", "pressure"])?;
             let surface = self.string(t, "surface")?;
-            if !regions.iter().any(|r| r.name.eq_ignore_ascii_case(&surface)) {
+            if !regions
+                .iter()
+                .any(|r| r.name.eq_ignore_ascii_case(&surface))
+            {
                 return Err(self.err(
                     t.get("surface"),
                     format!("`{surface}` is not a `[[model.region]]` name"),

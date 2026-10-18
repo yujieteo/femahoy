@@ -520,6 +520,8 @@ fn shipped_cases_load_and_have_existing_inputs() {
     assert_eq!(
         ids,
         [
+            "bar-pressure",
+            "bar-pressure-m",
             "bar-tension",
             "cantilever",
             "cantilever-c3d10",
@@ -952,7 +954,10 @@ fn a_case_before_its_mesh_loads_only_with_load_before_mesh() {
     let text = body(1, "class = \"N\"\nrel_tol = 1\nabs_tol = 0").replace("m.inp", "later.inp");
     write_case(&dir, &text).unwrap_err();
     let error = Case::load(&dir).unwrap_err();
-    assert!(error.message.contains("mesh file later.inp not found"), "{error}");
+    assert!(
+        error.message.contains("mesh file later.inp not found"),
+        "{error}"
+    );
     let case = Case::load_before_mesh(&dir).unwrap();
     assert_eq!(case.meshes, [dir.join("later.inp")]);
 }

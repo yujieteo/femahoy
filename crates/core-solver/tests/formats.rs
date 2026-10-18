@@ -44,7 +44,10 @@ fn run_in(name: &str, formats: Formats, units: &str) -> PathBuf {
 #[test]
 fn the_declared_units_come_from_a_comment_before_the_first_keyword() {
     use fh_core_solver::input_units;
-    assert_eq!(input_units("** Made by fh model\n** units: SI-mm\n*NODE\n"), "SI-mm");
+    assert_eq!(
+        input_units("** Made by fh model\n** units: SI-mm\n*NODE\n"),
+        "SI-mm"
+    );
     assert_eq!(input_units("\n**units:SI-m\n*NODE\n"), "SI-m");
     // After the first keyword, or with an unknown value, the input declares no units.
     assert_eq!(input_units("*NODE\n** units: SI-mm\n"), "unspecified");
@@ -60,7 +63,10 @@ fn every_result_file_states_the_declared_units() {
     let pvd = fs::read_to_string(d.join("results.pvd")).unwrap();
     assert!(pvd.contains("units=\"SI-mm\""), "{pvd}");
     let text = fs::read_to_string(d.join("step-1.txt")).unwrap();
-    assert!(text.contains("\nunits: SI-mm (mm, N, MPa, tonne, s)\n"), "{text}");
+    assert!(
+        text.contains("\nunits: SI-mm (mm, N, MPa, tonne, s)\n"),
+        "{text}"
+    );
     let none = run_in("no-units", Formats::default(), fh_core_solver::NO_UNITS);
     let toon = fs::read_to_string(none.join("summary.toon")).unwrap();
     assert!(toon.contains("\nunits: unspecified\n"), "{toon}");

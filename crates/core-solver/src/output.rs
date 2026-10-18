@@ -496,7 +496,7 @@ impl Writer<'_> {
                     &element_ids,
                     &cell_types,
                 )
-                    .map_err(|e| io(&file, e))
+                .map_err(|e| io(&file, e))
             })?;
         }
         self.entries.push(PvdEntry {
