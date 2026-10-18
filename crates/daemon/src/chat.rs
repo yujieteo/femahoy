@@ -58,6 +58,9 @@ struct Log {
     taken: u64,
     /// The agent started a turn and did not end it with a `result`.
     turn: bool,
+    /// The daemon reads the event stream of the current agent. It stops at the exit of the
+    /// agent, after the last entry of the agent.
+    reading: bool,
     /// The time when the agent started to work, in ms since the Unix epoch.
     started_ms: u64,
     /// The session of the agent, so that a new agent continues it.
@@ -80,13 +83,30 @@ impl Log {
     }
 
     /// The agent works: it has a message that it did not read, or a turn with no end.
-    fn running(&mut self) -> bool {
-        (self.turn || self.sent > self.taken) && self.alive()
+    fn running(&self) -> bool {
+        self.reading && (self.turn || self.sent > self.taken)
     }
 
     /// The agent works no more.
     fn rest(&mut self) {
         (self.sent, self.taken, self.turn) = (0, 0, false);
+    }
+
+    /// Stop the current agent and each process that it started, and forget its work.
+    fn end(&mut self) {
+        self.rest();
+        (self.input, self.reading) = (None, false);
+        let Some(mut child) = self.agent.take() else {
+            return;
+        };
+        // The agent is the first process of its own group.
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGTERM);
+        }
+        #[cfg(not(unix))]
+        let _ = child.kill();
+        std::thread::spawn(move || child.wait());
     }
 }
 
@@ -140,7 +160,7 @@ impl Chat {
     /// the daemon that is not final: `<project> <run> <state> <last progress event>`.
     pub(crate) fn read(&self, since: u64) -> Message {
         let mut m = Message::new();
-        let mut log = self.lock();
+        let log = self.lock();
         let running = log.running();
         m.set("state", if running { "running" } else { "idle" });
         m.set("next", log.next);
@@ -165,15 +185,15 @@ impl Chat {
             return Err(Error::bad("chat.empty", "the message is empty"));
         }
         let mut log = self.lock();
+        if log.input.is_none() || !log.alive() {
+            self.start(&mut log)?;
+        }
         if !log.running() {
             log.rest();
             log.started_ms = now_ms();
             log.seen = self.finished();
         }
         self.push(&mut log, "you", text);
-        if log.input.is_none() || !log.alive() {
-            self.start(&mut log)?;
-        }
         let line = format!(
             "{{\"type\":\"user\",\"message\":{{\"role\":\"user\",\"content\":{}}},\"parent_tool_use_id\":null}}\n",
             quote(text)
@@ -196,6 +216,11 @@ impl Chat {
 
     /// Start a new agent, which continues the session of the chat.
     fn start(self: &Arc<Self>, log: &mut Log) -> Result<(), Error> {
+        if log.running() {
+            // The agent ended, and the daemon did not see the end of its stream yet.
+            self.push(log, "error", "the agent ended before the end of its work");
+        }
+        log.end();
         let dir = self.state_dir.join("chat");
         std::fs::create_dir_all(&dir).map_err(|e| Error::io("chat folder", e))?;
         let program = std::env::var("FH_AGENT")
@@ -241,7 +266,7 @@ impl Chat {
             }
         };
         let (out, err, pid) = (child.stdout.take(), child.stderr.take(), child.id());
-        log.input = child.stdin.take();
+        (log.input, log.reading) = (child.stdin.take(), true);
         log.agent = Some(child);
         if let Some(err) = err {
             let chat = self.clone();
@@ -270,19 +295,7 @@ impl Chat {
     pub(crate) fn stop(&self) {
         let mut log = self.lock();
         let running = log.running();
-        log.rest();
-        log.input = None;
-        let Some(mut child) = log.agent.take() else {
-            return;
-        };
-        // The agent is the first process of its own group.
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(-(child.id() as i32), libc::SIGTERM);
-        }
-        #[cfg(not(unix))]
-        let _ = child.kill();
-        std::thread::spawn(move || child.wait());
+        log.end();
         if running {
             self.push(&mut log, "note", "stopped the agent");
         }
@@ -364,7 +377,7 @@ impl Chat {
             }
         }
         // Wait for the exit with no lock, so that a read of the chat does not wait.
-        let code = loop {
+        let (mut log, code) = loop {
             let mut log = self.lock();
             if !log.current(pid) {
                 // A stop or a new agent took this agent.
@@ -372,19 +385,18 @@ impl Chat {
             }
             match log.agent.as_mut().map(Child::try_wait) {
                 Some(Ok(None)) => {}
-                Some(Ok(Some(code))) => break code.code(),
-                _ => break None,
+                Some(Ok(Some(code))) => break (log, code.code()),
+                _ => break (log, None),
             }
             drop(log);
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
-        let mut log = self.lock();
-        log.input = None;
-        if log.turn || log.sent > log.taken {
-            log.rest();
+        if log.running() {
             let why = format!("the agent ended before the end of its work (exit code {code:?})");
             self.push(&mut log, "error", &why);
         }
+        log.rest();
+        (log.input, log.reading) = (None, false);
     }
 }
 

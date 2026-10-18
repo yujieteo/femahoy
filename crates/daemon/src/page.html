@@ -236,6 +236,8 @@ async function startViewer() {
     document.fonts.add(new FontFace("Inter", viewer.font(), { weight: "100 900" }));
     view = await viewer.start($("fh"), token);
     msg.remove();
+    // The canvas takes the focus when it starts. The person writes first.
+    input.focus();
     if (shown) view.open(...shown);
   } catch (e) {
     msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
