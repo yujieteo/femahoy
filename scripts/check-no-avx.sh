@@ -6,7 +6,9 @@
 # 3. fh validate on the validation cases.
 # 4. The CLI workflow of scripts/check-workflow.sh: build123d (Python), fh, gmsh and fh-solve.
 # 5. scripts/check-threads.py: the result bytes of fh-solve at 1, 2, 4 and 6 threads.
-# 6. The CPU features that the external programs declare or find.
+# 6. The matrix bytes at 1, 2, 4 and 6 threads: a unit test of core-solver, because the solver
+#    writes no matrix file. The test binary has the same target and RUSTFLAGS as step 2.
+# 7. The CPU features that the external programs declare or find.
 # Environment: PYTHON and FH_GMSH as in check-workflow.sh. FH_CHECK_OUT: a new folder that keeps
 # the logs and tables. Without it, the script uses a temporary folder and removes it.
 # The times are emulator times, not hardware times.
@@ -63,9 +65,12 @@ fi
 echo 'PASS: Nehalem rejects AVX with SIGILL.'
 
 # 2. Release build with SSE4.2 and no AVX.
-env -u CARGO_ENCODED_RUSTFLAGS \
-  RUSTFLAGS='-C target-cpu=x86-64 -C target-feature=+sse4.2,-avx,-avx2' \
-  cargo build --release --target x86_64-unknown-linux-gnu --target-dir "$work/target" --bin fh --bin fh-solve
+no_avx_cargo() {
+  env -u CARGO_ENCODED_RUSTFLAGS \
+    RUSTFLAGS='-C target-cpu=x86-64 -C target-feature=+sse4.2,-avx,-avx2' \
+    cargo "$1" --release --target x86_64-unknown-linux-gnu --target-dir "$work/target" "${@:2}"
+}
+no_avx_cargo build --bin fh --bin fh-solve
 bin="$work/target/x86_64-unknown-linux-gnu/release"
 
 # 3. fh validate. Each solver subprocess also runs under the emulator.
@@ -95,7 +100,18 @@ cases="$out/workflow"
   --output "$out/threads" --threads 1,2,4,6 --box 14 --box 28 \
   "$cases/root/validation/cases/bar-tension/bar.inp" "$cases/fine/validation/cases/bar-pressure/bar.inp"
 
-# 6. External programs. Step 4 ran them under Nehalem. Record the CPU features that numpy (a
+# 6. The matrix bytes. Cargo runs the test binary under the emulator.
+test_timer=()
+[[ ${#timer[@]} == 0 ]] || test_timer=(/usr/bin/time -v -o "$out/matrix.time")
+printf '#!/usr/bin/env bash\nexec %s"$@"\n' "$(printf '%q ' "${test_timer[@]}" "${emulator[@]}")" > "$work/test-runner"
+chmod +x "$work/test-runner"
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER="$work/test-runner" no_avx_cargo test -p fh-core-solver \
+  --lib -- --exact step::tests::the_matrix_has_the_same_bits_for_any_thread_count 2>&1 | tee "$out/matrix.log"
+[[ ! -f "$out/matrix.time" ]] || grep -E 'Elapsed|Maximum resident' "$out/matrix.time"
+grep -q '^test result: ok. 1 passed' "$out/matrix.log"
+echo 'PASS: the same matrix bytes at 1, 2, 4 and 6 threads under Nehalem.'
+
+# 7. External programs. Step 4 ran them under Nehalem. Record the CPU features that numpy (a
 # build123d dependency) finds under Nehalem, and the x86 ISA level that each ELF file declares.
 {
   echo '## numpy under Nehalem'

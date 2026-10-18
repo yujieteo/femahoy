@@ -1142,3 +1142,121 @@ impl Run<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::system::MaterialFactory;
+
+    struct Quiet;
+    impl Observer for Quiet {}
+
+    /// A C3D8 box with `n` elements on each axis. A smooth map moves the inner points, so the
+    /// element matrices differ. The face x = 0 is fixed. The face x = n has a prescribed
+    /// displacement, so the sweep also gives internal forces.
+    fn box_input(n: usize) -> String {
+        let id = |x: usize, y: usize, z: usize| 1 + x + (n + 1) * (y + (n + 1) * z);
+        let mut s = String::from("*NODE\n");
+        for z in 0..=n {
+            for y in 0..=n {
+                for x in 0..=n {
+                    let t = [x, y, z].map(|v| v as f64 / n as f64);
+                    let bump = t
+                        .iter()
+                        .map(|v| (std::f64::consts::PI * v).sin())
+                        .product::<f64>();
+                    let p = [0, 1, 2].map(|d| n as f64 * (t[d] + [0.2, 0.14, -0.1][d] * bump));
+                    s += &format!("{},{:?},{:?},{:?}\n", id(x, y, z), p[0], p[1], p[2]);
+                }
+            }
+        }
+        s += "*ELEMENT, TYPE=C3D8\n";
+        let mut e = 0;
+        for z in 0..n {
+            for y in 0..n {
+                for x in 0..n {
+                    e += 1;
+                    let c = |a, b, d| id(x + a, y + b, z + d);
+                    let (c0, c1, c2, c3) = (c(0, 0, 0), c(1, 0, 0), c(1, 1, 0), c(0, 1, 0));
+                    let (c4, c5, c6, c7) = (c(0, 0, 1), c(1, 0, 1), c(1, 1, 1), c(0, 1, 1));
+                    s += &format!("{e},{c0},{c1},{c2},{c3},{c4},{c5},{c6},{c7}\n");
+                }
+            }
+        }
+        s += &format!("*ELSET, ELSET=ALL, GENERATE\n1,{e},1\n*MATERIAL, NAME=M\n*ELASTIC\n");
+        s += "1000,0.3\n*SOLID SECTION, ELSET=ALL, MATERIAL=M\n*STEP\n*STATIC\n*BOUNDARY\n";
+        for z in 0..=n {
+            for y in 0..=n {
+                s += &format!("{},1,3\n{},1,1,0.01\n", id(0, y, z), id(n, y, z));
+            }
+        }
+        s + "*END STEP\n"
+    }
+
+    /// The bits of the matrix values and of the internal forces after the first assembly of a
+    /// linear step (`linear_increment`) with `threads` threads, the value of FH_THREADS.
+    fn assemble(model: &fh_inp::Model, threads: usize) -> (Vec<u64>, Vec<u64>) {
+        let options = Options {
+            threads,
+            ..Options::default()
+        };
+        let mesh = Mesh::new(model, &MaterialFactory::elastic(), Vec::new()).unwrap();
+        let graph = NodeGraph::new(model.nodes.len(), &mesh.conn, &mesh.conn_start);
+        let mut run = Run {
+            mesh: &mesh,
+            graph: &graph,
+            options: &options,
+            threads,
+            n_steps: 1,
+            states: StateStore::new(&mesh.state_lens(), false),
+            contact: StateStore::new(&mesh.group_state_lens(), false),
+            cache: None,
+            stats: Stats::default(),
+            pattern_builds: 0,
+            nnz: 0,
+            counted: None,
+        };
+        let mut bc = BTreeMap::new();
+        mesh.add_bcs(&model.steps[0].boundaries, &mut bc).unwrap();
+        let f = vec![0.0; mesh.n_dofs];
+        let t = run.constrain(&bc, &f, &mut BTreeSet::new()).unwrap();
+        let mut c = run.prepare(t).unwrap();
+        let u0 = c.t.offset.clone();
+        c.matrix.clear();
+        let tangent = Some((c.matrix.values_mut(), &c.map));
+        let sweep = run.sweep(&mut Quiet, 1, "assemble", true, &u0, tangent, false);
+        let fint = sweep.map_err(Fail::into_error).unwrap().fint;
+        let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect();
+        (bits(c.matrix.values_mut()), bits(&fint))
+    }
+
+    #[test]
+    fn the_matrix_has_the_same_bits_for_any_thread_count() {
+        // Threads in an assembly: only the element evaluations in `for_elements`. With t
+        // threads, a chunk has t * CHUNK elements, and t threads evaluate the elements of the
+        // chunk in parallel. Then this thread adds the element matrices and forces to the
+        // matrix values and to `fint`, in element order, through the slot map
+        // (`CpuAssembler::add_chunk`). The pattern, the slot map and the constraint transform
+        // use one thread. E3 runs this test without AVX under QEMU (scripts/check-no-avx.sh).
+        let n = 16;
+        assert!(
+            n * n * n >= 2 * 6 * CHUNK,
+            "each thread count needs 2 chunks or more"
+        );
+        let model = fh_inp::parse(&box_input(n)).unwrap();
+        let (k1, f1) = assemble(&model, 1);
+        assert!(k1.len() > 100_000);
+        assert!(f1.iter().any(|&x| f64::from_bits(x) != 0.0));
+        for threads in [2, 4, 6] {
+            let (k, f) = assemble(&model, threads);
+            assert!(
+                k == k1,
+                "the matrix values at {threads} threads differ from 1 thread"
+            );
+            assert!(
+                f == f1,
+                "the internal forces at {threads} threads differ from 1 thread"
+            );
+        }
+    }
+}
