@@ -1,4 +1,5 @@
-//! A small JSON reader (RFC 8259) for the event stream of the agent (`chat.rs`).
+//! A small JSON reader (RFC 8259) for the event stream of the agent (`chat.rs`), and the
+//! JSON string of a text for the messages to the agent.
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Json {
@@ -11,6 +12,23 @@ pub(crate) enum Json {
 }
 
 const MAX_DEPTH: usize = 64;
+
+/// `text` as a JSON string, with its quotes.
+pub(crate) fn quote(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
 
 impl Json {
     pub(crate) fn parse(text: &str) -> Result<Json, String> {
@@ -200,6 +218,13 @@ impl Parser<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_quoted_text_reads_back_the_same() {
+        let text = "a \"b\" \\ c\nd\te\u{1} caf\u{e9} \u{1F600}";
+        assert_eq!(Json::parse(&quote(text)), Ok(Json::Text(text.into())));
+        assert_eq!(quote("x\n\"y\""), r#""x\n\"y\"""#);
+    }
 
     #[test]
     fn surrogates_and_hex_digits_in_escapes() {

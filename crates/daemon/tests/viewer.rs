@@ -163,6 +163,36 @@ fn the_page_loads_the_viewer_with_a_new_nonce_and_no_token_in_it() {
 }
 
 #[test]
+fn the_page_has_the_chat_beside_the_model_view_and_loads_nothing_from_the_network() {
+    let lab = Lab::new("layout", true);
+    let text = lab
+        .get(&format!("/?token={}", lab.daemon.token()), &[])
+        .text();
+    let at = |part: &str| {
+        text.find(part)
+            .unwrap_or_else(|| panic!("the page has no {part}"))
+    };
+    // The chat is on the left of the model view, and its composer is below its messages.
+    assert!(at("<aside id=\"chat\"") < at("<main id=\"model\""));
+    assert!(at("id=\"log\"") < at("<textarea") && at("<textarea") < at("id=\"send\""));
+    assert!(at("<canvas id=\"fh\"") > at("<main id=\"model\""));
+    for part in [
+        "id=\"stop\"",
+        "id=\"runs\"",
+        "\"/api/v1/chat?since=\"",
+        "\"/api/v1/chat/stop\"",
+    ] {
+        at(part);
+    }
+    // The font comes from the viewer. The page names no other host.
+    assert!(text.contains("new FontFace(\"Inter\", viewer.font()"));
+    assert!(text.contains("font: 15px/1.55 Inter,"));
+    for remote in ["http:", "https:", "//cdn", "@import", "<link"] {
+        assert!(!text.contains(remote), "the page has {remote}");
+    }
+}
+
+#[test]
 fn the_viewer_files_need_the_token_and_the_own_origin() {
     let lab = Lab::new("files", true);
     let bearer = lab.bearer();

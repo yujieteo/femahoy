@@ -852,6 +852,19 @@ impl Service {
             .collect()
     }
 
+    /// The runs of this daemon that are not final, in run order, each with the text of its
+    /// last `progress` event (or an empty text).
+    pub fn active(&self) -> Vec<(RunRecord, String)> {
+        let inner = self.shared.lock();
+        let live = inner.live.values().filter(|l| !l.record.state.is_final());
+        live.map(|l| {
+            let items = l.events.items.iter().rev();
+            let progress = items.map(|e| &e.text).find(|t| t.starts_with("progress "));
+            (l.record.clone(), progress.cloned().unwrap_or_default())
+        })
+        .collect()
+    }
+
     /// The registered projects and their root folders, in project ID order.
     pub fn projects(&self) -> Vec<(String, PathBuf)> {
         let inner = self.shared.lock();

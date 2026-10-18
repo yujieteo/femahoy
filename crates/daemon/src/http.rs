@@ -17,7 +17,7 @@
 //!
 //! | Method and path | Body | Answer |
 //! |---|---|---|
-//! | `GET /` | | the page of the daemon (HTML): it loads the wasm viewer |
+//! | `GET /` | | the page of the daemon (HTML): the chat, the list of the runs and the wasm viewer |
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
 //! | `GET /api/v1/status` | | `instance`, `pid` |
 //! | `GET /api/v1/projects` | | one item `<project> <root>` for each project |
@@ -30,8 +30,8 @@
 //! | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
 //! | `POST /api/v1/projects/<p>/preview` | `input`, optional `title` | `revision`: the chat gets a `show` entry, and the page shows the model with its supports and loads |
 //! | `GET /api/v1/projects/<p>/revisions/<rev>` | | the input of the revision (bytes) |
-//! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
-//! | `POST /api/v1/chat` | `text` | `state`: the agent starts on the request |
+//! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms` and `solving`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
+//! | `POST /api/v1/chat` | `text` | `state`: the message goes to the agent, also while it works |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
 //!
 //! The page has no secret in it. Its script reads the token from the page address and
@@ -60,49 +60,9 @@ const MAX_BODY: usize = 16 << 10;
 const MAX_CONNECTIONS: usize = 32;
 /// The longest time that a client can take to send its request.
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
-/// The page of the daemon. `NONCE` is the nonce of its script. The script loads the wasm
-/// viewer (`crates/viewer`, `start`) with the token from the page address.
-const PAGE: &str = r#"<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>femahoy</title>
-<style>
-html, body { margin: 0; height: 100%; overflow: hidden; background: #1b1b1b; color: #ddd; font: 15px system-ui, sans-serif; }
-#fh { display: block; width: 100%; height: 100%; }
-#msg { position: absolute; top: 40%; width: 100%; text-align: center; padding: 0 16px; box-sizing: border-box; }
-</style>
-</head>
-<body>
-<canvas id="fh"></canvas>
-<p id="msg">Loading the viewer...</p>
-<script type="module" nonce="NONCE">
-const msg = document.getElementById("msg");
-const token = new URLSearchParams(location.search).get("token") || "";
-async function get(path) {
-  const r = await fetch(path, { headers: { Authorization: "Bearer " + token } });
-  if (!r.ok) {
-    const text = await r.text();
-    const field = (k) => (text.split("\n").find((l) => l.startsWith(k + "=")) || "").slice(k.length + 1);
-    throw new Error(path + ": HTTP " + r.status + ": " + field("message") + " (" + field("error") + ")");
-  }
-  return r;
-}
-try {
-  const js = await (await get("/viewer/fh_viewer.js")).text();
-  const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
-  const wasm = await (await get("/viewer/fh_viewer_bg.wasm")).arrayBuffer();
-  await viewer.default({ module_or_path: wasm });
-  await viewer.start(document.getElementById("fh"));
-  msg.remove();
-} catch (e) {
-  msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
-}
-</script>
-</body>
-</html>
-"#;
+/// The page of the daemon (`page.html`): the chat on the left and the wasm viewer
+/// (`crates/viewer`, `start`) in the center. `NONCE` is the nonce of its script.
+const PAGE: &str = include_str!("page.html");
 
 /// The files of the wasm viewer that the daemon serves, with their content types.
 const VIEWER_FILES: [(&str, &str); 2] = [
@@ -386,10 +346,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     match (req.method.as_str(), &segments[..]) {
         ("GET", ["", "viewer", name]) => return viewer_file(ctx.viewer.as_deref(), name),
         ("GET", ["", "api", "v1", "chat"]) => {
-            let (state, next, items) = ctx.chat.read(req.query_number("since")?);
-            m.set("state", state);
-            m.set("next", next);
-            m.items = items;
+            m = ctx.chat.read(req.query_number("since")?);
         }
         ("POST", ["", "api", "v1", "chat"]) => {
             ctx.chat.ask(body()?.need("text")?)?;
@@ -397,7 +354,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
         }
         ("POST", ["", "api", "v1", "chat", "stop"]) => {
             ctx.chat.stop();
-            m.set("state", ctx.chat.read(u64::MAX).0);
+            m.set("state", "idle");
         }
         ("GET", ["", "api", "v1", "projects", p, "runs", r, "files", name]) => {
             return Ok(Reply::Bytes(

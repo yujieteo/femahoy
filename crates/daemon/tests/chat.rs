@@ -1,8 +1,10 @@
 //! The chat routes with a fake agent that prints a recorded event stream of `claude -p
-//! --output-format stream-json`. No test calls a real LLM. The recording is in
-//! `tests/data/agent-1.jsonl` (to the `fh run` command) and `tests/data/agent-2.jsonl` (its
-//! result and the end). The fake prints the second part when the file `go` exists, after
-//! the test solved a run on the daemon, as `fh run` does.
+//! --input-format stream-json --output-format stream-json`. No test calls a real LLM. The
+//! recording is in `tests/data/agent-1.jsonl` (to the `fh run` command) and
+//! `tests/data/agent-2.jsonl` (its result and the end). The fake takes each message of the
+//! person from 1 line of stdin and replays it, as `--replay-user-messages` does. It takes
+//! the second message during its work, and prints the second part when the file `go`
+//! exists, after the test solved a run on the daemon, as `fh run` does.
 
 #![cfg(unix)]
 
@@ -14,26 +16,48 @@ use std::time::{Duration, Instant};
 use fh_daemon::{new_request_id, Client, Config, Daemon, Error, Message, Options, RunState};
 use fh_solver_api::SubprocessSolver;
 
-const SOLVER: &str = r#"#!/bin/sh
+/// The fake solver. A model with `FAIL` in it fails. Another model solves when the file
+/// `release` exists.
+fn solver(dir: &Path) -> String {
+    format!(
+        r#"#!/bin/sh
 echo "fh-solver-protocol 2"
-echo "progress step=1/1 phase=solve fraction=1"
+echo "progress step=1/1 phase=solve fraction=0.5"
+if grep -q FAIL "$1"; then
+  echo "the conjugate gradient solver did not reach the tolerance" >&2
+  exit 3
+fi
+while [ ! -e '{}' ]; do sleep 0.05; done
 printf '<VTKFile type="Collection"><Collection units="SI-mm"><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>\n' > results.pvd
 printf 'VTU' > step-1.vtu
 printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon
-"#;
+"#,
+        dir.join("release").display()
+    )
+}
 
-/// The fake agent. It keeps the request, the arguments and the environment that it gets.
+/// The fake agent. It keeps each message, the arguments and the environment that it gets.
+/// After the recording, it takes 1 more message and works until a stop.
 fn agent(data: &Path) -> String {
     let (one, two) = (data.join("agent-1.jsonl"), data.join("agent-2.jsonl"));
     format!(
         r#"#!/bin/sh
-cat > prompt.txt
 printf '%s\n' "$@" > args.txt
 printf 'FH_STATE=%s\nFH_NO_OPEN=%s\n' "$FH_STATE" "$FH_NO_OPEN" > env.txt
+take() {{
+  IFS= read -r line || exit 0
+  printf '%s\n' "$line" >> prompt.txt
+  echo '{{"type":"user","isReplay":true,"message":{{"role":"user","content":"taken"}}}}'
+}}
+take
 cat '{}'
+take
 while [ ! -e go ]; do sleep 0.05; done
 token=$(sed -n 's/^token=//p' "$FH_STATE/daemon.info")
 sed "s/@TOKEN@/$token/" '{}'
+take
+echo '{{"type":"assistant","message":{{"content":[{{"type":"text","text":"I work."}}]}}}}'
+while :; do sleep 0.05; done
 "#,
         one.display(),
         two.display()
@@ -76,7 +100,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("project")).unwrap();
     let data = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
-    for (name, text) in [("solver.sh", SOLVER.to_owned()), ("agent.sh", agent(&data))] {
+    for (name, text) in [("solver.sh", solver(&dir)), ("agent.sh", agent(&data))] {
         fs::write(dir.join(name), text).unwrap();
         fs::set_permissions(dir.join(name), fs::Permissions::from_mode(0o755)).unwrap();
     }
@@ -111,17 +135,53 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let request = "Build and solve a steel cantilever of 100 x 10 x 10 mm.";
     let m = call(&c, "POST /api/v1/chat", &[("text", request)]).unwrap();
     assert_eq!(m.get("state"), Some("running"));
-    assert_eq!(
-        code(call(&c, "POST /api/v1/chat", &[("text", "again")])),
-        "chat.busy"
-    );
     wait(&c, |m| m.items.iter().any(|i| i.contains(" cmd fh run ")));
 
+    // A message during the work goes to the agent at once, and the agent continues.
+    let chat = state.join("chat");
+    let redirect = "Use a finer mesh.";
+    let m = call(&c, "POST /api/v1/chat", &[("text", redirect)]).unwrap();
+    assert_eq!(m.get("state"), Some("running"));
+    let prompts = || fs::read_to_string(chat.join("prompt.txt")).unwrap_or_default();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while prompts().lines().count() < 2 {
+        assert!(
+            Instant::now() < deadline,
+            "the agent did not take the message"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let line = |text: &str| {
+        format!(
+            "{{\"type\":\"user\",\"message\":{{\"role\":\"user\",\"content\":\"{text}\"}},\"parent_tool_use_id\":null}}"
+        )
+    };
+    assert_eq!(
+        prompts(),
+        format!("{}\n{}\n", line(request), line(redirect))
+    );
+
     // The `fh run` of the agent sends the model to the page, then solves the same revision.
+    // While it solves, the chat shows the run and its progress, and the time when the
+    // work started.
     let project = c.register(&dir.join("project")).unwrap();
     fs::write(dir.join("project/model.inp"), "*NODE\n").unwrap();
+    fs::write(dir.join("project/bad.inp"), "*NODE\n** FAIL\n").unwrap();
     let revision = c.preview(&project, "model.inp", "my case").unwrap();
+    let bad = c.submit(&project, &new_request_id(), "bad.inp").unwrap();
     let ack = c.submit(&project, &new_request_id(), "model.inp").unwrap();
+    let solving = format!(
+        "{project} {} running progress step=1/1 phase=solve fraction=0.5",
+        ack.run
+    );
+    let m = wait(&c, |m| m.get("solving") == Some(solving.as_str()));
+    assert_eq!(m.get("state"), Some("running"));
+    let started: u64 = m.get("started_ms").unwrap().parse().unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    assert!(started > 0 && started <= now.as_millis() as u64, "{m:?}");
+    fs::write(dir.join("release"), "").unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let record = c.record(&project, &ack.run).unwrap();
@@ -134,8 +194,13 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         );
         std::thread::sleep(Duration::from_millis(20));
     }
-    fs::write(state.join("chat/go"), "").unwrap();
+    assert_eq!(
+        c.record(&project, &bad.run).unwrap().state,
+        RunState::Failed
+    );
+    fs::write(chat.join("go"), "").unwrap();
     let m = wait(&c, |m| m.get("state") == Some("idle"));
+    assert_eq!((m.get("solving"), m.get("started_ms")), (None, None));
 
     let kinds: Vec<&str> = m
         .items
@@ -143,12 +208,16 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         .map(|i| i.split(' ').nth(1).unwrap())
         .collect();
     let first = |kind: &str| kinds.iter().position(|k| *k == kind).unwrap();
+    let last = |kind: &str| kinds.iter().rposition(|k| *k == kind).unwrap();
     assert_eq!(kinds[0], "you");
     assert!(
-        first("cmd") < first("show") && first("show") < first("open"),
+        first("cmd") < last("you") && last("you") < first("show") && first("show") < first("open"),
         "{kinds:?}"
     );
-    assert!(first("open") < first("end"), "{kinds:?}");
+    assert!(
+        first("failed") < first("end") && first("open") < first("end"),
+        "{kinds:?}"
+    );
     let text = m.items.join("\n");
     assert!(
         text.contains(&format!(" show {project} {revision} my case")),
@@ -163,6 +232,13 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         text.contains(&format!(" open {project} {}", ack.run)),
         "{text}"
     );
+    // A failed solve is an entry with its error.
+    let failed = m.items.iter().find(|i| i.contains(" failed ")).unwrap();
+    assert!(
+        failed.contains(&format!(" failed {project} {} ", bad.run))
+            && failed.contains("did not reach the tolerance"),
+        "{failed}"
+    );
     assert!(text.contains(" end done in "), "{text}");
     assert!(text.contains("USD"), "{text}");
     assert!(text.contains("<token>") && !text.contains(&token), "{text}");
@@ -172,16 +248,13 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let later = call(&c, &format!("GET /api/v1/chat?since={}", next - 1), &[]).unwrap();
     assert_eq!(later.items.len(), 1);
 
-    // The agent got the request on stdin, the stream flags, and this daemon.
-    let chat = state.join("chat");
-    assert_eq!(
-        fs::read_to_string(chat.join("prompt.txt")).unwrap(),
-        request
-    );
+    // The agent got the stream flags and this daemon.
     let args = fs::read_to_string(chat.join("args.txt")).unwrap();
     for flag in [
         "-p",
+        "--input-format\nstream-json\n",
         "--output-format\nstream-json\n",
+        "--replay-user-messages",
         "--verbose",
         "--allowedTools",
     ] {
@@ -201,10 +274,10 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     );
     assert!(env.contains("FH_NO_OPEN=1\n"), "{env}");
 
-    // The next request continues the session. Stop ends the agent.
-    fs::remove_file(chat.join("go")).unwrap();
-    call(&c, "POST /api/v1/chat", &[("text", "Use a finer mesh.")]).unwrap();
-    wait(&c, |m| m.items.len() > next as usize + 2);
+    // The next request goes to the same agent. Stop ends the agent at once.
+    call(&c, "POST /api/v1/chat", &[("text", "Again.")]).unwrap();
+    wait(&c, |m| m.items.iter().any(|i| i.ends_with(" say I work.")));
+    assert_eq!(prompts().lines().count(), 3);
     call(&c, "POST /api/v1/chat/stop", &[]).unwrap();
     let m = wait(&c, |m| m.get("state") == Some("idle"));
     assert!(
@@ -213,8 +286,25 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
             .any(|i| i.ends_with(" note stopped the agent")),
         "{m:?}"
     );
-    let args = fs::read_to_string(chat.join("args.txt")).unwrap();
-    assert!(args.contains("--resume\n"), "{args}");
+    // After a stop, a new agent continues the session.
+    call(&c, "POST /api/v1/chat", &[("text", "Continue.")]).unwrap();
+    wait(&c, |m| {
+        m.items.iter().any(|i| i.ends_with(" you Continue."))
+    });
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !fs::read_to_string(chat.join("args.txt"))
+        .unwrap()
+        .contains("--resume\n")
+    {
+        assert!(Instant::now() < deadline, "the new agent does not resume");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    call(&c, "POST /api/v1/chat/stop", &[]).unwrap();
+    let m = wait(&c, |m| m.get("state") == Some("idle"));
+    assert!(
+        !m.items.iter().any(|i| i.contains(" fail the agent ended")),
+        "a stop is not a failure: {m:?}"
+    );
     drop(daemon);
     let _ = fs::remove_dir_all(&dir);
 }

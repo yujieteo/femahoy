@@ -1,12 +1,12 @@
-//! eframe app, wgpu mesh and contour renderer, chat panel, teammate tree.
+//! eframe app, wgpu mesh and contour renderer, teammate tree.
 //!
-//! Built so far: the page of `fh serve`, with the chat panel on the page. `mesh`, `camera`,
-//! `results` and `view` are plain functions with no GPU types. `chat` shows the actions of
-//! the leader. `gpu` and `app` are the thin window layer. `web` is the browser entry point.
+//! Built so far: the model view of the page of `fh serve`. The page itself, with the chat,
+//! is HTML (`crates/daemon/src/page.html`). `mesh`, `camera`, `results` and `view` are
+//! plain functions with no GPU types. `gpu` and `app` are the thin window layer. `web` is
+//! the browser entry point.
 
 mod app;
 pub mod camera;
-pub mod chat;
 mod gpu;
 pub mod mesh;
 pub mod preview;
