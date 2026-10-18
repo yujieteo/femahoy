@@ -175,10 +175,12 @@ It reports one row, `rate`, with the observed rate, the expected rate, the band 
 The case fails if the error does not fall from one mesh to the next.
 The solver of a case is its `solver` key. For `fh-solve` (the default), the solver is `FH_SOLVE` when set, otherwise `fh-solve` beside `fh`.
 For `fh-solve-ccx`, the solver is `fh-solve-ccx` beside `fh`. `FH_SOLVE` does not change it.
+If `ccx` (`FH_CCX`, else `ccx` on PATH) does not start, each `fh-solve-ccx` case is skipped. The other cases decide the exit code.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
 | All executed cases pass | stdout: `ID<TAB>CLASS<TAB>pass`, quantity rows, and `N cases: P pass, F fail`. | 0 |
+| `ccx` does not start | stdout: `ID<TAB>CLASS<TAB>skipped, no ccx` for each `fh-solve-ccx` case. Skipped cases count in the total, not pass or fail. | 0 if no failure |
 | Convergence directory contains class N | stdout: `ID<TAB>N<TAB>skipped, one mesh`. Skipped cases count in the total, not pass or fail. | 0 if no failure |
 | Case failure | stdout: case row with `fail: REASON`, then summary. Convergence failures also print `fh validate: REASON` on stderr. | 1 |
 | Solver absent or measurement cannot run | stdout: case row with `cannot run: REASON`. | 1 |

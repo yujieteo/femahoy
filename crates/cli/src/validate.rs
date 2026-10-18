@@ -8,13 +8,28 @@
 //! `fh-solve-ccx` next to `fh`. A table shows
 //! every quantity with its computed value, reference, tolerance and margin.
 //! A bad fixture, a case that fails, or a case that cannot run gives exit code 1.
+//! If `ccx` does not start, an `fh-solve-ccx` case is skipped. The other cases decide the exit code.
 
 use crate::measure::Subprocess;
 use fh_validation::{
     load_all, run_case_with, run_convergence_with, Case, Class, Field, Outcome, Report,
 };
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
+
+/// The reason to skip `case`: it needs `ccx`, and `ccx` (`$FH_CCX`, else `ccx` on PATH) does not
+/// start. Any other problem of `fh-solve-ccx` or `ccx` is a failure of the case.
+fn skip_reason(case: &Case) -> Option<&'static str> {
+    let exe = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
+    let starts = || {
+        Command::new(exe)
+            .arg("-v")
+            .stdin(Stdio::null())
+            .output()
+            .is_ok()
+    };
+    (case.solver == "fh-solve-ccx" && !starts()).then_some("no ccx")
+}
 
 pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let mut root = PathBuf::from(".");
@@ -43,11 +58,18 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
-    let reports: Vec<(&Case, String, Report)> = cases
-        .iter()
-        .map(|c| (c, String::new(), run_case_with(c, &Subprocess::for_case(c))))
-        .collect();
-    Ok(print_reports(&reports, reports.len()))
+    let mut reports: Vec<(&Case, String, Report)> = Vec::new();
+    for case in &cases {
+        match skip_reason(case) {
+            Some(why) => println!("{}\t{}\tskipped, {why}", case.id, case.class.letter()),
+            None => reports.push((
+                case,
+                String::new(),
+                run_case_with(case, &Subprocess::for_case(case)),
+            )),
+        }
+    }
+    Ok(print_reports(&reports, cases.len()))
 }
 
 /// Print each problem of the fixtures of the cases. True when there is none.
@@ -130,7 +152,9 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
     let mut skipped = Vec::new();
     for case in &cases {
         if matches!(case.class, Class::N { .. }) && !single {
-            skipped.push(case);
+            skipped.push((case, "one mesh"));
+        } else if let Some(why) = skip_reason(case) {
+            skipped.push((case, why));
         } else {
             let report = run_convergence_with(case, &Subprocess::for_case(case));
             if let Outcome::Fail(why) = &report.outcome {
@@ -139,8 +163,8 @@ fn convergence_run(path: &Path) -> Result<ExitCode, String> {
             reports.push((case, format!("{} meshes\t", case.meshes.len()), report));
         }
     }
-    for case in &skipped {
-        println!("{}\t{}\tskipped, one mesh", case.id, case.class.letter());
+    for (case, why) in &skipped {
+        println!("{}\t{}\tskipped, {why}", case.id, case.class.letter());
     }
     Ok(print_reports(&reports, reports.len() + skipped.len()))
 }
