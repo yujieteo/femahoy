@@ -543,7 +543,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** The captain tests on that machine.
 - **Rejected:** x86-only intrinsics, flags that only work on x86-64.
 - **Reverse if:** the captain changes the test machine.
-- **Built:** a rule for all crates. The M2 gate passes on an Apple M5 (aarch64). CI builds and tests each change on aarch64 macOS (P1, section 13).
+- **Built:** a rule for all crates. The M2 gate passes on an Apple M5 (aarch64). CI builds and tests each change on aarch64 macOS (P1, docs/milestones.md).
 
 ### D-08 GPU later, with neutral interfaces
 - **Decided by:** the captain.
