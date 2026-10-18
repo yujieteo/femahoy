@@ -101,31 +101,21 @@ fn write_private(path: &Path, text: &str) -> Result<(), Error> {
     std::fs::rename(&tmp, path).map_err(err)
 }
 
-/// The pane backend that a daemon uses (DESIGN.md section 4.3).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaneChoice {
-    /// herdr when the herdr program answers, else pty. `fh serve` uses this.
     Auto,
-    /// herdr, or an error at start when herdr does not answer.
     Herdr,
-    /// Plain PTYs that the daemon owns. The library uses this when nothing is set, so a
     /// test never calls the herdr of the machine by accident.
     #[default]
     Pty,
 }
 
-/// The options of [`Daemon::start_with_options`].
 #[derive(Clone, Debug)]
 pub struct Options {
-    /// The folder of the wasm viewer files, or `None` when it is not built.
     pub viewer: Option<PathBuf>,
     pub panes: PaneChoice,
-    /// The herdr session that femahoy owns. Never `default`.
     pub herdr_session: String,
-    /// The herdr program. The default is `herdr` on `PATH`.
     pub herdr_program: Option<PathBuf>,
-    /// The command line of a sidebar shell and a PTY pane. The default is `$SHELL -l`,
-    /// else `/bin/sh`.
     pub shell: Option<Vec<String>>,
 }
 
@@ -186,8 +176,6 @@ fn sidebar(o: &Options) -> Result<panes::Sidebar, Error> {
     })
 }
 
-/// A running daemon: the run service, the terminals and the panes, and the HTTP transport
-/// on 127.0.0.1.
 pub struct Daemon {
     service: Arc<Service>,
     sidebar: Arc<panes::Sidebar>,
@@ -216,7 +204,6 @@ impl Daemon {
         Daemon::start_with_options(config, port, options)
     }
 
-    /// `start` with all the options.
     pub fn start_with_options(
         config: Config,
         port: u16,
@@ -261,7 +248,6 @@ impl Daemon {
         &self.service
     }
 
-    /// The pane backend of this daemon.
     pub fn panes(&self) -> &dyn PaneBackend {
         &*self.sidebar.panes
     }
@@ -271,8 +257,6 @@ impl Daemon {
         Client::new(self.port(), &self.token)
     }
 
-    /// Stop the daemon. Its runs end as `interrupted` (see the crate documentation), and
-    /// the program of each terminal gets SIGHUP. Panes of herdr stay in herdr.
     pub fn stop(self) {}
 }
 

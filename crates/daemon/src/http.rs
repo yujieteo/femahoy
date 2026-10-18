@@ -73,8 +73,6 @@ const MAX_HEADERS: usize = 64;
 const MAX_BODY: usize = 16 << 10;
 /// The most connections at the same time. Each one has a thread.
 const MAX_CONNECTIONS: usize = 32;
-/// The most terminal WebSockets at the same time, so that other requests still get a
-/// connection.
 const MAX_SOCKETS: usize = 16;
 /// The longest time that a client can take to send its request.
 const IO_TIMEOUT: Duration = Duration::from_secs(10);
@@ -135,11 +133,9 @@ enum Reply {
     Page(String),
     /// File bytes and their content type.
     Bytes(&'static str, Vec<u8>),
-    /// A WebSocket upgrade: the terminal and the `Sec-WebSocket-Accept` value.
     Upgrade(Arc<Terminal>, String),
 }
 
-/// What each connection thread needs.
 struct Ctx {
     service: Arc<Service>,
     sidebar: Arc<Sidebar>,
@@ -205,8 +201,6 @@ impl Server {
                             }
                             ctx.sockets.fetch_sub(1, Ordering::SeqCst);
                         }
-                        // A client that has gone, such as a closed browser tab, gets no
-                        // answer. This changes no run and no terminal.
                         answer => drop(respond(&mut stream, answer, port)),
                     }
                     active.fetch_sub(1, Ordering::SeqCst);
@@ -260,7 +254,6 @@ impl Request {
         self.method == "GET" && self.path == "/"
     }
 
-    /// The terminal of `GET /api/v1/terminals/<t>/ws`, the WebSocket route.
     fn socket_terminal(&self) -> Option<&str> {
         let s: Vec<&str> = self.path.split('/').collect();
         match (self.method.as_str(), &s[..]) {
@@ -269,7 +262,6 @@ impl Request {
         }
     }
 
-    /// The items of a header with a list of words, such as `Connection`.
     fn words(&self, name: &str) -> impl Iterator<Item = &str> {
         self.header(name).unwrap_or("").split(',').map(str::trim)
     }
@@ -437,7 +429,6 @@ fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Error> {
     Ok(Reply::Bytes(kind, bytes))
 }
 
-/// Check a WebSocket upgrade of the terminal `id`. The access rules passed already.
 fn upgrade(ctx: &Ctx, req: &Request, id: &str) -> Result<Reply, Error> {
     let bad = |why: &str| Err(Error::bad("ws.invalid", why));
     let has = |name: &str, word: &str| req.words(name).any(|w| w.eq_ignore_ascii_case(word));
@@ -465,7 +456,6 @@ fn upgrade(ctx: &Ctx, req: &Request, id: &str) -> Result<Reply, Error> {
     Ok(Reply::Upgrade(t, ws::accept_key(key)))
 }
 
-/// The answer that switches the connection to the WebSocket protocol.
 fn switch(stream: &mut TcpStream, accept: &str) -> io::Result<()> {
     write!(
         stream,
@@ -493,7 +483,6 @@ fn pane_record(m: &mut Message, p: &Pane) {
     m.set("title", &p.title);
 }
 
-/// The `lines` of a text request: 50 when it is not given, at most the scrollback.
 fn text_lines(req: &Request) -> Result<usize, Error> {
     Ok(match req.query_number("lines")? {
         0 => 50,
@@ -516,7 +505,6 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     match (req.method.as_str(), &segments[..]) {
         ("GET", ["", "viewer", name]) => return viewer_file(ctx.viewer.as_deref(), name),
         ("GET", ["", "api", "v1", "terminals"]) => {
-            // The backend kind does not change, so this route never calls herdr.
             m.set(
                 "panes",
                 if sidebar.herdr.is_some() {
@@ -701,8 +689,6 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>, port: u16) -> i
 }
 
 /// The content security policy of the page: its own script (by nonce), inline styles (egui
-/// sets style attributes), the viewer module from a `blob:` address, wasm, and fetches and
-/// WebSockets to its own origin only.
 fn page_policy(nonce: &str, port: u16) -> String {
     format!(
         "default-src 'none'; script-src 'nonce-{nonce}' blob: 'wasm-unsafe-eval'; \

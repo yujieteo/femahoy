@@ -1,12 +1,6 @@
 //! A small WebSocket layer (RFC 6455) for the terminal route: the key of the handshake
 //! answer, and the frames in both directions. The daemon uses it as the server, and
 //! `client.rs` uses it as the client for the CLI and the tests.
-//!
-//! Rules of the server side:
-//! - A frame from the client must be masked. An unmasked frame closes with 1002.
-//! - A message is at most [`MAX_MESSAGE`] bytes, also when it comes in fragments. A
-//!   longer one closes with 1009.
-//! - Only binary messages carry data. A text message closes with 1003.
 
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
@@ -17,9 +11,7 @@ use std::time::{Duration, Instant};
 use crate::pty::Terminal;
 use crate::screen::{self, ClientMessage};
 
-/// The fixed text that RFC 6455 adds to the key of the client.
 const GUID: &str = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-/// The largest message that a reader takes.
 pub const MAX_MESSAGE: usize = 1 << 20;
 
 pub(crate) const OP_CONTINUATION: u8 = 0;
@@ -29,17 +21,14 @@ pub(crate) const OP_CLOSE: u8 = 8;
 pub(crate) const OP_PING: u8 = 9;
 pub(crate) const OP_PONG: u8 = 10;
 
-/// A message of the other side.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Incoming {
     Binary(Vec<u8>),
     Ping(Vec<u8>),
     Pong,
-    /// The close code, when the frame has one.
     Close(Option<u16>),
 }
 
-/// A failure of the connection. `Protocol` has the close code to send.
 #[derive(Debug)]
 pub enum WsError {
     Io(io::Error),
@@ -61,12 +50,10 @@ impl std::fmt::Display for WsError {
     }
 }
 
-/// The `Sec-WebSocket-Accept` value for the `Sec-WebSocket-Key` of a client.
 pub(crate) fn accept_key(key: &str) -> String {
     base64(&sha1(format!("{key}{GUID}").as_bytes()))
 }
 
-/// True when `key` is the base64 form of 16 bytes, as RFC 6455 requires.
 pub(crate) fn valid_key(key: &str) -> bool {
     key.len() == 24
         && key.is_ascii()
@@ -76,7 +63,6 @@ pub(crate) fn valid_key(key: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/')
 }
 
-/// SHA-1 (FIPS 180-4). The handshake needs it. It is not used for security.
 fn sha1(data: &[u8]) -> [u8; 20] {
     let mut h: [u32; 5] = [
         0x6745_2301,
@@ -126,7 +112,6 @@ fn sha1(data: &[u8]) -> [u8; 20] {
     out
 }
 
-/// Standard base64 with padding.
 pub(crate) fn base64(data: &[u8]) -> String {
     const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
@@ -145,7 +130,6 @@ pub(crate) fn base64(data: &[u8]) -> String {
     out
 }
 
-/// Write one frame with the FIN bit. A client gives a `mask`, a server gives `None`.
 pub(crate) fn write_frame(
     w: &mut impl Write,
     opcode: u8,
@@ -179,7 +163,6 @@ pub(crate) fn write_frame(
     w.flush()
 }
 
-/// The payload of a close frame with `code`.
 pub(crate) fn close_payload(code: u16) -> Vec<u8> {
     code.to_be_bytes().to_vec()
 }
@@ -243,9 +226,7 @@ fn read_frame(r: &mut impl Read, masked: bool, room: usize) -> Result<Frame, WsE
     })
 }
 
-/// Read one message. Fragments join into one binary message. `masked` is true on the
-/// server side, where each frame of the client must be masked. `data` keeps the fragments
-/// of a message between calls, because a control frame can come between 2 fragments.
+/// Read one message. Fragments join; `masked` is true on the server side; `data` keeps fragments.
 pub(crate) fn read_message(
     r: &mut impl Read,
     masked: bool,
@@ -275,13 +256,10 @@ pub(crate) fn read_message(
     }
 }
 
-/// The time between 2 pings of the server. The client answers each one with a pong.
 const PING_EVERY: Duration = Duration::from_secs(10);
-/// A client that sends nothing for this time, not even a pong, has gone.
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Serve the terminal `t` on an upgraded connection (`docs/terminal.md`) until the client
-/// closes, the connection fails or the terminal ends. A client that goes stops nothing.
+/// Serve the terminal `t` on an upgraded connection until the client or the terminal ends.
 pub(crate) fn attach(stream: TcpStream, t: Arc<Terminal>) {
     let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
     let Ok(read_half) = stream.try_clone() else {
@@ -361,10 +339,8 @@ pub(crate) fn attach(stream: TcpStream, t: Arc<Terminal>) {
             if sent.is_err() {
                 break;
             }
-            // At most about 60 screen messages each second.
             std::thread::sleep(Duration::from_millis(16));
         }
-        // This ends the read of the reader thread.
         let _ = out.lock().unwrap().shutdown(std::net::Shutdown::Both);
     });
 }
@@ -375,7 +351,6 @@ mod tests {
 
     #[test]
     fn the_accept_key_of_rfc_6455() {
-        // The example of RFC 6455 section 1.3.
         assert_eq!(
             accept_key("dGhlIHNhbXBsZSBub25jZQ=="),
             "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
@@ -422,7 +397,6 @@ mod tests {
     fn fragments_join_and_control_frames_come_through() {
         let key = Some([9, 8, 7, 6]);
         let mut wire = Vec::new();
-        // First fragment: no FIN bit.
         let mut first = Vec::new();
         write_frame(&mut first, OP_BINARY, b"ab", key).unwrap();
         first[0] &= 0x7F;
@@ -453,7 +427,6 @@ mod tests {
         let mut stray = Vec::new();
         write_frame(&mut stray, OP_CONTINUATION, b"a", Some([0; 4])).unwrap();
         assert_eq!(code(stray), 1002);
-        // A length over the limit fails before the payload is read.
         let mut huge = vec![0x82, 0x80 | 127];
         huge.extend_from_slice(&((MAX_MESSAGE as u64) + 1).to_be_bytes());
         assert_eq!(code(huge), 1009);

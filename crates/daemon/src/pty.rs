@@ -1,10 +1,5 @@
-//! The terminals of the daemon (DESIGN.md section 4.3). Each terminal is a PTY with a
-//! program in it (a shell or the herdr client) and a terminal emulator that keeps its
-//! screen (`alacritty_terminal`). The daemon owns the PTY: a browser that closes stops
-//! nothing, and a terminal ends only when its program ends or on a close request.
-//!
-//! A program in a terminal never gets the `HERDR_*` variables of the daemon, so a herdr
-//! client in the sidebar never attaches to the herdr session that started `fh serve`.
+//! The terminals of the daemon (DESIGN.md section 4.3): a PTY with a program and an emulator.
+//! A terminal ends only when its program ends or on a close request.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -27,24 +22,16 @@ use alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor};
 use crate::contract::Error;
 use crate::screen::{self, cursor, mode, style, Screen, Span};
 
-/// The most terminals at one time. An ended terminal makes room for a new one.
 pub const MAX_TERMINALS: usize = 16;
-/// The lines of scrollback of each terminal.
 pub const HISTORY: usize = 10_000;
-/// The most zero-width marks that the daemon sends for one cell.
 const MAX_MARKS: usize = 16;
 const START_SIZE: (u16, u16) = (100, 30);
-/// The time that a program gets to end after SIGHUP, and again after SIGKILL.
 const END_WAIT: Duration = Duration::from_secs(1);
 
-/// What a terminal is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    /// A shell that a person opened in the sidebar.
     Shell,
-    /// The herdr client on the herdr session of femahoy.
     Herdr,
-    /// A pane of the plain PTY backend (`panes.rs`).
     Pane,
 }
 
@@ -58,7 +45,6 @@ impl Kind {
     }
 }
 
-/// A terminal to open.
 pub struct Spec {
     pub kind: Kind,
     pub name: String,
@@ -68,7 +54,6 @@ pub struct Spec {
 
 #[derive(Default)]
 struct Live {
-    /// Goes up at each change of the screen, the title or the state.
     version: u64,
     title: String,
     exit: Option<i32>,
@@ -92,7 +77,6 @@ impl Shared {
         self.changed.notify_all();
     }
 
-    /// Write `bytes` to the PTY. The emulator calls this for its answers.
     fn input(&self, bytes: Vec<u8>) {
         if let Some(sender) = &self.live.lock().unwrap().sender {
             let _ = sender.send(Msg::Input(Cow::Owned(bytes)));
@@ -100,8 +84,7 @@ impl Shared {
     }
 }
 
-/// The events of the emulator. It runs on the thread of the PTY with the terminal locked,
-/// so it never locks the terminal.
+/// The events of the emulator. It runs with the terminal locked, so it never locks it.
 #[derive(Clone)]
 struct Listener(Arc<Shared>);
 
@@ -114,8 +97,7 @@ impl EventListener for Listener {
             Event::Title(t) => self.0.update(|l| l.title = clean_title(&t)),
             Event::ResetTitle => self.0.update(|l| l.title.clear()),
             Event::PtyWrite(text) => self.0.input(text.into_bytes()),
-            // The answer uses the fixed palette. A colour that a program set with OSC 4
-            // is in the terminal, which is locked here.
+            // The answer uses the fixed palette: a colour set with OSC 4 is in the locked terminal.
             Event::ColorRequest(index, format) => {
                 self.0.input(format(rgb_of(palette(index))).into_bytes())
             }
@@ -124,7 +106,6 @@ impl EventListener for Listener {
                 self.0.input(format(window(cols, rows)).into_bytes());
             }
             Event::ChildExit(status) => self.0.update(|l| l.exit = Some(exit_code(status))),
-            // OSC 52 is off, and the bell and `Exit` need no action.
             _ => {}
         }
     }
@@ -138,7 +119,6 @@ fn exit_code(status: std::process::ExitStatus) -> i32 {
     status.code().unwrap_or(-1)
 }
 
-/// A title for the text form: one line of at most 120 characters.
 fn clean_title(t: &str) -> String {
     t.chars().filter(|c| !c.is_control()).take(120).collect()
 }
@@ -156,18 +136,15 @@ fn window(cols: u16, rows: u16) -> WindowSize {
     }
 }
 
-/// The record of a terminal for the text form.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminalInfo {
     pub id: String,
     pub kind: Kind,
-    /// `running`, `exited` or `closed`.
     pub state: &'static str,
     pub title: String,
     pub exit: Option<i32>,
 }
 
-/// One terminal: a PTY, its program and its screen.
 pub struct Terminal {
     pub id: String,
     pub kind: Kind,
@@ -178,7 +155,6 @@ pub struct Terminal {
     reaper: Mutex<Option<JoinHandle<()>>>,
 }
 
-/// The `/usr/bin/env` options that remove each `HERDR_*` variable of `vars`.
 pub(crate) fn unset_herdr(vars: impl Iterator<Item = String>) -> Vec<String> {
     vars.filter(|k| k.starts_with("HERDR_"))
         .flat_map(|k| ["-u".to_owned(), k])
@@ -189,7 +165,6 @@ pub(crate) fn env_names() -> impl Iterator<Item = String> {
     std::env::vars_os().filter_map(|(k, _)| k.into_string().ok())
 }
 
-/// The full path of `program`, from `PATH` when it has no `/`.
 pub fn find_program(program: &str) -> Option<PathBuf> {
     if program.contains('/') {
         let p = Path::new(program);
@@ -250,8 +225,7 @@ impl Terminal {
         }
         let pty_thread = event_loop.spawn();
         let ended = shared.clone();
-        // The loop ends when the program ends. Its drop then sends SIGHUP to the pid and
-        // waits, so the drop must come at once: the reaped pid is free for a new process.
+        // The loop ends with the program. Its drop sends SIGHUP to the pid, so it must come at once.
         let reaper = std::thread::Builder::new()
             .name(format!("fh-term-{id}"))
             .spawn(move || {
@@ -306,7 +280,6 @@ impl Terminal {
         }
     }
 
-    /// Write `bytes` to the program. The view goes back to the bottom of the scrollback.
     pub fn write(&self, bytes: &[u8]) -> Result<(), Error> {
         if bytes.is_empty() {
             return Ok(());
@@ -324,7 +297,6 @@ impl Terminal {
         Ok(())
     }
 
-    /// Set the size. Each value is clamped to the protocol limits.
     pub fn resize(&self, cols: u16, rows: u16) -> Result<(), Error> {
         let (cols, rows) = (
             cols.clamp(2, screen::MAX_COLS),
@@ -341,8 +313,7 @@ impl Terminal {
         Ok(())
     }
 
-    /// Scroll the view `lines` up into the scrollback (down when negative), or to the
-    /// bottom when `lines` is 0.
+    /// Scroll the view `lines` up into the scrollback (down when negative), 0 for the bottom.
     pub fn scroll(&self, lines: i32) {
         let to = if lines == 0 {
             Scroll::Bottom
@@ -353,8 +324,7 @@ impl Terminal {
         self.shared.update(|_| {});
     }
 
-    /// Wait until the version is not `seen`, the terminal ends, or `timeout`. Returns the
-    /// version and whether the terminal has ended.
+    /// Wait until the version is not `seen`, the terminal ends, or `timeout`.
     pub fn wait(&self, seen: u64, timeout: Duration) -> (u64, bool) {
         let end = Instant::now() + timeout;
         let mut live = self.shared.live.lock().unwrap();
@@ -368,7 +338,6 @@ impl Terminal {
         (live.version, live.ended || live.closed)
     }
 
-    /// The visible screen, with the colours resolved to RGB.
     pub fn screen(&self) -> Screen {
         let term = self.term.lock();
         let content = term.renderable_content();
@@ -403,8 +372,7 @@ impl Terminal {
         }
     }
 
-    /// The last `lines` lines of the scrollback and the screen as plain text. A line that
-    /// wrapped is one line here.
+    /// The last `lines` lines of the scrollback and screen as text; a wrapped line is one line.
     pub fn text(&self, lines: usize) -> String {
         let term = self.term.lock();
         let grid = term.grid();
@@ -439,7 +407,6 @@ impl Terminal {
         out[from..].join("\n")
     }
 
-    /// Stop the program: SIGHUP to its process group, then SIGKILL when it does not end.
     pub fn close(&self) {
         self.shared.update(|l| l.closed = true);
         let ended = |t: &Terminal| t.shared.live.lock().unwrap().ended;
@@ -448,8 +415,7 @@ impl Terminal {
             if ended(self) {
                 break;
             }
-            // The program leads its own process group (setsid in `tty::new`). The group
-            // exists while the program is not reaped, and the reaper sets `ended`.
+            // The program leads its own process group (setsid in `tty::new`) until it is reaped.
             unsafe {
                 libc::kill(-self.pid, signal);
             }
@@ -487,7 +453,6 @@ fn modes(m: TermMode) -> u32 {
     .fold(0, |bits, (_, b)| bits | b)
 }
 
-/// The spans of one row. Blank cells with the default background need no span.
 fn row_spans(row: &alacritty_terminal::grid::Row<Cell>, cols: usize, colors: &Colors) -> Vec<Span> {
     let bg0 = resolve(Color::Named(NamedColor::Background), colors);
     let mut spans: Vec<Span> = Vec::new();
@@ -590,7 +555,6 @@ fn dim(c: u32) -> u32 {
     ch(16) | ch(8) | ch(0)
 }
 
-/// A colour as `0x00RRGGBB`: the colour that a program set, else the fixed palette.
 fn resolve(color: Color, colors: &Colors) -> u32 {
     let index = match color {
         Color::Spec(c) => return (c.r as u32) << 16 | (c.g as u32) << 8 | c.b as u32,
@@ -603,8 +567,7 @@ fn resolve(color: Color, colors: &Colors) -> u32 {
     }
 }
 
-/// The fixed palette of femahoy: 16 named colours, the 6x6x6 cube, the grey ramp, then
-/// the foreground, the background, the cursor and the dim and bright colours.
+/// The fixed palette: 16 named colours, the 6x6x6 cube, the grey ramp, then the rest.
 fn palette(index: usize) -> u32 {
     const NAMED: [u32; 16] = [
         0x181818, 0xac4242, 0x90a959, 0xf4bf75, 0x6a9fb5, 0xaa759f, 0x75b5aa, 0xd8d8d8, 0x6b6b6b,
@@ -632,7 +595,6 @@ fn palette(index: usize) -> u32 {
     }
 }
 
-/// The terminals of one daemon.
 pub struct Terminals {
     list: Mutex<Vec<Arc<Terminal>>>,
     next: Mutex<u64>,
@@ -648,7 +610,6 @@ impl Default for Terminals {
 }
 
 impl Terminals {
-    /// Open a terminal. When the list is full, the oldest ended terminal makes room.
     pub fn open(&self, spec: Spec) -> Result<Arc<Terminal>, Error> {
         let mut list = self.list.lock().unwrap();
         if list.len() >= MAX_TERMINALS {
@@ -685,7 +646,6 @@ impl Terminals {
             .ok_or_else(|| Error::new(404, "term.unknown", format!("no terminal {id:?}")))
     }
 
-    /// Close the terminal `id` and remove it from the list.
     pub fn close(&self, id: &str) -> Result<(), Error> {
         let t = self.get(id)?;
         self.list.lock().unwrap().retain(|x| x.id != id);
@@ -693,7 +653,6 @@ impl Terminals {
         Ok(())
     }
 
-    /// The running terminal of `kind`, if there is one.
     pub fn running(&self, kind: Kind) -> Option<Arc<Terminal>> {
         let list = self.list.lock().unwrap();
         list.iter().find(|t| t.kind == kind && t.running()).cloned()
@@ -703,7 +662,6 @@ impl Terminals {
         self.list.lock().unwrap().clone()
     }
 
-    /// Close every terminal at the same time. The daemon calls this when it stops.
     pub fn close_all(&self) {
         let list = std::mem::take(&mut *self.list.lock().unwrap());
         std::thread::scope(|s| {
@@ -754,7 +712,6 @@ mod tests {
         assert_eq!((s.cols, s.rows), START_SIZE);
         let spans = &s.lines[0];
         let texts: Vec<_> = spans.iter().map(|s| s.text.as_str()).collect();
-        // The blank cell at column 4 needs no span.
         assert_eq!(texts, ["a", "RED", "界", "x"], "{spans:?}");
         assert_eq!((spans[1].fg, spans[1].style), (0xac4242, style::BOLD));
         assert_eq!(
@@ -773,7 +730,6 @@ mod tests {
             .open(sh("stty -echo; while read l; do echo \"got:$l\"; done"))
             .unwrap();
         t.resize(40, 5).unwrap();
-        // A resize past the limits is clamped.
         t.resize(9999, 0).unwrap();
         assert_eq!((t.screen().cols, t.screen().rows), (screen::MAX_COLS, 1));
         t.resize(40, 5).unwrap();
@@ -785,10 +741,8 @@ mod tests {
         assert!(t.screen().history >= 3);
         t.scroll(2);
         assert_eq!(t.screen().scrolled, 2);
-        // Input brings the view back to the bottom.
         t.write(b"x\r").unwrap();
         assert_eq!(t.screen().scrolled, 0);
-        // A long line wraps on the screen but is one line of text.
         let long = "y".repeat(90);
         t.write(format!("{long}\r").as_bytes()).unwrap();
         wait_for(&t, |t| t.text(1).len() == 94);
@@ -868,7 +822,6 @@ mod tests {
             unset_herdr(names.into_iter()),
             ["-u", "HERDR_PANE_ID", "-u", "HERDR_SOCKET_PATH"]
         );
-        // A daemon that runs in a herdr pane has HERDR_* variables. The program has none.
         let terms = Terminals::default();
         let t = terms
             .open(sh("echo \"[$(env | grep -c ^HERDR_)] $TERM\""))

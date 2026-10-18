@@ -1,6 +1,5 @@
 //! A small JSON reader (RFC 8259) for the answers of the herdr CLI (`herdr.rs`).
 
-/// A JSON value. A number keeps its text.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Json {
     Null,
@@ -11,7 +10,6 @@ pub(crate) enum Json {
     Object(Vec<(String, Json)>),
 }
 
-/// The deepest nesting that the reader takes. herdr answers nest about 5 levels.
 const MAX_DEPTH: usize = 64;
 
 impl Json {
@@ -25,7 +23,6 @@ impl Json {
         }
     }
 
-    /// The value at a path of object keys, for example `["result", "pane", "pane_id"]`.
     pub(crate) fn at(&self, path: &[&str]) -> Option<&Json> {
         path.iter().try_fold(self, |v, key| match v {
             Json::Object(fields) => fields.iter().find(|(k, _)| k == key).map(|(_, v)| v),
@@ -55,7 +52,6 @@ impl Json {
     }
 }
 
-/// The bytes and the position.
 struct Parser<'a>(&'a [u8], usize);
 
 impl Parser<'_> {
@@ -76,7 +72,6 @@ impl Parser<'_> {
         found
     }
 
-    /// The items of a list or an object up to `end`, each one read by `item`.
     fn items<T>(
         &mut self,
         end: &str,

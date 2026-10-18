@@ -16,7 +16,6 @@ use fh_daemon::screen::{self, input_message, resize_message};
 use fh_daemon::{Client, Config, Daemon, Error, Message, Options, PaneChoice, HERDR_COMMANDS};
 use fh_solver_api::SubprocessSolver;
 
-/// A test folder that goes away when the test ends.
 struct TestDir(PathBuf);
 
 impl std::ops::Deref for TestDir {
@@ -40,8 +39,6 @@ fn dir(name: &str) -> TestDir {
     TestDir(d)
 }
 
-/// Start a daemon. A script that a test has just written can give `Text file busy` on
-/// Linux while another test forks a PTY child, so a start tries again for that error.
 fn start(dir: &Path, options: Options) -> Result<Daemon, Error> {
     let shell = Some(vec!["/bin/sh".into()]);
     let mut tries = 0;
@@ -64,7 +61,6 @@ fn start(dir: &Path, options: Options) -> Result<Daemon, Error> {
     }
 }
 
-/// Send `route` ("GET /path" or "POST /path"), with `fields` as the body of a POST.
 fn call(c: &Client, route: &str, fields: &[(&str, &str)]) -> Result<Message, Error> {
     let (method, path) = route.split_once(' ').unwrap();
     let mut m = Message::new();
@@ -73,12 +69,10 @@ fn call(c: &Client, route: &str, fields: &[(&str, &str)]) -> Result<Message, Err
     c.send(method, path, body, Duration::ZERO)
 }
 
-/// The error code of an answer, or `ok`.
 fn code<T>(r: Result<T, Error>) -> String {
     r.map_or_else(|e| e.code, |_| "ok".into())
 }
 
-/// Poll `GET path` until its items have `want`.
 fn wait_text(c: &Client, path: &str, want: &str) -> String {
     let end = Instant::now() + Duration::from_secs(15);
     loop {
@@ -94,7 +88,6 @@ fn wait_text(c: &Client, path: &str, want: &str) -> String {
     }
 }
 
-/// A raw request with `headers`, and the status and error code of the answer.
 fn raw(port: u16, method: &str, path: &str, headers: &[&str]) -> (u16, String) {
     let mut s = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
     let head: String = headers.iter().map(|h| format!("{h}\r\n")).collect();
@@ -132,8 +125,6 @@ fn every_terminal_and_pane_route_keeps_the_access_rules() {
     for route in words.chunks(2) {
         let (method, path) = (route[0], route[1]);
         let query = format!("{path}?token={token}");
-        // The subprotocol carries the token only on the WebSocket route. There it passes
-        // the access rules, and then the terminal t1 does not exist.
         let carried = match path.ends_with("/ws") {
             true => (404, "term.unknown"),
             false => (401, "token.missing"),
@@ -162,7 +153,6 @@ fn every_terminal_and_pane_route_keeps_the_access_rules() {
             assert_eq!(got, (status, error.into()), "{method} {target} {headers:?}");
         }
     }
-    // No refused request opened a terminal.
     let list = call(&daemon.client(), "GET /api/v1/terminals", &[]).unwrap();
     assert!(list.items.is_empty());
 }
@@ -176,7 +166,6 @@ fn a_shell_runs_over_the_websocket_and_outlives_its_browser() {
     let id = t.need("terminal").unwrap().to_owned();
     let got = (t.get("kind"), t.get("state"));
     assert_eq!(got, (Some("shell"), Some("running")));
-    // The token in the subprotocol, as a browser sends it, from the page origin.
     let page = c
         .clone()
         .with_origin(&format!("http://127.0.0.1:{}", c.port()));
@@ -197,10 +186,8 @@ fn a_shell_runs_over_the_websocket_and_outlives_its_browser() {
         }
         assert!(Instant::now() < end, "no output on the WebSocket");
     };
-    // The head names the new size: 60 columns and 10 rows.
     assert_eq!(&m[1..5], &[0, 60, 0, 10]);
     wait_text(&c, &format!("/api/v1/terminals/{id}/text"), "fh-42");
-    // A browser that goes stops nothing, and a new one gets the full screen.
     drop(ws);
     std::thread::sleep(Duration::from_millis(300));
     let route = format!("GET /api/v1/terminals/{id}");
@@ -265,7 +252,6 @@ fn pty_panes_run_commands_and_take_keys() {
     call(&c, &format!("POST /api/v1/panes/{id}/close"), &[]).unwrap();
     let gone = call(&c, &format!("GET /api/v1/panes/{id}"), &[]);
     assert_eq!(code(gone), "pane.unknown");
-    // A shell terminal is not a pane, and the pty backend has no herdr.
     let t = call(&c, "POST /api/v1/terminals", &[("kind", "shell")]).unwrap();
     let shell = format!("GET /api/v1/panes/{}", t.need("terminal").unwrap());
     assert_eq!(code(call(&c, &shell, &[])), "pane.unknown");
@@ -278,8 +264,6 @@ fn pty_panes_run_commands_and_take_keys() {
     assert_eq!(code(zsh), "term.kind");
 }
 
-/// A fake herdr: it logs each call and answers as herdr 0.9 does, with an error as JSON on
-/// stderr.
 const FAKE_HERDR: &str = r#"#!/bin/sh
 echo "$* | session=$HERDR_SESSION others=$(env | grep ^HERDR_ | grep -vc ^HERDR_SESSION=)" >> "$0.log"
 [ "$1 $2" = "--session fh-test" ] || { echo '{"error":{"code":"x","message":"no session"}}' >&2; exit 1; }
@@ -297,7 +281,6 @@ case "$1 $2" in
 esac
 "#;
 
-/// The options for the herdr program `script` (written to `d/herdr`) on `session`.
 fn herdr(d: &Path, script: &str, session: &str, panes: PaneChoice) -> Options {
     let program = d.join("herdr");
     fs::write(&program, script).unwrap();
@@ -321,7 +304,6 @@ fn the_herdr_backend_calls_only_its_own_session() {
     assert_eq!(status.get("backend"), Some("herdr"));
     let got = (status.get("session"), status.get("detail"));
     assert_eq!(got, (Some("fh-test"), Some("herdr 9.9.9")));
-    // The page reads the terminal list often, so it calls no herdr.
     let calls = || {
         fs::read_to_string(d.join("herdr.log"))
             .unwrap()
@@ -346,7 +328,6 @@ fn the_herdr_backend_calls_only_its_own_session() {
     let keys = [("text", "ls"), ("keys", "enter ctrl+c")];
     call(&c, "POST /api/v1/panes/w1:p1/send", &keys).unwrap();
     call(&c, "POST /api/v1/panes/w1:p2/close", &[]).unwrap();
-    // A pane of another workspace is not ours, and a bad pane ID never reaches herdr.
     let foreign = call(&c, "GET /api/v1/panes/w2:p1", &[]).unwrap_err();
     assert_eq!(
         (foreign.status, foreign.code.as_str()),
@@ -356,12 +337,9 @@ fn the_herdr_backend_calls_only_its_own_session() {
     assert_eq!(code(bad), "pane.unknown");
     let gone = call(&c, "GET /api/v1/panes/w1:p9", &[]);
     assert_eq!(code(gone), "pane.unknown");
-    // The herdr client of the sidebar runs on the session of femahoy.
     let t = call(&c, "POST /api/v1/terminals", &[("kind", "herdr")]).unwrap();
     assert_eq!(t.get("kind"), Some("herdr"));
     wait_text(&c, "/api/v1/terminals", "exited");
-    // Each call names the session and gets no HERDR_* variable of the daemon. Each API
-    // call is an allowed command. The client of the sidebar has no other word.
     let log = fs::read_to_string(d.join("herdr.log")).unwrap();
     for line in log.lines() {
         let words: Vec<&str> = line.split(' ').collect();
@@ -385,7 +363,6 @@ fn the_herdr_backend_calls_only_its_own_session() {
     ] {
         assert!(log.contains(call), "no {call:?} in\n{log}");
     }
-    // `auto` takes the pty backend when herdr does not answer. `herdr` fails at start.
     drop(daemon);
     let broken = |panes| herdr(&d, "#!/bin/sh\nexit 1\n", "femahoy", panes);
     let auto = start(&d, broken(PaneChoice::Auto)).unwrap();
@@ -435,7 +412,6 @@ fn two_opens_at_once_make_one_workspace() {
     assert_eq!(made, 1, "{log}");
 }
 
-/// The real herdr, only on a lab session that the caller provisioned and tears down.
 #[test]
 #[ignore = "needs FH_TEST_HERDR_SESSION, a provisioned fm-lab- session (docs/terminal.md)"]
 fn herdr_lab_session() {

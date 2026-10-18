@@ -10,11 +10,9 @@ use crate::contract::Error;
 use crate::herdr::Herdr;
 use crate::pty::{Kind, Spec, Terminal, Terminals};
 
-/// The terminals and the panes of the sidebar of one daemon.
 pub struct Sidebar {
     pub terminals: Arc<Terminals>,
     pub panes: Box<dyn PaneBackend>,
-    /// The herdr of the herdr backend. The pty backend has none.
     pub herdr: Option<Herdr>,
     pub shell: Vec<String>,
     pub open_lock: Mutex<()>,
@@ -49,7 +47,6 @@ impl Sidebar {
     }
 }
 
-/// A pane ID: 1 to 64 letters, digits, `:`, `_` or `-`, with a letter or a digit first.
 pub fn valid_pane(id: &str) -> bool {
     (1..=64).contains(&id.len())
         && id.starts_with(|c: char| c.is_ascii_alphanumeric())
@@ -58,41 +55,29 @@ pub fn valid_pane(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-'))
 }
 
-/// A pane to open.
 #[derive(Clone, Debug, Default)]
 pub struct PaneSpec {
     pub title: String,
-    /// The start folder. The default is the folder of the daemon.
     pub cwd: Option<PathBuf>,
-    /// One command line to type into the shell of the pane.
     pub command: Option<String>,
 }
 
-/// A pane, for the text form.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Pane {
     pub id: String,
-    /// `running`, `exited` or `closed`.
     pub state: String,
-    /// The terminal of the daemon that shows the pane. A herdr pane has none: it shows in
-    /// herdr, and herdr runs in the sidebar.
     pub terminal: Option<String>,
     pub title: String,
 }
 
-/// The state of the backend, for `GET /api/v1/panes`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BackendStatus {
-    /// `herdr` or `pty`.
     pub kind: &'static str,
-    /// The herdr session, for the herdr backend.
     pub session: Option<String>,
-    /// False when the herdr session is not running.
     pub running: bool,
     pub detail: String,
 }
 
-/// A key for [`PaneBackend::send`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Key {
     Enter,
@@ -151,14 +136,11 @@ pub trait PaneBackend: Send + Sync {
     fn open(&self, spec: &PaneSpec) -> Result<Pane, Error>;
     fn list(&self) -> Result<Vec<Pane>, Error>;
     fn get(&self, id: &str) -> Result<Pane, Error>;
-    /// The last `lines` lines of the pane as plain text.
     fn read(&self, id: &str, lines: usize) -> Result<String, Error>;
-    /// Type `text`, then press `keys`.
     fn send(&self, id: &str, text: &str, keys: &[Key]) -> Result<(), Error>;
     fn close(&self, id: &str) -> Result<(), Error>;
 }
 
-/// Check a pane spec before a backend uses it.
 pub fn check_spec(spec: &PaneSpec) -> Result<(), Error> {
     let t = &spec.title;
     if t.is_empty()

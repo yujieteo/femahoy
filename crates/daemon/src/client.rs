@@ -174,8 +174,6 @@ impl Client {
             .collect()
     }
 
-    /// Open the WebSocket of the terminal `id`. With `token_in_protocol`, the token goes
-    /// in the subprotocol, as a browser sends it, and not in the `Authorization` header.
     pub fn attach(&self, id: &str, token_in_protocol: bool) -> Result<TermSocket, Error> {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
         let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(transport)?;
@@ -203,7 +201,6 @@ impl Client {
             origin.unwrap_or_default()
         )
         .map_err(transport)?;
-        // Read the head one byte at a time: the frames come after it.
         let mut head = Vec::new();
         while !head.ends_with(b"\r\n\r\n") && head.len() < 16 << 10 {
             let mut b = [0u8];
@@ -256,22 +253,18 @@ impl Client {
     }
 }
 
-/// The WebSocket of a terminal (`docs/terminal.md`).
 pub struct TermSocket {
     stream: TcpStream,
     data: Option<Vec<u8>>,
 }
 
 impl TermSocket {
-    /// Send one message, such as [`crate::screen::input_message`].
     pub fn send(&mut self, message: &[u8]) -> Result<(), Error> {
         let b = random_hex(4).into_bytes();
         let mask = [b[0], b[1], b[2], b[3]];
         ws::write_frame(&mut self.stream, ws::OP_BINARY, message, Some(mask)).map_err(transport)
     }
 
-    /// The next message of the daemon. A ping gets its pong here. A close is the error
-    /// `ws.closed` with the close code in the message.
     pub fn recv(&mut self) -> Result<Vec<u8>, Error> {
         loop {
             match ws::read_message(&mut self.stream, false, &mut self.data) {
@@ -291,7 +284,6 @@ impl TermSocket {
         }
     }
 
-    /// Close the connection with the code 1000.
     pub fn close(mut self) {
         let _ = ws::write_frame(
             &mut self.stream,

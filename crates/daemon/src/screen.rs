@@ -2,7 +2,6 @@
 //! `docs/terminal.md` has the message layout. The daemon keeps the screen and sends the
 //! rows that changed. The client sends its keys as bytes, its size and its scroll requests.
 
-/// The subprotocol of the terminal WebSocket.
 pub const PROTOCOL: &str = "fh.term.v1";
 /// A browser cannot set the `Authorization` header of a WebSocket. It sends the token as a
 /// second subprotocol item with this prefix. The daemon never sends that item back.
@@ -15,7 +14,6 @@ pub const MSG_INPUT: u8 = 1;
 pub const MSG_RESIZE: u8 = 2;
 pub const MSG_SCROLL: u8 = 3;
 
-/// The bits of the `modes` field: the terminal modes that change the keys and the mouse.
 pub mod mode {
     pub const APP_CURSOR: u32 = 1;
     pub const APP_KEYPAD: u32 = 1 << 1;
@@ -31,17 +29,14 @@ pub mod mode {
     pub const LINE_FEED_NEW_LINE: u32 = 1 << 11;
 }
 
-/// The bits of the `style` of a span.
 pub mod style {
     pub const BOLD: u8 = 1;
     pub const ITALIC: u8 = 1 << 1;
     pub const UNDERLINE: u8 = 1 << 2;
     pub const STRIKEOUT: u8 = 1 << 3;
-    /// One wide character that fills 2 columns.
     pub const WIDE: u8 = 1 << 4;
 }
 
-/// The cursor shapes.
 pub mod cursor {
     pub const HIDDEN: u8 = 0;
     pub const BLOCK: u8 = 1;
@@ -50,11 +45,9 @@ pub mod cursor {
     pub const HOLLOW: u8 = 4;
 }
 
-/// The largest terminal size that a client can ask for.
 pub const MAX_COLS: u16 = 500;
 pub const MAX_ROWS: u16 = 200;
 
-/// Cells with the same colours and style, from column `col` over `cols` columns.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Span {
     pub col: u16,
@@ -65,7 +58,6 @@ pub struct Span {
     pub text: String,
 }
 
-/// The visible screen of a terminal, with the colours resolved to RGB.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Screen {
     pub cols: u16,
@@ -74,17 +66,13 @@ pub struct Screen {
     pub cursor_row: u16,
     pub cursor_shape: u8,
     pub modes: u32,
-    /// The default colours. A cell with no span has the default background.
     pub fg: u32,
     pub bg: u32,
-    /// The lines that the view is scrolled up into the scrollback.
     pub scrolled: u32,
     pub history: u32,
-    /// One entry for each row, top first.
     pub lines: Vec<Vec<Span>>,
 }
 
-/// A message of the client.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClientMessage {
     Input(Vec<u8>),
@@ -92,7 +80,6 @@ pub enum ClientMessage {
     Scroll(i32),
 }
 
-/// Read a message of the client.
 pub fn parse_client(bytes: &[u8]) -> Result<ClientMessage, String> {
     let (kind, rest) = bytes.split_first().ok_or("an empty message")?;
     match (*kind, rest.len()) {
@@ -108,7 +95,6 @@ pub fn parse_client(bytes: &[u8]) -> Result<ClientMessage, String> {
     }
 }
 
-/// The messages of a client, for `client.rs` and the tests.
 pub fn input_message(bytes: &[u8]) -> Vec<u8> {
     let mut m = vec![MSG_INPUT];
     m.extend_from_slice(bytes);
@@ -162,7 +148,6 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// The message for `screen`, or `None` when nothing changed since the last message.
     pub fn encode(&mut self, screen: &Screen) -> Option<Vec<u8>> {
         let mut head = Vec::new();
         for v in [
@@ -209,7 +194,6 @@ impl Encoder {
 pub(crate) mod tests {
     use super::*;
 
-    /// The screen of `fixtures/terminal/screen-v1.hex`. The viewer test reads the same file.
     pub(crate) fn sample() -> Screen {
         let span = |col, cols, fg, bg, style, text: &str| Span {
             col,

@@ -1,17 +1,9 @@
 //! The herdr pane backend (DESIGN.md section 4.3). femahoy never bundles herdr: it calls
 //! the `herdr` program that the user installed.
 //!
-//! Isolation:
-//!
-//! - Every call is `herdr --session <session> ...` on the session of femahoy (default
-//!   `femahoy`). The session `default` is refused in any case.
-//! - Only the pane, tab and workspace commands in [`ALLOWED`] run. femahoy never runs a
-//!   server or session command, so it never starts or stops a herdr server. The herdr
-//!   client in the sidebar (`herdr --session <session>`) starts the session.
-//! - A call gets no `HERDR_*` variable of the daemon, so a daemon that runs in a herdr
-//!   pane never reaches the herdr session around it.
-//! - femahoy uses one workspace, labelled `femahoy`. It reads, drives and closes only the
-//!   panes of that workspace.
+//! Every call is `herdr --session <session> ...` on the femahoy session, never `default`. Only the
+//! commands in [`ALLOWED`] run, so femahoy never starts or stops a server. A call gets no `HERDR_*`
+//! variable of the daemon. femahoy uses one workspace, `femahoy`, and only its panes.
 
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -23,12 +15,9 @@ use crate::json::Json;
 use crate::panes::{check_spec, BackendStatus, Key, Pane, PaneBackend, PaneSpec};
 use crate::pty::env_names;
 
-/// The label of the herdr workspace of femahoy.
 pub const WORKSPACE: &str = "femahoy";
-/// The longest time for one herdr call.
 pub const TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The herdr commands that femahoy runs: the first 2 words of each call.
 pub const ALLOWED: [&str; 12] = [
     "status --json",
     "workspace list",
@@ -44,8 +33,6 @@ pub const ALLOWED: [&str; 12] = [
     "pane close",
 ];
 
-/// A session name: 1 to 64 letters, digits, `_` or `-`, starting with a letter or a
-/// digit, and never `default`.
 pub fn valid_session(name: &str) -> bool {
     let b = name.as_bytes();
     !b.is_empty()
@@ -56,7 +43,6 @@ pub fn valid_session(name: &str) -> bool {
         && !name.eq_ignore_ascii_case("default")
 }
 
-/// Refuse a session name that femahoy cannot own.
 pub fn check_session(session: &str) -> Result<(), Error> {
     if valid_session(session) {
         return Ok(());
@@ -66,7 +52,6 @@ pub fn check_session(session: &str) -> Result<(), Error> {
     Err(Error::bad("pane.herdr.session", message))
 }
 
-/// The herdr program and the session of femahoy.
 #[derive(Clone, Debug)]
 pub struct Herdr {
     program: PathBuf,
@@ -88,7 +73,6 @@ impl Herdr {
         &self.session
     }
 
-    /// The command line of the herdr client in the sidebar.
     pub fn client_argv(&self) -> Vec<String> {
         vec![
             self.program.display().to_string(),
@@ -97,7 +81,6 @@ impl Herdr {
         ]
     }
 
-    /// Run one allowed herdr command. Returns its output, or the herdr error.
     pub fn call(&self, args: &[&str]) -> Result<String, Error> {
         let head = args.iter().take(2).copied().collect::<Vec<_>>().join(" ");
         if !ALLOWED.contains(&head.as_str()) {
@@ -172,7 +155,6 @@ impl Herdr {
             .map_err(|e| Error::new(502, "pane.herdr", format!("herdr gave bad JSON: {e}")))
     }
 
-    /// The herdr version, and whether the session runs.
     pub fn status(&self) -> Result<(String, bool), Error> {
         let j = self.json(&["status", "--json"])?;
         let version = j
@@ -183,7 +165,6 @@ impl Herdr {
     }
 }
 
-/// The herdr backend.
 pub struct HerdrPanes(pub Herdr);
 
 fn pane_of(j: &Json) -> Pane {
@@ -207,7 +188,6 @@ impl HerdrPanes {
         Err(Error::new(409, "pane.herdr.stopped", message))
     }
 
-    /// The ID of the femahoy workspace, or `None` when it does not exist.
     fn workspace(&self) -> Result<Option<String>, Error> {
         let j = self.0.json(&["workspace", "list"])?;
         let list = j.list(&["result", "workspaces"]);
@@ -217,7 +197,6 @@ impl HerdrPanes {
             .map(str::to_owned))
     }
 
-    /// The pane `id`, when it is in the femahoy workspace.
     fn owned(&self, id: &str) -> Result<Json, Error> {
         self.running()?;
         let j = self.0.json(&["pane", "get", id])?;
@@ -247,8 +226,7 @@ impl PaneBackend for HerdrPanes {
         }
     }
 
-    /// The first pane is the root pane of a new femahoy workspace. Each later pane is the
-    /// root pane of a new tab in it.
+    /// The first pane is the root pane of a new workspace; later panes are new tabs in it.
     fn open(&self, spec: &PaneSpec) -> Result<Pane, Error> {
         check_spec(spec)?;
         let _one_open = self.0.open_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -350,7 +328,6 @@ mod tests {
 
     #[test]
     fn only_the_allowed_commands_run() {
-        // `false` would fail if it ran. The refusal comes first.
         let h = Herdr::new("false".into(), "femahoy").unwrap();
         for args in [
             &["server", "stop"][..],
