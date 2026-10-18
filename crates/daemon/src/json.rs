@@ -1,5 +1,4 @@
-//! A small JSON reader (RFC 8259) for the answers of the herdr CLI (`herdr.rs`) and the
-//! event stream of the agent (`chat.rs`).
+//! A small JSON reader (RFC 8259) for the event stream of the agent (`chat.rs`).
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Json {
@@ -213,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_herdr_answer_and_refuses_bad_json() {
+    fn reads_an_event_and_refuses_bad_json() {
         let text = r#"{"result":{"pane":{"focused":false,"pane_id":"w1:p2","scroll":{"rows":40},
             "label":"caf\u00e9 \ud83d\ude00 \"q\""}},"n":[1,-2.5e1,null,true]}"#;
         let v = Json::parse(text).unwrap();
