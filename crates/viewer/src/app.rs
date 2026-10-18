@@ -194,7 +194,7 @@ impl Shown {
                 v.step += 1;
             }
         });
-        ui.label(format!("{n} steps"));
+        ui.label(format!("{n} step{}", if n == 1 { "" } else { "s" }));
         ui.separator();
 
         ui.strong("Deformed shape");

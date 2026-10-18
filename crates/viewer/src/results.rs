@@ -212,6 +212,12 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, LoadError> {
     Ok(out)
 }
 
+/// True when `name` is a plain file name in the run folder: not empty, not `.` or `..`, and
+/// with no `/`, `\` or `:`.
+pub fn is_plain_file_name(name: &str) -> bool {
+    !(name.is_empty() || name == "." || name == ".." || name.contains(['/', '\\', ':']))
+}
+
 /// Read the results of a run. `pvd` is the text of `results.pvd`. `read` gives the bytes of a
 /// file that `results.pvd` names. Each step must have the mesh of the first step and a
 /// displacement field `U`.
@@ -235,7 +241,7 @@ pub fn load(
     let mut steps = Vec::with_capacity(entries.len());
     for entry in entries {
         let file = entry.file.as_str();
-        if file.is_empty() || file == "." || file == ".." || file.contains(['/', '\\', ':']) {
+        if !is_plain_file_name(file) {
             return fail(
                 "results.file.path",
                 pvd_name,
@@ -805,6 +811,16 @@ mod tests {
             }]);
             let e = load("results.pvd", &pvd, |_| panic!("must not read")).unwrap_err();
             assert_eq!(e.code, "results.file.path", "{file}");
+        }
+    }
+
+    #[test]
+    fn plain_file_names() {
+        for ok in ["step-1.vtu", "a..b.vtu", ".hidden", "a b.vtu"] {
+            assert!(is_plain_file_name(ok), "{ok}");
+        }
+        for bad in ["", ".", "..", "../a", "a/b", "/a", "a\\b", "C:a.vtu"] {
+            assert!(!is_plain_file_name(bad), "{bad}");
         }
     }
 

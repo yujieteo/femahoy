@@ -6,12 +6,13 @@
 #   rustup target add wasm32-unknown-unknown
 #   cargo install wasm-bindgen-cli --version <version> --locked
 #
-# Writes fh_viewer.js and fh_viewer_bg.wasm to OUT (default target/release/viewer, the
-# folder beside `fh` where `fh serve` looks). Set FH_VIEWER=OUT for another folder.
+# Writes fh_viewer.js and fh_viewer_bg.wasm to OUT (default release/viewer in the cargo
+# target folder, $CARGO_TARGET_DIR or target, beside `fh` where `fh serve` looks). Set FH_VIEWER=OUT for another folder.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-out=${1:-$root/target/release/viewer}
+target=${CARGO_TARGET_DIR:-$root/target}
+out=${1:-$target/release/viewer}
 want=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print }' "$root/Cargo.lock")
 have=$(wasm-bindgen --version 2>/dev/null | awk '{ print $2 }') || true
 if [ "$have" != "$want" ]; then
@@ -24,5 +25,5 @@ cargo build --manifest-path "$root/Cargo.toml" -p fh-viewer --lib --release \
   --target wasm32-unknown-unknown
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-name fh_viewer --out-dir "$out" \
-  "$root/target/wasm32-unknown-unknown/release/fh_viewer.wasm"
+  "$target/wasm32-unknown-unknown/release/fh_viewer.wasm"
 ls -l "$out/fh_viewer.js" "$out/fh_viewer_bg.wasm"

@@ -96,8 +96,7 @@ async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, Stri
     let entries = fh_io::vtu::read_pvd(&pvd).map_err(|e| format!("{RESULTS_FILE}: {e}"))?;
     let mut files = HashMap::new();
     for e in &entries {
-        // `results::load` refuses a file name outside the run folder before it reads.
-        if e.file.contains("..") || e.file.contains('/') || e.file.contains('\\') {
+        if !results::is_plain_file_name(&e.file) {
             continue;
         }
         let path = format!("{base}/{}", e.file);
