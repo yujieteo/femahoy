@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Run the locked workflow and print a pass or fail table.
-# build123d script -> STEP -> fh info -> fh mesh -> fh info -> fh model -> fh-solve -> fh validate.
+# build123d script -> STEP -> fh info -> fh mesh -> fh info -> fh model -> fh-solve-ccx -> fh validate.
 # Cases: bar-tension (end displacement, plane sets), and bar-pressure and bar-pressure-m
 # (named regions and a pressure load, in mm and in m, at 2 mesh sizes). The references are
 # analytical. The script also checks that fh refuses the inputs of the M2b gate.
-# Environment: PYTHON (python with build123d, default fh-python or python3), FH_GMSH (gmsh program), KEEP=1 (keep the work folder).
+# Environment: PYTHON (python with build123d, default fh-python or python3), FH_GMSH (gmsh program),
+# FH_CCX (CalculiX program, default ccx on PATH, see docs/ccx.md), KEEP=1 (keep the work folder).
 set -uo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
@@ -47,10 +48,10 @@ for tool in cargo "$python" "$gmsh"; do
   command -v "$tool" >/dev/null 2>&1 || { row "$tool" FAIL "not found"; exit 1; }
 done
 "$python" -c 'import build123d' >/dev/null 2>&1 || { row build123d FAIL "python cannot import build123d"; exit 1; }
-step build 0 cargo build --release --bin fh --bin fh-solve || finish
+step build 0 cargo build --release --bin fh --bin fh-solve-ccx || finish
 target="${CARGO_TARGET_DIR:-$root/target}/release"
 fh="$target/fh"
-export FH_SOLVE="$target/fh-solve"
+export FH_SOLVE="$target/fh-solve-ccx"
 
 # copy_case NAME ROOT: a scratch repository root that holds the case without its mesh files.
 copy_case() {

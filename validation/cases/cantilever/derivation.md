@@ -32,4 +32,4 @@ The reference value in `case.toml` is -0.01919619048 mm (z is the load direction
 
 Beam theory ignores the 3D stress state at the clamp. The fixture sets 2 percent of the reference as the stated error. This is an engineering estimate, not a derived bound. The captain accepted it.
 
-The solver values of the 4 meshes (PR 10) are soft against their limit: they grow in size toward it. The limit is 0.56 percent stiff against the beam value: its tip deflection is smaller than the beam value. A clamp that stops the end section from warping and contracting may be a cause. This cause was not isolated, so the reason is unexplained.
+The solver values of the 4 meshes (PR 10, and `fh-solve-ccx`) are soft against their limit: they grow in size toward it. The limit is 0.56 percent stiff against the beam value: its tip deflection is smaller than the beam value. A clamp that stops the end section from warping and contracting may be a cause. This cause was not isolated, so the reason is unexplained.

@@ -63,7 +63,7 @@ The `file` field names the file when the caller knows it.
 | API007 | The solver failed. |
 | API008 | A result file (`summary.toon`, `results.pvd`) is missing or not valid. |
 | API009 | A path leads out of the run folder. |
-| API010 | The solver cannot write or read its own output, restart or model data. |
-| API011 | A solver name is registered twice. |
+| API010 | Retired on 2026-10-19 with the native solver. It was an output, restart or model data fault of an in-process solver. |
+| API011 | Retired on 2026-10-19 with the solver registry. It was a solver name that was registered twice. |
 
-`StepUnitError` in `fh-io` already has its own codes (`unit.step.*`). `SolverError` in `core-solver` has no code yet.
+`StepUnitError` in `fh-io` already has its own codes (`unit.step.*`).

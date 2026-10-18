@@ -175,7 +175,7 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
 }
 
 /// In a distorted element the points have different weights times Jacobian, so `S` is the
-/// volume mean of the points, as in `fh-solve`, and not the plain mean.
+/// volume mean of the points, and not the plain mean.
 #[test]
 fn the_element_stress_is_the_volume_mean_of_the_points() {
     let dir = scratch("volume-mean");
@@ -211,7 +211,7 @@ fn no_ccx_is_a_clear_error() {
     let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &dir.join("no-ccx"));
     assert_eq!(code, Some(1));
     assert!(
-        err.contains("cannot start") && err.contains("FH_CCX"),
+        err.contains("cannot start") && err.contains("FH_CCX") && err.contains("docs/ccx.md"),
         "{err}"
     );
 }
@@ -323,13 +323,32 @@ fn an_invalid_result_file_is_an_error() {
 #[test]
 fn a_keyword_outside_the_subset_is_a_clear_error() {
     let dir = scratch("keyword");
-    let input = cube(&dir, "*EQUATION\n2\n2, 2, 1.0, 3, 2, -1.0\n");
-    let (code, err) = run(&input, &dir.join("run"), &dir.join("no-ccx"));
-    assert_eq!(code, Some(1));
-    assert!(
-        err.contains("*EQUATION is not in the keyword subset of the ccx adapter"),
-        "{err}"
-    );
+    let surface = "*SURFACE, TYPE=NODE, NAME=S\n2\n3\n";
+    let coupling =
+        format!("*NODE\n9, 2, 0, 0\n{surface}*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n");
+    for (extra, keyword) in [
+        ("*EQUATION\n2\n2, 2, 1.0, 3, 2, -1.0\n", "*EQUATION"),
+        ("*MPC\nTIE, 2, 3\n", "*MPC"),
+        (coupling.as_str(), "*COUPLING"),
+        (surface, "*SURFACE, TYPE=NODE"),
+        ("NLGEOM", "*STEP, NLGEOM"),
+    ] {
+        let input = if extra == "NLGEOM" {
+            let file = dir.join("cube.inp");
+            std::fs::write(&file, CUBE.replace("NAME=PULL", "NAME=PULL, NLGEOM=YES")).unwrap();
+            file
+        } else {
+            cube(&dir, extra)
+        };
+        let (code, err) = run(&input, &dir.join("run"), &dir.join("no-ccx"));
+        assert_eq!(code, Some(1), "{keyword}");
+        assert!(
+            err.contains(&format!(
+                "{keyword} is not in the keyword subset of the ccx adapter"
+            )),
+            "{keyword}: {err}"
+        );
+    }
 }
 
 /// `ccx` reads at most 20 characters of a number. A longer number loses the end of its
@@ -404,12 +423,17 @@ fn cancel_stops_ccx() {
     assert!(clock.elapsed() < Duration::from_secs(10));
 }
 
-/// The real `ccx` from `FH_CCX` or PATH, or `None` with a message when it is absent.
+/// The real `ccx` from `FH_CCX` or PATH, or `None` with a message when it is absent. With
+/// `FH_REQUIRE_CCX=1`, as in CI, an absent `ccx` fails the test.
 fn real_ccx() -> Option<PathBuf> {
     let exe = std::env::var_os("FH_CCX").map_or_else(|| PathBuf::from("ccx"), PathBuf::from);
     if Command::new(&exe).arg("-v").output().is_ok() {
         return Some(exe);
     }
+    assert!(
+        std::env::var_os("FH_REQUIRE_CCX").is_none_or(|v| v != "1"),
+        "FH_REQUIRE_CCX=1, but ccx does not start"
+    );
     eprintln!("skipped: ccx not found. Set FH_CCX or put ccx on PATH to run this test");
     None
 }
@@ -461,4 +485,34 @@ fn real_ccx_matches_the_cantilever_and_bar_pressure_references() {
     let s = bar.cell_field("S").unwrap().as_f64().unwrap();
     let s = mean(&s.iter().step_by(6).copied().collect::<Vec<_>>());
     assert!((s / 100.0 - 1.0).abs() < 1e-6, "bar s_xx {s}");
+}
+
+/// `docs/compatibility.md`, `*CLOAD`: lines for one node and dof add up in a step, and a
+/// later step replaces the total. Both steps give the total 2, so the results are equal.
+#[test]
+fn real_ccx_adds_cload_lines_in_a_step_and_a_later_step_replaces_the_total() {
+    let Some(ccx) = real_ccx() else { return };
+    let dir = scratch("cload");
+    let input = dir.join("cload.inp");
+    let text = CUBE.replace(
+        "2, 1, 1, 0.001\n*END STEP\n",
+        "*CLOAD\n7, 1, 1.0\n7, 1, 1.0\n*END STEP\n\
+         *STEP, NAME=AGAIN\n*STATIC\n*CLOAD\n7, 1, 2.0\n*END STEP\n",
+    );
+    std::fs::write(&input, text).unwrap();
+    let run_dir = dir.join("run");
+    let (code, err) = run(&input, &run_dir, &ccx);
+    assert_eq!(code, Some(0), "{err}");
+    let grid =
+        |n: u32| read_vtu(&std::fs::read(run_dir.join(format!("step-{n}.vtu"))).unwrap()).unwrap();
+    let (one, two) = (grid(1), grid(2));
+    let rf: f64 = on_set(&one, "RF", "FIXED", 0).iter().sum();
+    assert!((rf + 2.0).abs() < 1e-5, "step 1 rf {rf}");
+    let u = |g: &Grid| point(g, "U", 6)[0];
+    assert!(
+        u(&one) > 0.0 && (u(&two) / u(&one) - 1.0).abs() < 1e-5,
+        "u {} {}",
+        u(&one),
+        u(&two)
+    );
 }

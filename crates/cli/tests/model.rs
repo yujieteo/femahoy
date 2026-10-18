@@ -295,28 +295,13 @@ fn mesh_bar(dir: &Path, size: &str, gmsh: &Path) -> Output {
     fh(&["mesh", s, "--case", d, "--size", size, "-o", m, "--gmsh", g])
 }
 
-/// The number after `key=` in the last `step` line of the solver output.
-fn value(text: &str, key: &str) -> f64 {
-    let line = text.lines().rev().find(|l| l.starts_with("step ")).unwrap();
-    let word = line
-        .split_whitespace()
-        .find_map(|w| w.strip_prefix(key))
-        .unwrap();
-    word.parse().unwrap()
-}
-
 #[test]
 fn step_to_results_matches_the_analytical_bar() {
     let Some(gmsh) = real_gmsh() else {
         eprintln!("skipped: gmsh is not installed");
         return;
     };
-    let fh_exe = Path::new(env!("CARGO_BIN_EXE_fh"));
-    let solver = fh_exe.with_file_name(format!("fh-solve{}", std::env::consts::EXE_SUFFIX));
-    if !solver.is_file() {
-        eprintln!("skipped: fh-solve is not built");
-        return;
-    }
+    let Some(solver) = ccx_solver() else { return };
     let dir = case("e2e", |t| t);
     let (msh, inp) = (dir.join("bar.msh"), dir.join("run.inp"));
     let mesh = mesh_bar(&dir, "8", &gmsh);
@@ -325,17 +310,27 @@ fn step_to_results_matches_the_analytical_bar() {
     assert_eq!(made.status.code(), Some(0), "{}", stderr(&made));
     let results = dir.join("results");
     let run = Command::new(&solver)
-        .args([p(&inp), p(&results), "--formats", "text,vtu"])
+        .args([p(&inp), p(&results)])
         .stdin(Stdio::null())
         .output()
         .unwrap();
-    let text = stdout(&run);
-    assert!(run.status.success(), "{text}{}", stderr(&run));
+    assert!(run.status.success(), "{}{}", stdout(&run), stderr(&run));
+    let bytes = std::fs::read(results.join("step-1.vtu")).unwrap();
+    let grid = fh_io::vtu::read_vtu(&bytes).unwrap();
+    let u = grid.point_field("U").unwrap().as_f64().unwrap();
+    let max_u = u
+        .chunks(3)
+        .map(|v| v.iter().map(|x| x * x).sum::<f64>().sqrt())
+        .fold(0.0, f64::max);
+    let s = grid.cell_field("S").unwrap().as_f64().unwrap();
     // The largest displacement is at a tip corner: 0.1 mm along x, and the Poisson contraction
-    // 0.3e-3 * 20 mm and 0.3e-3 * 10 mm. The von Mises stress is E * 1e-3 = 210 MPa.
+    // 0.3e-3 * 20 mm and 0.3e-3 * 10 mm. The axial stress is E * 1e-3 = 210 MPa everywhere.
+    // The .frd file of ccx has 6 significant digits.
     let corner = (0.1f64.powi(2) + 0.006f64.powi(2) + 0.003f64.powi(2)).sqrt();
-    assert!((value(&text, "max_u=") - corner).abs() < 1e-9, "{text}");
-    assert!((value(&text, "max_mises=") - 210.0).abs() < 1e-3, "{text}");
+    assert!((max_u - corner).abs() < 1e-6, "{max_u}");
+    for s_xx in s.chunks(6).map(|c| c[0]) {
+        assert!((s_xx - 210.0).abs() < 1e-3, "{s_xx}");
+    }
     assert!(results.join("results.pvd").is_file());
 }
 

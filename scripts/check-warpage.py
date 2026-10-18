@@ -88,8 +88,6 @@ def main():
             inp = next((state / "cases").glob("*/*.inp"))
             run(f"check-{size}", [fh, "check", inp])
             run(f"quality-{size}", [fh, "info", inp.with_suffix(".msh"), "--case", case])
-            native = run(f"refuse-native-{size}", [fh.with_name("fh-solve"), inp, proof / f"native-{size}"], expected=1)
-            assert "thermal" in native.lower()
             rows.append(dict(mesh_size_mm=size, nodes=len(vtu["NODE_ID"]), elements=len(low), shared_nodes=len(shared),
                              warpage_mm=value, reference_mm=reference, difference_mm=difference,
                              relative_difference=difference / abs(reference), solve_wall_s=wall))

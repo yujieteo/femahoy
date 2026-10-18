@@ -132,7 +132,7 @@ pub struct Case {
     /// Input files, coarse to fine. Absolute or relative to the working directory like `dir`.
     pub meshes: Vec<PathBuf>,
     pub references: Vec<Reference>,
-    /// The solver program: `fh-solve` (the default) or `fh-solve-ccx`.
+    /// The solver program. `fh-solve-ccx` is the default and the only value now.
     pub solver: String,
     /// The longest time of one solver run, in seconds. `None`: the time limit of the runner.
     pub time_limit_s: Option<f64>,
@@ -656,13 +656,13 @@ impl FixtureReader<'_> {
             ));
         }
         let solver = match table.get("solver") {
-            None => "fh-solve".to_owned(),
+            None => "fh-solve-ccx".to_owned(),
             Some(item) => match self.non_empty_string(item, "solver")? {
-                s @ ("fh-solve" | "fh-solve-ccx") => s.to_owned(),
+                s @ "fh-solve-ccx" => s.to_owned(),
                 other => {
                     return Err(self.err(
                         Some(item),
-                        format!("unknown solver `{other}`, expected fh-solve or fh-solve-ccx"),
+                        format!("unknown solver `{other}`, expected fh-solve-ccx"),
                     ))
                 }
             },

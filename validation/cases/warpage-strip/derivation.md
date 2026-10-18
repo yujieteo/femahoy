@@ -52,7 +52,7 @@ The small residual includes the three-dimensional free-end effect in the solid m
 The committed `strip.inp` is the coarse mesh from `fh mesh --size 1` and `fh model`.
 The STEP file comes from `scripts/cad/warpage_strip.py`. gmsh fragments the touching bodies to share interface nodes.
 Each solid element belongs to exactly one material group.
-The workflow check also reads the VTU fields and refuses this input through the native solver.
+The workflow check also reads the VTU fields.
 
 Run proof: `/Users/yj/src/firstmate/data/femahoy-warpage-case-w1/proof/record.json` and the adjacent command logs.
 The source record is `/Users/yj/src/firstmate/data/femahoy-warpage-case-w1/source.txt`.

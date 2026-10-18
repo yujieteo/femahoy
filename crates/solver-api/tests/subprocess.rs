@@ -7,7 +7,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use fh_solver_api::{CancelToken, Event, Registry, RunReport, Solver, SubprocessSolver};
+use fh_solver_api::{CancelToken, Event, RunReport, SubprocessSolver};
 
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("fh-solver-api-{name}-{}", std::process::id()));
@@ -29,10 +29,8 @@ const SUMMARY: &str = "schema: fh.run\nversion: 1.1.0\nstatus: ok\n";
 
 const GOOD: &str = r#"echo "fh-solver-protocol 2"
 echo "progress step=1/1 phase=solve fraction=0.5"
-echo "restart restart.txt"
 echo '<VTKFile type="Collection"><Collection><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>' > results.pvd
 echo "<VTKFile/>" > step-1.vtu
-echo restart > restart.txt
 printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon"#;
 
 fn run(name: &str, body: &str) -> Result<RunReport, String> {
@@ -167,17 +165,14 @@ fn events_arrive_in_order() {
         .unwrap();
     assert_eq!(
         seen,
-        vec![
-            Event::Progress {
-                step: 1,
-                steps: 1,
-                phase: "solve".into(),
-                fraction: 0.5
-            },
-            Event::Restart("restart.txt".into()),
-        ]
+        vec![Event::Progress {
+            step: 1,
+            steps: 1,
+            phase: "solve".into(),
+            fraction: 0.5
+        },]
     );
-    assert!(r.restart.unwrap().ends_with("restart.txt"));
+    assert!(r.pvd.ends_with("results.pvd"));
 }
 
 #[test]
@@ -198,8 +193,8 @@ fn a_log_line_that_is_not_utf8_does_not_stop_the_events() {
         seen.first(),
         Some(&Event::Log("caf\u{FFFD} au lait".into()))
     );
-    assert_eq!(seen.len(), 3, "{seen:?}");
-    assert!(r.restart.unwrap().ends_with("restart.txt"));
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert!(r.pvd.ends_with("results.pvd"));
     let log = fs::read(dir.join("run/stdout.txt")).unwrap();
     assert!(String::from_utf8_lossy(&log).contains("caf\u{FFFD} au lait"));
 }
@@ -403,26 +398,6 @@ select(undef, undef, undef, 0.05); print \"hello\\nfh-solver-protocol 2\\n\"",
 }
 
 #[test]
-fn a_log_file_that_cannot_open_leaves_no_solver() {
-    // stdout.txt is a folder, so the runner cannot open its log.
-    let dir = scratch("log-error");
-    let s = solver(&dir, "echo $$ > ../child.pid\nsleep 30");
-    let run = dir.join("run");
-    fs::create_dir_all(run.join("stdout.txt")).unwrap();
-    fs::write(run.join(fh_solver_api::RUN_MARKER), "femahoy run folder\n").unwrap();
-    let e = s
-        .resume_with(&dir.join("a.inp"), &run, &CancelToken::new(), &mut |_| {})
-        .unwrap_err();
-    assert!(e.to_string().contains("stdout.txt"), "{e}");
-    std::thread::sleep(Duration::from_millis(300));
-    if let Ok(pid) = fs::read_to_string(dir.join("child.pid")) {
-        let running = alive(pid.trim());
-        kill_group(pid.trim());
-        assert!(!running, "solver {pid} runs on after the error");
-    }
-}
-
-#[test]
 fn a_panic_in_the_event_callback_leaves_no_solver() {
     let dir = scratch("panic");
     let s = solver(
@@ -451,22 +426,6 @@ fn stale_files_do_not_pass_a_new_run() {
     let s2 = solver(&dir, "echo \"fh-solver-protocol 2\"");
     let e = s2.run(&dir.join("a.inp"), &dir.join("run")).unwrap_err();
     assert!(e.to_string().contains("summary.toon"), "{e}");
-}
-
-#[test]
-fn stale_files_do_not_pass_a_restart() {
-    let dir = scratch("stale-restart");
-    let s = solver(&dir, GOOD);
-    let run = dir.join("run");
-    s.run(&dir.join("a.inp"), &run).unwrap();
-    // The restart prints the header and exits at once, so it writes no new summary.
-    let s2 = solver(&dir, "echo \"fh-solver-protocol 2\"");
-    let e = s2
-        .resume_with(&dir.join("a.inp"), &run, &CancelToken::new(), &mut |_| {})
-        .unwrap_err();
-    assert!(e.to_string().contains("summary.toon"), "{e}");
-    // The restart state and the earlier results stay for the solver.
-    assert!(run.join("restart.txt").is_file() && run.join("step-1.vtu").is_file());
 }
 
 #[test]
@@ -730,30 +689,4 @@ fn default_memory_limit_follows_the_machine_ram() {
         Some(ram) => assert!(limit > ram / 2 && limit < ram, "{limit} of {ram}"),
         None => assert_eq!(limit, u64::MAX),
     }
-}
-
-struct Fake;
-
-impl Solver for Fake {
-    fn name(&self) -> &str {
-        "fake"
-    }
-    fn validated(&self) -> bool {
-        false
-    }
-    fn solve(&self, _: &fh_inp::Model, _: &Path) -> Result<RunReport, fh_solver_api::ApiError> {
-        Err(fh_solver_api::ApiError::new(
-            fh_solver_api::code::SOLVER_FAILED,
-            "no",
-        ))
-    }
-}
-
-#[test]
-fn registry_keeps_solvers_by_name() {
-    let mut r = Registry::new();
-    r.register(Box::new(Fake)).unwrap();
-    assert!(r.register(Box::new(Fake)).is_err());
-    assert_eq!(r.names(), vec!["fake"]);
-    assert!(r.get("fake").is_some() && r.get("other").is_none());
 }

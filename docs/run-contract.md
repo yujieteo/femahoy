@@ -2,7 +2,7 @@
 
 The run contract is one contract for runs. The `fh` CLI and the UI both use it. The code is in `crates/daemon`. `fh serve` runs the daemon (see [`fh serve`](#fh-serve)). `fh run` is the CLI client (see [`fh run`](#fh-run)).
 
-The solve path does not change. A run starts the protocol v2 solver (`fh-solve`, `docs/solver-protocol.md`) on a fixed copy of the input file.
+The solve path does not change. A run starts the protocol v2 solver (`fh-solve-ccx`, `docs/solver-protocol.md`) on a fixed copy of the input file.
 
 ## Words
 
@@ -68,7 +68,7 @@ A message is UTF-8 text with one `key=value` line for each field. An empty line 
 
 The `input` of a submit or a preview is a path in the project root. A submit after a preview of the same bytes solves the same revision. A path outside the root fails with `input.outside`.
 
-The `solver` of a submit is `fh-solve` or `fh-solve-ccx`. Any other name fails with `solver.unknown` (400). No `solver`, or `fh-solve`, gives the solver of the daemon. The run record keeps the name in `solver`, empty for the solver of the daemon. When the run starts, the daemon finds `fh-solve-ccx` beside `fh`, else on `PATH`. If it is not there, the run fails with `run.solver.missing`. A submit gets the outcome `existing` only for an active run of the same revision and the same solver.
+The `solver` of a submit is optional. Its only value is `fh-solve-ccx`, the solver of the daemon. Any other name, for example the removed `fh-solve`, fails with `solver.unknown` (400). The run record keeps an empty `solver` for the solver of the daemon. A submit gets the outcome `existing` only for an active run of the same revision and the same solver.
 
 ## Limits
 
@@ -92,7 +92,7 @@ The daemon owns every run. A browser and the CLI are only clients.
 1. A client that closes or disconnects stops nothing. The run continues. The client reads the same record when it connects again.
 2. Only a cancel command stops a run on purpose.
 3. The solver never lives longer than the daemon. A daemon that stops cancels its runs, and they end as `interrupted`. A daemon that fails closes the stdin of the solver, and protocol v2 then stops the solver.
-4. At the next start, the daemon marks each run that was still active as `interrupted`. A run with a pending cancel becomes `cancelled`. The daemon never starts such a run again by itself. The run folder keeps the restart file of the solver.
+4. At the next start, the daemon marks each run that was still active as `interrupted`. A run with a pending cancel becomes `cancelled`. The daemon never starts such a run again by itself.
 5. One daemon at a time uses a state folder. The lock file `daemon.lock` makes this sure.
 6. `fh run` uses the daemon that answers for the state folder. If no daemon answers, `fh run` starts `fh serve --state DIR --no-open` in the background, in its own process group, with its output in `DIR/daemon.log`. This file has mode 0600, because it holds the page address with the token. That daemon stays alive when `fh run` ends, so the browser keeps the results. `fh serve --stop` stops it. When 2 `fh run` commands start a daemon at the same time, the lock lets one start, and both use it. The other `fh run` stops the `fh serve` that it started, so that this `fh serve` cannot take the lock later.
 
@@ -131,7 +131,7 @@ fh serve --stop [--state DIR]
 | `--no-open` | Off: `fh serve` opens its page in the browser. `FH_NO_OPEN` with a value that is not empty and not `0` does the same as `--no-open`. |
 | `--stop` | Stop the daemon that answers for the state folder, and wait until it frees `daemon.lock`. |
 
-The solver is `$FH_SOLVE`, or `fh-solve` beside `fh`. The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
+The solver is `$FH_SOLVE`, else `fh-solve-ccx` beside `fh`, else `fh-solve-ccx` on `PATH`. It needs CalculiX (`docs/ccx.md`). The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
 
 Then `fh serve` opens the page in the browser. The token must not go into the command line of a browser process, because other users of the machine can read a command line. Thus `$BROWSER` (when it is set) and `xdg-open` get the file `<state>/open.html` (mode 0600), which sends the browser on to the address. On macOS, `open` gives the address to the default browser through Launch Services. On Windows, `rundll32` does this. The exact rules are in [`fh serve`](reference/fh.md#fh-serve).
 
@@ -150,7 +150,7 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 `fh run` is the client of the contract for a person in a terminal ([`fh run`](reference/fh.md#fh-run)):
 
 1. It finds or starts the daemon (rule 6 of "Which process stays alive").
-2. It registers the folder of the input as a project, and submits the input with a new request ID. A retry after a lost connection keeps the request ID. For a case, the submit has the `solver` of `case.toml`, unless `FH_SOLVE` is set.
+2. It registers the folder of the input as a project, and submits the input with a new request ID. A retry after a lost connection keeps the request ID. The submit names no solver, so the run uses the solver of the daemon.
 3. It reads the events with `wait_ms=500` and shows them, until the run is final. The state event of a run that fails also gives the reason: `state failed: REASON`. `REASON` is the `message` of the record. Thus `events.log` tells why a run failed.
 4. On Ctrl+C, it sends a cancel command with a new request ID and continues to read the events. A second Ctrl+C ends `fh run`. The run continues in the daemon until the cancel ends it.
 5. It reads the record. For a run that succeeded, it shows the result folder and `summary.toon`, and opens the page on `&project=P&run=R`.

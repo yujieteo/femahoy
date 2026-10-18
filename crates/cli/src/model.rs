@@ -91,7 +91,7 @@ fn write_inp(
         }
     }
     let extent = (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
-    // fh-solve reads the units line and writes the units into the results (D-18).
+    // fh-solve-ccx reads the units line and writes the units into the results (D-18).
     let mut out = format!(
         "** Made by fh model from {label}. Do not edit; change the case.\n** units: {}\n*NODE\n",
         units.name()

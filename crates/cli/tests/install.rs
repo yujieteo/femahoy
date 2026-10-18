@@ -63,7 +63,7 @@ impl Lab {
                  *wasm32-unknown-unknown*) d=$CARGO_TARGET_DIR/wasm32-unknown-unknown/release\n\
                    mkdir -p $d && echo wasm > $d/fh_viewer.wasm ;;\n\
                  *) mkdir -p $CARGO_TARGET_DIR/release\n\
-                   for b in fh fh-solve fh-solve-ccx; do printf '#!/bin/sh\\necho %s\\n' $b > $CARGO_TARGET_DIR/release/$b; done ;;\n\
+                   for b in fh fh-solve-ccx; do printf '#!/bin/sh\\necho %s\\n' $b > $CARGO_TARGET_DIR/release/$b; done ;;\n\
                  esac\n"
             ),
         );
@@ -137,6 +137,8 @@ impl Lab {
             .env("HOME", &self.home)
             .env("PATH", std::env::join_paths(path).unwrap())
             .env("CARGO_TARGET_DIR", &self.target)
+            // No ccx, also on a machine that has one in /usr/bin.
+            .env("FH_CCX", self.dir.join("no-ccx"))
             .output()
             .unwrap()
     }
@@ -236,7 +238,6 @@ fn the_install_builds_copies_and_then_updates() {
     );
     for file in [
         "fh",
-        "fh-solve",
         "fh-python",
         "fh-solve-ccx",
         "viewer/fh_viewer.js",
@@ -291,11 +292,19 @@ fn the_install_builds_copies_and_then_updates() {
         );
     }
     assert!(
-        log.contains("--release --locked --bin fh --bin fh-solve --bin fh-solve-ccx"),
+        log.contains("--release --locked --bin fh --bin fh-solve-ccx"),
         "{log}"
     );
 
+    // FH_CCX names no file: the install says how to get ccx.
+    assert!(
+        text.contains("install: ccx (CalculiX) is not installed"),
+        "{text}"
+    );
+
+    // The update removes the fh-solve of an earlier install.
     fs::write(prefix.join("fh"), "old").unwrap();
+    fs::write(prefix.join("fh-solve"), "old").unwrap();
     let again = lab.install(&[], &[]);
     assert_eq!(again.status.code(), Some(0), "{}", stderr(&again));
     assert!(
@@ -309,7 +318,7 @@ fn the_install_builds_copies_and_then_updates() {
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
-    assert_eq!(left.len(), 5, "no temporary files: {left:?}");
+    assert_eq!(left.len(), 4, "no temporary files: {left:?}");
     // The second run updates the venv too.
     let uv_again = fs::read_to_string(lab.dir.join("uv.log")).unwrap();
     assert_eq!(uv_again, format!("{uv}{uv}"));

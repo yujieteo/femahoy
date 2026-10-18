@@ -25,8 +25,8 @@ The rules of `AGENTS.md` section 4 apply. This crate adds none.
 
 ## Validation hooks it must pass
 
-`cargo test -p fh-solver-ccx`. The fake `ccx` tests always run. The real `ccx` test skips with a message when `ccx` is absent.
-With `ccx` installed: `FH_SOLVE=target/release/fh-solve-ccx fh validate`.
+`cargo test -p fh-solver-ccx`. The fake `ccx` tests always run. The real `ccx` tests skip with a message when `ccx` is absent. With `FH_REQUIRE_CCX=1` (CI), they fail.
+With `ccx` installed: `fh validate` (it uses `fh-solve-ccx` beside `fh`).
 
 ## Examples
 

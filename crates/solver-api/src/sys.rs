@@ -508,7 +508,8 @@ mod probe_tests {
 
     #[test]
     fn the_resident_size_comes_from_vm_rss_in_kib() {
-        let status = "Name:\tfh-solve\nVmPeak:\t  9999 kB\nVmRSS:\t    2048 kB\nRssAnon:\t1 kB\n";
+        let status =
+            "Name:\tfh-solve-ccx\nVmPeak:\t  9999 kB\nVmRSS:\t    2048 kB\nRssAnon:\t1 kB\n";
         assert_eq!(vm_rss_bytes(status), 2048 * 1024);
         assert_eq!(vm_rss_bytes("Name:\tkthreadd\nState:\tS (sleeping)\n"), 0);
     }

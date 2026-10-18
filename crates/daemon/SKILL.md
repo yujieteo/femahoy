@@ -10,7 +10,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - `Client` is the client of the contract for the CLI and the tests. `Client::discover(STATE_DIR)` reads `daemon.info`.
 - Commands: register a project, submit, cancel, read a record, list the runs, read the events.
 - The text form, the routes and the access rules are in `src/contract.rs`, `src/http.rs` and `docs/run-contract.md`.
-- A run starts the protocol v2 solver (`fh-solve`) through `fh_solver_api::SubprocessSolver` on a fixed input revision.
+- A run starts the protocol v2 solver (`fh-solve-ccx`) through `fh_solver_api::SubprocessSolver` on a fixed input revision.
 - `src/chat.rs` runs 1 agent (Claude Code, `claude -p --input-format stream-json --output-format stream-json`) with the instructions of `src/agent.md`, and keeps its actions as chat entries for `/api/v1/chat`. The agent stays alive between the messages, and each message goes to its stdin, also while it works.
 
 ## Invariants the code must keep
@@ -40,7 +40,7 @@ Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` t
 ## Examples
 
 ```rust
-let daemon = Daemon::start_with_options(Config { state_dir, solver: SubprocessSolver::new("fh-solve") }, 0, Options::default())?;
+let daemon = Daemon::start_with_options(Config { state_dir, solver: SubprocessSolver::new("fh-solve-ccx") }, 0, Options::default())?;
 let cli = Client::discover(&state_dir)?;
 let project = cli.register(&root)?;
 let ack = cli.submit(&project, &new_request_id(), "model.inp")?;

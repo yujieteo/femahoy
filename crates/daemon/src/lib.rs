@@ -16,7 +16,7 @@
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
 //!   its actions as chat entries for the page (`chat`, `docs/chat.md`).
 //!
-//! The solve path stays the existing subprocess protocol v2 (`fh-solve`, DESIGN.md
+//! The solve path stays the existing subprocess protocol v2 (`fh-solve-ccx`, DESIGN.md
 //! section 9.3). The contract only starts it, cancels it and keeps the record.
 //!
 //! # Which process stays alive
@@ -30,7 +30,7 @@
 //!    A daemon that fails closes the stdin of the solver, and protocol v2 then stops it.
 //! 4. At the next start, the daemon marks each run that was still active as `interrupted`,
 //!    or as `cancelled` when a cancel was pending. It never starts such a run again by
-//!    itself. The run folder keeps the restart file of the solver.
+//!    itself.
 //! 5. One daemon at a time uses a state folder. A lock file makes this sure.
 
 mod browser;

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Write the meshes of the class R cases validation/cases/mms-*/ (unit cube, jittered lattice).
 
-The lattice, the jitter and the 6-tet split match the helpers of
-crates/core-solver/tests/common/mod.rs. Run: python3 scripts/gen-mms-meshes.py
+The lattice, the jitter and the 6-tet split are those of the tests of the removed native solver
+(crates/core-solver/tests/common/mod.rs at commit 08a97c2). Run: python3 scripts/gen-mms-meshes.py
 """
 import itertools
 import math

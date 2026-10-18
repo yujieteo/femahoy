@@ -6,9 +6,8 @@
 //!   with `case.toml` and one STEP file. It runs `fh mesh` and `fh model` in the work folder
 //!   `<state>/cases/<name>-<hash>`, then solves the input. The work folder is the project
 //!   root, so the case folder does not change.
-//! - The run of a case uses the solver that `case.toml` names in `solver`: the program of that
-//!   name beside `fh`, else on `PATH`. A case with no `solver` uses `fh-solve`. When
-//!   `FH_SOLVE` is set, each run uses the solver of the daemon.
+//! - Each run uses the solver of the daemon: `FH_SOLVE` when set, else `fh-solve-ccx` beside
+//!   `fh` or on `PATH`. `fh-solve-ccx` needs CalculiX (`docs/ccx.md`).
 //! - `fh run --example NAME` writes an example case that `fh` carries to
 //!   `<state>/examples/NAME`, then runs it as a case folder. It works from any folder.
 //!
@@ -428,9 +427,6 @@ fn show(event: &Event) -> String {
         let percent = field("fraction").parse::<f64>().map_or(0.0, |f| f * 100.0);
         return format!("step {} {} {percent:.0}%", field("step"), field("phase"));
     }
-    if let Some(file) = text.strip_prefix("restart ") {
-        return format!("restart file {file}");
-    }
     text.strip_prefix("log ").unwrap_or(text).to_owned()
 }
 
@@ -583,17 +579,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         (None, Some(example)) => resolve(&write_example(&state, example)?)?,
         (None, None) => unreachable!("parse needs a model or an example"),
     };
-    // A case.toml that does not load gives fh-solve here. Then fh mesh tells the cause.
-    let solver = match &input {
-        Input::Case { dir, .. } if std::env::var_os("FH_SOLVE").is_none() => {
-            fh_validation::Case::load_before_mesh(dir).map_or_else(|_| String::new(), |c| c.solver)
-        }
-        _ => String::new(),
-    };
-    if !matches!(solver.as_str(), "" | "fh-solve")
-        && fh_daemon::find_solver(&fh_daemon::solver_dirs(), &solver).is_none()
+    // Without FH_SOLVE the daemon runs fh-solve-ccx. Stop now when it is not there.
+    let solver = fh_daemon::SOLVERS[0];
+    if std::env::var_os("FH_SOLVE").is_none()
+        && fh_daemon::find_solver(&fh_daemon::solver_dirs(), solver).is_none()
     {
-        return Ok(fail(FAILED, &fh_daemon::missing_solver(&solver)));
+        return Ok(fail(FAILED, &fh_daemon::missing_solver(solver)));
     }
     let (client, started) = match daemon(&state) {
         Ok(found) => found,
@@ -671,7 +662,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         return Ok(ExitCode::SUCCESS);
     }
     let request = new_request_id();
-    let ack = match retry(|| client.submit_with_solver(&project, &request, &name, &solver)) {
+    let ack = match retry(|| client.submit(&project, &request, &name)) {
         Ok(ack) => ack,
         Err(e) if e.status == 0 => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
         Err(e) => return Ok(fail(FAILED, &format!("the daemon refused the run: {e}"))),
@@ -751,7 +742,6 @@ mod tests {
             line("progress step=1/2 phase=assemble fraction=0.5"),
             "step 1/2 assemble 50%"
         );
-        assert_eq!(line("restart restart.fh"), "restart file restart.fh");
         assert_eq!(line("log step 1 max_u=1"), "step 1 max_u=1");
     }
 

@@ -137,8 +137,8 @@ A material group name cannot equal a node set name or a surface region name.
 `model.temperature_change` is an optional finite number in K.
 The initial temperature is 0 at every node. The final temperature equals the change.
 `fh model` writes `*EXPANSION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE` and `*TEMPERATURE`.
-The native solver refuses thermal input. Use the CalculiX adapter.
-The top-level `solver = "fh-solve-ccx"` selects the adapter for `fh validate` and `fh run`.
+`fh-solve-ccx` gives the thermal input to CalculiX.
+The top-level `solver` key is optional. Its only value is `"fh-solve-ccx"`, the default.
 `fh run` finds `fh-solve-ccx` beside `fh`, else on `PATH` ([`fh run`](fh.md#fh-run)).
 
 A `[[model.set]]` can use `point = [x, y, z]` instead of `axis` and `at`.

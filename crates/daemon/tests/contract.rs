@@ -194,15 +194,9 @@ fn an_authorized_cli_passes_and_a_foreign_origin_fails() {
 }
 
 #[test]
-fn a_submit_that_names_a_solver_runs_that_solver_from_the_solver_folders() {
+fn a_submit_can_name_only_a_known_solver() {
     let lab = Lab::new("named-solver");
-    let bin = lab.dir.join("bin");
-    fs::create_dir_all(&bin).unwrap();
-    let config = Config {
-        solver_dirs: vec![lab.dir.join("empty"), bin.clone()],
-        ..lab.config()
-    };
-    let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
+    let daemon = Daemon::start_with_options(lab.config(), 0, Options::default()).unwrap();
     let c = daemon.client();
     let project = c.register(&lab.root).unwrap();
     let input = lab.input("a.inp", "*NODE\n");
@@ -212,53 +206,21 @@ fn a_submit_that_names_a_solver_runs_that_solver_from_the_solver_folders() {
         .submit_with_solver(&project, "named-0", &input, "abaqus")
         .unwrap_err();
     assert_eq!((e.status, e.code.as_str()), (400, "solver.unknown"));
+    let e = c
+        .submit_with_solver(&project, "named-1", &input, "fh-solve")
+        .unwrap_err();
+    assert_eq!((e.status, e.code.as_str()), (400, "solver.unknown"));
 
-    // No fh-solve-ccx in the folders: the run fails with the name of the solver.
-    let ack = c
-        .submit_with_solver(&project, "named-1", &input, "fh-solve-ccx")
-        .unwrap();
-    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
-    assert_eq!(record.state, RunState::Failed);
-    assert!(
-        record.message.contains("fh-solve-ccx") && record.message.contains("docs/ccx.md"),
-        "{}",
-        record.message
-    );
-    // The last event tells why, also to a client that reads only the events.
-    let events = c.events(&project, &ack.run, 0, Duration::ZERO).unwrap();
-    let last = events.items.last().map(|e| e.text.clone());
-    assert_eq!(last, Some(format!("state failed: {}", record.message)));
-    assert_eq!(lab.starts(), 0);
-
-    let ccx = bin.join("fh-solve-ccx");
-    let body = format!(
-        "#!/bin/sh\necho ccx >> {}\nexec {} \"$@\"\n",
-        lab.dir.join("ccx.log").display(),
-        lab.solver.display()
-    );
-    fs::write(&ccx, body).unwrap();
-    fs::set_permissions(&ccx, fs::Permissions::from_mode(0o755)).unwrap();
+    // fh-solve-ccx is the solver of the daemon.
     let ack = c
         .submit_with_solver(&project, "named-2", &input, "fh-solve-ccx")
         .unwrap();
     let record = wait_for(&c, &project, &ack.run, RunState::is_final);
     assert_eq!(
         (record.state, record.solver.as_str()),
-        (RunState::Succeeded, "fh-solve-ccx")
-    );
-    assert_eq!(lab.file("ccx.log").as_deref(), Some("ccx\n"));
-
-    // fh-solve is the solver of the daemon.
-    let ack = c
-        .submit_with_solver(&project, "named-3", &input, "fh-solve")
-        .unwrap();
-    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
-    assert_eq!(
-        (record.state, record.solver.as_str()),
         (RunState::Succeeded, "")
     );
-    assert_eq!(lab.file("ccx.log").as_deref(), Some("ccx\n"));
-    assert_eq!(lab.starts(), 2);
+    assert_eq!(lab.starts(), 1);
 }
 
 #[test]
@@ -684,4 +646,25 @@ fn a_failed_daemon_leaves_one_interrupted_record() {
     c.cancel(&project, &next.run, "crash-cancel-2").unwrap();
     wait_for(&c, &project, &next.run, RunState::is_final);
     assert_eq!(lab.starts(), 2);
+}
+
+#[test]
+fn the_last_event_of_a_failed_run_tells_why() {
+    let lab = Lab::new("failed-event");
+    fs::write(
+        &lab.solver,
+        "#!/bin/sh\necho \"fh-solver-protocol 2\"\necho boom >&2\nexit 1\n",
+    )
+    .unwrap();
+    let daemon = lab.start();
+    let c = daemon.client();
+    let project = c.register(&lab.root).unwrap();
+    let input = lab.input("a.inp", "*NODE\n");
+    let ack = c.submit(&project, "fail-1", &input).unwrap();
+    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
+    assert_eq!(record.state, RunState::Failed);
+    assert!(record.message.contains("boom"), "{}", record.message);
+    let events = c.events(&project, &ack.run, 0, Duration::ZERO).unwrap();
+    let last = events.items.last().map(|e| e.text.clone());
+    assert_eq!(last, Some(format!("state failed: {}", record.message)));
 }
