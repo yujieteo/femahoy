@@ -13,7 +13,7 @@ use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::app::{Content, ContentSlot, ViewerApp};
-use crate::sidebar::{Remote, RemoteEvent, Sidebar};
+use crate::sidebar::{Remote, RemoteEvent, Reply, Sidebar};
 use crate::terminal::{PROTOCOL, TOKEN_PROTOCOL};
 use crate::{results, RESULTS_FILE};
 
@@ -100,14 +100,6 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("{path}: not UTF-8 text"))
 }
 
-/// The item lines of a daemon message (after the empty line that ends the fields).
-fn items(message: &str) -> Vec<String> {
-    message
-        .split_once("\n\n")
-        .map(|(_, rest)| rest.lines().map(str::to_owned).collect())
-        .unwrap_or_default()
-}
-
 /// Fetch the result files of a run and read them.
 async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, String> {
     let base = format!("/api/v1/projects/{project}/runs/{run}/files");
@@ -133,13 +125,13 @@ async fn load_run(token: &str, project: &str, run: &str) -> Result<Content, Stri
 async fn list_runs(token: &str) -> Result<Content, String> {
     let projects = text(get(token, "/api/v1/projects").await?, "/api/v1/projects")?;
     let mut links = Vec::new();
-    for line in items(&projects) {
+    for line in Reply::parse(&projects).items {
         let Some((project, root)) = line.split_once(' ') else {
             continue;
         };
         let path = format!("/api/v1/projects/{project}/runs");
         let runs = text(get(token, &path).await?, &path)?;
-        for run in items(&runs).iter().rev() {
+        for run in Reply::parse(&runs).items.iter().rev() {
             let Some((id, state)) = run.split_once(' ') else {
                 continue;
             };

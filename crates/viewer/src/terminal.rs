@@ -54,7 +54,6 @@ pub mod cursor {
     pub const BLOCK: u8 = 1;
     pub const UNDERLINE: u8 = 2;
     pub const BEAM: u8 = 3;
-    pub const HOLLOW: u8 = 4;
 }
 
 /// Cells with the same colours and style, from column `col` over `cols` columns.
@@ -947,11 +946,6 @@ mod tests {
             command: true,
             ..none
         };
-        let mac_ctrl = Modifiers {
-            ctrl: true,
-            command: true,
-            ..none
-        };
         let mac_cmd = Modifiers {
             mac_cmd: true,
             command: true,
@@ -983,7 +977,7 @@ mod tests {
             (Key::Backspace, ctrl, 0, Some("\x08")),
             (Key::Escape, none, 0, Some("\x1b")),
             (Key::C, ctrl, 0, Some("\x03")),
-            (Key::C, mac_ctrl, 0, Some("\x03")),
+            (Key::C, ctrl, 0, Some("\x03")),
             (Key::D, ctrl, 0, Some("\x04")),
             (Key::OpenBracket, ctrl, 0, Some("\x1b")),
             (Key::Space, ctrl, 0, Some("\0")),
@@ -1009,7 +1003,7 @@ mod tests {
         }
         // On macOS, Control+V is a key and Command+V pastes.
         let mac = |key, m| key_bytes(key, m, 0, true);
-        assert_eq!(mac(Key::V, mac_ctrl), Some(vec![0x16]));
+        assert_eq!(mac(Key::V, ctrl), Some(vec![0x16]));
         assert_eq!(mac(Key::V, mac_cmd), None);
     }
 
@@ -1204,12 +1198,7 @@ mod tests {
         assert!(!copied[0].is_empty());
         let (sent, copied, _) = select_and_press(Windows, Key::X, ctrl);
         assert_eq!((sent, copied.len()), (vec![vec![1, 0x18]], 0));
-        let ctrl_mac = Modifiers {
-            ctrl: true,
-            command: true,
-            ..Modifiers::NONE
-        };
-        let (sent, copied, _) = select_and_press(Mac, Key::C, ctrl_mac);
+        let (sent, copied, _) = select_and_press(Mac, Key::C, ctrl);
         assert_eq!((sent, copied.len()), (vec![vec![1, 3]], 0));
     }
 
