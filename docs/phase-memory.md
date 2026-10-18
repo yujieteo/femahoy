@@ -137,3 +137,102 @@ A small fake solver also checks the complete monitor and its output files.
 
 The solver-api crate grew from 2116 to 2217 lines.
 No dependency changed. The full workspace gate and independent review follow the task handoff.
+
+## E3: x86-64 without AVX under an emulator
+
+The workflow `no-avx` (`.github/workflows/no-avx.yml`) runs `scripts/check-no-avx.sh` on a GitHub x86-64 runner with Ubuntu 24.04.
+QEMU user mode (`qemu-x86_64 -cpu Nehalem`) runs each program with the Nehalem CPU model: SSE4.2 and no AVX.
+An AVX instruction stops with SIGILL under this model.
+The emulator is not a real CPU without AVX. All times and memory values in this section are emulator values, not values of the D-06 machine.
+The 1-million-element repeat of M2.6 on x86-64 is still open. This record has small models only.
+
+| Item | Value |
+|---|---|
+| Date | 2026-10-18 |
+| Run | [39125169508](https://github.com/yujieteo/femahoy/actions/runs/39125169508). Job time 18 min 42 s. Step `Checks under QEMU Nehalem` 17 min 5 s. |
+| Commit | `47f33ef`: the scripts and the test of this change, with 1 more line that adds the branch `fm/femahoy-e3-no-avx-x1-probe` to the push trigger |
+| Runner CPU | AMD EPYC 9V74 80-Core Processor, 4 cores, 16,373,452 kB RAM. The host has AVX, AVX2 and AVX-512, and the emulator hides them. |
+| Emulator | qemu-x86_64 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1.18) |
+| Tools | rustc 1.99.1, Python 3.12.15, build123d 0.13.0, cadquery-ocp-novtk 8.0.1.1.0, numpy 2.5.4, gmsh 4.15.2 (pip wheel) |
+| Build | Release `fh` and `fh-solve` for `x86_64-unknown-linux-gnu` with `-C target-cpu=x86-64 -C target-feature=+sse4.2,-avx,-avx2` |
+
+2 earlier runs of the same job passed on different runner CPUs:
+
+| Run | Runner CPU | Job time | Time of the CI job `check` in the same push |
+|---|---|---:|---:|
+| [39123409918](https://github.com/yujieteo/femahoy/actions/runs/39123409918) | AMD EPYC 9V45 | 12 min 15 s | 6 min 0 s |
+| [39124531969](https://github.com/yujieteo/femahoy/actions/runs/39124531969) | AMD EPYC 7763 | 21 min 32 s | 4 min 11 s |
+| [39125169508](https://github.com/yujieteo/femahoy/actions/runs/39125169508) | AMD EPYC 9V74 | 18 min 42 s | 3 min 59 s |
+
+The emulator time depends on the runner CPU.
+Each result file of the thread check has the same SHA-256 in all 3 runs.
+The first run had an older version of `scripts/check-threads.py`, so its memory values are not in this record.
+
+### Time and peak memory
+
+GNU time is the parent process of each step. The elapsed time is the wall clock time.
+The peak is the maximum resident set size in MiB. Linux gives the largest process of the step, for example gmsh in `fh mesh`.
+Each value includes the memory of QEMU itself.
+The table gives the values of run 39125169508. A restart row of the thread check adds the times of its 2 processes and gives the larger peak.
+
+| Step | Programs | Runs | Elapsed s (emulator) | Peak RSS MiB (emulator) |
+|---|---|---:|---:|---:|
+| `fh validate` on `validation/cases` | fh, fh-solve | 1 | 29.16 | 140.7 |
+| CAD part, `scripts/cad/bar.py` | Python, build123d | 5 | 24.18 to 24.76 | 562.9 to 565.0 |
+| `fh info` of the STEP file | fh | 5 | 0.04 | 20.1 to 20.2 |
+| `fh mesh` | fh, gmsh | 5 | 2.68 to 3.17 | 142.3 to 143.3 |
+| `fh info` of the mesh | fh | 5 | 0.05 to 0.09 | 20.4 to 21.7 |
+| `fh model` | fh | 5 | 0.06 to 0.13 | 21.5 to 25.0 |
+| `fh check` of the model | fh | 5 | 0.04 to 0.07 | 20.8 to 23.2 |
+| Refused inputs of the M2b gate | fh, gmsh | 7 | 0.03 to 2.72 | 20.0 to 143.5 |
+| `fh validate --root`, coarse meshes | fh, fh-solve | 1 | 1.12 | 26.5 |
+| `fh validate --root`, fine meshes | fh, fh-solve | 1 | 5.53 | 56.5 |
+| Thread check, 32 rows (table below) | fh-solve | 48 | 0.41 to 76.88 for each row | 24.3 to 159.9 |
+| Matrix test (below) | test binary of `fh-core-solver` | 1 | 5.28 | 55.7 |
+
+### Result bytes at 1, 2, 4 and 6 threads
+
+`scripts/check-threads.py` runs `fh-solve` under the emulator with `FH_THREADS` set to 1, 2, 4 and 6.
+The inputs are `bar-tension` and the fine `bar-pressure` model of the CLI workflow, and the C3D8 boxes of `scripts/check-phase-memory.py` with 14 and 28 elements on each axis.
+Each input gets a second step with twice the loads.
+A full run solves both steps. A restart run stops with SIGKILL after the first restart file, and then `--restart` solves step 2 in the same folder.
+Each run folder has 10 files: `restart.fh`, `restart.fh.prev`, `results.pvd`, and `step-N.txt`, `step-N.vtu` and `step-N.vtk` for each step, and `summary.toon`.
+These files hold the displacements, the residual forces RF (internal force minus load at each node), the stresses and the restart state.
+Every file of the 32 run folders has the bytes of the full run at 1 thread. Only the summary lines `wall_s` and `run_id` can differ, and the check does not compare them.
+The step lines of the full runs are also equal.
+
+| Input | Method | Free dofs | Full run, elapsed s (emulator) at 1, 2, 4, 6 threads | Full run, peak RSS MiB (emulator) at 1, 2, 4, 6 threads | Same bytes |
+|---|---|---:|---|---|---|
+| `bar-tension` | Cholesky | 2071 | 0.50, 0.43, 0.41, 0.41 | 24.3, 26.3, 26.7, 27.3 | yes |
+| `bar-pressure` | Cholesky | 8938 | 3.36, 2.98, 2.91, 2.92 | 44.5, 48.7, 56.4, 61.2 | yes |
+| box, 14 elements on each axis | Cholesky | 9450 | 17.61, 16.93, 16.65, 16.65 | 82.0, 83.0, 86.0, 97.7 | yes |
+| box, 28 elements on each axis | PCG, 275 iterations in each step | 70644 | 64.87, 35.05, 30.54, 31.26 | 142.8, 144.4, 154.8, 158.6 | yes |
+
+The solver writes no file of the matrix. Thus the unit test `step::tests::the_matrix_has_the_same_bits_for_any_thread_count` in `crates/core-solver/src/step.rs` compares the matrix values.
+The test assembles a C3D8 box with 16 elements on each axis (4096 elements) at 1, 2, 4 and 6 threads.
+It compares the bits of the matrix values and of the internal forces.
+In an assembly, only the element evaluations use threads. The main thread adds the results in element order.
+The matrix check uses the test binary, not the release `fh-solve`. The test binary has the same target and RUSTFLAGS, and it ran under the same emulator in run 39125169508.
+The test passed: `test result: ok. 1 passed`.
+
+### CPU features of the external programs
+
+All external programs ran under the Nehalem model, and no program stopped with SIGILL.
+The script found the CPU features in 2 ways:
+
+1. `numpy.show_runtime()` under the emulator. numpy is a dependency of build123d. It reports the baseline `X86_V2` (SSE3 to SSE4.2 and POPCNT), no extra feature found, and `X86_V3`, `X86_V4`, `AVX512_ICL` and `AVX512_SPR` not found. Its OpenBLAS selects the `Nehalem` kernels.
+2. `readelf -n` reads the "x86 ISA needed" note of each ELF file: the Python program, `libgmsh.so.4.15` and each shared library of the Python packages (329 files).
+
+| Program | ISA note | Result under Nehalem |
+|---|---|---|
+| Python 3.12.15 (`python3.12`) | x86-64-baseline | Ran |
+| 5 libraries of `cadquery_ocp_novtk.libs` (Imath, Iex, IexMath, IlmThread, Half) | SSE, SSE2 | Ran |
+| gmsh 4.15.2 (`libgmsh.so.4.15`) and the other 322 libraries | No ISA note | Ran |
+
+A file with no ISA note does not declare its CPU needs. For those files, the run under the Nehalem model is the evidence.
+These are the needs of the tested versions on this emulator. A different build of a program can need different features.
+
+### Open
+
+- The 1-million-element run of M2.6 on x86-64 without AVX.
+- A run on a real CPU without AVX. The emulator gives no hardware times.
