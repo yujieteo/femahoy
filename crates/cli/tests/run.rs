@@ -8,7 +8,7 @@
 #![cfg(unix)]
 
 mod common;
-use common::{fails, p, real_gmsh, root, scratch, stderr, stdout};
+use common::{fails, p, real_gmsh, root, scratch, script, stderr, stdout};
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -31,12 +31,6 @@ while read line; do
 done
 exit 130
 "#;
-
-fn script(path: &Path, text: &str) -> PathBuf {
-    fs::write(path, text).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-    path.to_path_buf()
-}
 
 /// A scratch folder with a state folder, a fake browser and a fake gmsh.
 struct Lab {

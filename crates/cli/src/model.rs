@@ -71,7 +71,6 @@ fn write_inp(
         .iter()
         .map(|e| e.element_type.as_str())
         .collect();
-    types.dedup();
     types.sort_unstable();
     types.dedup();
     let [element_type] = types[..] else {

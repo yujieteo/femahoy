@@ -234,16 +234,12 @@ fn bad_options_exit_2() {
 #[cfg(unix)]
 mod fake_gmsh {
     use super::*;
-    use std::os::unix::fs::PermissionsExt;
 
     /// A shell script that acts as gmsh. It answers `-version`, then runs `body`.
     fn script(dir: &Path, body: &str) -> PathBuf {
-        let path = dir.join("gmsh");
         let text =
             format!("#!/bin/sh\nif [ \"$1\" = -version ]; then echo 4.15.2; exit 0; fi\n{body}\n");
-        std::fs::write(&path, text).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        path
+        super::common::script(&dir.join("gmsh"), &text)
     }
 
     fn run(name: &str, body: &str, extra: &[&str]) -> Output {
