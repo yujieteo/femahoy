@@ -24,7 +24,8 @@
 //!
 //! An entry is the item `<seq> <kind> <text>`. In the text, `\n` is a line break and `\\`
 //! is a backslash, because an item is one line. The token of the daemon never goes into an
-//! entry.
+//! entry. An `error` entry is an error of the chat: the agent cannot start, or it ended
+//! before the end of its work.
 
 use std::collections::{HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -185,7 +186,7 @@ impl Chat {
         };
         if let Err(e) = sent {
             let why = format!("cannot send the message to the agent: {e}");
-            self.push(&mut log, "fail", &why);
+            self.push(&mut log, "error", &why);
             log.input = None;
             return Err(Error::new(502, "chat.agent", why));
         }
@@ -235,7 +236,7 @@ impl Chat {
             Ok(child) => child,
             Err(e) => {
                 let why = format!("cannot start the agent {program:?}: {e}");
-                self.push(log, "fail", &why);
+                self.push(log, "error", &why);
                 return Err(Error::new(502, "chat.agent", why));
             }
         };
@@ -382,7 +383,7 @@ impl Chat {
         if log.turn || log.sent > log.taken {
             log.rest();
             let why = format!("the agent ended before the end of its work (exit code {code:?})");
-            self.push(&mut log, "fail", &why);
+            self.push(&mut log, "error", &why);
         }
     }
 }

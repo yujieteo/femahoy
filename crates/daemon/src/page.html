@@ -34,7 +34,6 @@ code, pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mono
   background: var(--side); border-right: 1px solid var(--line);
 }
 #chat .bar { font-weight: 600; }
-#state { font-size: 13px; font-weight: 400; color: var(--muted); }
 #log {
   display: flex; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto;
   padding: 4px 16px 16px; scrollbar-width: thin; scrollbar-color: var(--raised) transparent;
@@ -55,6 +54,9 @@ summary:hover { background: var(--raised); color: var(--text); }
 summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .meta { flex: none; font-size: 12px; }
 .failed > summary, .failed .meta, pre.fail { color: var(--error); }
+.failure { padding: 8px 12px; border: 1px solid var(--error); border-radius: 10px; font-size: 13.5px; }
+.failure strong { display: block; font-weight: 600; color: var(--error); }
+.failure pre { margin-top: 4px; max-height: 200px; overflow: auto; }
 details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: auto; border-radius: 8px; background: var(--code); color: var(--text); }
 .note { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
 .open {
@@ -64,9 +66,14 @@ details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: 
 .open:hover { background: var(--raised); }
 .end { margin: 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
 .end::first-letter { text-transform: uppercase; }
-#work { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--muted); }
-#work::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
+#work { display: grid; gap: 2px; margin: 0 12px 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; color: var(--muted); }
+#work p { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; }
+#work b { flex: none; width: 40px; font-weight: 500; }
+#work code, #work span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+#work .failed span, #work .failed b { color: var(--error); }
+#busy::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.2; } }
+#clock { margin-left: auto; font-variant-numeric: tabular-nums; }
 #error { margin: 0 16px 8px; font-size: 13px; color: var(--error); overflow-wrap: anywhere; }
 #composer { margin: 0 12px 12px; padding: 10px 10px 8px 16px; border: 1px solid var(--line); border-radius: 24px; background: var(--raised); }
 #input {
@@ -99,16 +106,20 @@ details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: 
 </head>
 <body>
 <aside id="chat">
-  <header class="bar">femahoy <span id="state"></span></header>
+  <header class="bar">femahoy</header>
   <div id="log">
     <p id="empty"><strong>Ask the agent for a model</strong>For example: build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face.</p>
-    <div id="work" hidden>The agent works</div>
+  </div>
+  <div id="work" hidden>
+    <p id="busy">The agent works<span id="clock"></span></p>
+    <p id="now" hidden><b>Now</b><code></code></p>
+    <p id="solve" hidden><b>Solve</b><span></span></p>
   </div>
   <p id="error" hidden></p>
   <form id="composer">
-    <textarea id="input" rows="1" placeholder="A request for the agent" aria-label="A request for the agent"></textarea>
+    <textarea id="input" rows="1" placeholder="A message for the agent" aria-label="A message for the agent"></textarea>
     <div class="row">
-      <span class="hint">Ctrl+Enter sends</span>
+      <span class="hint" id="hint">Ctrl+Enter sends</span>
       <button type="button" class="round" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop" hidden>
         <svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
       </button>
@@ -242,6 +253,9 @@ let again = false;
 let timer = 0;
 // The commands and the tools with no result yet, the oldest first.
 let waiting = [];
+// The time when the agent started to work, and the failed solves of this work.
+let started = 0;
+let fails = [];
 
 const unescape = (t) => t.replace(/\\(.?)/g, (_, c) => (c === "n" ? "\n" : c || "\\"));
 
@@ -250,13 +264,62 @@ function showError(text) {
   $("error").hidden = !text;
 }
 
-function setRunning(on) {
+// The status of the work above the composer: the time, the last action of the agent, the
+// run that solves now and each failed solve. The text box is always on: the agent reads a
+// message at its next step.
+function setRunning(on, fields = {}) {
   running = on;
   work.hidden = !on;
-  $("state").textContent = on ? "the agent works" : "";
   stop.hidden = !on;
-  send.hidden = on;
-  send.disabled = on || !input.value.trim();
+  send.disabled = !input.value.trim();
+  $("hint").textContent = on ? "The agent reads your message at its next step" : "Ctrl+Enter sends";
+  started = Number(fields.started_ms) || 0;
+  tick();
+  const solving = (fields.solving || "").split(" ");
+  const [project, run, state] = solving;
+  const step = Object.fromEntries(solving.slice(4).map((p) => p.split("=")));
+  const text = step.phase
+    ? run + ": step " + step.step + ", " + step.phase + " " + Math.round(Number(step.fraction) * 100) + "%"
+    : run + ": " + state;
+  status("solve", run ? text : "", "Project " + project);
+}
+
+function status(id, text, title) {
+  const p = $(id);
+  p.hidden = !text;
+  p.lastChild.textContent = text;
+  p.lastChild.title = title || text;
+}
+
+function tick() {
+  const s = started ? Math.max(0, Math.floor((Date.now() - started) / 1000)) : 0;
+  const clock = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  $("clock").textContent = started ? clock : "";
+}
+setInterval(() => running && tick(), 1000);
+
+// A failure as a clear entry with its error.
+function failure(title, text) {
+  const d = el("div", "failure", "");
+  d.append(el("strong", "", title), el("pre", "", text));
+  return d;
+}
+
+// A failed solve, also in the status while the agent works.
+function failedRun(project, run, error) {
+  const p = el("p", "failed", "");
+  p.append(el("b", "", "Failed"), el("span", "", run + ": " + error.split("\n")[0]));
+  p.title = error;
+  fails.push(p);
+  work.append(p);
+  return failure("The solve of " + run + " failed", error || "The run has no error message.");
+}
+
+function rest() {
+  waiting = [];
+  status("now", "");
+  fails.forEach((p) => p.remove());
+  fails = [];
 }
 
 // A command or a tool as 1 line. The person can expand it to see the full text and the result.
@@ -272,36 +335,46 @@ function action(verb, subject, full) {
 function result(d, kind, text) {
   const lines = text ? text.split("\n").length : 0;
   d.querySelector(".meta").textContent =
-    kind === "fail" ? "error" : lines ? lines + (lines === 1 ? " line" : " lines") : "no output";
+    kind === "fail" ? "failed" : lines ? lines + (lines === 1 ? " line" : " lines") : "no output";
   d.classList.toggle("failed", kind === "fail");
+  d.open ||= kind === "fail";
   if (text) d.append(el("pre", kind, text));
 }
 
 function entry(kind, text, fresh) {
   switch (kind) {
     case "you":
-      waiting = [];
       return el("div", "you", text);
     case "say":
       return el("p", "say", text);
     case "cmd": {
       const d = action("$", text, text.length > 48 || text.includes("\n"));
       waiting.push(d);
+      status("now", "$ " + text.split("\n")[0]);
       return d;
     }
     case "tool": {
       const d = action(...split(text), false);
       waiting.push(d);
+      status("now", text);
       return d;
     }
     case "out":
     case "fail": {
       const d = waiting.shift();
       if (d) return result(d, kind, text);
-      const alone = action(kind === "fail" ? "Error" : "Result", text.split("\n")[0], false);
+      if (kind === "fail") return failure("Error", text);
+      const alone = action("Result", text.split("\n")[0], false);
       result(alone, kind, text);
       return alone;
     }
+    case "failed": {
+      const [project, tail] = split(text);
+      return failedRun(project, ...split(tail));
+    }
+    case "error":
+      rest();
+      return failure("The agent failed", text);
     case "open": {
       const [project, run] = split(text);
       const b = el("button", "open", "Show the results of " + run);
@@ -330,9 +403,10 @@ function entry(kind, text, fresh) {
       return b;
     }
     case "end":
-      waiting = [];
+      rest();
       return el("p", "end", text);
     default: {
+      if (text === "stopped the agent") rest();
       if (!text.includes("\n")) return el("p", "note", text);
       const d = action("Note", text.split("\n")[0], false);
       d.append(el("pre", "", text));
@@ -349,7 +423,7 @@ function add(item) {
   const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
   $("empty")?.remove();
   const node = entry(kind, unescape(text), since > first);
-  if (node) log.insertBefore(node, work);
+  if (node) log.append(node);
   if (stick) log.scrollTop = log.scrollHeight;
 }
 
@@ -362,7 +436,7 @@ async function read() {
     const r = await reply("/api/v1/chat?since=" + since);
     if (first === null) first = Number(r.fields.next) || 0;
     r.items.forEach(add);
-    setRunning(r.fields.state === "running");
+    setRunning(r.fields.state === "running", r.fields);
     showError("");
   } catch (e) {
     showError(e.message);
@@ -375,20 +449,21 @@ async function read() {
   timer = setTimeout(read, running ? 1000 : 5000);
 }
 
-// Send the request to the agent. A line break is a space, because a field ends at the end of its line.
+// Send the message to the agent, also while it works. A line break is a space, because a
+// field ends at the end of its line.
 async function ask() {
   const text = input.value.trim();
-  if (!text || running) return;
+  if (!text) return;
   input.value = "";
   grow();
-  setRunning(true);
+  send.disabled = true;
   try {
     await call("/api/v1/chat", "text=" + text.replace(/[\r\n]/g, " ") + "\n");
     showError("");
   } catch (e) {
     showError(e.message);
     input.value = text;
-    setRunning(false);
+    grow();
   }
   read();
 }
@@ -410,7 +485,7 @@ input.addEventListener("keydown", (e) => {
 });
 input.addEventListener("input", () => {
   grow();
-  send.disabled = running || !input.value.trim();
+  send.disabled = !input.value.trim();
 });
 stop.addEventListener("click", () =>
   call("/api/v1/chat/stop", "").then(() => read(), (e) => showError(e.message)));

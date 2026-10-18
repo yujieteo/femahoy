@@ -302,8 +302,27 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     call(&c, "POST /api/v1/chat/stop", &[]).unwrap();
     let m = wait(&c, |m| m.get("state") == Some("idle"));
     assert!(
-        !m.items.iter().any(|i| i.contains(" fail the agent ended")),
+        !m.items.iter().any(|i| i.split(' ').nth(1) == Some("error")),
         "a stop is not a failure: {m:?}"
+    );
+
+    // An agent that ends during its work is an error entry.
+    let broken = dir.join("broken.sh");
+    fs::write(
+        &broken,
+        "#!/bin/sh\nread -r line\necho '{\"type\":\"user\",\"isReplay\":true}'\necho 'the agent lost its connection' >&2\nexit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&broken, fs::Permissions::from_mode(0o755)).unwrap();
+    std::env::set_var("FH_AGENT", &broken);
+    call(&c, "POST /api/v1/chat", &[("text", "Continue.")]).unwrap();
+    let m = wait(&c, |m| {
+        m.get("state") == Some("idle") && m.items.iter().any(|i| i.contains("lost its"))
+    });
+    assert!(
+        m.items.iter().any(|i| i
+            .ends_with(" error the agent ended before the end of its work (exit code Some(1))")),
+        "{m:?}"
     );
     drop(daemon);
     let _ = fs::remove_dir_all(&dir);
