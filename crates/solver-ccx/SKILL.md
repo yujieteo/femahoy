@@ -30,4 +30,4 @@ With `ccx` installed: `fh validate`.
 
 ## Examples
 
-`FH_CCX=/path/to/ccx fh run validation/cases/cantilever-c3d10/mesh-8.inp`
+`FH_CCX=/path/to/ccx fh run validation/cases/cantilever-c3d10/job.inp`

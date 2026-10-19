@@ -36,7 +36,7 @@ The adapter converts each nodal field in `job.frd` to a point array in `step-N.v
 
 - `DISP` is `U`, `FORC` is `RF`, `STRESS` is `S` (order `[xx, yy, zz, xy, yz, xz]`), `TOSTRAIN` is `E` and `PE` is `PEEQ`. Each other block keeps its `ccx` name.
 - `MISES` comes from `S`.
-- A shell or a beam is a solid element in `job.frd` (code 1 to 6), so the page draws each element type that `ccx` writes.
+- The adapter reads the element codes 1 to 12 of `job.frd` (solids, shells and beams) and skips any other code. The page draws the solid cells. A solved run never fails because of this conversion.
 - An input with no `*NODE FILE` and no `*EL FILE` gives no frame and no field. `fh run` then says that the page has no field to show.
 
 ## Process limits
