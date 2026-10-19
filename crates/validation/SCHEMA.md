@@ -30,7 +30,7 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 ## Model table (optional)
 
 `fh model` builds a solver input from a `.msh` file and the `[model]` table. The table is optional.
-`fh info`, `fh mesh` and `fh model` load the case with `Case::load_before_mesh`, which does not need the `mesh` files.
+`fh mesh` and `fh model` load the case with `Case::load_before_mesh`, which does not need the `mesh` files.
 `fh validate` uses `Case::load`, which needs them.
 
 | Key | Meaning |

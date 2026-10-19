@@ -483,6 +483,14 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
             output.display()
         ));
     }
+    let stats = fh_io::mesh_stats(model)?;
+    if stats.inverted > 0 {
+        return Err(format!(
+            "mesh.jacobian.negative: {} elements have a corner with a Jacobian of 0 or less, \
+for example {:?}",
+            stats.inverted, stats.inverted_ids
+        ));
+    }
     rules::volumes_are_named(&mesh)?;
     rules::material_groups(&mesh, &materials)?;
     for r in &regions {
@@ -496,11 +504,13 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     )
     .map_err(|e| format!("cannot write the unit record: {e}"))?;
     let mut report = format!(
-        "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t2\nnodes\t{}\nelements\t{}\n",
+        "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t2\nnodes\t{}\nelements\t{}\n\
+min_scaled_jacobian\t{:.4}\n",
         output.display(),
         units.name(),
         model.nodes.len(),
-        model.elements.len()
+        model.elements.len(),
+        stats.min_scaled_jacobian
     );
     let mut types: Vec<(&str, usize)> = Vec::new();
     for e in &model.elements {

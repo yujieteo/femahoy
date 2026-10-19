@@ -136,8 +136,8 @@ impl Case {
         Case::read(dir, true)
     }
 
-    /// Load `<dir>/case.toml` without the check that the `mesh` file exists. `fh info`,
-    /// `fh mesh` and `fh model` use it: the workflow makes the mesh files later.
+    /// Load `<dir>/case.toml` without the check that the `mesh` file exists. `fh mesh` and
+    /// `fh model` use it: the workflow makes the mesh files later.
     pub fn load_before_mesh(dir: &Path) -> Result<Case, FixtureError> {
         Case::read(dir, false)
     }

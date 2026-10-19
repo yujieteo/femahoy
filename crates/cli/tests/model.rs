@@ -274,8 +274,9 @@ fn the_workflow_commands_run_before_the_mesh_file_of_the_case_exists() {
     // The case names bar.inp, which fh model makes at the end of the workflow.
     let dir = case("before", |t| t);
     std::fs::remove_file(dir.join("bar.inp")).unwrap();
-    let info = fh(&["info", p(&dir.join("bar.step")), "--case", p(&dir)]);
-    assert_eq!(info.status.code(), Some(0), "{}", stderr(&info));
+    // fh mesh loads the case and checks the STEP units. Then it fails only to start gmsh.
+    let mesh = mesh_bar(&dir, "8", Path::new("/nonexistent/gmsh"));
+    fails(&mesh, 1, "cannot start gmsh");
     fails(&model_mm(&dir), 1, "model.set.empty");
 }
 
@@ -336,14 +337,17 @@ fn fh_mesh_makes_a_physical_group_for_each_region() {
     for file in ["bar.step", "case.toml", "derivation.md"] {
         std::fs::copy(src.join(file), dir.join(file)).unwrap();
     }
-    let out = mesh_bar(&dir, "10", &gmsh);
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    let report = stdout(&out);
-    for region in ["SUPPORT", "SYM_Y", "SYM_Z", "LOAD"] {
-        let row = format!("surface\t{region}\t");
-        assert!(report.contains(&row), "{region}: {report}");
+    // A new mesh at another size keeps the same regions.
+    for size in ["10", "5"] {
+        let out = mesh_bar(&dir, size, &gmsh);
+        assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+        let report = stdout(&out);
+        for region in ["SUPPORT", "SYM_Y", "SYM_Z", "LOAD"] {
+            let row = format!("surface\t{region}\t");
+            assert!(report.contains(&row), "{region}: {report}");
+        }
+        assert!(report.contains("elset\tSOLID\t"), "{report}");
     }
-    assert!(report.contains("elset\tSOLID\t"), "{report}");
     // A region on a plane with no face of the part is refused.
     let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
     let toml = toml.replace("at = 100.0", "at = 150.0");

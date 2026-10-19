@@ -12,13 +12,11 @@ The `fh` binary runs external gmsh, checks units and meshes, runs validation cas
 - `fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm|SI-m]` writes a solver input from the mesh and the `[model]` table of `case.toml`. It refuses a missing or different unit record (`unit.mesh.*`), an empty set, a volume with no physical group (`mesh.volume.unnamed`) and a region that the mesh does not hold (`mesh.region.missing`, `mesh.region.inner`). `fh mesh` writes the unit record `OUT.msh.units`.
 - `fh model` writes each `[[model.region]]` as `*NSET` and `*SURFACE, TYPE=ELEMENT` of the same name, each `[[model.dsload]]` as `*DSLOAD`, and the line `** units: SI-mm` (or `SI-m`) before the first keyword. `fh-solve-ccx` copies those units into the result files.
 - `fh mesh FILE.step --case DIR` puts every volume in the physical group `SOLID` and makes a physical surface for each region of the case (the fixed script contract of M2b). It refuses a region that selects no face (`mesh.region.missing`) and a volume with no physical group.
-- `fh info`, `fh mesh` and `fh model` load the case without its `mesh` files (`Case::load_before_mesh`), because the workflow makes them later.
-- `fh info FILE.step|FILE.msh [--case DIR]` also accepts `.stp`. It prints text.
-- STEP checks report units. With `--case`, they refuse a mismatch against `case.toml`.
-- MSH checks report counts, bounds, volume and minimum scaled Jacobian. They refuse empty solid meshes and nonpositive corner Jacobians.
+- `fh mesh` and `fh model` load the case without its `mesh` files (`Case::load_before_mesh`), because the workflow makes them later.
+- `fh mesh` refuses a STEP unit that is not the declared units, and a mesh with a nonpositive corner Jacobian (`mesh.jacobian.negative`).
 - `fh validate [--root DIR]` uses `FH_SOLVE`, else `fh-solve-ccx` beside `fh` or on `PATH`. It stops when `ccx` does not start, and fails when no case ran.
 - `fh serve [--state DIR] [--port N] [--no-open]` and `fh serve --stop [--state DIR]` call `fh_daemon::serve`. The daemon runs on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP (`docs/run-contract.md`). It uses the same solver as `validate`.
-- `fh run MODEL.inp|CASE_DIR|PART.step` and `fh run --example NAME` (`src/run.rs`) solve on the daemon of the state folder through `fh_daemon::Client`, and start `fh serve --no-open` in the background when no daemon answers. A case folder goes through `mesh::run` and `model::run` in `STATE/cases/NAME-HASH`. The example files come from `validation/cases/bar-pressure` (`include_bytes!`). Exit codes: 0, 1 (failed or refused), 2 (usage or input), 3 (no daemon), 130 (cancelled), in `docs/reference/fh.md`.
+- `fh run MODEL.inp|CASE_DIR|PART.step` (`src/run.rs`) solve on the daemon of the state folder through `fh_daemon::Client`, and start `fh serve --no-open` in the background when no daemon answers. A case folder goes through `mesh::run` and `model::run` in `STATE/cases/NAME-HASH`. Exit codes: 0, 1 (failed or refused), 2 (usage or input), 3 (no daemon), 130 (cancelled), in `docs/reference/fh.md`.
 
 ## Invariants the code must keep
 
@@ -47,9 +45,6 @@ Run `cargo check -p fh-cli` and `cargo test -p fh-cli`. `fh --help` lists availa
 ```sh
 fh mesh part.step --units SI-mm -o part.msh
 fh model part.msh --case validation/cases/bar-tension -o part.inp
-fh info part.step --case validation/cases/cantilever-c3d10
-fh info part.msh --case validation/cases/cantilever-c3d10
 fh validate --root .
-fh run --example bar-pressure
 fh run validation/cases/bar-pressure --no-open
 ```

@@ -94,7 +94,6 @@ The daemon owns every run. A browser and the CLI are only clients.
 <state>/previews/<id>.inp                   the copy of the input of a preview
 <state>/open.html                           the page that sends the browser on to the page of the daemon (mode 0600)
 <state>/daemon.log                          the output of a daemon that fh run started (mode 0600)
-<state>/examples/<name>/                    the case files of fh run --example
 <state>/cases/<name>-<hash>/                the mesh and the input of a case folder of fh run
 ```
 
@@ -152,6 +151,6 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 - a stopped daemon leaves `interrupted` records,
 - after a failed daemon (SIGKILL), the solver stops, and the next daemon shows the run as `interrupted`.
 
-`crates/cli/tests/run.rs` tests `fh run` and the browser and stop options of `fh serve`: an `.inp` file, a case folder, the example, a second run on the same daemon, the browser open and `--no-open`, a missing file, an input that the solver refuses, a failed run, no daemon possible, Ctrl+C, and a second Ctrl+C.
+`crates/cli/tests/run.rs` tests `fh run` and the browser and stop options of `fh serve`: an `.inp` file, a case folder (also with the real gmsh), a second run on the same daemon, the browser open and `--no-open`, a missing file, an input that the solver refuses, a failed run, no daemon possible, Ctrl+C, and a second Ctrl+C.
 
 `crates/daemon/tests/serve.rs` tests `fh serve`: a missing token, a wrong token and a wrong `Origin` each fail, the token with no `Origin` or with the own `Origin` passes, a network address of the machine gets no connection, a second daemon on the same state folder fails, and a stop or SIGTERM stops the daemon and removes `daemon.info`.

@@ -40,4 +40,4 @@ The area of the face is 20 x 10 = 200 mm2 (2e-4 m2). The total force is 100 MPa 
 
 `bar.step` comes from `python scripts/cad/bar.py bar.step` (mm) or `python scripts/cad/bar.py bar.step m` (m).
 `bar.inp` comes from `fh mesh bar.step --case . --size H -o bar.msh` and `fh model bar.msh --case . -o bar.inp`.
-H is 8 (mm) or 0.008 (m). `scripts/check-workflow.sh` makes these files again at 2 mesh sizes.
+H is 8 (mm) or 0.008 (m).

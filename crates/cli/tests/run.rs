@@ -627,34 +627,15 @@ fn a_case_that_the_mesh_step_refuses_exits_1() {
 }
 
 #[test]
-fn the_example_runs_from_any_folder() {
-    let lab = Lab::new("run-example");
-    let out = lab.fh(&["run", "--example", "bar-pressure"]);
-    succeeds(&out);
-    let text = stdout(&out);
-    assert!(text.contains("fh run: example bar-pressure: "), "{text}");
-    assert!(text.contains("--size 8"), "{text}");
-    assert!(solved(&out), "{}", stdout(&out));
-    let example = lab.state.join("examples/bar-pressure");
-    for file in ["case.toml", "bar.step", "derivation.md"] {
-        let shipped = fs::read(root().join("validation/cases/bar-pressure").join(file));
-        assert_eq!(
-            fs::read(example.join(file)).unwrap(),
-            shipped.unwrap(),
-            "{file}"
-        );
-    }
-}
-
-#[test]
-fn the_example_runs_with_the_real_gmsh() {
+fn a_case_folder_runs_with_the_real_gmsh() {
     let Some(gmsh) = real_gmsh() else {
         eprintln!("skipped: gmsh is not installed");
         return;
     };
-    let lab = Lab::new("run-example-gmsh");
+    let lab = Lab::new("run-case-gmsh");
+    let case = root().join("validation/cases/bar-pressure");
     let out = lab
-        .cmd(&["run", "--example", "bar-pressure"])
+        .cmd(&["run", p(&case), "--size", "8"])
         .env("FH_GMSH", gmsh)
         .output()
         .unwrap();
@@ -667,15 +648,12 @@ fn the_example_runs_with_the_real_gmsh() {
 fn bad_run_arguments_exit_2() {
     let lab = Lab::new("run-usage");
     fails(&lab.fh(&["run"]), 2, "usage: fh run");
-    let unknown = lab.fh(&["run", "--example", "nothing"]);
-    fails(
-        &unknown,
-        2,
-        "unknown example nothing. The examples: bar-pressure",
-    );
     // The lab adds --state, so this has no state folder. The check comes before its use.
-    let out = common::fh(&["run", "--example"]);
-    fails(&out, 2, "--example needs a name: bar-pressure");
+    fails(
+        &common::fh(&["run", "a.inp", "--size"]),
+        2,
+        "--size needs a mesh size",
+    );
     fails(
         &lab.fh(&["run", "a.inp", "--size", "-1"]),
         2,

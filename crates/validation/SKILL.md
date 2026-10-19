@@ -33,6 +33,5 @@ Run `cargo check -p fh-validation` and `cargo test -p fh-validation`. Use `fh va
 
 ```sh
 fh validate --root .
-fh info part.step --case validation/cases/cantilever-c3d10
 ```
 See `SCHEMA.md` for the full fixture structure.

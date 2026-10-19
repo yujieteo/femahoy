@@ -250,7 +250,7 @@ fn the_install_builds_copies_and_then_updates() {
     assert_eq!(mode & 0o777, 0o755);
     // The prefix is not on PATH, so the next command has the full path.
     assert!(
-        text.contains(&format!("  {}/fh run --example bar-pressure", p(&prefix))),
+        text.contains(&format!("  {}/fh serve\n", p(&prefix))),
         "{text}"
     );
     assert!(
@@ -332,10 +332,7 @@ fn a_relative_prefix_on_path_gives_the_short_next_command() {
     assert!(prefix.join("fh").is_file() && prefix.join("viewer/fh_viewer_bg.wasm").is_file());
     assert!(lab.dir.join("env/bin/python").is_file());
     let text = stdout(&out);
-    assert!(
-        text.ends_with("\n  fh run --example bar-pressure\n"),
-        "{text}"
-    );
+    assert!(text.ends_with("\n  fh serve\n"), "{text}");
     assert!(!text.contains("export PATH"), "{text}");
 }
 
