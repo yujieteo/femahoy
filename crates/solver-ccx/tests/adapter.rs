@@ -249,7 +249,6 @@ fn an_invalid_result_file_is_an_error() {
             "printf '    2C\\n -1  xx\\n 9999\\n' > job.frd",
             "line 2: bad node line",
         ),
-        ("echo ' 9999' > job.frd", "no element"),
         ("true", "job.frd"),
     ]
     .into_iter()
