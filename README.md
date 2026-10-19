@@ -32,3 +32,5 @@ For your own model, give `fh run` a CalculiX `.inp` file. `fh run` starts `ccx` 
 - [Input keywords and element types](docs/reference/inp.md): the input of the preview and the element types of the page.
 - [`fh` commands](docs/reference/fh.md): diagnostics and exit codes.
 - [Check file fields](docs/reference/check-toml.md): measurements and tolerances of a validation case.
+
+femahoy is under the MIT License, see `LICENSE`.
