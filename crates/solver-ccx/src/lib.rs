@@ -1,4 +1,4 @@
-//! CalculiX (`ccx`) as the solver of femahoy, in the process of `fh` (D-13, see DESIGN.md).
+//! CalculiX (`ccx`) as the solver of femahoy, in the process of `fh`.
 //!
 //! [`Ccx::run`] gives the user's `ccx` (`$FH_CCX`, else `ccx` on PATH) the input file as it is,
 //! with each `*INCLUDE` file, in `<run-dir>/ccx`. Then it converts every nodal field of the
@@ -194,7 +194,7 @@ fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
 }
 
 /// Write the VTU file of each step and the PVD collection in `units`. Each file is written
-/// under a temporary name and renamed (D-09).
+/// under a temporary name and renamed.
 fn write_results(results: &frd::Frd, run_dir: &Path, units: &str) -> Result<(), String> {
     let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
         let tmp = run_dir.join(format!("{file}.tmp"));

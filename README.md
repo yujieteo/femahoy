@@ -24,7 +24,7 @@ The chat has 1 focused agent. It plans and does the work.
 
 The input is CalculiX `.inp` text. Agent-facing output is plain text lines. Results are VTU files, so ParaView can open them.
 
-The solver is CalculiX (`ccx`). `fh` starts it directly. The owner removed the native solver `fh-solve` on 2026-10-19. An own solver is a main advantage later, but not now. Main commit `08a97c2` has the native solver.
+The solver is CalculiX (`ccx`). `fh` starts it directly.
 
 ## Get `ccx`
 

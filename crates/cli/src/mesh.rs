@@ -1,6 +1,6 @@
 //! `fh mesh FILE.(geo|step) --units U [options]`: run the external gmsh program and write the
 //! mesh as the nodes, the C3D10 elements (S6 shells with `--shell`) and the named sets of a
-//! CalculiX input. Decision D-02, see DESIGN.md: gmsh is a separate program. `fh` never links it.
+//! CalculiX input.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -17,14 +17,14 @@ A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z 
 node set. --volume makes an element set (STEP only). Each name is used once.\n\
 --shell meshes the surfaces of the file, not a solid: the elements are S6 shells, --face picks \
 edges (the surface is the edge of the shells) and --volume picks surfaces.\n\
-The units are required (D-18). The mesh is order 2, C3D10, or S6 with --shell (D-19).\n\
+The units are required. The mesh is order 2, C3D10, or S6 with --shell.\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
 
 /// The oldest gmsh release that `fh mesh` accepts.
 const OLDEST: (u32, u32) = (4, 8);
 
-/// The unit system of the input (D-18). There is no default.
+/// The unit system of the input. There is no default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Units {
     /// Length mm, force N, stress MPa, mass tonne, time s.
@@ -574,7 +574,7 @@ fn write_inp(
     picked: &[(String, Vec<u32>)],
     hide: Option<&str>,
 ) -> String {
-    // The solver run reads the units line and writes the units into the results (D-18).
+    // The solver run reads the units line and writes the units into the results.
     let mut out = format!(
         "** Made by fh mesh from {label}. Include it in the job file.\n** units: {}\n*NODE, NSET=NALL\n",
         units.name()
@@ -686,7 +686,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
         _ => {}
     }
     let msh_file = dir.join("mesh.msh");
-    // Order 2 gives C3D10 (S6 for a surface), the element that `fh mesh` writes (D-19).
+    // Order 2 gives C3D10 (S6 for a surface), the element that `fh mesh` writes.
     let mut args: Vec<String> = [
         if o.shell { "-2" } else { "-3" },
         "-nopopup",

@@ -1,5 +1,4 @@
 //! Reader for the gmsh MSH 4.1 ASCII format. It builds the `inp` model.
-//! Decision D-02, see DESIGN.md: gmsh stays external and is never linked.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;

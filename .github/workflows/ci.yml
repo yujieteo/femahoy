@@ -31,7 +31,7 @@ jobs:
         env:
           FH_REQUIRE_CCX: "1"
 
-  # aarch64 build and tests (D-07). The check job keeps fmt, clippy and the tests. This
+  # aarch64 build and tests. The check job keeps fmt, clippy and the tests. This
   # job has no ccx, so the tests that solve through the real ccx skip here.
   test-aarch64:
     runs-on: macos-14
