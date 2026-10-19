@@ -26,7 +26,7 @@ use crate::ccx::{input_text, stage_input, PVD_FILE};
 use super::message::{bad, fail, Failure};
 
 const LOCK_FILE: &str = "daemon.lock";
-pub(crate) const RUNS_DIR: &str = "runs";
+const RUNS_DIR: &str = "runs";
 const PREVIEWS_DIR: &str = "previews";
 const SOURCE_FILE: &str = "source";
 const TITLE_FILE: &str = "title";

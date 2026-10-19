@@ -22,11 +22,10 @@
 //! claude.ai connectors. It loads no setting source at all, because Claude Code reads the
 //! settings and the `CLAUDE.md` files of each folder above `STATE/chat` as project files, also
 //! `~/.claude/CLAUDE.md` when the state folder is in the home folder. Thus each person gets the
-//! same agent, with the model Claude Opus and the login of the person.
+//! same agent, with the default model and the login of the person.
 //!
 //! The agent works in `STATE/chat`: it can make, change and delete the files there with any
-//! command (`--permission-mode acceptEdits`). It can list and read the run folders
-//! `STATE/runs`, but not change them. Its other commands are `fh`, `fh-python` (the Python of
+//! command (`--permission-mode acceptEdits`). Its other commands are `fh`, `fh-python` (the Python of
 //! the CAD script), `pdflatex` and `ccx -v`. Solves go through `fh run`. `FH_AGENT` names
 //! another agent program, for example a fake agent that prints a recorded event stream in the
 //! tests.
@@ -45,7 +44,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::json::{quote, Json};
 use super::message::{bad, fail, Failure, Message};
-use super::store::{Store, RUNS_DIR};
+use super::store::Store;
 
 /// The instructions of the agent.
 const INSTRUCTIONS: &str = include_str!("agent.md");
@@ -464,8 +463,6 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
             "--replay-user-messages",
             "--append-system-prompt",
             INSTRUCTIONS,
-            "--model",
-            "opus",
             // No setting source and no MCP server: the personal setup stays out (module text).
             "--setting-sources",
             "",
@@ -475,13 +472,6 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
             "--allowedTools",
             TOOLS,
         ]);
-    // The run folders are a working folder, so that the agent can list them, but an `Edit` rule
-    // with `//` (an absolute path) stops each change of them, also by a command.
-    let runs = state_dir.join(RUNS_DIR);
-    cmd.arg("--add-dir")
-        .arg(&runs)
-        .arg("--disallowedTools")
-        .arg(format!("Edit(/{}/**)", runs.display()));
     if let Some(session) = session {
         cmd.args(["--resume", session]);
     }
