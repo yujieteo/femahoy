@@ -20,7 +20,7 @@ The command sources define more `mesh` options than the top-level help text show
 ```text
 fh mesh FILE.(geo|step) --units SI-mm|SI-m [-o OUT.inp] [--size H] [--scale S] [--set NAME=VALUE]...
   [--face NAME=SEL]... [--nodes NAME=SEL]... [--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]...
-  [--shell] [--timeout SECONDS] [--gmsh PATH]
+  [--refine NAME[,NAME]...=H]... [--shell] [--timeout SECONDS] [--gmsh PATH]
 ```
 
 Source: [mesh.rs](../../crates/cli/src/mesh.rs).
@@ -40,6 +40,7 @@ The input has no material, no step and no load. The chat includes it with `*INCL
 | `--face NAME=SEL` | Repeatable. A node set `NAME` and a surface `NAME` of the faces of the part that lie fully inside the selection, within 1e-6 of the diagonal of the part. With `--shell`, the part has edges, not faces. The surface is the edges of the shells: `S3` and up in the `*DSLOAD` face number, with edge `k` from corner `k` to corner `k+1`. |
 | `--nodes NAME=SEL` | Repeatable. A node set of the nodes in the selection. |
 | `--volume NAME=box:...` | Repeatable. STEP only. An element set of the elements in the box. Each element must be in exactly 1 box. With `--shell`, a box selects surfaces. |
+| `--refine NAME[,NAME]...=H` | Repeatable. STEP only. Positive finite number H, below `--size`. Each `NAME` is the name of a `--face`. The elements at that set have the size H. The size grows to `--size` away from the set, by 0.3 for each unit of distance. Needs `--size`. Each name is used once. |
 | `--shell` | Off by default. Mesh the surfaces of a STEP file as `S6` shells. The file must have no volume. The mid-surface is the work of the chat (build123d). |
 | `--timeout` | No limit by default. Positive finite duration. The version probe has a separate 30-second limit. |
 | `--gmsh` | Overrides discovery. Otherwise use non-empty `FH_GMSH`, then a file on `PATH`, then the macOS app path. |
@@ -52,6 +53,7 @@ For a STEP file, `fh mesh` writes the gmsh script (the fixed script contract of 
 The script sets the STEP target unit and uses `SOLID` for one material without a `--volume` box.
 For `--volume` boxes, it fragments the bodies and creates one physical volume group per box.
 It checks that each solid element belongs to exactly one box.
+For `--refine`, the script makes a gmsh `Distance` field and a `Threshold` field for each refined set (faces for a solid, curves with `--shell`). The `Min` of the fields is the background size field, and the sizes from points, from curvature and from the boundary are off.
 With `--shell`, the script meshes in 2D, uses `SHELL` for one material without a `--volume` box, and fragments surfaces. `--face` selects curves.
 The output has no `*SHELL SECTION`. The chat writes the thickness and the material.
 
@@ -83,6 +85,8 @@ The command replaces an existing output file only when the mesh succeeds.
 | A `--face` that is not on the outside of the solid | `fh mesh: mesh.face.inner: ...` | 1 |
 | A `--nodes` selection with no node | `fh mesh: mesh.set.empty: ...` | 1 |
 | A name used twice | `fh mesh: mesh.name.duplicate: ...` | 1 |
+| A `--refine` name with no `--face`, with no `--size`, or with H not below `--size` | `fh mesh: --refine NAME: there is no --face NAME`, `it needs --size, ...` or `H must be below --size S` | 1 |
+| A `--refine` with no `=H`, a bad number, or a name used twice | `fh mesh: --refine needs NAME=H` or `--refine names NAME twice` | 2 |
 | A `--volume` box with no element, or an element in no box or in 2 boxes | `fh mesh: mesh.volume.empty: ...` or `mesh.volume.coverage: ...` | 1 |
 
 The child exit code is diagnostic text. `fh mesh` returns 1 for a child failure.
