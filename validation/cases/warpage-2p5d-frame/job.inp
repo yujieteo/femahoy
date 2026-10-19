@@ -1,0 +1,75 @@
+** units: SI-mm
+** Quarter model of a 2.5D package with a metal frame: Tsai, Wang and Liu, Materials 14 (2021) 3723,
+** https://doi.org/10.3390/ma14133723. See derivation.md.
+*INCLUDE, INPUT=mesh.inp
+** Table 1 of the paper. The step cools the package from the stress-free temperature of 140 C to 60 C.
+** On this path no material crosses its Tg. Thus the EMC and the underfills use their values below
+** Tg (140 C), and the adhesive uses its values above Tg (50 C).
+*MATERIAL, NAME=SI
+*ELASTIC
+169000, 0.28
+*EXPANSION, ZERO=140
+2.3e-6
+*ELSET, ELSET=SI_ALL
+DIE, INT
+*SOLID SECTION, ELSET=SI_ALL, MATERIAL=SI
+** Table 1 gives nu = 0.69 for the EMC. An isotropic nu must be below 0.5: see derivation.md.
+*MATERIAL, NAME=EMC
+*ELASTIC
+23000, 0.3
+*EXPANSION, ZERO=140
+10.8e-6
+*ELSET, ELSET=EMC_ALL
+EMC_X, EMC_Y
+*SOLID SECTION, ELSET=EMC_ALL, MATERIAL=EMC
+*MATERIAL, NAME=UF1
+*ELASTIC
+7200, 0.28
+*EXPANSION, ZERO=140
+28e-6
+*SOLID SECTION, ELSET=UF1, MATERIAL=UF1
+** The underfill fillet is UF2.
+*MATERIAL, NAME=UF2
+*ELASTIC
+7600, 0.28
+*EXPANSION, ZERO=140
+29e-6
+*ELSET, ELSET=UF2_ALL
+UF2, FIL_X, FIL_Y, FIL_C
+*SOLID SECTION, ELSET=UF2_ALL, MATERIAL=UF2
+*MATERIAL, NAME=SUB
+*ELASTIC
+20000, 0.42
+*EXPANSION, ZERO=140
+13.2e-6
+*SOLID SECTION, ELSET=SUB, MATERIAL=SUB
+*MATERIAL, NAME=FRAME
+*ELASTIC
+117000, 0.3
+*EXPANSION, ZERO=140
+16.9e-6
+*ELSET, ELSET=FRAME_ALL
+FRM_X, FRM_Y
+*SOLID SECTION, ELSET=FRAME_ALL, MATERIAL=FRAME
+*MATERIAL, NAME=ADH
+*ELASTIC
+20, 0.3
+*EXPANSION, ZERO=140
+170e-6
+*ELSET, ELSET=ADH_ALL
+ADH_X, ADH_Y
+*SOLID SECTION, ELSET=ADH_ALL, MATERIAL=ADH
+*INITIAL CONDITIONS, TYPE=TEMPERATURE
+NALL, 140
+*STEP, NAME=T60
+*STATIC
+** Symmetry on x = 0 and y = 0. u3 = 0 at the bottom centre, so u3 of CORNER is the warpage.
+*BOUNDARY
+SYM_X, 1, 1, 0.0
+SYM_Y, 2, 2, 0.0
+ORIGIN, 3, 3, 0.0
+*TEMPERATURE
+NALL, 60
+*NODE PRINT, NSET=CORNER
+U
+*END STEP

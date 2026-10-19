@@ -1,0 +1,12 @@
+# See derivation.md. The moiré warpage of the substrate corner at 60 C (Fig. 20 of the paper),
+# relative to the centre. The corner moves to -z, because the package is a dome at 60 C.
+# The tolerance is the root sum square of the budget in derivation.md (12.4%), rounded up.
+rel_tol = 0.13
+abs_tol = 0.0
+
+[warpage]
+value = -0.162
+set = "CORNER"
+field = "U"
+component = 3
+op = "value"
