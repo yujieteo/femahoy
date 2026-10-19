@@ -240,9 +240,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     Ok(o)
 }
 
-/// Physical volume groups select the material boxes, or SOLID for the single body.
+/// Physical volume groups select the material boxes, or SOLID for the single body. A box holds
+/// the bodies that lie fully inside it, within a millionth of the diagonal of the part.
 /// Each face option has its own physical surface group. It holds the faces of the part that
-/// lie fully inside its plane or box, within a millionth of the diagonal of the part.
+/// lie fully inside its plane or box, with the same tolerance.
 /// With `shell`, the body is a set of surfaces (group SHELL) and a face is a curve.
 /// A face in `refine` also gets a size field: size `h` on the face, growing by `GROWTH` for each
 /// unit of distance up to `far`. `refine` is empty when `far` is 0.
@@ -259,32 +260,36 @@ fn groups_script(
         ("Volume", "Surface", "SOLID")
     };
     let mut s = String::new();
-    if volumes.is_empty() {
-        s.push_str(&format!(
-            "fh_v[] = {body}{{:}};\nPhysical {body}(\"{default}\") = fh_v[];\n"
-        ));
-    } else {
+    if !volumes.is_empty() {
         // Fragment the touching bodies so both layers share every interface node.
         s.push_str(&format!("BooleanFragments{{ {body}{{:}}; Delete; }}{{}}\n"));
-        for (name, select) in volumes {
-            if let Select::Box { min, max } = select {
-                let lo = min.iter().map(|x| format!("{x:?}-1e-7"));
-                let hi = max.iter().map(|x| format!("{x:?}+1e-7"));
-                let coords = lo.chain(hi).collect::<Vec<_>>().join(", ");
-                s.push_str(&format!(
-                    "fh_m[] = {body} In BoundingBox{{{coords}}};\nPhysical {body}(\"{name}\") = fh_m[];\n"
-                ));
-            }
-        }
-        s.push_str(&format!("fh_v[] = {body}{{:}};\n"));
     }
-    if faces.is_empty() {
+    s.push_str(&format!("fh_v[] = {body}{{:}};\n"));
+    if volumes.is_empty() {
+        s.push_str(&format!("Physical {body}(\"{default}\") = fh_v[];\n"));
+    }
+    if volumes.is_empty() && faces.is_empty() {
         return s;
     }
+    // OpenCASCADE makes each bounding box 1e-7 larger, and a coordinate such as 1.08 + 0.07
+    // is not exact. Thus a box must be larger than its body by more than that.
     s.push_str(&format!(
         "fh_b[] = BoundingBox {body}{{fh_v[]}};\n\
 fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh_b[2])^2);\n"
     ));
+    for (name, select) in volumes {
+        if let Select::Box { min, max } = select {
+            let lo = min.iter().map(|x| format!("{x:?} - fh_e"));
+            let hi = max.iter().map(|x| format!("{x:?} + fh_e"));
+            let coords = lo.chain(hi).collect::<Vec<_>>().join(", ");
+            s.push_str(&format!(
+                "fh_m[] = {body} In BoundingBox{{{coords}}};\nPhysical {body}(\"{name}\") = fh_m[];\n"
+            ));
+        }
+    }
+    if faces.is_empty() {
+        return s;
+    }
     if !refine.is_empty() {
         s.push_str("fh_k = 1;\nfh_f[] = {};\n");
     }
@@ -798,6 +803,10 @@ mod tests {
         assert!(two.contains("Physical Volume(\"LOW\")"), "{two}");
         assert!(two.contains("Physical Volume(\"UP\")"), "{two}");
         assert!(!two.contains("SOLID"), "{two}");
+        // A box has the tolerance of the faces, set before the first box.
+        let low = "Volume In BoundingBox{0.0 - fh_e, 0.0 - fh_e, 0.0 - fh_e, 2.0 + fh_e, 2.0 + fh_e, 1.0 + fh_e}";
+        assert!(two.contains(low), "{two}");
+        assert!(two.find("fh_e = ") < two.find(low), "{two}");
         // A shell has surfaces for volumes and curves for faces.
         let shell = groups_script(&faces, &[], true, &[], 0.0);
         assert!(shell.contains("Physical Surface(\"SHELL\")"), "{shell}");

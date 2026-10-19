@@ -70,6 +70,37 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
     );
 }
 
+/// The upper layer of `layers.step` is 0.07 thick at z = 1.08, and 1.08 + 0.07 is 1.1500000000000001.
+/// OpenCASCADE also makes each bounding box 1e-7 larger. The box of the layer must still select it.
+#[test]
+fn a_volume_box_selects_a_body_with_a_rounded_coordinate() {
+    let Some(gmsh) = real_gmsh() else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let dir = scratch("rounded-layer");
+    let out = dir.join("layers.inp");
+    let step = fixture("layers.step");
+    let run = mesh(
+        &[
+            p(&step),
+            "--size",
+            "1",
+            "-o",
+            p(&out),
+            "--volume",
+            "LOW=box:0,0,0,2,2,1.08",
+            "--volume",
+            "UP=box:0,0,1.08,2,2,1.15",
+        ],
+        Some(&gmsh),
+    );
+    let stdout = stdout(&run);
+    assert_eq!(run.status.code(), Some(0), "stderr: {}", stderr(&run));
+    assert!(stdout.contains("elset\tLOW\t"), "{stdout}");
+    assert!(stdout.contains("elset\tUP\t"), "{stdout}");
+}
+
 #[test]
 fn step_file_without_a_unit_record_is_refused() {
     let dir = scratch("nounit");
