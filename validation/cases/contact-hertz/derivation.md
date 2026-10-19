@@ -53,6 +53,6 @@ This case uses the last input of the chat with a local size of 0.4 mm (2387 node
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh mesh.geo --units SI-mm --size 2.5`.
-`mesh.geo` loads `part.step` (the block and the 1/4 ball, with a gap of 0.002 mm) and names the groups above.
+An earlier `fh mesh` made the mesh in `job.inp` from a gmsh `.geo` script. `fh mesh` now takes only STEP.
+The script loaded `part.step` (the block and the 1/4 ball, with a gap of 0.002 mm) and names the groups above.
 Its size field is 0.4 mm up to 1 mm from the contact point (0, 0, 10). Then the size grows linearly to 2.5 mm at 5.74 mm.
