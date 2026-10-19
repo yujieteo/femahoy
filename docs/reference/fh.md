@@ -175,14 +175,9 @@ The daemon reads the run and preview folders that `fh run` writes. It does not s
 The page is the wasm viewer, from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 The page has the chat with the agent.
 
-After the start, `fh serve` opens its page in the browser. A value of `FH_NO_OPEN` that is not empty and not `0` stops this, for tests and for a machine with no screen.
-The address holds the token, so it does not go into the command line of a browser process, where other users of the machine can read it:
-
-| Browser program | What it gets |
-|---|---|
-| `$BROWSER`, when it is set | the file `STATE/open.html` (mode 0600), which sends the browser on to the address |
-| macOS | `open URL`: Launch Services gives the address to the default browser |
-| Other Unix systems | `xdg-open STATE/open.html` |
+After the start on macOS, `fh serve` opens its page in the browser with `open URL`. Launch Services gives the address to the default browser, so only the short-lived `open` process has the token in its command line.
+On other systems, `fh serve` opens no browser. It only prints the address.
+A value of `FH_NO_OPEN` that is not empty and not `0` stops the open, for tests and for a machine with no screen.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
