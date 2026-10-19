@@ -54,7 +54,10 @@ use crate::service::{Limits, Service};
 
 const MAX_HEAD: usize = 16 << 10;
 const MAX_HEADERS: usize = 64;
+/// The most bytes of a body, for each route but the chat.
 const MAX_BODY: usize = 16 << 10;
+/// The most bytes of a chat message: a long pasted paper must fit.
+const MAX_CHAT_BODY: usize = 1 << 20;
 /// The most connections at the same time. Each one has a thread.
 const MAX_CONNECTIONS: usize = 32;
 /// The longest time that a client can take to send its request.
@@ -179,6 +182,14 @@ impl Request {
             .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('='))
     }
 
+    fn body_limit(&self) -> usize {
+        if self.method == "POST" && self.path == "/api/v1/chat" {
+            MAX_CHAT_BODY
+        } else {
+            MAX_BODY
+        }
+    }
+
     fn is_page(&self) -> bool {
         self.method == "GET" && self.path == "/"
     }
@@ -213,7 +224,7 @@ fn read_line(reader: &mut impl BufRead, head: &mut usize) -> Result<String, Erro
 }
 
 fn read_request(stream: &mut TcpStream) -> Result<Request, Error> {
-    let mut reader = BufReader::new(Read::take(&*stream, (MAX_HEAD + MAX_BODY + 1) as u64));
+    let mut reader = BufReader::new(Read::take(&*stream, (MAX_HEAD + MAX_CHAT_BODY + 1) as u64));
     let mut head = 0;
     let line = read_line(&mut reader, &mut head)?;
     let parts: Vec<&str> = line.split(' ').collect();
@@ -258,7 +269,7 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, Error> {
             .parse()
             .map_err(|_| Error::bad("http.invalid", "bad Content-Length"))?,
     };
-    if length > MAX_BODY {
+    if length > req.body_limit() {
         return Err(Error::new(413, "http.too-large", "the body is too large"));
     }
     let mut body = vec![0; length];

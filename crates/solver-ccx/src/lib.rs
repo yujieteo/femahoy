@@ -142,9 +142,33 @@ pub fn default_memory_limit() -> u64 {
     total_memory().map_or(u64::MAX, |ram| ram / 100 * 85)
 }
 
+/// The end of the log in the error text: ccx shows its cause before the `*ERROR` line, for
+/// example the iterations that did not converge.
+const TAIL_LINES: usize = 15;
+const TAIL_CHARS: usize = 2000;
+
+/// The last lines of `log` that have text, on one line with ` | ` between them.
+fn log_tail(log: &str) -> String {
+    let lines: Vec<&str> = log
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    let tail = lines[lines.len().saturating_sub(TAIL_LINES)..].join(" | ");
+    if tail.is_empty() {
+        return "(no output)".to_owned();
+    }
+    let cut = tail.chars().count().saturating_sub(TAIL_CHARS);
+    tail.chars().skip(cut).collect()
+}
+
 /// Why `ccx` failed and what to do, from its exit status and its output `log`.
 fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
-    let see = format!("The full ccx output is in {}", log_file.display());
+    let see = format!(
+        "The full ccx output is in {}. Its last lines: {}",
+        log_file.display(),
+        log_tail(log)
+    );
     // The first `*ERROR` message: its line and the lines after it, up to an empty line.
     let mut lines = log.lines().skip_while(|l| !l.contains("*ERROR"));
     if let Some(first) = lines.next() {
@@ -166,11 +190,7 @@ fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
              memory. {see}"
         );
     }
-    let last = log.lines().map(str::trim).rfind(|l| !l.is_empty());
-    format!(
-        "ccx failed ({status}) with no *ERROR message. The last ccx line is: {}. {see}",
-        last.unwrap_or("(no output)")
-    )
+    format!("ccx failed ({status}) with no *ERROR message. {see}")
 }
 
 /// Write the VTU file of each step and the PVD collection in `units`. Each file is written
