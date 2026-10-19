@@ -8,8 +8,8 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 
 - `parse(&str)` returns `Model` or `ParseError` with a line and keyword.
 - The subset includes nodes, elements, sets, elastic materials, solid sections, static steps, boundaries, concentrated loads and distributed loads.
-- Node surfaces, couplings, equations and MPCs are supported.
-- The parser accepts `C3D4`, `C3D8`, `C3D8I` and `C3D10`. Parser acceptance does not imply solver support.
+- The only element is `C3D10` (D-19). Another element type fails with a clear error.
+- `*SURFACE` accepts only `TYPE=ELEMENT`. `*STEP` accepts no `NLGEOM`. `*STATIC` data lines are accepted and not used.
 
 ## Invariants the code must keep
 
@@ -25,8 +25,8 @@ Parse the supported Abaqus-style `.inp` subset into `Model`.
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-inp` and `cargo test -p fh-inp`. `fh check --root .` checks repository fixtures.
+Run `cargo check -p fh-inp` and `cargo test -p fh-inp`. `tests/fixtures.rs` parses the mesh of each validation case.
 
 ## Examples
 
-`fh check FILE.inp` checks a file and prints text counts or errors.
+`fh_inp::parse_file("model.inp", &text)` gives the `Model` or the list of errors.

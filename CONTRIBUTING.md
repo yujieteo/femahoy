@@ -18,8 +18,8 @@ Keep the code small. Delete code that is not needed.
 For a bug, write a test that fails first.
 Show the failing output. Fix the bug. Show the passing output.
 For a new feature, write the test or fixture first. Then write the code.
-For a solver change, run the convergence check for each changed element or contact path.
-Include the convergence table in your report.
+For a solver change, run `fh validate`.
+Include the table of the changed cases in your report.
 Every claim in a report needs its command and its output.
 Do not write "should work" or "probably fixed".
 
@@ -31,7 +31,6 @@ A change merges only when all these checks pass:
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace`
 - `fh validate`
-- `fh validate --convergence <path>` for each changed solver path
 
 After the checks pass, a reviewer reads the diff and the report.
 A rejection from the reviewer blocks the merge.

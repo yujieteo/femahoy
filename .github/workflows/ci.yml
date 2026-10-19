@@ -18,8 +18,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       # The solver is fh-solve-ccx, which runs CalculiX (docs/ccx.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
-      # The validation cases are tested with ccx 2.23 (docs/ccx.md). The Ubuntu package is older and
-      # gives a wrong C3D8I patch test, so ccx comes from nixpkgs.
+      # The validation cases are tested with ccx 2.23 (docs/ccx.md). The Ubuntu package is older,
+      # so ccx comes from nixpkgs.
       - uses: cachix/install-nix-action@v31
       - name: Install ccx
         run: |
