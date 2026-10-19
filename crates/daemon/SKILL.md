@@ -10,7 +10,7 @@ The crate has the D1 run contract: one contract for runs that the CLI and the UI
 - `Client` is the client of the contract for the CLI and the tests. `Client::discover(STATE_DIR)` reads `daemon.info`.
 - Commands: submit, preview, cancel, read a record, list the runs, read the events.
 - The text form, the routes and the access rules are in `src/contract.rs`, `src/http.rs` and `docs/run-contract.md`.
-- A run starts `ccx` through `fh_solver_ccx::Ccx` in the daemon process, on a read-only copy of its input.
+- A run starts `ccx` through `fh_solver_ccx::Ccx` in the daemon process, on a read-only copy of its input and of the files that it includes (`*INCLUDE`). The limits of a run (`timeout`, `memory`) come with the submit.
 - `src/chat.rs` runs 1 agent (Claude Code, `claude -p --input-format stream-json --output-format stream-json`) with the instructions of `src/agent.md`, and keeps its actions as chat entries for `/api/v1/chat`. The agent stays alive between the messages, and each message goes to its stdin, also while it works.
 
 ## Invariants the code must keep
@@ -41,5 +41,5 @@ Run `cargo check -p fh-daemon` and `cargo test -p fh-daemon`. `tests/serve.rs` t
 ```rust
 let daemon = Daemon::start_with_options(Config { state_dir, solver: Ccx::new() }, 0, Options::default())?;
 let cli = Client::discover(&state_dir)?;
-let record = cli.submit(&root.join("model.inp"))?;
+let record = cli.submit(&root.join("model.inp"), &Limits::default())?;
 ```

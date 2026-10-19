@@ -2,22 +2,21 @@
 
 ## Purpose
 
-Load case TOML files, measure solver results and compare them with declared references.
+Load the check files of the cases, and compare the numbers of a solver with the references.
 
 ## Inputs and outputs
 
-- Each case resides in `validation/cases/<id>/case.toml`. The accepted schema is `schema = 3`. Each case has 1 mesh.
-- The top-level `units` key is required. Values are `SI-mm` or `SI-m`.
-- SI-mm uses mm, N, MPa, tonne and s. SI-m uses m, N, Pa, kg and s.
-- Each reference names a quantity with `set`, `field`, `component`, `step` and `op`.
+- Each case resides in `validation/cases/<id>/`. It holds `job.inp` (a plain CalculiX input with its own `*NODE PRINT` and `*EL PRINT` requests) and `check.toml`.
+- `check.toml` holds `rel_tol`, `abs_tol` and 1 table for each reference. A table has `value`, `set`, `field`, `component` and `op`.
 - Fields are `U`, `RF` and `S`. Operations are `value`, `mean`, `max`, `min` and `sum`.
+- The value comes from the last block of the field and set in the `.dat` file.
 
 ## Invariants the code must keep
 
-- All case numbers use the declared unit system. Units are not inferred from the mesh.
+- All case numbers use the unit system of the `** units:` line of `job.inp`.
 - Each quantity passes if `|computed - ref| <= rel_tol * |ref| + abs_tol`.
 - A failed case or unavailable solver makes `fh validate` fail.
-- Fixtures are data files, not prose (DESIGN.md section 10.4).
+- Check files are data files, not prose (DESIGN.md section 10.4).
 - A failure blocks the merge. There is no override (DESIGN.md section 10.5).
 
 ## Forbidden actions
@@ -34,4 +33,4 @@ Run `cargo check -p fh-validation` and `cargo test -p fh-validation`. Use `fh va
 ```sh
 fh validate --root .
 ```
-See `SCHEMA.md` for the full fixture structure.
+See `SCHEMA.md` for the full structure of `check.toml`.

@@ -1,0 +1,22 @@
+# The reference is the Kirsch closed form for a hole in an infinite plate (derivation.md). The
+# plate is finite, so the reference has an error of 1 percent. The value comes from the
+# integration points of the elements at the hole edge, not from the edge. The 15 percent
+# tolerance holds this offset and the error of the reference.
+# Far-field tension is 100 MPa along x. edge90: S11 at theta = 90 degrees is 3 x 100 MPa.
+# edge0: S22 at theta = 0 is -100 MPa.
+rel_tol = 0.15
+abs_tol = 0.0
+
+[sigma_edge90]
+value = 300.0
+set = "edge90"
+field = "S"
+component = 11
+op = "max"
+
+[sigma_edge0]
+value = -100.0
+set = "edge0"
+field = "S"
+component = 22
+op = "min"

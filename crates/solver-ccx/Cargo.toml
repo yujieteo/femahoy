@@ -1,6 +1,6 @@
 [package]
 name = "fh-solver-ccx"
-description = "CalculiX run: ccx input writer, process limits, .frd reader, results as VTU and PVD"
+description = "CalculiX run: process limits, .frd reader, results as VTU and PVD"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

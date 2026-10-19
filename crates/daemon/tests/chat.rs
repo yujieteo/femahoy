@@ -11,7 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{Client, Config, Daemon, Error, Message, Options, RunState};
+use fh_daemon::{Client, Config, Daemon, Error, Limits, Message, Options, RunState};
 use fh_solver_ccx::Ccx;
 
 fn fixture(name: &str) -> PathBuf {
@@ -172,8 +172,8 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     fs::write(&model, &tet).unwrap();
     fs::write(&bad, tet.replace("*STEP", "*NSET, NSET=FAIL\n1\n*STEP")).unwrap();
     let preview = c.preview(&model, "my case").unwrap();
-    let bad = c.submit(&bad).unwrap().run;
-    let run = c.submit(&model).unwrap().run;
+    let bad = c.submit(&bad, &Limits::default()).unwrap().run;
+    let run = c.submit(&model, &Limits::default()).unwrap().run;
     let solving = format!("{run} running progress step=1 increment=1");
     let m = wait(&c, |m| m.get("solving") == Some(solving.as_str()));
     assert_eq!(m.get("state"), Some("running"));

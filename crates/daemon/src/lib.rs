@@ -2,8 +2,9 @@
 //! contract (roadmap item D1): one contract for runs that the CLI and the UI share.
 //!
 //! - **Runs.** A submit names the absolute path of an input file. The daemon copies the
-//!   file into the folder of a new run, and the run solves the copy, so a later edit of the
-//!   file does not change the run. Each run has an ID, one record on disk and one state
+//!   file and its `*INCLUDE` files into the folder of a new run, and the run solves the
+//!   copy, so a later edit of a file does not change the run. A submit can set the time and
+//!   memory limit of the run. Each run has an ID, one record on disk and one state
 //!   ([`RunState`]).
 //! - **Previews.** A preview copies the input file with no run, so that the page shows the
 //!   model with its supports and loads before the solve.
@@ -49,7 +50,7 @@ pub use client::Client;
 pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
-pub use service::{Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
+pub use service::{Config, Limits, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";

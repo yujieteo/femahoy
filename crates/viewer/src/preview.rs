@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use fh_inp::{Model, Target};
+use fh_inp::{ElementTarget, Model, Target};
 
 use crate::mesh::{self, RenderMesh};
 use crate::results::{unit, Quantity, BANDS};
@@ -34,8 +34,6 @@ const ARROW: f32 = 0.35;
 pub enum Kind {
     Support,
     Load,
-    /// A temperature of the nodes (`*INITIAL CONDITIONS`, `*TEMPERATURE`): no face, no arrow.
-    Temperature,
 }
 
 /// The supports or the loads on one set of the input.
@@ -71,18 +69,11 @@ pub struct Item {
 /// A solver input with its supports and loads.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Preview {
-    /// The name of the model in the page, for example the case folder.
+    /// The name of the model in the page, for example the input file.
     pub title: String,
     pub units: String,
     pub mesh: RenderMesh,
     pub items: Vec<Item>,
-}
-
-/// The units of an input from its line `** units: SI-mm`, or an empty text.
-pub fn units(text: &str) -> String {
-    text.lines()
-        .find_map(|l| l.trim().strip_prefix("** units:"))
-        .map_or_else(String::new, |u| u.trim().to_owned())
 }
 
 /// A set of the input during the build: its nodes, or the element faces of a surface.
@@ -97,8 +88,6 @@ struct Draft {
     cload: BTreeMap<u8, f64>,
     /// The value of each fixed degree of freedom of a support.
     fixed: BTreeMap<u8, f64>,
-    /// The initial temperature and the temperature at the end of the step.
-    temperature: [Option<f64>; 2],
 }
 
 fn dofs(first: u8, last: u8) -> String {
@@ -179,8 +168,8 @@ fn length(a: [f64; 3]) -> f64 {
     dot(a, a).sqrt()
 }
 
-/// Read the supports (`*BOUNDARY`), the loads (`*CLOAD`, `*DSLOAD`) and the temperatures of a
-/// model, and the surface triangles of each set.
+/// Read the supports (`*BOUNDARY`) and the loads (`*CLOAD`, `*DLOAD`, `*DSLOAD`) of a model, and
+/// the surface triangles of each set.
 pub fn build(model: &Model, units: &str) -> Preview {
     let mesh = mesh::build(model);
     let index: HashMap<u32, u32> = model
@@ -200,7 +189,7 @@ pub fn build(model: &Model, units: &str) -> Preview {
         ids.iter().filter_map(|id| index.get(id).copied()).collect()
     };
     let mut drafts: Vec<Draft> = Vec::new();
-    // The draft of a set, new or found. A surface gets the nodes of each of its faces.
+    // The draft of a set, new or found.
     let draft = |drafts: &mut Vec<Draft>, name: &str, kind: Kind, surface: bool| {
         let same = |d: &Draft| {
             d.item.kind == kind && d.surface == surface && d.item.name.eq_ignore_ascii_case(name)
@@ -208,7 +197,7 @@ pub fn build(model: &Model, units: &str) -> Preview {
         if let Some(i) = drafts.iter().position(same) {
             return i;
         }
-        let mut d = Draft {
+        let d = Draft {
             item: Item {
                 name: name.to_owned(),
                 kind,
@@ -229,16 +218,18 @@ pub fn build(model: &Model, units: &str) -> Preview {
             pressure: 0.0,
             cload: BTreeMap::new(),
             fixed: BTreeMap::new(),
-            temperature: [None; 2],
         };
-        let faces = model.element_surface(name).filter(|_| surface);
-        for &(id, face) in faces.map_or(&[][..], |s| &s.faces) {
+        drafts.push(d);
+        drafts.len() - 1
+    };
+    // Add the faces `(element id, face number)` to a surface draft, with the nodes of each.
+    let add_faces = |d: &mut Draft, faces: &[(u32, u8)]| {
+        for &(id, face) in faces {
             let Some(&e) = element.get(&id) else {
                 continue;
             };
-            let all = mesh::element_faces(&model.elements[e].element_type, &element_nodes(e));
-            let Some(f) = all.and_then(|f| f.into_iter().nth(usize::from(face).wrapping_sub(1)))
-            else {
+            let element = &model.elements[e];
+            let Some(f) = mesh::surface_face(&element.element_type, &element_nodes(e), face) else {
                 continue;
             };
             let nodes: HashSet<u32> = f
@@ -250,8 +241,6 @@ pub fn build(model: &Model, units: &str) -> Preview {
             d.nodes.extend(&nodes);
             d.faces.entry(e as u32).or_default().push(nodes);
         }
-        drafts.push(d);
-        drafts.len() - 1
     };
     let nodes_of = |target: &Target| -> (String, HashSet<u32>) {
         match target {
@@ -323,6 +312,10 @@ pub fn build(model: &Model, units: &str) -> Preview {
     }
     for (tag, d) in steps().flat_map(|(k, s)| s.dsloads.iter().map(move |d| (tag(k), d))) {
         let i = draft(&mut drafts, &d.surface, Kind::Load, true);
+        let faces = model
+            .element_surface(&d.surface)
+            .map_or(&[][..], |s| &s.faces);
+        add_faces(&mut drafts[i], faces);
         let p = d.pressure;
         drafts[i].pressure = p;
         drafts[i]
@@ -330,21 +323,24 @@ pub fn build(model: &Model, units: &str) -> Preview {
             .actions
             .push(format!("{tag}pressure {p} {stress}"));
     }
-    let initial = model
-        .initial_temperatures
-        .iter()
-        .map(|t| (String::new(), t, 0));
-    let end = steps().flat_map(|(k, s)| s.temperatures.iter().map(move |t| (tag(k), t, 1)));
-    for (tag, t, at) in initial.chain(end) {
-        let (name, nodes) = nodes_of(&t.target);
-        let i = draft(&mut drafts, &name, Kind::Temperature, false);
-        let v = t.value;
-        drafts[i].item.actions.push(match at {
-            0 => format!("initial temperature {v}"),
-            _ => format!("{tag}temperature {v} at the end of the step"),
-        });
-        drafts[i].temperature[at] = Some(v);
-        drafts[i].nodes = nodes;
+    for (tag, l) in steps().flat_map(|(k, s)| s.dloads.iter().map(move |l| (tag(k), l))) {
+        let (name, ids) = match &l.target {
+            ElementTarget::Element(id) => (format!("element {id}"), vec![*id]),
+            ElementTarget::Set(name) => {
+                let ids = model.elset(name).map_or_else(Vec::new, |s| s.ids.clone());
+                (name.clone(), ids)
+            }
+        };
+        let i = draft(&mut drafts, &name, Kind::Load, true);
+        // A shell load has no face number: it acts on the shell face.
+        let faces: Vec<(u32, u8)> = ids.iter().map(|&id| (id, l.face.max(1))).collect();
+        add_faces(&mut drafts[i], &faces);
+        let p = l.pressure;
+        drafts[i].pressure = p;
+        drafts[i]
+            .item
+            .actions
+            .push(format!("{tag}pressure {p} {stress}"));
     }
 
     let points: Vec<[f64; 3]> = model.nodes.iter().map(|n| n.xyz).collect();
@@ -366,9 +362,6 @@ pub fn build(model: &Model, units: &str) -> Preview {
             // Each edge of the triangles: the number of triangles and the normal of the last.
             let mut edges: BTreeMap<[u32; 2], (usize, [f32; 3])> = BTreeMap::new();
             for (t, tri) in mesh.triangles.iter().enumerate() {
-                if d.item.kind == Kind::Temperature {
-                    break;
-                }
                 let nodes = tri.map(|p| mesh.source_node[p as usize]);
                 let cell = mesh.triangle_cell[t];
                 let inside = match d.surface {
@@ -387,7 +380,9 @@ pub fn build(model: &Model, units: &str) -> Preview {
                     0.5 * (u[2] * v[0] - u[0] * v[2]),
                     0.5 * (u[0] * v[1] - u[1] * v[0]),
                 ];
-                if dot(area, sub(centroids[cell as usize], a)) > 0.0 {
+                // A point in the plane of the triangle (a shell) does not flip the vector.
+                let inward = sub(centroids[cell as usize], a);
+                if dot(area, inward) > 1e-9 * length(area) * length(inward) {
                     area = area.map(|x| -x);
                 }
                 let normal = area.map(|x| (x / length(area)) as f32);
@@ -428,18 +423,15 @@ pub fn build(model: &Model, units: &str) -> Preview {
                 [0.0; 3]
             };
             let size = length(it.force);
-            let text = match (it.kind, d.temperature) {
-                (Kind::Support, _) => fixed_text(&d.fixed, length_unit),
-                (Kind::Load, _) if d.surface => {
+            let text = match it.kind {
+                Kind::Support => fixed_text(&d.fixed, length_unit),
+                Kind::Load if d.surface => {
                     format!("{} pressure", with_unit(d.pressure.to_string(), stress))
                 }
-                (Kind::Load, _) if size > 0.0 => {
+                Kind::Load if size > 0.0 => {
                     format!("{}, {}", with_unit(short(size), force), direction(it.force))
                 }
-                (Kind::Load, _) => with_unit("0".into(), force),
-                (Kind::Temperature, [Some(a), Some(b)]) => format!("temperature {a} to {b}"),
-                (Kind::Temperature, [Some(a), None]) => format!("initial temperature {a}"),
-                (Kind::Temperature, [_, b]) => format!("temperature {}", b.unwrap_or(0.0)),
+                Kind::Load => with_unit("0".into(), force),
             };
             it.label = format!("{}: {text}", it.name);
             let count = match it.kind {
@@ -542,10 +534,7 @@ impl Preview {
         let force = unit(&self.units, Quantity::Force);
         let mut lines = item.actions.clone();
         let area = format_value(item.area);
-        lines.push(match item.kind {
-            Kind::Temperature => format!("{} nodes", item.nodes),
-            _ => format!("{} nodes, area {area} {length}2", item.nodes),
-        });
+        lines.push(format!("{} nodes, area {area} {length}2", item.nodes));
         if item.kind == Kind::Load {
             let f = item.force.map(format_value);
             lines.push(format!(
@@ -561,13 +550,16 @@ impl Preview {
 mod tests {
     use super::*;
 
+    fn from_text(text: &str) -> Preview {
+        build(&fh_inp::parse(text), &fh_inp::units(text))
+    }
+
     fn bar() -> Preview {
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../validation/cases/bar-pressure/bar.inp"
+            "/../../validation/cases/bar-pressure/job.inp"
         );
-        let text = std::fs::read_to_string(path).unwrap();
-        build(&fh_inp::parse(&text).unwrap(), &units(&text))
+        from_text(&fh_inp::flatten(std::path::Path::new(path)).unwrap().text)
     }
 
     /// The surface triangles with each corner on the plane `x[axis] = at`.
@@ -688,7 +680,7 @@ mod tests {
             *STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n\
             *CLOAD\nTIP, 3, -5.0\n*DSLOAD\nTOP, P, 3.0\n*END STEP\n"
         );
-        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let p = from_text(&text);
         let [fixed, tip, top] = &p.items[..] else {
             panic!("{:?}", p.items);
         };
@@ -716,7 +708,7 @@ mod tests {
     #[test]
     fn each_label_gives_the_set_and_what_acts_on_it() {
         // A pin, a set displacement of 1 node, a node force in -y, a node force at an angle,
-        // a pressure and a temperature change.
+        // and a pressure. The temperature of the input has no item.
         let text = format!(
             "{TWO_CUBES}*NSET, NSET=PIN\n9, 10\n*NSET, NSET=P1\n11, 12\n*NSET, NSET=P2\n11\n\
             *NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12\n\
@@ -725,7 +717,7 @@ mod tests {
             *CLOAD\nP1, 2, -1350.0\nP2, 1, 3.0\nP2, 3, 4.0\n*DSLOAD\nTOP, P, 1.0\n\
             *TEMPERATURE\nALL, 100.0\n*END STEP\n"
         );
-        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let p = from_text(&text);
         let labels: Vec<(&str, Kind, usize)> = p
             .items
             .iter()
@@ -740,22 +732,55 @@ mod tests {
                 ("P1: 2700 N, -y", Kind::Load, 5),
                 ("P2: 5 N, (0.6, 0, 0.8)", Kind::Load, 6),
                 ("TOP: 1 MPa pressure", Kind::Load, 7),
-                ("ALL: temperature 0 to 100", Kind::Temperature, 8),
             ]
         );
-        // A temperature acts on the body: no face, no arrow, and the label at the middle.
-        let all = &p.items[6];
-        assert!(all.triangles.is_empty() && all.outline.is_empty());
-        assert_eq!(p.arrow(all), None);
-        assert!(close(all.center, [1.0, 0.5, 0.5]), "{:?}", all.center);
+    }
+
+    #[test]
+    fn a_dload_on_an_element_set_gives_a_pressure_item() {
+        // Face 3 of the elements 5 and 6 is the top face (z = 1) of the first cube.
+        let text = format!(
+            "{TWO_CUBES}*ELSET, ELSET=CAP\n5, 6\n\
+            *STEP\n*STATIC\n*DLOAD\nCAP, P3, 2.0\n*END STEP\n"
+        );
+        let p = from_text(&text);
+        let [cap] = &p.items[..] else {
+            panic!("{:?}", p.items);
+        };
+        assert_eq!((cap.name.as_str(), cap.kind), ("CAP", Kind::Load));
+        assert_eq!(cap.label, "CAP: 2 MPa pressure");
         assert_eq!(
-            p.describe(all),
-            [
-                "initial temperature 0",
-                "temperature 100 at the end of the step",
-                "12 nodes"
-            ]
+            cap.triangles,
+            on_plane(&p, 2, 1.0)
+                .into_iter()
+                .filter(|&t| {
+                    p.mesh.triangles[t as usize]
+                        .iter()
+                        .all(|&q| p.mesh.positions[q as usize][0] <= 1.0)
+                })
+                .collect::<Vec<_>>()
         );
+        // 2 MPa pushes down on 1 mm2.
+        assert!(close(cap.force, [0.0, 0.0, -2.0]), "{:?}", cap.force);
+    }
+
+    #[test]
+    fn a_shell_surface_and_an_s8r_element_are_drawn() {
+        let text = "** units: SI-mm\n*NODE\n1, 0, 0, 0\n2, 1, 0, 0\n3, 1, 1, 0\n4, 0, 1, 0\n\
+            5, 0.5, 0, 0\n6, 1, 0.5, 0\n7, 0.5, 1, 0\n8, 0, 0.5, 0\n\
+            *ELEMENT, TYPE=S8R\n1, 1, 2, 3, 4, 5, 6, 7, 8\n\
+            *NSET, NSET=EDGE\n1, 4, 8\n*SURFACE, TYPE=ELEMENT, NAME=SKIN\n1, SPOS\n\
+            *STEP\n*STATIC\n*BOUNDARY\nEDGE, 1, 3\n*DLOAD\n1, P, 1.0\n*END STEP\n";
+        let p = from_text(text);
+        assert_eq!(p.mesh.skipped_elements, 0);
+        assert_eq!(p.mesh.triangles.len(), 6);
+        let [edge, load] = &p.items[..] else {
+            panic!("{:?}", p.items);
+        };
+        assert_eq!(edge.label, "EDGE: ux uy uz");
+        assert_eq!(load.name, "element 1");
+        assert_eq!(load.triangles.len(), 6);
+        assert!((load.area - 1.0).abs() < 1e-12, "{}", load.area);
     }
 
     #[test]
@@ -763,7 +788,7 @@ mod tests {
         let text = format!(
             "{TWO_CUBES}*STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n*DSLOAD\nTOP, P, 1.0\n*END STEP\n"
         );
-        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let p = from_text(&text);
         let [fixed, top] = &p.items[..] else {
             panic!("{:?}", p.items);
         };
@@ -799,7 +824,7 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/results/cantilever-2step");
         let text = std::fs::read_to_string(dir.join("cantilever-2step.inp")).unwrap();
-        let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
+        let p = from_text(&text);
         let [fixed, tip] = &p.items[..] else {
             panic!("{:?}", p.items);
         };

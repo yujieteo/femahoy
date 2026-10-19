@@ -148,9 +148,9 @@ fn copy_case(tag: &str, id: &str) -> std::path::PathBuf {
 fn validate_exits_1_when_a_reference_is_wrong() {
     let Some(solver) = ccx_solver() else { return };
     let dir = copy_case("badref", "bar-tension");
-    let path = dir.join("validation/cases/bar-tension/case.toml");
+    let path = dir.join("validation/cases/bar-tension/check.toml");
     let text_in = std::fs::read_to_string(&path).unwrap();
-    let broken = text_in.replacen("s_xx = 210.0", "s_xx = 300.0", 1);
+    let broken = text_in.replacen("value = 210.0", "value = 300.0", 1);
     assert_ne!(broken, text_in);
     std::fs::write(&path, broken).unwrap();
     let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&solver));
@@ -161,57 +161,14 @@ fn validate_exits_1_when_a_reference_is_wrong() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// The runner stops a case at its `time_limit_s` and at its `memory_limit_mib`.
-#[test]
-fn validate_stops_a_case_at_its_time_and_memory_limits() {
-    use std::os::unix::fs::PermissionsExt;
-    for (i, (limit, needle)) in [
-        ("time_limit_s = 0.2", "time limit of 0.2 s"),
-        ("memory_limit_mib = 0.001", "memory limit of 0.001 MiB"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let dir = copy_root(&format!("limit{i}"));
-        let cases = dir.join("validation/cases");
-        for entry in std::fs::read_dir(&cases).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() && !path.ends_with("bar-tension") {
-                std::fs::remove_dir_all(path).unwrap();
-            }
-        }
-        let path = cases.join("bar-tension/case.toml");
-        let toml = std::fs::read_to_string(&path).unwrap();
-        std::fs::write(
-            &path,
-            toml.replacen("rel_tol", &format!("{limit}\nrel_tol"), 1),
-        )
-        .unwrap();
-        // A ccx that runs for 30 s. `-v` is the check of `fh validate` before the cases.
-        let slow = dir.join("slow-ccx");
-        std::fs::write(&slow, "#!/bin/sh\n[ \"$1\" = -v ] || sleep 30\n").unwrap();
-        std::fs::set_permissions(&slow, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let clock = std::time::Instant::now();
-        let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&slow));
-        let stdout = text(out.stdout);
-        assert_eq!(out.status.code(), Some(1), "{stdout}");
-        assert!(
-            stdout.contains("bar-tension\tcannot run") && stdout.contains(needle),
-            "{stdout}"
-        );
-        assert!(clock.elapsed() < std::time::Duration::from_secs(20));
-        let _ = std::fs::remove_dir_all(dir);
-    }
-}
-
 #[test]
 fn validate_exits_1_when_the_case_folder_is_bad() {
     let dir = std::env::temp_dir().join(format!("fh-cli-val-{}", std::process::id()));
     std::fs::create_dir_all(dir.join("validation/cases/x")).unwrap();
-    std::fs::write(dir.join("validation/cases/x/case.toml"), "id = \"x\"\n").unwrap();
+    std::fs::write(dir.join("validation/cases/x/check.toml"), "id = \"x\"\n").unwrap();
     let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(1));
-    assert!(text(out.stderr).contains("case.toml"));
+    assert!(text(out.stderr).contains("check.toml"));
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -249,23 +206,27 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 }
 
 #[test]
-fn validate_checks_each_quantity_against_the_meshes() {
-    // The shipped cases pass these checks: validate_runs_every_case_through_ccx.
-    // Each edit of the cantilever case: the text, its replacement and the expected error.
-    let cases: [(&str, &str, &str); 2] = [
-        ("set = \"tip\"", "set = \"nope\"", "no node set `nope`"),
-        ("step = \"tip-load\"", "step = \"other\"", "no step `other`"),
-    ];
-    for (i, (from, to, needle)) in cases.iter().enumerate() {
-        let dir = copy_root(&format!("spec{i}"));
-        let path = dir.join("validation/cases/cantilever-c3d10/case.toml");
-        let toml = std::fs::read_to_string(&path).unwrap();
-        assert!(toml.contains(from), "{from}");
-        std::fs::write(&path, toml.replace(from, to)).unwrap();
-        let out = fh(&["validate", "--root", dir.to_str().unwrap()]);
-        assert_eq!(out.status.code(), Some(1), "{needle}");
-        let err = text(out.stderr);
-        assert!(err.contains(needle), "`{err}` lacks `{needle}`");
-        let _ = std::fs::remove_dir_all(dir);
-    }
+fn validate_names_a_set_that_the_input_does_not_print() {
+    let Some(solver) = ccx_solver() else { return };
+    let dir = copy_case("noset", "cantilever-c3d10");
+    let path = dir.join("validation/cases/cantilever-c3d10/check.toml");
+    let toml = std::fs::read_to_string(&path).unwrap();
+    assert!(toml.contains("set = \"tip\""));
+    std::fs::write(&path, toml.replace("set = \"tip\"", "set = \"nope\"")).unwrap();
+    let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&solver));
+    let stdout = text(out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{stdout}");
+    assert!(stdout.contains("cannot run"), "{stdout}");
+    assert!(stdout.contains("set `nope`"), "{stdout}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn validate_names_an_include_file_that_is_missing() {
+    let dir = copy_case("noinclude", "plate-on-edge");
+    std::fs::remove_file(dir.join("validation/cases/plate-on-edge/part.inp")).unwrap();
+    let out = fh(&["validate", "--root", p(&dir)]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(text(out.stderr).contains("part.inp"));
+    let _ = std::fs::remove_dir_all(dir);
 }

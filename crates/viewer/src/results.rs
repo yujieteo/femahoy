@@ -128,8 +128,8 @@ fn pvd_units(text: &str) -> String {
 /// The names of the components of a field with `components` values per item.
 fn component_names(name: &str, components: usize) -> Vec<String> {
     match (name, components) {
-        ("S", 6) => ["S11", "S22", "S33", "S12", "S23", "S13"]
-            .map(String::from)
+        ("S" | "E", 6) => ["11", "22", "33", "12", "23", "13"]
+            .map(|c| format!("{name}{c}"))
             .to_vec(),
         (_, 3) => ["1", "2", "3"].map(|c| format!("{name}{c}")).to_vec(),
         (_, 1) => vec![name.to_owned()],
@@ -219,8 +219,8 @@ pub fn is_plain_file_name(name: &str) -> bool {
 }
 
 /// Read the results of a run. `pvd` is the text of `results.pvd`. `read` gives the bytes of a
-/// file that `results.pvd` names. Each step must have the mesh of the first step and a
-/// displacement field `U`.
+/// file that `results.pvd` names. Each step must have the mesh of the first step. A step with no
+/// displacement field `U` (a heat transfer step) has a displacement of zero.
 pub fn load(
     pvd_name: &str,
     pvd: &str,
@@ -280,20 +280,23 @@ pub fn load(
             );
         }
         let fields = fields_of(&grid, file)?;
-        let Some(u) = grid.point_field("U") else {
-            return fail("results.field.missing", file, "no displacement field U");
-        };
-        let (Some(u), 3) = (u.as_f64(), u.components) else {
-            return fail(
-                "results.field.missing",
-                file,
-                "the displacement field U must have 3 float components",
-            );
+        let displacement = match grid.point_field("U") {
+            None => vec![[0.0; 3]; grid.points.len()],
+            Some(u) => match (u.as_f64(), u.components) {
+                (Some(u), 3) => u.as_chunks::<3>().0.to_vec(),
+                _ => {
+                    return fail(
+                        "results.field.missing",
+                        file,
+                        "the displacement field U must have 3 float components",
+                    )
+                }
+            },
         };
         steps.push(Step {
             time: entry.time,
             file: entry.file.clone(),
-            displacement: u.as_chunks::<3>().0.to_vec(),
+            displacement,
             fields,
         });
         if first.is_none() {
@@ -306,7 +309,10 @@ pub fn load(
         return fail(
             "results.mesh.unsupported",
             &steps[0].file,
-            format!("no C3D10 cell to draw ({} cells)", grid.cells.len()),
+            format!(
+                "no cell type that the page draws ({} cells)",
+                grid.cells.len()
+            ),
         );
     }
     Ok(Results {
@@ -778,9 +784,20 @@ mod tests {
     }
 
     #[test]
-    fn a_step_with_no_displacement_is_an_error() {
+    fn a_step_with_no_displacement_has_a_displacement_of_zero() {
         let mut g = fixture_grid();
         g.point_data.retain(|f| f.name != "U");
+        let r = one_step(&g).unwrap();
+        assert_eq!(r.steps[0].displacement, vec![[0.0; 3]; g.points.len()]);
+        assert_eq!(auto_scale(&r), 1.0);
+    }
+
+    #[test]
+    fn a_displacement_with_2_components_is_an_error() {
+        let mut g = fixture_grid();
+        let n = g.points.len();
+        g.point_data.retain(|f| f.name != "U");
+        g.point_data.push(Field::f64("U", 2, vec![0.0; 2 * n]));
         let e = one_step(&g).unwrap_err();
         assert_eq!(e.code, "results.field.missing");
         assert!(e.message.contains("U"));

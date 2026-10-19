@@ -230,7 +230,6 @@ fn kind_text(kind: Kind) -> &'static str {
     match kind {
         Kind::Support => "support",
         Kind::Load => "load",
-        Kind::Temperature => "temperature",
     }
 }
 
@@ -280,7 +279,7 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
         for line in p.describe(item) {
             ui.label(line);
         }
-        if item.triangles.is_empty() && item.kind != Kind::Temperature {
+        if item.triangles.is_empty() {
             let error = ui.visuals().error_fg_color;
             ui.colored_label(error, "No surface face has all of its nodes in this set.");
         }

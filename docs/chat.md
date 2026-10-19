@@ -49,7 +49,7 @@ The agent process stays alive between the messages. Each message goes on stdin a
 ```
 
 The agent replays each message when it reads it (`--replay-user-messages`). Thus the daemon knows that the agent works while it has a message that it did not read, or a turn with no `result` event.
-After a stop, or when the agent ends, the next message starts a new agent with `--resume`. The instructions are in `crates/daemon/src/agent.md`: write `part.py` and `case.toml`, then `fh run .`, which runs `fh mesh`, `fh model`, the preview and the solve on the daemon of the page.
+After a stop, or when the agent ends, the next message starts a new agent with `--resume`. The instructions are in `crates/daemon/src/agent.md`: write `part.py`, run `fh mesh` for the mesh and the sets, write the CalculiX input `job.inp` itself, then run `fh run job.inp`, which makes the preview and the solve on the daemon of the page. The agent reads the numbers from `job.dat` and `job.sta` in the results folder.
 The agent can use only the `fh` commands, `fh-python` and the file tools. Claude Code refuses each other tool in headless mode.
 The environment of the agent has `FH_STATE` (the state folder of the daemon, so that `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first on `PATH`.
 It also has `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS` set to 86400000 (24 hours). Claude Code stops a Bash command after 2 minutes by default, and a solve of a large model can take hours.
@@ -58,7 +58,7 @@ It also has `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS` set to 86400000 
 
 A wrong support face or a wrong load direction gives a result that looks correct. Thus the page shows the supports and the loads before each solve.
 
-1. `fh run` makes the input file with `fh mesh` and `fh model`, then sends its path to `POST /api/v1/previews`.
+1. `fh run` sends the path of the input file to `POST /api/v1/previews`.
 2. The daemon copies the input file as a preview, and adds a `show` entry to the chat.
 3. The page opens the entry: it gets the copy and shows the model.
 4. `fh run` then solves the same file. With `--preview`, it stops before the solve.
@@ -67,7 +67,7 @@ The viewer shows:
 
 - the faces of each support in a blue, teal, violet or green colour, and the faces of each load in a red, orange, magenta or yellow colour. The other faces are grey.
 - 1 arrow for each load, in the direction of the total force of the load. The arrow of a push ends on the face. The arrow of a pull or a shear starts on the face.
-- a label for each region: the region name of `case.toml` and what acts on it. The label of a load is at the tail of its arrow.
+- a label for each region: the set name of the input and what acts on it. The label of a load is at the tail of its arrow.
 - a list with each region: its label, its actions (for example `U1 to U3 = 0` or `pressure 1 MPa`), its number of nodes, its area and its total force.
 
 | Region | Label |
@@ -77,7 +77,7 @@ The viewer shows:
 | A pressure (`dsload`) | the pressure, for example `TOP: 1 MPa pressure`. The arrow shows the direction. |
 | A temperature (a CalculiX case) | `ALL: temperature 0 to 100`, at the middle of the part. It has no arrow. |
 
-The page reads the solver input, not `case.toml`. Thus it shows the faces that the solver gets.
+The page reads the solver input (with its `*INCLUDE` files). Thus it shows the faces that the solver gets. It skips each keyword that it does not draw.
 A region that has no face shows a warning in the list.
 
 The results of a run show the same labels and arrows, and the outline of the faces of each region. The page gets the copy of the input that the run solved. The labels move with the deformed shape.
@@ -86,7 +86,7 @@ To hide the labels and the arrows, clear `Show them on the model` under `Support
 The agent has 1 rule for the supports and the loads (`crates/daemon/src/agent.md`):
 
 - When the request tells the fixed faces, the load face and the load direction, the agent shows the model and solves with no question.
-- Else the agent makes 1 case folder for each candidate and runs `fh run CANDIDATE --preview` for each. The page shows each candidate. The agent asks you which candidate is correct, and stops. After your answer, it solves that candidate.
+- Else the agent writes 1 input file for each candidate and runs `fh run CANDIDATE.inp --preview` for each. The page shows each candidate. The agent asks you which candidate is correct, and stops. After your answer, it solves that candidate.
 
 A button `Show the supports and loads of NAME` in the chat shows a candidate again.
 
@@ -109,7 +109,7 @@ The routes have the token and `Origin` rules of the other routes of `fh serve` (
 | `you` | the request |
 | `note` | the model and the folder of the agent, the stderr of the agent, a stop |
 | `say` | a text of the agent |
-| `cmd` | a shell command of the agent, for example `fh run . --size 2.5` |
+| `cmd` | a shell command of the agent, for example `fh run job.inp` |
 | `tool` | another tool and its file, for example `Write /.../part.py` |
 | `out`, `fail` | the result of a tool, or its error (at most 4000 characters) |
 | `show` | `<preview> <title>`: a model before the solve, with its supports and loads |

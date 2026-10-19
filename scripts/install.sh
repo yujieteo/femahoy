@@ -140,7 +140,7 @@ if ! command -v "${FH_CCX:-ccx}" >/dev/null 2>&1; then
   echo "install: ccx (CalculiX) is not installed. Each solve needs it: apt install calculix-ccx (Debian, Ubuntu), or see docs/ccx.md"
 fi
 if ! command -v gmsh >/dev/null 2>&1 && [ ! -x /Applications/Gmsh.app/Contents/MacOS/gmsh ]; then
-  echo "install: gmsh is not installed. fh run needs it for a case folder: brew install gmsh (macOS), or see https://gmsh.info"
+  echo "install: gmsh is not installed. fh mesh needs it for a STEP file: brew install gmsh (macOS), or see https://gmsh.info"
 fi
 # True when a folder on PATH is the folder $1, also by another name (a symbolic link).
 on_path() {

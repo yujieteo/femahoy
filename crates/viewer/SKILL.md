@@ -7,7 +7,7 @@ The crate has the result viewer (`docs/viewer.md`): one eframe app for the brows
 ## Inputs and outputs
 
 - Input: a run folder with `results.pvd` and `step-N.vtu`. The browser gets the files from the daemon (`web.rs`).
-- Output: a 3D view with the mesh, the outlines, the deformed shape, one contour field and a step selector.
+- Output: a 3D view with the mesh, the outlines, the deformed shape, one contour field and a step selector. The viewer draws each volume element that CalculiX writes (tetra, wedge and hexahedron, linear and quadratic).
 - `font()` gives the Inter font (`fonts/`, SIL Open Font License 1.1) to the page, so the page and the viewer use 1 font file.
 
 ## Invariants the code must keep

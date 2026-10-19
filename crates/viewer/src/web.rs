@@ -81,8 +81,7 @@ async fn load_run(token: &str, run: &str) -> Result<Content, String> {
 /// Fetch an input file from the daemon path `path` and read its supports and loads.
 async fn model(token: &str, path: &str, name: &str) -> Result<Box<preview::Preview>, String> {
     let input = text(get(token, path).await?, path)?;
-    let model = fh_inp::parse(&input).map_err(|e| format!("{name}: {e}"))?;
-    let mut p = preview::build(&model, &preview::units(&input));
+    let mut p = preview::build(&fh_inp::parse(&input), &fh_inp::units(&input));
     p.title = name.to_owned();
     Ok(Box::new(p))
 }

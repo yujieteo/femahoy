@@ -1,10 +1,9 @@
 //! CalculiX (`ccx`) as the solver of femahoy, in the process of `fh` (D-13, see DESIGN.md).
 //!
-//! [`Ccx::run`] writes the model as `ccx` input in `<run-dir>/ccx`, runs the user's `ccx`
-//! (`$FH_CCX`, else `ccx` on PATH), reads U and RF from the `.frd` file and the integration
-//! point stress from the `.dat` file, and writes one VTU file for each step, `results.pvd`
-//! in the run folder. `ccx` is GPL, so femahoy only starts it as a separate
-//! program.
+//! [`Ccx::run`] gives the user's `ccx` (`$FH_CCX`, else `ccx` on PATH) the input file as it is,
+//! with each `*INCLUDE` file, in `<run-dir>/ccx`. Then it converts every nodal field of the
+//! `.frd` file into one VTU file for each step, and writes `results.pvd` in the run folder.
+//! `ccx` is GPL, so femahoy only starts it as a separate program.
 //!
 //! # Limits
 //!
@@ -18,10 +17,10 @@
 //! ends, also on SIGKILL, the pipe closes and the guard kills the group. Thus `ccx` never
 //! lives longer than `fh`.
 
+mod frd;
 mod sys;
 
-use std::collections::HashMap;
-use std::fmt::{self, Write as _};
+use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -29,9 +28,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use fh_inp::{Boundary, ElementTarget, Model, Target, Temperature};
-use fh_io::result::{base_grid, element_stress};
-use fh_io::vtu::{write_pvd_units, write_vtu, Field, PvdEntry};
+use fh_io::vtu::{write_pvd_units, write_vtu, PvdEntry};
 
 pub use sys::total_memory;
 
@@ -90,6 +87,38 @@ fn failed(message: impl Into<String>) -> Error {
     Error::new(code::SOLVER_FAILED, message)
 }
 
+/// Copy `inp` to `dir/name` and each file of `files` (paths relative to the folder of `inp`) to
+/// the same path in `dir`. Each copy is read-only, so that a later edit cannot change a run.
+fn copy_files(inp: &Path, files: &[PathBuf], dir: &Path, name: &str) -> std::io::Result<()> {
+    let from = inp.parent().unwrap_or(Path::new("."));
+    let pairs = std::iter::once((inp.to_owned(), dir.join(name)))
+        .chain(files.iter().map(|f| (from.join(f), dir.join(f))));
+    for (src, dst) in pairs {
+        if dst.exists() {
+            continue;
+        }
+        fs::create_dir_all(dst.parent().unwrap_or(dir))?;
+        fs::copy(&src, &dst)?;
+        let mut perms = fs::metadata(&dst)?.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&dst, perms)?;
+    }
+    Ok(())
+}
+
+/// Copy the input file `inp` to `dir/name`, and each file that it includes to its relative path
+/// in `dir`. Each copy is read-only. A later run of `dir/name` does not change when `inp` does.
+pub fn stage_input(inp: &Path, dir: &Path, name: &str) -> Result<(), Error> {
+    let flat = fh_inp::flatten(inp).map_err(failed)?;
+    copy_files(inp, &flat.files, dir, name)
+        .map_err(|e| Error::new(code::RUN_FOLDER, format!("input copy: {e}")))
+}
+
+/// The text of an input file, with the text of each `*INCLUDE` file in the place of its line.
+pub fn input_text(inp: &Path) -> Result<String, Error> {
+    fh_inp::flatten(inp).map(|f| f.text).map_err(failed)
+}
+
 /// A flag that asks a running solve to stop. Clones share the flag.
 #[derive(Debug, Clone, Default)]
 pub struct CancelToken(Arc<AtomicBool>);
@@ -111,457 +140,6 @@ impl CancelToken {
 /// 85 % of the machine RAM. If the system does not tell the RAM, there is no limit.
 pub fn default_memory_limit() -> u64 {
     total_memory().map_or(u64::MAX, |ram| ram / 100 * 85)
-}
-
-/// A real for `ccx` input. `ccx` reads at most 20 characters for each number, and a longer
-/// number loses the end of its exponent. Thus a negative number with a 2-digit exponent
-/// gets one digit less.
-fn real(x: f64) -> String {
-    (0..=14)
-        .rev()
-        .map(|digits| format!("{x:.digits$e}"))
-        .find(|s| s.len() <= 20)
-        .unwrap_or_else(|| format!("{x:e}"))
-}
-
-fn target(t: &Target) -> String {
-    match t {
-        Target::Node(n) => n.to_string(),
-        Target::Set(s) => s.clone(),
-    }
-}
-
-/// Write `ids` 16 to a line.
-fn id_lines(out: &mut String, ids: &[u32]) {
-    for chunk in ids.chunks(16) {
-        let line: Vec<String> = chunk.iter().map(u32::to_string).collect();
-        let _ = writeln!(out, "{}", line.join(", "));
-    }
-}
-
-fn boundaries(out: &mut String, list: &[Boundary]) {
-    if !list.is_empty() {
-        out.push_str("*BOUNDARY\n");
-    }
-    for b in list {
-        let _ = writeln!(
-            out,
-            "{}, {}, {}, {}",
-            target(&b.target),
-            b.first_dof,
-            b.last_dof,
-            real(b.value)
-        );
-    }
-}
-
-/// Node temperatures under `keyword`, with the same meaning in `ccx`.
-fn temperatures(out: &mut String, keyword: &str, list: &[Temperature]) {
-    if !list.is_empty() {
-        let _ = writeln!(out, "{keyword}");
-    }
-    for t in list {
-        let _ = writeln!(out, "{}, {}", target(&t.target), real(t.value));
-    }
-}
-
-/// The `ccx` input for `model`. The parser refuses each keyword outside the linear subset.
-fn ccx_input(model: &Model) -> Result<String, String> {
-    let mut out = String::from("*NODE\n");
-    for n in &model.nodes {
-        let [x, y, z] = n.xyz.map(real);
-        let _ = writeln!(out, "{}, {x}, {y}, {z}", n.id);
-    }
-    // The parser accepts only C3D10.
-    out.push_str("*ELEMENT, TYPE=C3D10\n");
-    for e in &model.elements {
-        let nodes: Vec<String> = e.nodes.iter().map(u32::to_string).collect();
-        let _ = writeln!(out, "{}, {}", e.id, nodes.join(", "));
-    }
-    for s in &model.nsets {
-        let _ = writeln!(out, "*NSET, NSET={}", s.name);
-        id_lines(&mut out, &s.ids);
-    }
-    for s in &model.elsets {
-        let _ = writeln!(out, "*ELSET, ELSET={}", s.name);
-        id_lines(&mut out, &s.ids);
-    }
-    for s in &model.element_surfaces {
-        let _ = writeln!(out, "*SURFACE, NAME={}, TYPE=ELEMENT", s.name);
-        for (e, f) in &s.faces {
-            let _ = writeln!(out, "{e}, S{f}");
-        }
-    }
-    for m in &model.materials {
-        let e = m
-            .elastic
-            .as_ref()
-            .ok_or_else(|| format!("material {} has no *ELASTIC", m.name))?;
-        let _ = writeln!(
-            out,
-            "*MATERIAL, NAME={}\n*ELASTIC\n{}, {}",
-            m.name,
-            real(e.youngs_modulus),
-            real(e.poissons_ratio)
-        );
-        if let Some(alpha) = m.expansion {
-            let _ = writeln!(out, "*EXPANSION\n{}", real(alpha));
-        }
-    }
-    out.push_str("*ELSET, ELSET=FH_ALL\n");
-    id_lines(
-        &mut out,
-        &model.elements.iter().map(|e| e.id).collect::<Vec<_>>(),
-    );
-    // `ccx` needs a section. The femahoy subset gives the only material to all elements.
-    if model.sections.is_empty() {
-        let [m] = model.materials.as_slice() else {
-            return Err("the model has no *SOLID SECTION and more than one material".into());
-        };
-        let _ = writeln!(out, "*SOLID SECTION, ELSET=FH_ALL, MATERIAL={}", m.name);
-    }
-    for s in &model.sections {
-        let _ = writeln!(
-            out,
-            "*SOLID SECTION, ELSET={}, MATERIAL={}",
-            s.elset, s.material
-        );
-    }
-    boundaries(&mut out, &model.boundaries);
-    temperatures(
-        &mut out,
-        "*INITIAL CONDITIONS, TYPE=TEMPERATURE",
-        &model.initial_temperatures,
-    );
-    for step in &model.steps {
-        out.push_str("*STEP\n*STATIC\n");
-        boundaries(&mut out, &step.boundaries);
-        if !step.cloads.is_empty() {
-            out.push_str("*CLOAD\n");
-        }
-        for c in &step.cloads {
-            let _ = writeln!(
-                out,
-                "{}, {}, {}",
-                target(&c.target),
-                c.dof,
-                real(c.magnitude)
-            );
-        }
-        if !step.dloads.is_empty() {
-            out.push_str("*DLOAD\n");
-        }
-        for d in &step.dloads {
-            let t = match &d.target {
-                ElementTarget::Element(e) => e.to_string(),
-                ElementTarget::Set(s) => s.clone(),
-            };
-            let _ = writeln!(out, "{t}, P{}, {}", d.face, real(d.pressure));
-        }
-        if !step.dsloads.is_empty() {
-            out.push_str("*DSLOAD\n");
-        }
-        for d in &step.dsloads {
-            let _ = writeln!(out, "{}, P, {}", d.surface, real(d.pressure));
-        }
-        temperatures(&mut out, "*TEMPERATURE", &step.temperatures);
-        out.push_str("*NODE FILE\nU, RF\n*EL PRINT, ELSET=FH_ALL\nS\n*END STEP\n");
-    }
-    Ok(out)
-}
-
-/// The rigid body motions, in the order of the support check.
-const MOTIONS: [&str; 6] = [
-    "translation in x",
-    "translation in y",
-    "translation in z",
-    "rotation about x",
-    "rotation about y",
-    "rotation about z",
-];
-
-/// `ccx` solves a model that can move as a rigid body with no error, and the result is wrong.
-/// Thus in each step, the supports of each connected part of the mesh must hold the 6 rigid
-/// body motions: on the held components, the 6 motions must be linearly independent.
-fn check_support(model: &Model) -> Result<(), String> {
-    fn root(up: &mut [usize], mut i: usize) -> usize {
-        while up[i] != i {
-            up[i] = up[up[i]];
-            i = up[i];
-        }
-        i
-    }
-    let n = model.nodes.len();
-    let index: HashMap<u32, usize> = (model.nodes.iter().enumerate())
-        .map(|(i, node)| (node.id, i))
-        .collect();
-    let (mut up, mut used): (Vec<usize>, _) = ((0..n).collect(), vec![false; n]);
-    for e in &model.elements {
-        let nodes: Vec<usize> = e
-            .nodes
-            .iter()
-            .filter_map(|id| index.get(id).copied())
-            .collect();
-        for pair in nodes.windows(2) {
-            let (a, b) = (root(&mut up, pair[0]), root(&mut up, pair[1]));
-            up[a] = b;
-        }
-        nodes.into_iter().for_each(|i| used[i] = true);
-    }
-    let part: Vec<usize> = (0..n).map(|i| root(&mut up, i)).collect();
-    // The centre and the size of each part, so that the motions have the same scale.
-    let (mut centre, mut size) = (vec![[0.0; 3]; n], vec![0.0_f64; n]);
-    let mut count = vec![0.0; n];
-    for i in (0..n).filter(|&i| used[i]) {
-        let c = &mut centre[part[i]];
-        (0..3).for_each(|k| c[k] += model.nodes[i].xyz[k]);
-        count[part[i]] += 1.0;
-    }
-    for i in (0..n).filter(|&i| used[i]) {
-        let c = centre[part[i]].map(|x| x / count[part[i]]);
-        let d = (0..3)
-            .map(|k| (model.nodes[i].xyz[k] - c[k]).powi(2))
-            .sum::<f64>();
-        size[part[i]] = size[part[i]].max(d.sqrt());
-    }
-    let hold = |held: &mut [u8], list: &[Boundary]| {
-        for b in list {
-            let ids = match &b.target {
-                Target::Node(id) => vec![*id],
-                Target::Set(s) => model.nset(s).map(|s| s.ids.clone()).unwrap_or_default(),
-            };
-            for i in ids.iter().filter_map(|id| index.get(id)) {
-                (b.first_dof..=b.last_dof.min(3)).for_each(|d| held[*i] |= 1 << (d - 1));
-            }
-        }
-    };
-    let mut held = vec![0u8; n];
-    hold(&mut held, &model.boundaries);
-    for (s, step) in model.steps.iter().enumerate() {
-        hold(&mut held, &step.boundaries);
-        // For each part, the sum of r r^T over the held components r of the 6 motions.
-        let mut gram: HashMap<usize, [[f64; 6]; 6]> = HashMap::new();
-        for i in (0..n).filter(|&i| used[i]) {
-            let p = part[i];
-            let g = gram.entry(p).or_insert([[0.0; 6]; 6]);
-            let c = centre[p].map(|x| x / count[p]);
-            let d: [f64; 3] = std::array::from_fn(|k| (model.nodes[i].xyz[k] - c[k]) / size[p]);
-            for k in (0..3).filter(|k| held[i] >> k & 1 == 1) {
-                // The component k of each motion: a unit translation, or e x d.
-                let r: [f64; 6] = std::array::from_fn(|m| match m {
-                    0..3 => f64::from(u8::from(m == k)),
-                    _ if k == (m + 1) % 3 => -d[(m + 2) % 3],
-                    _ if k == (m + 2) % 3 => d[(m + 1) % 3],
-                    _ => 0.0,
-                });
-                for (a, row) in g.iter_mut().enumerate() {
-                    row.iter_mut().zip(r).for_each(|(v, rb)| *v += r[a] * rb);
-                }
-            }
-        }
-        for (p, g) in &gram {
-            if let Some(m) = free_motion(g) {
-                let name = step
-                    .name
-                    .clone()
-                    .unwrap_or_else(|| format!("Step-{}", s + 1));
-                return Err(format!(
-                    "step {name}: the part with node {} can move as a rigid body ({}). ccx \
-                     gives no error for such a model, but its result is wrong. Add a \
-                     *BOUNDARY (in a case: a [[model.boundary]]) that holds this motion",
-                    model.nodes[*p].id, MOTIONS[m]
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-/// The first motion that the held components do not hold apart from the motions before it:
-/// a Cholesky factor of `g` with a pivot test relative to the diagonal.
-fn free_motion(g: &[[f64; 6]; 6]) -> Option<usize> {
-    let mut l = [[0.0; 6]; 6];
-    for k in 0..6 {
-        let pivot = g[k][k] - (0..k).map(|j| l[k][j] * l[k][j]).sum::<f64>();
-        if pivot <= 1e-12 * g[k][k] {
-            return Some(k);
-        }
-        l[k][k] = pivot.sqrt();
-        for i in k + 1..6 {
-            l[i][k] = (g[i][k] - (0..k).map(|j| l[i][j] * l[k][j]).sum::<f64>()) / l[k][k];
-        }
-    }
-    None
-}
-
-/// The last increment of one step in the `.frd` file: node values by node id.
-#[derive(Debug, Default)]
-struct FrdStep {
-    time: f64,
-    disp: HashMap<u32, Vec<f64>>,
-    forc: HashMap<u32, Vec<f64>>,
-}
-
-/// Read the ASCII `.frd` result blocks DISP and FORC. Step `i` of the model is
-/// entry `i`. A later increment of a step replaces the values of the one before.
-fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
-    let bad = |n: usize, why: &str| format!("{JOB}.frd line {}: {why}", n + 1);
-    let mut steps: Vec<FrdStep> = Vec::new();
-    let (mut step, mut time) = (0usize, 0.0);
-    let mut block: Option<&str> = None;
-    let mut ended = false;
-    for (n, line) in text.lines().enumerate() {
-        let words: Vec<&str> = line.split_whitespace().collect();
-        match words.first().copied() {
-            Some("1PSTEP") => {
-                let num = |i: usize| words.get(i).and_then(|w| w.parse::<usize>().ok());
-                step = match (num(2), num(3)) {
-                    (Some(_), Some(s)) if s > 0 => s,
-                    _ => return Err(bad(n, "bad PSTEP line")),
-                };
-            }
-            Some("100CL") => {
-                time = words
-                    .get(2)
-                    .and_then(|w| w.parse().ok())
-                    .ok_or_else(|| bad(n, "bad time"))?;
-            }
-            Some("-4") => {
-                block = match words.get(1).copied() {
-                    Some(b @ ("DISP" | "FORC")) if step > 0 => Some(b),
-                    _ => None,
-                };
-                if let Some(b) = block {
-                    if steps.len() < step {
-                        steps.resize_with(step, FrdStep::default);
-                    }
-                    let s = &mut steps[step - 1];
-                    s.time = time;
-                    if b == "DISP" {
-                        s.disp.clear();
-                    } else {
-                        s.forc.clear();
-                    }
-                }
-            }
-            Some("-3") => block = None,
-            Some("9999") => ended = true,
-            _ if line.starts_with(" -1") && block.is_some() => {
-                // Fixed columns: " -1", the node in 10 characters, then values of 12.
-                let id = line.get(3..13).and_then(|s| s.trim().parse().ok());
-                let values: Option<Vec<f64>> = (13..line.len())
-                    .step_by(12)
-                    .map(|i| line.get(i..(i + 12).min(line.len()))?.trim().parse().ok())
-                    .collect();
-                let (Some(id), Some(values)) = (id, values) else {
-                    return Err(bad(n, "bad value line"));
-                };
-                let s = &mut steps[step - 1];
-                let map = if block == Some("DISP") {
-                    &mut s.disp
-                } else {
-                    &mut s.forc
-                };
-                map.insert(id, values);
-            }
-            _ => {}
-        }
-    }
-    if !ended {
-        return Err(format!("{JOB}.frd has no end line 9999"));
-    }
-    Ok(steps)
-}
-
-/// The integration point stress of each element: the point number and the stress.
-type Points = HashMap<u32, Vec<(usize, [f64; 6])>>;
-
-/// Read the integration point stress of the `*EL PRINT` blocks of the `.dat` file. Block `i`
-/// is step `i`, because each step is one increment. The stress is in the femahoy order
-/// `[xx, yy, zz, xy, yz, xz]`. `ccx` prints `sxy, sxz, syz`.
-fn read_dat(text: &str) -> Vec<Points> {
-    let mut blocks: Vec<Points> = Vec::new();
-    for line in text.lines() {
-        if line.trim_start().starts_with("stresses (elem") {
-            blocks.push(HashMap::new());
-            continue;
-        }
-        let w: Vec<&str> = line.split_whitespace().collect();
-        let (Some(block), [e, p, v @ ..]) = (blocks.last_mut(), w.as_slice()) else {
-            continue;
-        };
-        let v: Option<Vec<f64>> = v.iter().map(|x| x.parse().ok()).collect();
-        if let (Ok(e), Ok(p), Some(&[xx, yy, zz, xy, xz, yz])) =
-            (e.parse(), p.parse(), v.as_deref())
-        {
-            block
-                .entry(e)
-                .or_default()
-                .push((p, [xx, yy, zz, xy, yz, xz]));
-        }
-    }
-    blocks
-}
-
-/// The 4 integration points of a `C3D10` in `ccx`, in the order of `job.dat`, with their
-/// weights. Point k is near corner k.
-fn ccx_points() -> [([f64; 3], f64); 4] {
-    let (a, b) = (0.138_196_601_125_011, 0.585_410_196_624_968);
-    [[a, a, a], [b, a, a], [a, b, a], [a, a, b]].map(|p| (p, 1.0 / 24.0))
-}
-
-/// The derivatives of the `C3D10` shape functions by the natural coordinates `p`, in node
-/// order. Corner 1 is at p = 0, corners 2, 3 and 4 are at p = 1 on the axes. The midside
-/// nodes 5 to 10 are on the edges 1-2, 2-3, 3-1, 1-4, 2-4 and 3-4.
-fn shape_derivatives(p: [f64; 3]) -> Vec<[f64; 3]> {
-    let l = [1.0 - p[0] - p[1] - p[2], p[0], p[1], p[2]];
-    let dl = [[-1.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    let mut dn: Vec<[f64; 3]> = (0..4)
-        .map(|i| dl[i].map(|d| (4.0 * l[i] - 1.0) * d))
-        .collect();
-    for (i, j) in [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)] {
-        dn.push(std::array::from_fn(|k| {
-            4.0 * (l[i] * dl[j][k] + l[j] * dl[i][k])
-        }));
-    }
-    dn
-}
-
-/// The weight times the Jacobian determinant of each `ccx` integration point of an element
-/// with the node coordinates `x`.
-fn point_weights(x: &[[f64; 3]]) -> Vec<f64> {
-    let weight = |(p, w): ([f64; 3], f64)| {
-        let mut j = [[0.0; 3]; 3];
-        for (x, d) in x.iter().zip(shape_derivatives(p)) {
-            for (r, row) in j.iter_mut().enumerate() {
-                for (c, v) in row.iter_mut().enumerate() {
-                    *v += x[r] * d[c];
-                }
-            }
-        }
-        let det = j[0][0] * (j[1][1] * j[2][2] - j[1][2] * j[2][1])
-            - j[0][1] * (j[1][0] * j[2][2] - j[1][2] * j[2][0])
-            + j[0][2] * (j[1][0] * j[2][1] - j[1][1] * j[2][0]);
-        w * det
-    };
-    ccx_points().into_iter().map(weight).collect()
-}
-
-/// The units that the input declares in a `** units:` comment before the first keyword (D-18).
-fn input_units(text: &str) -> String {
-    let comment = text
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map_while(|l| l.strip_prefix("**"));
-    for c in comment {
-        if let Some(u) = c.trim().strip_prefix("units:") {
-            if matches!(u.trim(), "SI-mm" | "SI-m") {
-                return u.trim().into();
-            }
-        }
-    }
-    "unspecified".into()
 }
 
 /// Why `ccx` failed and what to do, from its exit status and its output `log`.
@@ -597,70 +175,22 @@ fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
 
 /// Write the VTU file of each step and the PVD collection in `units`. Each file is written
 /// under a temporary name and renamed (D-09).
-fn write_results(
-    model: &Model,
-    frd: &[FrdStep],
-    dat: &[Points],
-    run_dir: &Path,
-    units: &str,
-) -> Result<(), String> {
+fn write_results(results: &frd::Frd, run_dir: &Path, units: &str) -> Result<(), String> {
     let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
         let tmp = run_dir.join(format!("{file}.tmp"));
         fs::write(&tmp, bytes)
             .and_then(|()| fs::rename(&tmp, run_dir.join(file)))
             .map_err(|e| format!("{file}: {e}"))
     };
-    let base = base_grid(model)?;
-    let coords: HashMap<u32, [f64; 3]> = model.nodes.iter().map(|n| (n.id, n.xyz)).collect();
-    let weights: Vec<Vec<f64>> = (model.elements.iter())
-        .map(|e| {
-            let x: Vec<[f64; 3]> = e.nodes.iter().map(|n| coords[n]).collect();
-            point_weights(&x)
-        })
-        .collect();
-    if dat.len() != model.steps.len() {
-        return Err(format!(
-            "{JOB}.dat has {} stress blocks for {} steps",
-            dat.len(),
-            model.steps.len()
-        ));
-    }
     let mut entries = Vec::new();
-    for (i, stress) in dat.iter().enumerate() {
-        let r = frd
-            .get(i)
-            .filter(|r| !r.disp.is_empty())
-            .ok_or_else(|| format!("{JOB}.frd has no displacement of step {}", i + 1))?;
-        let node = |map: &HashMap<u32, Vec<f64>>, id: u32, k: usize| -> Vec<f64> {
-            let v = map.get(&id).map_or(&[][..], Vec::as_slice);
-            (0..k).map(|c| v.get(c).copied().unwrap_or(0.0)).collect()
-        };
-        let mut g = base.clone();
-        for (name, map) in [("U", &r.disp), ("RF", &r.forc)] {
-            let v = model.nodes.iter().flat_map(|n| node(map, n.id, 3));
-            g.point_data.push(Field::f64(name, 3, v.collect()));
-        }
-        let (mut s, mut mises) = (Vec::new(), Vec::new());
-        for (e, w) in model.elements.iter().zip(&weights) {
-            let at =
-                |what: &str| format!("{JOB}.dat has {what} of element {} in step {}", e.id, i + 1);
-            let points = stress.get(&e.id).ok_or_else(|| at("no stress"))?;
-            let weighted = points
-                .iter()
-                .map(|(p, s)| Some((*s, *w.get(p.checked_sub(1)?)?)))
-                .collect::<Option<Vec<_>>>()
-                .ok_or_else(|| at("a bad integration point"))?;
-            let m = element_stress(weighted);
-            let [xx, yy, zz, xy, yz, zx] = m;
-            let d = (xx - yy).powi(2) + (yy - zz).powi(2) + (zz - xx).powi(2);
-            mises.push((0.5 * d + 3.0 * (xy * xy + yz * yz + zx * zx)).sqrt());
-            s.extend(m);
-        }
-        g.cell_data.push(Field::f64("S", 6, s));
-        g.cell_data.push(Field::f64("MISES", 1, mises));
+    for (i, frame) in results.frames.iter().enumerate() {
         let file = format!("step-{}.vtu", i + 1);
-        atomic(&file, &write_vtu(&g).map_err(|e| e.to_string())?)?;
-        entries.push(PvdEntry { time: r.time, file });
+        let bytes = write_vtu(&results.grid(frame)).map_err(|e| e.to_string())?;
+        atomic(&file, &bytes)?;
+        entries.push(PvdEntry {
+            time: frame.time,
+            file,
+        });
     }
     atomic(PVD_FILE, write_pvd_units(&entries, units).as_bytes())
 }
@@ -736,7 +266,8 @@ const POLL: Duration = Duration::from_millis(10);
 const PROBE_EVERY: Duration = Duration::from_millis(100);
 
 /// What to do when a run does not fit in its limits.
-const SMALLER: &str = "Use a coarser mesh (a larger element size) to make the model smaller";
+const SMALLER: &str =
+    "Make the model smaller, for example with a coarser mesh (a larger element size)";
 
 impl Ccx {
     /// `ccx` from `$FH_CCX`, else `ccx` on PATH. It has no time limit. The memory limit is
@@ -774,17 +305,13 @@ impl Ccx {
                 format!("{}: input file: {e}", inp.display()),
             )
         })?;
-        let text =
-            fs::read_to_string(&inp).map_err(|e| failed(format!("{}: {e}", inp.display())))?;
-        let model = fh_inp::parse_file(&inp.display().to_string(), &text)
-            .map_err(|e| failed(fh_inp::join_errors(&e)))?;
-        let input = ccx_input(&model).map_err(failed)?;
-        check_support(&model).map_err(failed)?;
+        let flat = fh_inp::flatten(&inp).map_err(failed)?;
         let run_dir = prepare_run_dir(run_dir, &inp)?;
         let work = run_dir.join("ccx");
         let folder = |e: std::io::Error| Error::new(code::RUN_FOLDER, format!("run folder: {e}"));
         fs::create_dir_all(&work).map_err(folder)?;
-        fs::write(work.join(format!("{JOB}.inp")), input).map_err(folder)?;
+        // `ccx` gets the file unchanged. An `*INCLUDE` path is relative to the folder of `ccx`.
+        copy_files(&inp, &flat.files, &work, &format!("{JOB}.inp")).map_err(folder)?;
         let log_file = work.join(format!("{JOB}.log"));
         let log = fs::File::create(&log_file).map_err(folder)?;
         let status = self.solve(&work, &log_file, log, cancel, on_progress)?;
@@ -792,13 +319,16 @@ impl Ccx {
         if !status.success() || log.contains("*ERROR") {
             return Err(failed(ccx_failure(status, &log, &log_file)));
         }
-        let read = |ext: &str| {
-            fs::read_to_string(work.join(format!("{JOB}.{ext}")))
-                .map_err(|e| failed(format!("{JOB}.{ext}: {e}")))
+        let file = work.join(format!("{JOB}.frd"));
+        let bytes = fs::read(&file).map_err(|e| failed(format!("{JOB}.frd: {e}")))?;
+        let results = frd::read(&String::from_utf8_lossy(&bytes)).map_err(failed)?;
+        let units = fh_inp::units(&flat.text);
+        let units = if matches!(units.as_str(), "SI-mm" | "SI-m") {
+            units.as_str()
+        } else {
+            "unspecified"
         };
-        let frd = read_frd(&read("frd")?).map_err(failed)?;
-        let dat = read_dat(&read("dat")?);
-        write_results(&model, &frd, &dat, &run_dir, &input_units(&text)).map_err(failed)
+        write_results(&results, &run_dir, units).map_err(failed)
     }
 
     /// Run `ccx -i job` in `work` with its output in `log`, in its own process group, to its

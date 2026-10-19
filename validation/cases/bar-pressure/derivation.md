@@ -6,9 +6,9 @@ Both cases use the same part and the same load. Only the units are different.
 ## Model
 
 A bar of 100 x 20 x 10 mm comes from `scripts/cad/bar.py`. The material has E = 210000 MPa (2.1e11 Pa) and nu = 0.3.
-The case declares 4 named regions. `fh mesh` makes a gmsh physical surface for each region:
+The input uses 4 named sets. `fh mesh --face` makes each set as a node set and a surface:
 
-| Region | Face | Use |
+| Set | Face | Use |
 |---|---|---|
 | `SUPPORT` | x = 0 | ux = 0 |
 | `SYM_Y` | y = 0 | uy = 0 |
@@ -39,5 +39,5 @@ The area of the face is 20 x 10 = 200 mm2 (2e-4 m2). The total force is 100 MPa 
 ## Files
 
 `bar.step` comes from `python scripts/cad/bar.py bar.step` (mm) or `python scripts/cad/bar.py bar.step m` (m).
-`bar.inp` comes from `fh mesh bar.step --case . --size H -o bar.msh` and `fh model bar.msh --case . -o bar.inp`.
+The mesh in `job.inp` comes from `fh mesh bar.step --units SI-mm --size H --face SUPPORT=x:0 --face SYM_Y=y:0 --face SYM_Z=z:0 --face LOAD=x:100`.
 H is 8 (mm) or 0.008 (m).

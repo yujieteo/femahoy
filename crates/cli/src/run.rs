@@ -1,12 +1,10 @@
-//! `fh run`: solve a model on the daemon of the run contract (`docs/run-contract.md`), show the
-//! progress, and open the results in the browser.
+//! `fh run`: solve a CalculiX input on the daemon of the run contract (`docs/run-contract.md`),
+//! show the progress, and open the results in the browser.
 //!
-//! - `fh run MODEL.inp` solves the input as it is.
-//! - `fh run CASE_DIR` (or `CASE_DIR/case.toml`, or `CASE_DIR/PART.step`) takes a case folder
-//!   with `case.toml` and one STEP file. It runs `fh mesh` and `fh model` in the work folder
-//!   `<state>/cases/<name>-<hash>`, then solves the input. Thus the case folder does not
-//!   change.
+//! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
+//!   (`*INCLUDE`). The daemon solves a copy, so a later edit does not change the run.
 //! - The daemon solves each run with CalculiX: `$FH_CCX`, else `ccx` on `PATH` (`docs/ccx.md`).
+//! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
 //! Before the solve, `fh run` sends the input to the preview route of the daemon, so that
 //! the page shows the model with each support and each load. With `--preview`, `fh run`
@@ -21,15 +19,15 @@
 //! Ctrl+C sends a cancel command for the run and waits for the end of the run. A second
 //! Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{Client, Event, RunRecord, RunState};
+use fh_daemon::{Client, Event, Limits, RunRecord, RunState};
 
-const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] \
-[--preview] [--state DIR] [--no-open]";
+const USAGE: &str = "usage: fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB] \
+[--state DIR] [--no-open]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -51,10 +49,19 @@ const EVENT_WAIT: Duration = Duration::from_millis(500);
 #[derive(Default)]
 struct Options {
     target: Option<PathBuf>,
-    size: Option<String>,
+    limits: Limits,
     state: Option<PathBuf>,
     no_open: bool,
     preview: bool,
+}
+
+/// A number above 0 that is finite.
+fn positive(value: &str, what: &str) -> Result<f64, String> {
+    value
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite() && *v > 0.0)
+        .ok_or_else(|| format!("{what} needs a number above 0\n{USAGE}"))
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -67,12 +74,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 .ok_or_else(|| format!("{arg} needs {what}\n{USAGE}"))
         };
         match arg.as_str() {
-            "--size" => {
-                let size = value("a mesh size")?;
-                if !size.parse::<f64>().is_ok_and(|h| h.is_finite() && h > 0.0) {
-                    return Err(format!("--size needs a number above 0\n{USAGE}"));
-                }
-                o.size = Some(size);
+            "--timeout" => {
+                let seconds = positive(&value("a number of seconds")?, "--timeout")?;
+                o.limits.timeout = Some(
+                    Duration::try_from_secs_f64(seconds)
+                        .map_err(|_| format!("--timeout is too large\n{USAGE}"))?,
+                );
+            }
+            "--memory" => {
+                let mib = positive(&value("a number of MiB")?, "--memory")?;
+                o.limits.memory = Some((mib * f64::from(1 << 20)) as u64);
             }
             "--state" => o.state = Some(value("a folder")?.into()),
             "--no-open" => o.no_open = true,
@@ -88,85 +99,20 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(o)
 }
 
-/// What `fh run` solves.
-enum Input {
-    Inp(PathBuf),
-    Case { dir: PathBuf, step: PathBuf },
-}
-
-fn is_step(path: &Path) -> bool {
-    let ext = path
-        .extension()
-        .map(|e| e.to_string_lossy().to_ascii_lowercase());
-    matches!(ext.as_deref(), Some("step" | "stp"))
-}
-
-/// The input of `path`: an `.inp` file, or a case folder with its STEP file.
-fn resolve(path: &Path) -> Result<Input, String> {
+/// The real path of the `.inp` file that `fh run` solves.
+fn resolve(path: &Path) -> Result<PathBuf, String> {
     let shown = path.display();
     let full = fs::canonicalize(path).map_err(|e| format!("{shown}: {e} (run.input.missing)"))?;
-    if full.is_dir() {
-        return case_in(full, None);
-    }
-    let parent = full.parent().map(Path::to_path_buf).unwrap_or_default();
-    let ext = full
+    let inp = full
         .extension()
-        .map(|e| e.to_string_lossy().to_ascii_lowercase());
-    if ext.as_deref() == Some("inp") {
-        Ok(Input::Inp(full))
-    } else if is_step(&full) {
-        case_in(parent, Some(full))
-    } else if full.file_name().is_some_and(|n| n == "case.toml") {
-        case_in(parent, None)
+        .is_some_and(|e| e.eq_ignore_ascii_case("inp"));
+    if full.is_file() && inp {
+        Ok(full)
     } else {
         Err(format!(
-            "{shown}: fh run takes an .inp file, a case folder, its case.toml or its STEP file \
-             (run.input.kind)"
+            "{shown}: fh run takes a CalculiX input file (.inp) (run.input.kind)"
         ))
     }
-}
-
-fn case_in(dir: PathBuf, step: Option<PathBuf>) -> Result<Input, String> {
-    let shown = dir.display();
-    if !dir.join("case.toml").is_file() {
-        return Err(format!(
-            "{shown}: no case.toml, so this is not a case folder (run.case.missing)"
-        ));
-    }
-    let step = match step {
-        Some(step) => step,
-        None => {
-            let entries = fs::read_dir(&dir).map_err(|e| format!("{shown}: {e}"))?;
-            let mut steps: Vec<PathBuf> = entries
-                .filter_map(|e| Some(e.ok()?.path()))
-                .filter(|p| p.is_file() && is_step(p))
-                .collect();
-            steps.sort();
-            match steps.len() {
-                1 => steps.remove(0),
-                0 => {
-                    return Err(format!(
-                        "{shown}: the case folder has no STEP file (.step or .stp) \
-                         (run.case.step.missing)"
-                    ))
-                }
-                n => {
-                    let names: Vec<_> = steps.iter().filter_map(|p| p.file_name()).collect();
-                    return Err(format!(
-                        "{shown}: the case folder has {n} STEP files ({}). Give one of them, \
-                         for example: fh run {} (run.case.step.many)",
-                        names
-                            .iter()
-                            .map(|n| n.to_string_lossy())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        steps[0].display()
-                    ));
-                }
-            }
-        }
-    };
-    Ok(Input::Case { dir, step })
 }
 
 fn text(path: &Path) -> Result<String, String> {
@@ -258,59 +204,6 @@ fn daemon(state: &Path) -> Result<(Client, bool), String> {
     }
 }
 
-/// The FNV-1a hash of the path, for the name of a work folder.
-fn path_hash(path: &Path) -> u64 {
-    path.as_os_str()
-        .as_encoded_bytes()
-        .iter()
-        .fold(0xcbf2_9ce4_8422_2325, |h, b| {
-            (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01b3)
-        })
-}
-
-/// Run `fh mesh` and `fh model` for a case in its work folder. The result is the input file,
-/// or the exit code of the step that refused the case.
-fn prepare(
-    work: &Path,
-    dir: &Path,
-    step: &Path,
-    size: Option<&str>,
-) -> Result<Result<PathBuf, ExitCode>, String> {
-    let stem = step
-        .file_stem()
-        .map_or("part".into(), |s| s.to_string_lossy());
-    let msh = work.join(format!("{stem}.msh"));
-    let inp = work.join(format!("{stem}.inp"));
-    let mut mesh = vec![
-        text(step)?,
-        "--case".into(),
-        text(dir)?,
-        "-o".into(),
-        text(&msh)?,
-    ];
-    if let Some(size) = size {
-        mesh.extend(["--size".into(), size.into()]);
-    }
-    println!("fh run: mesh: fh mesh {}", mesh.join(" "));
-    let code = crate::mesh::run(&mesh).map_err(|e| format!("mesh: {e}"))?;
-    if code != ExitCode::SUCCESS {
-        return Ok(Err(code));
-    }
-    let model = [
-        text(&msh)?,
-        "--case".into(),
-        text(dir)?,
-        "-o".into(),
-        text(&inp)?,
-    ];
-    println!("fh run: model: fh model {}", model.join(" "));
-    let code = crate::model::run(&model).map_err(|e| format!("model: {e}"))?;
-    if code != ExitCode::SUCCESS {
-        return Ok(Err(code));
-    }
-    Ok(Ok(inp))
-}
-
 fn fail(code: u8, message: &str) -> ExitCode {
     eprintln!("fh run: {message}");
     ExitCode::from(code)
@@ -392,10 +285,15 @@ fn follow(client: &Client, run: &str) -> Result<Option<RunState>, String> {
 
 /// The message of a run, with the path of the copy of the input replaced by the input file.
 fn message_of(record: &RunRecord, state: &Path, input: &Path) -> String {
-    let copy = state.join("runs").join(&record.run).join("input.inp");
+    let copy = state.join("runs").join(&record.run).join("in/input.inp");
     record
         .message
         .replace(&copy.display().to_string(), &input.display().to_string())
+}
+
+/// The number of result frames that `results.pvd` lists.
+fn frames(out: &Path) -> usize {
+    fs::read_to_string(out.join("results.pvd")).map_or(0, |t| t.matches("<DataSet").count())
 }
 
 /// Print the wall time and the result folder of a run that succeeded, and open the browser.
@@ -404,6 +302,17 @@ fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_h
     let seconds = record.finished_ms.saturating_sub(record.started_ms) as f64 / 1000.0;
     println!("fh run: {} succeeded in {seconds:.2} s", record.run);
     println!("fh run: results in {}", out.display());
+    println!(
+        "fh run: text results {}/ccx/job.dat (print requests), {}/ccx/job.sta (steps)",
+        out.display(),
+        out.display()
+    );
+    if frames(&out) == 0 {
+        println!(
+            "fh run: the page has no field to show. Add *NODE FILE or *EL FILE to a *STEP to \
+             write a field"
+        );
+    }
     let url = client.page_url(&format!("&run={}", record.run));
     println!("fh run: page {url}");
     if !fh_daemon::no_open(o.no_open) {
@@ -423,13 +332,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         .or_else(fh_daemon::default_state_dir)
         .ok_or_else(|| format!("no home folder, so give the state folder\n{USAGE}"))?;
     // Check the model before a daemon starts.
-    let input = resolve(o.target.as_deref().expect("parse needs a model"))?;
-    if matches!(input, Input::Inp(_)) && o.size.is_some() {
-        return Err(format!(
-            "--size goes to fh mesh, for a case folder or a STEP file. An .inp file \
-             has its mesh (run.option.mesh)\n{USAGE}"
-        ));
-    }
+    let file = resolve(o.target.as_deref().expect("parse needs a model"))?;
     if let Err(e) = fs::create_dir_all(&state) {
         let message = format!(
             "no daemon: cannot make the state folder {}: {e}",
@@ -455,31 +358,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             state.join(LOG_FILE).display()
         );
     }
-    // The name of the model in the page: the case folder, else the input file.
-    let (file, case) = match &input {
-        Input::Inp(file) => (file.clone(), None),
-        Input::Case { dir, step } => {
-            let name = dir
-                .file_name()
-                .map_or("case".into(), |n| n.to_string_lossy());
-            let work = state
-                .join("cases")
-                .join(format!("{name}-{:016x}", path_hash(dir)));
-            fs::create_dir_all(&work)
-                .map_err(|e| format!("cannot make {}: {e}", work.display()))?;
-            // Two fh run commands on one case at the same time take turns.
-            let lock = File::create(work.join(".lock")).and_then(|f| f.lock().map(|()| f));
-            let _lock = lock.map_err(|e| format!("cannot lock {}: {e}", work.display()))?;
-            match prepare(&work, dir, step, o.size.as_deref())? {
-                Ok(inp) => (inp, Some(name.into_owned())),
-                Err(code) => return Ok(code),
-            }
-        }
-    };
-    let title = match case {
-        Some(case) => case,
-        None => text(Path::new(file.file_name().unwrap_or_default()))?,
-    };
+    // The name of the model in the page: the input file.
+    let title = text(Path::new(file.file_name().unwrap_or_default()))?;
     interrupt::install();
     // The page shows the model before the solve. A daemon with no preview route still solves.
     match (client.preview(&file, &title), o.preview) {
@@ -499,7 +379,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         println!("fh run: --preview: no solve");
         return Ok(ExitCode::SUCCESS);
     }
-    let run = match client.submit(&file) {
+    let run = match client.submit(&file, &o.limits) {
         Ok(record) => record.run,
         Err(e) if e.status == 0 => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
         Err(e) => return Ok(fail(FAILED, &format!("the daemon refused the run: {e}"))),
@@ -570,10 +450,21 @@ mod tests {
     #[test]
     fn options_are_checked() {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert!(parse(&args(&["m.inp", "--size", "0"])).is_err());
-        assert!(parse(&args(&["m.inp", "--order", "2"])).is_err());
+        assert!(parse(&args(&["m.inp", "--timeout", "0"])).is_err());
+        assert!(parse(&args(&["m.inp", "--memory", "x"])).is_err());
+        assert!(parse(&args(&["m.inp", "--size", "1"])).is_err());
         assert!(parse(&args(&[])).is_err());
-        let o = parse(&args(&["m.inp", "--no-open"])).unwrap();
+        let o = parse(&args(&[
+            "m.inp",
+            "--no-open",
+            "--timeout",
+            "1.5",
+            "--memory",
+            "512",
+        ]))
+        .unwrap();
         assert!(o.no_open);
+        assert_eq!(o.limits.timeout, Some(Duration::from_millis(1500)));
+        assert_eq!(o.limits.memory, Some(512 << 20));
     }
 }

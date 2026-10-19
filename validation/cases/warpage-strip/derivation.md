@@ -34,7 +34,7 @@ This case checks the complete workflow with an unstructured C3D10 mesh.
 ## Reproduce
 
 `strip.step` comes from `fh-python scripts/cad/warpage_strip.py strip.step`.
-Run `fh run validation/cases/warpage-strip --size 1` (or `--size 0.5`) to solve a new mesh. `fh validate` checks the committed `strip.inp`.
+`fh validate` solves the committed `job.inp`. Make a new mesh with the command below, and replace the mesh in a copy of `job.inp`.
 `cargo test -p fh-cli --test cli` checks the reference against the formula above.
 
 ## Measured result
@@ -49,7 +49,7 @@ The solver time is the run time that `fh run` prints. It includes the solve and 
 
 Both differences are below the 1% tolerance. The two computed values differ by 0.00352% of the reference.
 The small residual includes the three-dimensional free-end effect in the solid model.
-The committed `strip.inp` is the coarse mesh from `fh mesh --size 1` and `fh model`.
+The mesh in `job.inp` is the coarse mesh from `fh mesh strip.step --units SI-mm --size 1 --volume LOW=box:0,0,0,40,2,1 --volume HIGH=box:0,0,1,40,2,2 --face SYM_X=x:0 --face SYM_Y=y:0 --nodes ORIGIN=point:0,0,0 --face TIP=x:40`.
 The STEP file comes from `scripts/cad/warpage_strip.py`. gmsh fragments the touching bodies to share interface nodes.
 Each solid element belongs to exactly one material group.
 The workflow check also reads the VTU fields.

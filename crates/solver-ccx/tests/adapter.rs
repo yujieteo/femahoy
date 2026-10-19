@@ -7,12 +7,6 @@ use std::time::{Duration, Instant};
 use fh_io::vtu::{read_vtu, Grid};
 use fh_solver_ccx::{code, CancelToken, Ccx};
 
-fn repo(path: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .join(path)
-}
-
 /// An empty scratch folder for one test.
 fn scratch(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("fh-ccx-{name}-{}", std::process::id()));
@@ -78,15 +72,26 @@ fn tet(dir: &Path, extra: &str) -> PathBuf {
     file
 }
 
-/// An `.frd` file with two increments of step 1. The second increment replaces the first.
+/// An `.frd` file with a tet of 4 nodes. Step 1 has two increments, and the second replaces
+/// the first. Step 2 has a displacement only.
 const FRD: &str = "    1C
+    2C                             4                                     1
+ -1         1 0.00000E+00 0.00000E+00 0.00000E+00
+ -1         2 1.00000E+00 0.00000E+00 0.00000E+00
+ -1         3 0.00000E+00 1.00000E+00 0.00000E+00
+ -1         4 0.00000E+00 0.00000E+00 1.00000E+00
+ -3
+    3C                             1                                     1
+ -1         1    3    0    1
+ -2         1         2         3         4
+ -3
     1PSTEP                         1           1           1
-  100CL  101 0.500000000           8                     0    1           1
+  100CL  101 5.00000E-01           4                     0    1           1
  -4  DISP        4    1
  -1         2 5.00000E-04 0.00000E+00 0.00000E+00
  -3
     1PSTEP                         2           2           1
-  100CL  101 1.000000000           8                     0    1           1
+  100CL  102 1.00000E+00           4                     0    2           1
  -4  DISP        4    1
  -5  D1          1    2    1    0
  -1         2 1.00000E-03-2.00000E-04 0.00000E+00
@@ -96,21 +101,17 @@ const FRD: &str = "    1C
  -3
  -4  STRESS      6    1
  -1         1 2.00000E+02 0.00000E+00 0.00000E+00 0.00000E+00 0.00000E+00 0.00000E+00
- -1         2 1.00000E+02 0.00000E+00 0.00000E+00 0.00000E+00 0.00000E+00 0.00000E+00
+ -1         2 1.00000E+02 0.00000E+00 0.00000E+00 3.00000E+01 0.00000E+00 0.00000E+00
  -3
  -4  ERROR       1    1
  -1         1 1.00000E+00
  -3
+    1PSTEP                         3           1           2
+  100CL  103 2.00000E+00 4 0 0 0
+ -4  DISP        4    1
+ -1         2 2.00000E-03 0.00000E+00 0.00000E+00
+ -3
  9999
-";
-
-/// A `.dat` file with the stress of two integration points of element 1. `ccx` prints
-/// `sxy, sxz, syz`.
-const DAT: &str = "
- stresses (elem, integ.pnt.,sxx,syy,szz,sxy,sxz,syz) for set FH_ALL and time  0.1000000E+01
-
-         1   1  2.000000E+02  0.000000E+00  0.000000E+00  1.000000E+01  2.000000E+01  3.000000E+01
-         1   2  1.000000E+02  0.000000E+00  0.000000E+00  1.000000E+01  2.000000E+01  3.000000E+01
 ";
 
 fn point(grid: &Grid, field: &str, point: usize) -> Vec<f64> {
@@ -118,73 +119,68 @@ fn point(grid: &Grid, field: &str, point: usize) -> Vec<f64> {
     f.as_f64().unwrap()[point * f.components..][..f.components].to_vec()
 }
 
+fn read_grid(path: PathBuf) -> Grid {
+    read_vtu(&std::fs::read(path).unwrap()).unwrap()
+}
+
 #[test]
-fn the_frd_results_become_vtu_and_pvd() {
+fn every_frd_field_becomes_vtu_and_pvd() {
     let dir = scratch("frd");
     std::fs::write(dir.join("frd"), FRD).unwrap();
-    std::fs::write(dir.join("dat"), DAT).unwrap();
     let ccx = fake_ccx(
         &dir,
         &format!(
-            "echo 'CalculiX Version 9.9, Copyright'\ncp {0}/frd job.frd\ncp {0}/dat job.dat",
+            "echo 'CalculiX Version 9.9, Copyright'\ncp {0}/frd job.frd",
             dir.display()
         ),
     );
     if let Err(err) = run(&tet(&dir, ""), &dir.join("run"), &ccx) {
         panic!("{err}");
     }
-    let input = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
-    for line in [
-        "*SOLID SECTION, ELSET=FH_ALL, MATERIAL=STEEL",
-        "2, 1, 1, 1.00000000000000e-3",
-        "*NODE FILE\nU, RF\n*EL PRINT, ELSET=FH_ALL\nS\n*END STEP",
-    ] {
-        assert!(input.contains(line), "{line} not in\n{input}");
-    }
     let pvd = std::fs::read_to_string(dir.join("run/results.pvd")).unwrap();
-    assert!(pvd.contains("step-1.vtu") && pvd.contains("SI-mm"), "{pvd}");
-    let grid = read_vtu(&std::fs::read(dir.join("run/step-1.vtu")).unwrap()).unwrap();
+    assert!(pvd.contains("SI-mm"), "{pvd}");
+    assert!(
+        pvd.contains("timestep=\"1\"") && pvd.contains("timestep=\"2\""),
+        "{pvd}"
+    );
+    let grid = read_grid(dir.join("run/step-1.vtu"));
     assert_eq!(point(&grid, "U", 1), [1e-3, -2e-4, 0.0]);
     assert_eq!(point(&grid, "U", 0), [0.0; 3]);
     assert_eq!(point(&grid, "RF", 0), [-210.0, 0.0, 0.0]);
-    // The points of a tet with straight edges have the same weight times Jacobian, so S is
-    // the mean of the two points, in the order xx, yy, zz, xy, yz, xz.
-    let near = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-9);
-    let s = grid.cell_field("S").unwrap().as_f64().unwrap();
-    assert!(near(s, &[150.0, 0.0, 0.0, 10.0, 30.0, 20.0]), "{s:?}");
-    let mises = grid.cell_field("MISES").unwrap().as_f64().unwrap();
-    assert!(near(mises, &[26700f64.sqrt()]), "{mises:?}");
+    assert_eq!(point(&grid, "S", 1), [100.0, 0.0, 0.0, 30.0, 0.0, 0.0]);
+    assert_eq!(point(&grid, "MISES", 0), [200.0]);
+    assert_eq!(point(&grid, "ERROR", 0), [1.0]);
+    let two = read_grid(dir.join("run/step-2.vtu"));
+    assert_eq!(point(&two, "U", 1), [2e-3, 0.0, 0.0]);
+    assert!(two.point_field("RF").is_none());
 }
 
-/// In a distorted element the points have different weights times Jacobian, so `S` is the
-/// volume mean of the points, and not the plain mean.
+/// `ccx` gets the file as the person wrote it, and each file that it includes.
 #[test]
-fn the_element_stress_is_the_volume_mean_of_the_points() {
-    let dir = scratch("volume-mean");
-    // Midside node 5 moves to x = 0.6: the Jacobian determinant is
-    // 1 + 0.4 (1 - 2 xi - eta - zeta). At point 1 it is 1 + 0.4 / sqrt(5), and the sum of
-    // the 4 points is 4.
-    let input = dir.join("curved.inp");
-    let curved = TET.replace("5, 0.5, 0, 0", "5, 0.6, 0, 0");
-    std::fs::write(&input, curved).unwrap();
-    // sxx is 1 at point 1, and 0 at the 3 other points.
-    let mut dat = String::from(" stresses (elem, integ.pnt.,sxx,syy,szz,sxy,sxz,syz)\n");
-    for p in 1..=4 {
-        dat.push_str(&format!("1 {p} {} 0 0 0 0 0\n", u8::from(p == 1)));
-    }
-    std::fs::write(dir.join("frd"), FRD).unwrap();
-    std::fs::write(dir.join("dat"), dat).unwrap();
-    let ccx = fake_ccx(
-        &dir,
-        &format!("cp {0}/frd job.frd\ncp {0}/dat job.dat", dir.display()),
-    );
-    if let Err(err) = run(&input, &dir.join("run"), &ccx) {
-        panic!("{err}");
-    }
-    let grid = read_vtu(&std::fs::read(dir.join("run/step-1.vtu")).unwrap()).unwrap();
-    let s = grid.cell_field("S").unwrap().as_f64().unwrap();
-    // The plain mean is 0.25.
-    assert!((s[0] - (0.25 + 0.1 / 5f64.sqrt())).abs() < 1e-12, "{s:?}");
+fn ccx_gets_the_input_and_its_include_files_unchanged() {
+    let dir = scratch("unchanged");
+    std::fs::create_dir_all(dir.join("mesh")).unwrap();
+    let input = "** units: SI-mm\n*INCLUDE, INPUT=mesh/part.inp\n*EQUATION\n2\n*STEP\n*FREQUENCY\n3\n*END STEP\n";
+    let part = "*NODE\n1, 0, 0, 0\n*INCLUDE, INPUT=mesh/more.inp\n";
+    std::fs::write(dir.join("job.inp"), input).unwrap();
+    std::fs::write(dir.join("mesh/part.inp"), part).unwrap();
+    std::fs::write(dir.join("mesh/more.inp"), "*NSET, NSET=A\n1\n").unwrap();
+    let ccx = fake_ccx(&dir, "exit 0");
+    let _ = run(&dir.join("job.inp"), &dir.join("run"), &ccx);
+    let seen = |file: &str| std::fs::read_to_string(dir.join("run/ccx").join(file)).unwrap();
+    assert_eq!(seen("job.inp"), input);
+    assert_eq!(seen("mesh/part.inp"), part);
+    assert_eq!(seen("mesh/more.inp"), "*NSET, NSET=A\n1\n");
+}
+
+#[test]
+fn an_include_path_outside_the_input_folder_is_an_error() {
+    let dir = scratch("escape");
+    std::fs::write(dir.join("job.inp"), "*INCLUDE, INPUT=../other.inp\n").unwrap();
+    let ccx = fake_ccx(&dir, "touch started");
+    let err = run(&dir.join("job.inp"), &dir.join("run"), &ccx).unwrap_err();
+    assert!(err.contains("no '..'"), "{err}");
+    assert!(!dir.join("run/ccx/started").exists());
 }
 
 #[test]
@@ -195,30 +191,6 @@ fn no_ccx_is_a_clear_error() {
         err.contains("cannot start") && err.contains("FH_CCX") && err.contains("docs/ccx.md"),
         "{err}"
     );
-}
-
-#[test]
-fn the_thermal_keywords_go_to_ccx() {
-    let dir = scratch("thermal");
-    let input = dir.join("thermal.inp");
-    let text = TET
-        .replace(
-            "*STEP",
-            "*NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10\n\
-             *INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 20\n*STEP",
-        )
-        .replace("0.3\n", "0.3\n*EXPANSION\n1.2e-5\n")
-        .replace("*END STEP", "*TEMPERATURE\nALL, 120\n8, 100\n*END STEP");
-    std::fs::write(&input, text).unwrap();
-    let _ = run(&input, &dir.join("run"), &dir.join("no-ccx"));
-    let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
-    for part in [
-        "*ELASTIC\n2.10000000000000e5, 3.00000000000000e-1\n*EXPANSION\n1.20000000000000e-5\n",
-        "*INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 2.00000000000000e1\n*STEP\n",
-        "*TEMPERATURE\nALL, 1.20000000000000e2\n8, 1.00000000000000e2\n*NODE FILE",
-    ] {
-        assert!(job.contains(part), "{part} is not in {job}");
-    }
 }
 
 #[test]
@@ -274,19 +246,9 @@ fn an_invalid_result_file_is_an_error() {
     for (i, (body, why)) in [
         ("echo garbage > job.frd", "no end line"),
         (
-            "printf '    1PSTEP 1 1 1\\n -4  DISP\\n -1  xx\\n 9999\\n' > job.frd",
-            "line 3: bad value line",
+            "printf '    2C\\n -1  xx\\n 9999\\n' > job.frd",
+            "line 2: bad node line",
         ),
-        (
-            "echo ' 9999' > job.frd; echo ' stresses (elem' > job.dat",
-            "no displacement of step 1",
-        ),
-        (
-            "printf '    1PSTEP 1 1 1\\n -4  DISP\\n -1         2 1.00000E-03\\n 9999\\n' > job.frd
-             echo ' stresses (elem' > job.dat",
-            "no stress of element 1 in step 1",
-        ),
-        ("echo ' 9999' > job.frd", "job.dat"),
         ("true", "job.frd"),
     ]
     .into_iter()
@@ -295,89 +257,6 @@ fn an_invalid_result_file_is_an_error() {
         let ccx = fake_ccx(&dir, body);
         let err = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx).unwrap_err();
         assert!(err.contains(why), "{body}: {err}");
-    }
-}
-
-/// The parser refuses a keyword, a parameter or an element type outside the subset, with its
-/// line, before `ccx` starts.
-#[test]
-fn a_keyword_outside_the_subset_is_a_clear_error() {
-    let dir = scratch("keyword");
-    for (i, (text, want)) in [
-        (
-            TET.replace("*STEP", "*EQUATION\n2\n2, 2, 1.0, 3, 2, -1.0\n*STEP"),
-            "line 20, *EQUATION: unsupported keyword (INP002)",
-        ),
-        (
-            TET.replace("NAME=PULL", "NAME=PULL, NLGEOM=YES"),
-            "line 20, *STEP: unsupported parameter NLGEOM (INP003)",
-        ),
-        (
-            TET.replace("TYPE=C3D10", "TYPE=C3D8"),
-            "line 13, *ELEMENT: unsupported element type C3D8; only C3D10 is supported (INP005)",
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let input = dir.join(format!("bad-{i}.inp"));
-        std::fs::write(&input, text).unwrap();
-        let err = run(&input, &dir.join(format!("run-{i}")), &dir.join("no-ccx")).unwrap_err();
-        assert!(err.contains(want), "{want}: {err}");
-    }
-}
-
-/// `ccx` reads at most 20 characters of a number. A longer number loses the end of its
-/// exponent: -1.33e-17 becomes -0.133. Thus each number of `job.inp` must fit.
-#[test]
-fn each_number_of_the_ccx_input_fits_in_20_characters() {
-    let dir = scratch("width");
-    let input = dir.join("width.inp");
-    let text = TET.replace("3, 0, 1, 0\n", "3, -1.3302787975829e-17, 1, -4.7e-117\n");
-    assert_ne!(text, TET);
-    std::fs::write(&input, text).unwrap();
-    let _ = run(&input, &dir.join("run"), &dir.join("no-ccx"));
-    let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
-    let line = job.lines().find(|l| l.starts_with("3, ")).unwrap();
-    let values: Vec<f64> = line
-        .split(", ")
-        .skip(1)
-        .map(|v| {
-            assert!(v.len() <= 20, "{v} has {} characters", v.len());
-            v.parse().unwrap()
-        })
-        .collect();
-    assert!(
-        (values[0] / -1.3302787975829e-17 - 1.0).abs() < 1e-12,
-        "{line}"
-    );
-    assert!((values[2] / -4.7e-117 - 1.0).abs() < 1e-12, "{line}");
-}
-
-/// `ccx` solves a model with a rigid body motion with no error, and its result is wrong
-/// (displacements of 1e12 mm). Thus the adapter refuses the model before `ccx` starts.
-#[test]
-fn a_model_that_can_move_as_a_rigid_body_is_a_clear_error() {
-    let dir = scratch("rigid");
-    let ccx = fake_ccx(&dir, "touch started");
-    let held = "*BOUNDARY\nFIXED, 1, 3\n2, 1, 1, 0.001\n";
-    for (i, (support, mode)) in [
-        ("*CLOAD\n2, 1, 100.0\n", "translation in x"),
-        ("*BOUNDARY\nFIXED, 1, 1\n", "translation in y"),
-        ("*BOUNDARY\n1, 1, 3\n4, 1, 3\n", "rotation about z"),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let input = dir.join(format!("rigid-{i}.inp"));
-        std::fs::write(&input, TET.replace(held, support)).unwrap();
-        let err = run(&input, &dir.join(format!("run-{i}")), &ccx).unwrap_err();
-        assert!(
-            err.contains("can move as a rigid body") && err.contains(mode),
-            "{support}: {err}"
-        );
-        assert!(err.contains("*BOUNDARY"), "{err}");
-        assert!(!dir.join(format!("run-{i}/ccx/started")).exists());
     }
 }
 
@@ -486,91 +365,148 @@ fn real_ccx() -> Option<PathBuf> {
     None
 }
 
-/// One component of U or RF on each node of a node set of a result grid.
-fn on_set(grid: &Grid, field: &str, set: &str, component: usize) -> Vec<f64> {
-    let name = format!("NSET_{set}");
-    let flags = grid
-        .point_data
-        .iter()
-        .find(|f| f.name.eq_ignore_ascii_case(&name));
-    let Some(fh_io::vtu::Values::I32(flags)) = flags.map(|f| &f.values) else {
-        panic!("no integer array {name}")
-    };
-    (0..flags.len())
-        .filter(|i| flags[*i] != 0)
-        .map(|i| point(grid, field, i)[component])
-        .collect()
+/// A test input of this crate.
+fn input(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/inputs")
+        .join(name)
 }
 
-fn mean(v: &[f64]) -> f64 {
-    v.iter().sum::<f64>() / v.len() as f64
-}
-
-/// The cantilever and the bar-pressure cases through the real `ccx`. The limits are for
-/// `ccx` 2.23, whose `.frd` file has 6 significant digits.
-#[test]
-fn real_ccx_matches_the_cantilever_and_bar_pressure_references() {
-    let Some(ccx) = real_ccx() else { return };
-    let dir = scratch("real");
-    let solve = |case: &str| {
-        let run_dir = dir.join(case.replace('/', "-"));
-        if let Err(err) = run(&repo(&format!("validation/cases/{case}")), &run_dir, &ccx) {
-            panic!("{case}: {err}");
-        }
-        read_vtu(&std::fs::read(run_dir.join("step-1.vtu")).unwrap()).unwrap()
-    };
-    // Reference -0.01919619048 mm (case.toml). The C3D10 value of mesh-8 is 1.4 % soft, in
-    // the 2 % tolerance of the case.
-    let tip = mean(&on_set(
-        &solve("cantilever-c3d10/mesh-8.inp"),
-        "U",
-        "tip",
-        2,
-    ));
-    assert!(
-        (tip / -0.01919619048 - 1.0).abs() < 0.02,
-        "cantilever tip {tip}"
-    );
-    let bar = solve("bar-pressure/bar.inp");
-    let u = mean(&on_set(&bar, "U", "LOAD", 0));
-    assert!((u / 0.047619047619047616 - 1.0).abs() < 1e-5, "bar u {u}");
-    let rf: f64 = on_set(&bar, "RF", "SUPPORT", 0).iter().sum();
-    assert!((rf / -20000.0 - 1.0).abs() < 1e-5, "bar rf {rf}");
-    // The integration point stress of `job.dat` has 7 significant digits.
-    let s = bar.cell_field("S").unwrap().as_f64().unwrap();
-    let s = mean(&s.iter().step_by(6).copied().collect::<Vec<_>>());
-    assert!((s / 100.0 - 1.0).abs() < 1e-6, "bar s_xx {s}");
-}
-
-/// `docs/compatibility.md`, `*CLOAD`: lines for one node and dof add up in a step, and a
-/// later step replaces the total. Both steps give the total 2, so the results are equal.
-#[test]
-fn real_ccx_adds_cload_lines_in_a_step_and_a_later_step_replaces_the_total() {
-    let Some(ccx) = real_ccx() else { return };
-    let dir = scratch("cload");
-    let input = dir.join("cload.inp");
-    let text = TET.replace(
-        "2, 1, 1, 0.001\n*END STEP\n",
-        "*CLOAD\n2, 1, 1.0\n2, 1, 1.0\n*END STEP\n\
-         *STEP, NAME=AGAIN\n*STATIC\n*CLOAD\n2, 1, 2.0\n*END STEP\n",
-    );
-    std::fs::write(&input, text).unwrap();
-    let run_dir = dir.join("run");
-    if let Err(err) = run(&input, &run_dir, &ccx) {
-        panic!("{err}");
+/// Solve a test input with the real `ccx`, and read the VTU file of each step.
+fn solve(ccx: &Path, name: &str) -> (PathBuf, Vec<Grid>) {
+    let run_dir = scratch(name);
+    if let Err(err) = run(&input(&format!("{name}.inp")), &run_dir, ccx) {
+        panic!("{name}: {err}");
     }
-    let grid =
-        |n: u32| read_vtu(&std::fs::read(run_dir.join(format!("step-{n}.vtu"))).unwrap()).unwrap();
-    let (one, two) = (grid(1), grid(2));
-    let rf: f64 = on_set(&one, "RF", "FIXED", 0).iter().sum();
-    assert!((rf + 2.0).abs() < 1e-5, "step 1 rf {rf}");
-    let u = |g: &Grid| point(g, "U", 1)[0];
+    let pvd = std::fs::read_to_string(run_dir.join("results.pvd")).unwrap();
+    let grids = fh_io::vtu::read_pvd(&pvd)
+        .unwrap()
+        .iter()
+        .map(|e| read_grid(run_dir.join(&e.file)))
+        .collect();
+    (run_dir, grids)
+}
+
+/// The corners of each cell in VTK order are the first nodes. Each midside node must be at the
+/// middle of the edge that VTK gives it, so a wrong node order shows here.
+fn assert_midside_nodes_are_midpoints(grid: &Grid) {
+    // Cell type, number of corners, and the corner pairs of the midside nodes in VTK order.
+    type Edges<'a> = (u8, usize, &'a [(usize, usize)]);
+    let edges: [Edges; 3] = [
+        (24, 4, &[(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)]),
+        (
+            25,
+            8,
+            &[
+                (0, 1),
+                (1, 2),
+                (2, 3),
+                (3, 0),
+                (4, 5),
+                (5, 6),
+                (6, 7),
+                (7, 4),
+                (0, 4),
+                (1, 5),
+                (2, 6),
+                (3, 7),
+            ],
+        ),
+        (
+            26,
+            6,
+            &[
+                (0, 1),
+                (1, 2),
+                (2, 0),
+                (3, 4),
+                (4, 5),
+                (5, 3),
+                (0, 3),
+                (1, 4),
+                (2, 5),
+            ],
+        ),
+    ];
+    for (cell, kind) in grid.cells.iter().zip(&grid.cell_types) {
+        let (_, corners, pairs) = edges.iter().find(|e| e.0 == *kind).unwrap();
+        let x = |i: usize| grid.points[cell[i] as usize];
+        for (k, (a, b)) in pairs.iter().enumerate() {
+            let middle: Vec<f64> = (0..3).map(|c| (x(*a)[c] + x(*b)[c]) / 2.0).collect();
+            let node = x(corners + k);
+            assert!(
+                (0..3).all(|c| (node[c] - middle[c]).abs() < 1e-9),
+                "cell type {kind}: node {} is not at the middle of the edge {a}-{b}",
+                corners + k
+            );
+        }
+    }
+}
+
+fn largest(grid: &Grid, field: &str) -> f64 {
+    let values = grid.point_field(field).unwrap().as_f64().unwrap();
+    values.iter().fold(0.0, |m: f64, v| m.max(v.abs()))
+}
+
+/// `ccx` writes the nodes of a 20-node and of a 15-node element in its own order. The cells
+/// of the VTU file must follow the order of VTK.
+#[test]
+fn real_ccx_hex20_and_wedge15_elements_keep_their_shape() {
+    let Some(ccx) = real_ccx() else { return };
+    for (name, kind) in [("hex20", 25), ("wedge15", 26)] {
+        let (_, grids) = solve(&ccx, name);
+        assert_eq!(grids[0].cell_types, [kind], "{name}");
+        assert_midside_nodes_are_midpoints(&grids[0]);
+        assert!(largest(&grids[0], "U") > 0.0, "{name}");
+    }
+}
+
+/// A shell element is a solid element in the `.frd` file. The `.dat` file stays for the chat.
+#[test]
+fn real_ccx_shell_results_are_in_the_vtu_file_and_the_dat_file() {
+    let Some(ccx) = real_ccx() else { return };
+    let (run_dir, grids) = solve(&ccx, "shell-s8r");
+    assert_eq!(grids.len(), 1);
+    assert_eq!(grids[0].cell_types, [25]);
+    assert_midside_nodes_are_midpoints(&grids[0]);
+    for field in ["U", "S", "MISES", "E"] {
+        assert!(largest(&grids[0], field) > 0.0, "{field}");
+    }
+    let dat = std::fs::read_to_string(run_dir.join("ccx/job.dat")).unwrap();
     assert!(
-        u(&one) > 0.0 && (u(&two) / u(&one) - 1.0).abs() < 1e-5,
-        "u {} {}",
-        u(&one),
-        u(&two)
+        dat.contains("displacements (vx,vy,vz) for set TOP"),
+        "{dat}"
     );
+}
+
+#[test]
+fn real_ccx_gives_one_grid_for_each_mode_of_a_frequency_step() {
+    let Some(ccx) = real_ccx() else { return };
+    let (run_dir, grids) = solve(&ccx, "shell-modal");
+    assert_eq!(grids.len(), 3);
+    assert!(grids.iter().all(|g| largest(g, "U") > 0.0));
+    let pvd = std::fs::read_to_string(run_dir.join("results.pvd")).unwrap();
+    let times: Vec<f64> = fh_io::vtu::read_pvd(&pvd)
+        .unwrap()
+        .iter()
+        .map(|e| e.time)
+        .collect();
+    assert!(
+        times[0] > 0.0 && times.windows(2).all(|w| w[0] < w[1]),
+        "{times:?}"
+    );
+}
+
+/// A plastic material gives the plastic strain, and the last increment of the step is the
+/// grid of the step.
+#[test]
+fn real_ccx_plastic_strain_is_in_the_vtu_file() {
+    let Some(ccx) = real_ccx() else { return };
+    let (_, grids) = solve(&ccx, "plastic");
+    assert_eq!(grids.len(), 1);
+    for field in ["U", "S", "MISES", "E", "PEEQ"] {
+        assert!(largest(&grids[0], field) > 0.0, "{field}");
+    }
 }
 
 #[test]

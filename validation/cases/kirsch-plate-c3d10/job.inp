@@ -1,3 +1,4 @@
+** units: SI-mm
 *NODE
 1, 10, 0, 0
 2, 11.3686807449, 0.558507471032, 0
@@ -40966,4 +40967,8 @@ allnodes, 3, 3
 3062, P1, -100.0
 3063, P1, -100.0
 3064, P1, -100.0
+*EL PRINT, ELSET=edge90
+S
+*EL PRINT, ELSET=edge0
+S
 *end step

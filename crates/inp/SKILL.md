@@ -2,31 +2,29 @@
 
 ## Purpose
 
-Parse the supported Abaqus-style `.inp` subset into `Model`.
+Read the part of a CalculiX `.inp` text that the preview draws, and find the files of `*INCLUDE`. CalculiX reads and checks the input itself.
 
 ## Inputs and outputs
 
-- `parse(&str)` returns `Model` or `ParseError` with a line and keyword.
-- The subset includes nodes, elements, sets, elastic materials, solid sections, static steps, boundaries, concentrated loads and distributed loads.
-- The only element is `C3D10` (D-19). Another element type fails with a clear error.
-- `*SURFACE` accepts only `TYPE=ELEMENT`. `*STEP` accepts no `NLGEOM`. `*STATIC` data lines are accepted and not used.
+- `parse(&str)` returns `Model`. It never fails. It takes `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*SURFACE`, `*BOUNDARY`, `*CLOAD`, `*DLOAD` and `*DSLOAD`, and skips each other keyword and each data line that it cannot read.
+- `flatten(path)` returns the text of the input with each `*INCLUDE` file in place, and the list of those files. An include path must be relative with no `..`.
+- `units(text)` reads the `** units:` comment. `includes` and `include_path` find the include files.
 
 ## Invariants the code must keep
 
-- Unsupported keywords and duplicate node IDs fail.
-- An open step needs `*END STEP`.
-- The parser does not declare units. Validation cases declare units in `case.toml`.
-- Each unsupported keyword fails with a clear error that names the keyword and the line number (DESIGN.md section 7.3).
-- Each difference from Abaqus is listed in `docs/compatibility.md`, and a test covers it (DESIGN.md section 7.4).
+- The reader never refuses a keyword. A wrong input is a CalculiX error, not a reader error.
+- Keyword and set names are not case sensitive.
+- The reader does not declare units. The input declares them in a `** units: SI-mm` (or `SI-m`) comment (D-18).
+- A test covers each supported keyword.
 
 ## Forbidden actions
 
-- Do not describe an `.inp` writer as available. The public API exports only the parser and model types.
+- Do not describe an `.inp` writer as available. The public API exports only the reader and the model types.
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-inp` and `cargo test -p fh-inp`. `tests/fixtures.rs` parses the mesh of each validation case.
+Run `cargo check -p fh-inp` and `cargo test -p fh-inp`. `tests/fixtures.rs` reads the input of each validation case.
 
 ## Examples
 
-`fh_inp::parse_file("model.inp", &text)` gives the `Model` or the list of errors.
+`fh_inp::parse(&fh_inp::flatten(Path::new("job.inp"))?.text)` gives the `Model`.

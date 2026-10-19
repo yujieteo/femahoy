@@ -21,14 +21,14 @@
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
 //! | `GET /api/v1/status` | | `pid` |
 //! | `GET /api/v1/runs` | | one item `<run> <state> <input>` for each run |
-//! | `POST /api/v1/runs` | `input` | run record |
+//! | `POST /api/v1/runs` | `input`, optional `timeout` (seconds) and `memory` (MiB) | run record |
 //! | `GET /api/v1/runs/<r>` | | run record |
 //! | `POST /api/v1/runs/<r>/cancel` | | run record |
 //! | `GET /api/v1/runs/<r>/events?since=N&wait_ms=T` | | events |
-//! | `GET /api/v1/runs/<r>/input` | | the copy of the input that the run solves (bytes) |
+//! | `GET /api/v1/runs/<r>/input` | | the text of the copy of the input that the run solves, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
 //! | `POST /api/v1/previews` | `input`, optional `title` | `preview`: the chat gets a `show` entry, and the page shows the model with its supports and loads |
-//! | `GET /api/v1/previews/<id>` | | the copy of the input of the preview (bytes) |
+//! | `GET /api/v1/previews/<id>` | | the text of the copy of the input of the preview, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms` and `solving`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
 //! | `POST /api/v1/chat` | `text` | `state`: the message goes to the agent, also while it works |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
@@ -50,7 +50,7 @@ use std::time::Duration;
 
 use crate::chat::Chat;
 use crate::contract::{Error, Message};
-use crate::service::Service;
+use crate::service::{Limits, Service};
 
 const MAX_HEAD: usize = 16 << 10;
 const MAX_HEADERS: usize = 64;
@@ -334,6 +334,29 @@ fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Error> {
     Ok(Reply::Bytes(kind, bytes))
 }
 
+/// The limits of a run from the fields `timeout` (seconds) and `memory` (MiB) of a body.
+fn limits_of(b: &Message) -> Result<Limits, Error> {
+    let bad = |field: &str| Error::bad("limit.invalid", format!("{field} needs a number above 0"));
+    let timeout = b.get("timeout").map(|t| {
+        t.parse::<f64>()
+            .ok()
+            .filter(|t| *t > 0.0)
+            .and_then(|t| Duration::try_from_secs_f64(t).ok())
+            .ok_or_else(|| bad("timeout"))
+    });
+    let memory = b.get("memory").map(|m| {
+        m.parse::<u64>()
+            .ok()
+            .filter(|m| *m > 0)
+            .and_then(|m| m.checked_mul(1 << 20))
+            .ok_or_else(|| bad("memory"))
+    });
+    Ok(Limits {
+        timeout: timeout.transpose()?,
+        memory: memory.transpose()?,
+    })
+}
+
 fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     if req.is_page() {
         return Ok(Reply::Page(crate::random_hex(16)?));
@@ -366,7 +389,10 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
                 .collect();
         }
         ("POST", ["", "api", "v1", "runs"]) => {
-            m = service.submit(body()?.need("input")?)?.to_message();
+            let b = body()?;
+            m = service
+                .submit(b.need("input")?, limits_of(&b)?)?
+                .to_message();
         }
         ("GET", ["", "api", "v1", "runs", r]) => {
             m = service.record(r)?.to_message();

@@ -172,7 +172,7 @@ fn a_request_from_a_wrong_origin_fails() {
     }
     let input = serve.state.join("model.inp");
     std::fs::write(&input, "*NODE\n").unwrap();
-    let body = format!("contract=2\ninput={}\n\n", input.display());
+    let body = format!("input={}\n\n", input.display());
     let (status, answer) = request(
         serve.port,
         "POST",
@@ -193,7 +193,6 @@ fn the_token_and_the_own_origin_pass() {
     let bearer = serve.bearer();
     let (status, body) = serve.get("/api/v1/status", &[("Authorization", &bearer)]);
     assert_eq!(status, 200, "{body}");
-    assert!(body.contains("contract=2"), "{body}");
     let own = serve.own();
     let (status, body) = serve.get(
         "/api/v1/status",

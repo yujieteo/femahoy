@@ -3,7 +3,6 @@
 mod check;
 pub mod code;
 mod msh;
-pub mod result;
 mod step;
 pub mod vtu;
 

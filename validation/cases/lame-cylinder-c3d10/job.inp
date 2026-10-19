@@ -1,3 +1,4 @@
+** units: SI-mm
 *NODE
 1, 100.0, 0.0, 0.0
 2, 98.0785280403, 19.5090322016, 0.0
@@ -5380,4 +5381,8 @@ allnodes, 3, 3
 190, P1, 100.0
 191, P1, 100.0
 192, P1, 100.0
+*NODE PRINT, NSET=inner0
+U
+*NODE PRINT, NSET=outer0
+U
 *end step

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{Client, Config, Daemon, Options, RunRecord, RunState};
+use fh_daemon::{Client, Config, Daemon, Limits, Options, RunRecord, RunState};
 use fh_solver_ccx::Ccx;
 
 /// A fake `ccx` that runs until a kill when the model has the node set `SLOW`. Other models
@@ -172,7 +172,7 @@ fn an_authorized_cli_passes_and_a_foreign_origin_fails() {
     let input = lab.input("a.inp", &tet());
 
     let foreign = daemon.client().with_origin("http://evil.example");
-    let e = foreign.submit(&input).unwrap_err();
+    let e = foreign.submit(&input, &Limits::default()).unwrap_err();
     assert_eq!((e.status, e.code.as_str()), (403, "origin.refused"));
     assert!(
         cli.runs().unwrap().is_empty(),
@@ -182,7 +182,7 @@ fn an_authorized_cli_passes_and_a_foreign_origin_fails() {
     let own = daemon
         .client()
         .with_origin(&format!("http://127.0.0.1:{}", daemon.port()));
-    let run = own.submit(&input).unwrap().run;
+    let run = own.submit(&input, &Limits::default()).unwrap().run;
     lab.open_gate();
     let record = wait_for(&cli, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Succeeded);
@@ -198,7 +198,7 @@ fn a_closed_browser_does_not_stop_the_run() {
     let page = format!("http://127.0.0.1:{}", daemon.port());
     let browser = daemon.client().with_origin(&page);
     let input = lab.input("a.inp", &tet());
-    let run = browser.submit(&input).unwrap().run;
+    let run = browser.submit(&input, &Limits::default()).unwrap().run;
     wait_for(&browser, &run, |s| s == RunState::Running);
 
     // The browser waits for events, and then the tab closes.
@@ -232,8 +232,14 @@ fn cancel_keeps_one_record() {
     let lab = Lab::new("cancel");
     let daemon = lab.start();
     let c = daemon.client();
-    let run = c.submit(&lab.input("slow.inp", &slow())).unwrap().run;
-    let waiting = c.submit(&lab.input("b.inp", &tet())).unwrap().run;
+    let run = c
+        .submit(&lab.input("slow.inp", &slow()), &Limits::default())
+        .unwrap()
+        .run;
+    let waiting = c
+        .submit(&lab.input("b.inp", &tet()), &Limits::default())
+        .unwrap()
+        .run;
     wait_for(&c, &run, |s| s == RunState::Running);
     let pid = wait_file(&lab, "solver.pid");
     assert_eq!(c.record(&waiting).unwrap().state, RunState::Queued);
@@ -273,20 +279,38 @@ fn a_run_solves_a_copy_of_its_input() {
     let daemon = lab.start();
     let c = daemon.client();
     let input = lab.input("a.inp", &tet());
-    let first = c.submit(&input).unwrap().run;
+    let first = c.submit(&input, &Limits::default()).unwrap().run;
     // The user changes the file while the run waits.
     lab.input("a.inp", &slow());
-    let copy = lab.state.join("runs").join(&first).join("input.inp");
+    let copy = lab.state.join("runs").join(&first).join("in/input.inp");
     assert_eq!(fs::read_to_string(&copy).unwrap(), tet());
     assert!(fs::metadata(&copy).unwrap().permissions().readonly());
     let record = c.record(&first).unwrap();
     assert_eq!(record.input, input.to_str().unwrap());
 
-    let relative = c.submit(Path::new("a.inp")).unwrap_err();
+    let relative = c
+        .submit(Path::new("a.inp"), &Limits::default())
+        .unwrap_err();
     assert_eq!(relative.code, "input.invalid");
     lab.open_gate();
     let record = wait_for(&c, &first, RunState::is_final);
     assert_eq!(record.state, RunState::Succeeded, "{}", record.message);
+}
+
+#[test]
+fn the_limits_of_a_run_stop_a_slow_solve() {
+    let lab = Lab::new("limits");
+    let daemon = lab.start();
+    let c = daemon.client();
+    let slow = lab.input("slow.inp", &slow());
+    let limits = Limits {
+        timeout: Some(Duration::from_secs(1)),
+        ..Limits::default()
+    };
+    let run = c.submit(&slow, &limits).unwrap().run;
+    let record = wait_for(&c, &run, RunState::is_final);
+    assert_eq!(record.state, RunState::Failed, "{}", record.message);
+    assert!(record.message.contains("time limit"), "{}", record.message);
 }
 
 #[test]
@@ -304,8 +328,14 @@ fn a_stopped_daemon_leaves_interrupted_records() {
     let lab = Lab::new("stop");
     let daemon = lab.start();
     let c = daemon.client();
-    let run = c.submit(&lab.input("slow.inp", &slow())).unwrap().run;
-    let waiting = c.submit(&lab.input("b.inp", &tet())).unwrap().run;
+    let run = c
+        .submit(&lab.input("slow.inp", &slow()), &Limits::default())
+        .unwrap()
+        .run;
+    let waiting = c
+        .submit(&lab.input("b.inp", &tet()), &Limits::default())
+        .unwrap()
+        .run;
     wait_for(&c, &run, |s| s == RunState::Running);
     let pid = wait_file(&lab, "solver.pid");
     let old_token = daemon.token().to_owned();
@@ -373,7 +403,7 @@ fn a_failed_daemon_leaves_no_running_run() {
         std::thread::sleep(Duration::from_millis(20));
     };
     let slow = lab.input("slow.inp", &slow());
-    let run = c.submit(&slow).unwrap().run;
+    let run = c.submit(&slow, &Limits::default()).unwrap().run;
     wait_for(&c, &run, |s| s == RunState::Running);
     let pid = wait_file(&lab, "solver.pid");
 
@@ -390,7 +420,7 @@ fn a_failed_daemon_leaves_no_running_run() {
     assert_eq!(c.runs().unwrap(), [(run.clone(), RunState::Interrupted)]);
     // The run counter goes on. No run ID is used twice.
     fs::remove_file(lab.dir.join("solver.pid")).unwrap();
-    let next = c.submit(&slow).unwrap().run;
+    let next = c.submit(&slow, &Limits::default()).unwrap().run;
     assert_eq!(next, "run-000002");
     let pid = wait_file(&lab, "solver.pid");
     c.cancel(&next).unwrap();
@@ -405,7 +435,10 @@ fn the_last_event_of_a_failed_run_tells_why() {
     fs::write(&lab.solver, "#!/bin/sh\necho boom\nexit 1\n").unwrap();
     let daemon = lab.start();
     let c = daemon.client();
-    let run = c.submit(&lab.input("a.inp", &tet())).unwrap().run;
+    let run = c
+        .submit(&lab.input("a.inp", &tet()), &Limits::default())
+        .unwrap()
+        .run;
     let record = wait_for(&c, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Failed);
     assert!(record.message.contains("boom"), "{}", record.message);

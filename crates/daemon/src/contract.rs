@@ -1,4 +1,4 @@
-//! The run contract, version 2: run IDs, run states, run records, events and the text form
+//! The run contract: run IDs, run states, run records, events and the text form
 //! that the daemon and its clients share.
 //!
 //! # Text form
@@ -10,9 +10,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-/// The version of the run contract. Each message has the field `contract`.
-pub const CONTRACT: &str = "2";
 
 /// An error of a command, with an HTTP status and a stable code.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,9 +55,7 @@ pub struct Message {
 
 impl Message {
     pub fn new() -> Self {
-        let mut m = Message::default();
-        m.set("contract", CONTRACT);
-        m
+        Message::default()
     }
 
     pub fn parse(text: &str) -> Result<Message, Error> {
@@ -321,7 +316,7 @@ mod tests {
         m.set("message", "two\nlines");
         m.items = vec!["1 state queued".into()];
         let text = m.to_text();
-        assert_eq!(text, "contract=2\nmessage=two lines\n\n1 state queued\n");
+        assert_eq!(text, "message=two lines\n\n1 state queued\n");
         assert_eq!(Message::parse(&text).unwrap(), m);
         assert!(Message::parse("a=1\na=2\n").is_err());
         assert!(Message::parse("no field\n").is_err());

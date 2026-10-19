@@ -2,13 +2,10 @@
 //! folder and stops its daemon at the end. Each command gets a fake browser program in
 //! `BROWSER` and `FH_NO_OPEN=1`, so that no test opens the browser of the machine.
 //!
-//! The fake gmsh copies `fixtures/msh/bar-pressure.msh`, the output of gmsh 4.15.2 for
-//! `fh mesh validation/cases/bar-pressure/bar.step --case validation/cases/bar-pressure`.
-//! Thus the case tests run with no gmsh. One test uses the real gmsh when it is installed.
 //! The ccx is a wrapper around `fixtures/ccx/fake-ccx.sh`. One test uses the real ccx when it
 //! is installed.
 mod common;
-use common::{ccx_solver, fails, p, real_gmsh, root, scratch, script, stderr, stdout};
+use common::{ccx_solver, fails, p, root, scratch, script, stderr, stdout};
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -25,12 +22,11 @@ if grep -q SLOW job.inp; then exec sleep 30; fi
 exec FAKE "$@"
 "#;
 
-/// A scratch folder with a state folder, a fake browser and a fake gmsh.
+/// A scratch folder with a state folder, a fake browser and a fake ccx.
 struct Lab {
     dir: PathBuf,
     state: PathBuf,
     solver: PathBuf,
-    gmsh: PathBuf,
 }
 
 impl Lab {
@@ -41,16 +37,6 @@ impl Lab {
             &format!(
                 "#!/bin/sh\necho \"$1\" >> {}\n",
                 p(&dir.join("browser.log"))
-            ),
-        );
-        let fixture = root().join("fixtures/msh/bar-pressure.msh");
-        let gmsh = script(
-            &dir.join("gmsh"),
-            &format!(
-                "#!/bin/sh\nif [ \"$1\" = -version ]; then echo 4.15.2; exit 0; fi\n\
-                 while [ $# -gt 1 ]; do if [ \"$1\" = -o ]; then out=\"$2\"; fi; shift; done\n\
-                 cp {} \"$out\"\n",
-                p(&fixture)
             ),
         );
         let fake = root().join("fixtures/ccx/fake-ccx.sh");
@@ -64,19 +50,17 @@ impl Lab {
             state: dir.join("state"),
             dir,
             solver,
-            gmsh,
         }
     }
 
-    /// `fh ARGS --state STATE` with the fake browser, `FH_NO_OPEN=1` and the fake gmsh.
+    /// `fh ARGS --state STATE` with the fake browser, `FH_NO_OPEN=1` and the fake ccx.
     fn cmd(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
         cmd.args(args).args(["--state", p(&self.state)]);
         cmd.current_dir(&self.dir)
             .env("BROWSER", self.dir.join("browser"))
             .env("FH_NO_OPEN", "1")
-            .env("FH_CCX", &self.solver)
-            .env("FH_GMSH", &self.gmsh);
+            .env("FH_CCX", &self.solver);
         cmd
     }
 
@@ -159,7 +143,7 @@ fn slow_model(lab: &Lab) -> PathBuf {
 #[test]
 fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
     let lab = Lab::new("run-inp");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
     let out = lab.fh(&["run", p(&bar)]);
     succeeds(&out);
     let text = stdout(&out);
@@ -189,7 +173,7 @@ fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
 #[test]
 fn the_daemon_log_has_mode_0600_for_an_old_and_a_new_log() {
     let lab = Lab::new("run-log-mode");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
     let log = lab.state.join("daemon.log");
     let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
     fs::create_dir_all(&lab.state).unwrap();
@@ -206,7 +190,7 @@ fn the_daemon_log_has_mode_0600_for_an_old_and_a_new_log() {
 #[test]
 fn a_relative_state_folder_names_the_folder_in_the_current_folder() {
     let lab = Lab::new("run-relative-state");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
     // The last --state wins: "state" in the folder of the lab, the same as lab.state.
     let out = lab
         .cmd(&["run", p(&bar)])
@@ -223,7 +207,7 @@ fn a_relative_state_folder_names_the_folder_in_the_current_folder() {
 #[test]
 fn two_runs_that_start_at_the_same_time_use_one_daemon() {
     let lab = Lab::new("run-race");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
     let children: Vec<Child> = (0..2)
         .map(|_| {
             lab.cmd(&["run", p(&bar)])
@@ -263,7 +247,7 @@ fn two_runs_that_start_at_the_same_time_use_one_daemon() {
 #[test]
 fn the_browser_opens_on_the_run_unless_no_open_is_given() {
     let lab = Lab::new("run-open");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
     let out = lab
         .cmd(&["run", p(&bar)])
         .env_remove("FH_NO_OPEN")
@@ -298,25 +282,44 @@ fn a_missing_file_exits_2() {
 }
 
 #[test]
-fn an_input_that_the_solver_refuses_exits_1_with_the_line_in_the_file() {
-    let lab = Lab::new("run-refused");
-    let bad = lab.input("bad.inp", "*NODE\n1, 0, 0\n*BOGUS\n");
-    let out = lab.fh(&["run", p(&bad)]);
+fn the_timeout_option_stops_a_slow_solve() {
+    let lab = Lab::new("run-timeout");
+    let model = slow_model(&lab);
+    let start = Instant::now();
+    let out = lab.fh(&["run", p(&model), "--timeout", "1"]);
     fails(&out, 1, "run-000001 failed: ");
-    // The message names the file of the user, not the copy in the state folder.
-    let bad = fs::canonicalize(bad).unwrap();
-    fails(
-        &out,
-        1,
-        &format!("{}: line 3, *BOGUS: unsupported keyword (INP002)", p(&bad)),
-    );
+    assert!(start.elapsed() < Duration::from_secs(25));
+}
+
+#[test]
+fn an_include_file_that_is_missing_exits_1_and_names_the_file() {
+    let lab = Lab::new("run-no-include");
+    let bad = lab.input("bad.inp", "*INCLUDE, INPUT=nope.inp\n");
+    let out = lab.fh(&["run", p(&bad)]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(stderr(&out).contains("nope.inp"), "{}", stderr(&out));
+    assert!(!solved(&lab), "ccx does not start");
+}
+
+#[test]
+fn an_include_file_is_solved_with_the_input_and_a_later_edit_does_not_change_the_run() {
+    let lab = Lab::new("run-include");
+    let tet = fs::read_to_string(root().join("fixtures/ccx/tet.inp")).unwrap();
+    let (mesh, step) = tet.split_at(tet.find("*STEP").unwrap());
+    lab.input("mesh.inp", mesh);
+    let job = lab.input("job.inp", &format!("*INCLUDE, INPUT=mesh.inp\n{step}"));
+    succeeds(&lab.fh(&["run", p(&job)]));
+    let kept = lab.state.join("runs/run-000001/in");
+    assert_eq!(fs::read_to_string(kept.join("mesh.inp")).unwrap(), mesh);
+    fs::write(lab.dir.join("mesh.inp"), "changed").unwrap();
+    assert_eq!(fs::read_to_string(kept.join("mesh.inp")).unwrap(), mesh);
 }
 
 #[test]
 fn a_run_that_fails_in_the_solve_exits_1() {
     let mut lab = Lab::new("run-failed");
     lab.failing_solver(" *ERROR in e_c3d: nonpositive jacobian");
-    let model = root().join("validation/cases/cantilever-c3d10/mesh-8.inp");
+    let model = root().join("validation/cases/cantilever-c3d10/job.inp");
     let out = lab.fh(&["run", p(&model)]);
     fails(&out, 1, "run-000001 failed: ");
     fails(&out, 1, "*ERROR in e_c3d: nonpositive jacobian");
@@ -325,7 +328,7 @@ fn a_run_that_fails_in_the_solve_exits_1() {
 #[test]
 fn no_daemon_possible_exits_3() {
     let lab = Lab::new("run-no-daemon");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
     // The state folder cannot be made.
     fs::write(&lab.state, "not a folder").unwrap();
     let out = lab.fh(&["run", p(&bar)]);
@@ -414,52 +417,14 @@ fn ctrl_c_cancels_the_run_through_the_contract() {
 }
 
 #[test]
-fn a_case_folder_runs_mesh_model_and_solve_and_does_not_change() {
-    let lab = Lab::new("run-case");
-    let case = root().join("validation/cases/bar-pressure");
-    let before: Vec<_> = fs::read_dir(&case)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect();
-    let committed = fs::read(case.join("bar.inp")).unwrap();
-    let out = lab.fh(&["run", p(&case)]);
-    succeeds(&out);
-    let text = stdout(&out);
-    assert!(text.contains("fh run: mesh: fh mesh "), "{text}");
-    assert!(text.contains("fh run: model: fh model "), "{text}");
-    assert!(solved(&lab), "{}", stdout(&out));
-    let work: Vec<_> = fs::read_dir(lab.state.join("cases")).unwrap().collect();
-    assert_eq!(work.len(), 1);
-    let work = work[0].as_ref().unwrap().path();
-    assert!(work
-        .file_name()
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .starts_with("bar-pressure-"));
-    assert!(work.join("bar.msh").is_file() && work.join("bar.inp").is_file());
-    let after: Vec<_> = fs::read_dir(&case)
-        .unwrap()
-        .map(|e| e.unwrap().path())
-        .collect();
-    assert_eq!(before.len(), after.len());
-    assert_eq!(fs::read(case.join("bar.inp")).unwrap(), committed);
-
-    // case.toml and the STEP file name the same case.
-    succeeds(&lab.fh(&["run", p(&case.join("case.toml"))]));
-    succeeds(&lab.fh(&["run", p(&case.join("bar.step"))]));
-    assert_eq!(fs::read_dir(lab.state.join("cases")).unwrap().count(), 1);
-}
-
-#[test]
-fn preview_shows_the_case_in_the_page_and_the_run_solves_the_same_model() {
+fn preview_shows_the_model_in_the_page_and_the_run_solves_the_same_model() {
     let lab = Lab::new("run-preview");
-    let case = root().join("validation/cases/bar-pressure");
-    let out = lab.fh(&["run", p(&case), "--preview"]);
+    let model = root().join("validation/cases/bar-pressure/job.inp");
+    let out = lab.fh(&["run", p(&model), "--preview"]);
     succeeds(&out);
     let text = stdout(&out);
     assert!(
-        text.contains("fh run: preview: the page shows bar-pressure (preview 1)"),
+        text.contains("fh run: preview: the page shows job.inp (preview 1)"),
         "{text}"
     );
     assert!(text.ends_with("fh run: --preview: no solve\n"), "{text}");
@@ -469,12 +434,12 @@ fn preview_shows_the_case_in_the_page_and_the_run_solves_the_same_model() {
         .send("GET", "/api/v1/chat?since=0", None, Duration::ZERO)
         .unwrap();
     let show = chat.items.iter().find_map(|i| i.split_once(" show "));
-    assert_eq!(show.map(|s| s.1), Some("1 bar-pressure"), "{chat:?}");
+    assert_eq!(show.map(|s| s.1), Some("1 job.inp"), "{chat:?}");
     assert!(c.runs().unwrap().is_empty(), "a preview solves nothing");
 
-    succeeds(&lab.fh(&["run", p(&case)]));
-    let shown = fs::read(lab.state.join("previews/1.inp")).unwrap();
-    let solved = fs::read(lab.state.join("runs/run-000001/input.inp")).unwrap();
+    succeeds(&lab.fh(&["run", p(&model)]));
+    let shown = fs::read(lab.state.join("previews/1/input.inp")).unwrap();
+    let solved = fs::read(lab.state.join("runs/run-000001/in/input.inp")).unwrap();
     assert!(shown == solved, "the run solves the model of the preview");
 }
 
@@ -482,16 +447,33 @@ fn preview_shows_the_case_in_the_page_and_the_run_solves_the_same_model() {
 fn an_inp_file_runs_through_the_real_ccx() {
     let Some(solver) = ccx_solver() else { return };
     let lab = Lab::new("run-ccx");
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
-    let out = lab
-        .cmd(&["run", p(&bar)])
-        .env("FH_CCX", solver)
-        .output()
-        .unwrap();
+    let bar = root().join("validation/cases/bar-pressure/job.inp");
+    let run = |model: &Path| {
+        lab.cmd(&["run", p(model)])
+            .env("FH_CCX", &solver)
+            .output()
+            .unwrap()
+    };
+    // The model asks for text results only, so the page has no field to show.
+    let out = run(&bar);
     succeeds(&out);
     let text = stdout(&out);
     assert!(text.contains("run-000001 succeeded"), "{text}");
+    assert!(text.contains("the page has no field to show"), "{text}");
     assert!(!solved(&lab), "the real ccx solves, not the fake");
+    let folder = text
+        .lines()
+        .find_map(|l| l.strip_prefix("fh run: results in "))
+        .unwrap();
+    assert!(Path::new(folder).join("ccx/job.dat").is_file());
+
+    // With *NODE FILE the page gets a VTU file for every field that ccx writes.
+    let job = fs::read_to_string(&bar).unwrap();
+    let job = job.replace("*END STEP", "*NODE FILE\nU, RF\n*END STEP");
+    let out = run(&lab.input("job.inp", &job));
+    succeeds(&out);
+    let text = stdout(&out);
+    assert!(!text.contains("the page has no field"), "{text}");
     let folder = text
         .lines()
         .find_map(|l| l.strip_prefix("fh run: results in "))
@@ -500,60 +482,18 @@ fn an_inp_file_runs_through_the_real_ccx() {
 }
 
 #[test]
-fn a_folder_that_is_not_a_case_exits_2() {
-    let lab = Lab::new("run-not-case");
-    let case = root().join("validation/cases/bar-pressure");
-    let empty = lab.dir.join("empty");
-    fs::create_dir_all(&empty).unwrap();
-    fails(&lab.fh(&["run", p(&empty)]), 2, "(run.case.missing)");
-
-    let no_step = lab.dir.join("no-step");
-    fs::create_dir_all(&no_step).unwrap();
-    fs::copy(case.join("case.toml"), no_step.join("case.toml")).unwrap();
-    fails(&lab.fh(&["run", p(&no_step)]), 2, "(run.case.step.missing)");
-
-    fs::copy(case.join("bar.step"), no_step.join("a.step")).unwrap();
-    fs::copy(case.join("bar.step"), no_step.join("b.STP")).unwrap();
-    let out = lab.fh(&["run", p(&no_step)]);
-    fails(&out, 2, "has 2 STEP files (a.step, b.STP)");
-    fails(&out, 2, "(run.case.step.many)");
-
+fn a_target_that_is_not_an_inp_file_exits_2() {
+    let lab = Lab::new("run-not-inp");
     let other = lab.input("notes.txt", "text");
     fails(&lab.fh(&["run", p(&other)]), 2, "(run.input.kind)");
+    let case = root().join("validation/cases/bar-pressure");
+    fails(&lab.fh(&["run", p(&case)]), 2, "(run.input.kind)");
+    fails(
+        &lab.fh(&["run", p(&case.join("check.toml"))]),
+        2,
+        "(run.input.kind)",
+    );
     assert!(!lab.state.exists(), "no daemon for a bad input");
-}
-
-#[test]
-fn a_case_that_the_mesh_step_refuses_exits_1() {
-    let lab = Lab::new("run-case-refused");
-    let case = root().join("validation/cases/bar-pressure");
-    let dir = lab.dir.join("bar-m");
-    fs::create_dir_all(&dir).unwrap();
-    for file in ["bar.step", "derivation.md"] {
-        fs::copy(case.join(file), dir.join(file)).unwrap();
-    }
-    let toml = fs::read_to_string(case.join("case.toml")).unwrap();
-    fs::write(dir.join("case.toml"), toml.replace("SI-mm", "SI-m")).unwrap();
-    let out = lab.fh(&["run", p(&dir)]);
-    fails(&out, 1, "fh mesh: unit.step.mismatch");
-}
-
-#[test]
-fn a_case_folder_runs_with_the_real_gmsh() {
-    let Some(gmsh) = real_gmsh() else {
-        eprintln!("skipped: gmsh is not installed");
-        return;
-    };
-    let lab = Lab::new("run-case-gmsh");
-    let case = root().join("validation/cases/bar-pressure");
-    let out = lab
-        .cmd(&["run", p(&case), "--size", "8"])
-        .env("FH_GMSH", gmsh)
-        .output()
-        .unwrap();
-    succeeds(&out);
-    assert!(stdout(&out).contains("nodes\t844"), "{}", stdout(&out));
-    assert!(solved(&lab), "{}", stdout(&out));
 }
 
 #[test]
@@ -562,31 +502,32 @@ fn bad_run_arguments_exit_2() {
     fails(&lab.fh(&["run"]), 2, "usage: fh run");
     // The lab adds --state, so this has no state folder. The check comes before its use.
     fails(
-        &common::fh(&["run", "a.inp", "--size"]),
+        &common::fh(&["run", "a.inp", "--timeout"]),
         2,
-        "--size needs a mesh size",
+        "--timeout needs a number of seconds",
     );
     fails(
-        &lab.fh(&["run", "a.inp", "--size", "-1"]),
+        &lab.fh(&["run", "a.inp", "--timeout", "0"]),
         2,
-        "--size needs a number above 0",
+        "--timeout needs a number above 0",
+    );
+    fails(
+        &lab.fh(&["run", "a.inp", "--memory", "x"]),
+        2,
+        "--memory needs a number above 0",
     );
     fails(
         &lab.fh(&["run", "a.inp", "--bogus"]),
         2,
         "unknown option: --bogus",
     );
-    let bar = root().join("validation/cases/bar-pressure/bar.inp");
-    fails(
-        &lab.fh(&["run", p(&bar), "--size", "1"]),
-        2,
-        "(run.option.mesh)",
-    );
-    fails(
-        &lab.fh(&["run", p(&bar), "--order", "2"]),
-        2,
-        "unknown option: --order",
-    );
+    for gone in ["--size", "--order", "--units", "--case"] {
+        fails(
+            &lab.fh(&["run", "a.inp", gone, "1"]),
+            2,
+            &format!("unknown option: {gone}"),
+        );
+    }
     assert!(!lab.state.exists(), "no daemon for a usage error");
 }
 
