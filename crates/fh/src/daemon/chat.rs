@@ -17,9 +17,17 @@
 //!
 //! The agent gets the instructions of `agent.md`, the state folder of the daemon in
 //! `FH_STATE` (so `fh run` writes its runs where this daemon reads them) and the folder of
-//! `fh` first on `PATH`. It works in `STATE/chat`. Its tools are the `fh` commands, Python for
-//! the CAD script, and the file tools. `FH_AGENT` names another agent program, for example a
-//! fake agent that prints a recorded event stream in the tests.
+//! `fh` first on `PATH`. It ignores the personal Claude Code setup of the person: the user
+//! settings with their hooks and plugins, `~/.claude/CLAUDE.md`, the MCP servers and the
+//! claude.ai connectors. Thus each person gets the same agent, with the model Claude Opus and
+//! the login of the person.
+//!
+//! The agent works in `STATE/chat`: it can make, change and delete the files there with any
+//! command (`--permission-mode acceptEdits`). It can list and read the run folders
+//! `STATE/runs`, but not change them. Its other commands are `fh`, `fh-python` (the Python of
+//! the CAD script), `pdflatex` and `ccx -v`. Solves go through `fh run`. `FH_AGENT` names
+//! another agent program, for example a fake agent that prints a recorded event stream in the
+//! tests.
 //!
 //! An entry is the item `<seq> <kind> <text>`. In the text, `\n` is a line break and `\\`
 //! is a backslash, because an item is one line. The token of the daemon never goes into an
@@ -35,12 +43,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::json::{quote, Json};
 use super::message::{bad, fail, Failure, Message};
-use super::store::Store;
+use super::store::{Store, RUNS_DIR};
 
 /// The instructions of the agent.
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
-const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep,WebSearch,WebFetch";
+const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Bash(pdflatex *),Bash(ccx -v),Read,Write,Edit,\
+                     Glob,Grep,WebSearch,WebFetch";
 /// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
 /// 2 minutes by default, and a solve of a large model can take hours.
 const BASH_TIMEOUT_MS: &str = "86400000";
@@ -453,9 +462,24 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
             "--replay-user-messages",
             "--append-system-prompt",
             INSTRUCTIONS,
+            "--model",
+            "opus",
+            // No `user` source and no MCP server: the personal setup stays out (module text).
+            "--setting-sources",
+            "project,local",
+            "--strict-mcp-config",
+            "--permission-mode",
+            "acceptEdits",
             "--allowedTools",
             TOOLS,
         ]);
+    // The run folders are a working folder, so that the agent can list them, but an `Edit` rule
+    // with `//` (an absolute path) stops each change of them, also by a command.
+    let runs = state_dir.join(RUNS_DIR);
+    cmd.arg("--add-dir")
+        .arg(&runs)
+        .arg("--disallowedTools")
+        .arg(format!("Edit(/{}/**)", runs.display()));
     if let Some(session) = session {
         cmd.args(["--resume", session]);
     }

@@ -30,7 +30,7 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 
 | Interface | Purpose |
 |---|---|
-| Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the `fh` command it ran. The text box is always available: a message during the work reaches the leader at its next step, and `Stop` ends the work at once. A status shows the current action of the leader and the time. |
+| Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the leader at its next step, and `Stop` ends the work at once. A status shows the current action of the leader and the time. |
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector. |
 
 ---
