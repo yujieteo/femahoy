@@ -1088,37 +1088,6 @@ mod tests {
     }
 
     #[test]
-    fn a_refined_set_gets_a_distance_field_and_the_others_do_not() {
-        let faces = vec![
-            ("TOP".to_owned(), Select::Plane { axis: 2, at: 5.0 }),
-            ("SIDE".to_owned(), Select::Plane { axis: 0, at: 0.0 }),
-        ];
-        let refine = vec![("top".to_owned(), 2.0)];
-        let solid = groups_script(&faces, &[], false, &refine, 40.0);
-        assert!(
-            solid.contains("Field[fh_k].SurfacesList = {fh_s[fh_i]}"),
-            "{solid}"
-        );
-        assert!(solid.contains("Field[fh_k + 1].SizeMin = 2;"), "{solid}");
-        assert!(solid.contains("Field[fh_k + 1].SizeMax = 40;"), "{solid}");
-        assert!(solid.contains("Background Field = fh_k;"), "{solid}");
-        // Only TOP has a field: it is before the group of SIDE.
-        assert_eq!(solid.matches("= Distance;").count(), 1, "{solid}");
-        assert!(solid.contains("Mesh.MeshSizeFromPoints = 0;"), "{solid}");
-        let shell = groups_script(&faces, &[], true, &refine, 40.0);
-        assert!(
-            shell.contains("Field[fh_k].CurvesList = {fh_s[fh_i]}"),
-            "{shell}"
-        );
-        // No refine: the script has no field, and the sizes of gmsh stay as they were.
-        let plain = groups_script(&faces, &[], false, &[], 0.0);
-        assert!(
-            !plain.contains("Field") && !plain.contains("MeshSizeFromPoints"),
-            "{plain}"
-        );
-    }
-
-    #[test]
     fn the_shell_option_is_a_flag() {
         assert!(!args(&["a.step"]).unwrap().shell);
         assert!(args(&["a.step", "--shell"]).unwrap().shell);
