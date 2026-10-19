@@ -1,20 +1,15 @@
-# The 1 N load stays on the 4 original tip nodes.
-# Each source hex gives 24 quadratic tets with shared face and edge nodes.
-# Cantilever, tip load in z. Class L: 4 meshes, 4, 8, 16 and 32 elements along x.
-schema = 2
+# Cantilever, tip load in z, 8 elements along x. Each source hex gives 24 quadratic tets with
+# shared face and edge nodes. The 1 N load stays on the 4 original tip nodes.
+schema = 3
 id = "cantilever-c3d10"
 units = "SI-mm"
-class = "L"
-justification = "Reference is Timoshenko beam theory. The geometry and 1 N total load match the original cantilever. Richardson over the 3 finest meshes gives the discretisation error. The original 2 percent reference error covers the 3D effects that beam theory ignores. It is an accepted engineering estimate. The original order band of 1.0 to 3.0 includes the observed order of 1.96."
+justification = "Reference is Timoshenko beam theory. Beam theory ignores the 3D stress state at the clamp, so the reference has a stated error of 2 percent. This is an accepted engineering estimate. On mesh-8.inp, fh-solve-ccx gives a value 1.4 percent below the reference (derivation.md). The 2 percent tolerance holds this mesh error."
 derivation = "derivation.md"
-element_types = ["C3D10"]
-mesh = ["mesh-4.inp", "mesh-8.inp", "mesh-16.inp", "mesh-32.inp"]
-ratio = 2
-reference_error = 0.02
-order_min = 1.0
-order_max = 3.0
+mesh = "mesh-8.inp"
+rel_tol = 0.02
+abs_tol = 0.0
 
-# Tip deflection in z (mean of the 4 tip nodes), in mm.
+# Tip deflection in z (mean of the tip nodes), in mm.
 [ref]
 tip_deflection_z = -0.01919619048
 

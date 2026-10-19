@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `check`, `mesh`, `model`, `validate`, `info`, `run`, and `serve`.
+`fh` implements `mesh`, `model`, `validate`, `info`, `run`, and `serve`.
 This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
 The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
@@ -16,49 +16,21 @@ This includes command argument errors. Subcommands do not implement `-h` or `--h
 The help text mentions TOON precision, but these command handlers print the formats listed below.
 The command sources define more `mesh` options than the top-level help text shows.
 
-## `fh check`
-
-```text
-fh check [--root DIR] [FILE.inp...]
-```
-
-Source: [check.rs](../../crates/cli/src/check.rs).
-
-Explicit files take precedence over discovery. With no files, the command searches `fixtures/` and `validation/cases/` under `DIR`.
-`DIR` defaults to `.`. Discovery is recursive, uses the exact `.inp` extension, and sorts file paths.
-A missing discovery directory contributes no files.
-A path with adjacent `validation/cases` components also gets a solid-section coverage check.
-
-| Condition | Diagnostic or output | Exit |
-|---|---|---:|
-| Each file passes | stdout: `ok<TAB>FILE<TAB>N nodes, E elements, S steps` | 0 if all pass |
-| A file cannot be read or parsed | stderr: `fail<TAB>FILE<TAB>MESSAGE` | 1 |
-| A case mesh has an uncovered element | Same failure format, with `element ID has no *SOLID SECTION` | 1 |
-| End of file checks | stdout: `N files: P ok, F failed` | 0 or 1 |
-| Missing `--root` value | `fh check: --root needs a directory` | 2 |
-| Unknown option | `fh check: unknown option: OPTION` | 2 |
-| No discovered files | `fh check: no .inp fixtures found under DIR` | 2 |
-| Discovery read error | `fh check: cannot read PATH: ERROR` or `cannot read an entry of DIR: ERROR` | 2 |
-
-The command continues after a file failure. Parser messages contain a line number and, when known, a keyword.
-See the [input reference](inp.md) for accepted keywords and parser limits.
-
 ## `fh mesh`
 
 ```text
-fh mesh FILE.(geo|step) (--case DIR | --units SI-mm|SI-m) [-o OUT.msh] [--order 1|2]
+fh mesh FILE.(geo|step) (--case DIR | --units SI-mm|SI-m) [-o OUT.msh]
   [--size H] [--scale S] [--set NAME=VALUE]... [--timeout SECONDS] [--gmsh PATH]
 ```
 
 Source: [mesh.rs](../../crates/cli/src/mesh.rs).
 
 The command accepts `.geo`, `.step`, and `.stp`, without regard to extension case.
-It runs external gmsh for a 3D mesh in `msh41` format, then reads the result.
+It runs external gmsh for a 3D mesh of order 2 (`C3D10`) in `msh41` format, then reads the result.
 
 | Option | Default or rule |
 |---|---|
 | `-o` | Input path with the extension changed to `.msh`. |
-| `--order` | `2`. Only `1` and `2` are accepted. |
 | `--size` | No value by default. Positive finite number, sent as gmsh `-clmax`. |
 | `--scale` | No value by default. Positive finite number, sent as gmsh `-clscale`. |
 | `--set` | Repeatable. Name uses ASCII letters, digits, `_`, or `.`. Value is finite. Sent as `-setnumber`. |
@@ -81,7 +53,7 @@ The command removes an existing output file before the mesh run.
 |---|---|---:|
 | Mesh success | stdout: tab-separated `ok`, `gmsh`, `units`, `order`, `nodes`, `elements`, `type`, `nset`, `elset`, and `surface` (element-face count) rows. | 0 |
 | gmsh warning or different release | stdout: `warning<TAB>MESSAGE`. gmsh lines that start with `Warning` are retained. | 0 |
-| Missing option value, invalid number, order, units, or set name | stderr: `fh mesh: MESSAGE` | 2 |
+| Missing option value, invalid number, units, or set name | stderr: `fh mesh: MESSAGE` | 2 |
 | Unknown option, no input, or more than 1 input | Same prefix. Includes mesh usage. | 2 |
 | Cannot create the temporary run directory | `fh mesh: cannot make PATH: ERROR` | 2 |
 | Input read, extension, path, or temporary-file error | `fh mesh: MESSAGE` | 1 |
@@ -126,7 +98,6 @@ Each surface region becomes a node set and an element-face surface of its name. 
 | The mesh units differ from the case | Same refusal format with `unit.mesh.mismatch`. | 1 |
 | The case has no `[model]` table | Same refusal format with `model.missing`. | 1 |
 | No solid element, or 2 element types | Same refusal format with `mesh.empty` or `mesh.mixed`. | 1 |
-| A hex8 mesh that is not one extrusion | Same refusal format with `mesh.hex.not_extruded`. | 1 |
 | A volume with no physical group | Same refusal format with `mesh.volume.unnamed`. | 1 |
 | A region that the mesh does not hold (lost or renamed) | Same refusal format with `mesh.region.missing`. | 1 |
 | A region that is not on the outside of the solid | Same refusal format with `mesh.region.inner`. | 1 |
@@ -168,18 +139,14 @@ Mesh statistics can precede a Jacobian refusal. A refusal does not imply empty s
 ## `fh validate`
 
 ```text
-fh validate [--root DIR] [--convergence PATH]
+fh validate [--root DIR]
 ```
 
 Sources: [validate.rs](../../crates/cli/src/validate.rs),
 [measure.rs](../../crates/cli/src/measure.rs), and [harness](../../crates/validation/src/run.rs).
 
 `--root` defaults to `.`. The normal run loads case directories under `DIR/validation/cases`, sorted by directory name.
-`--convergence PATH` takes precedence over `--root`. It accepts a case directory or a directory of case directories.
-A directory run skips class N cases. A class N case named alone fails.
-A class R case solves each mesh with boundary values from the exact field of the fixture.
-It reports one row, `rate`, with the observed rate, the expected rate, the band and the error of each mesh.
-The case fails if the error does not fall from one mesh to the next.
+Each case solves its 1 mesh, then compares each quantity with its reference.
 The solver is `FH_SOLVE` when set, otherwise `fh-solve-ccx` beside `fh`, otherwise `fh-solve-ccx` on `PATH`.
 The `solver` key of a case can only be `fh-solve-ccx`, the default.
 If the solver is `fh-solve-ccx` and `ccx` (`FH_CCX`, else `ccx` on PATH) does not start, `fh validate` stops before the first case.
@@ -187,28 +154,25 @@ A case can set `time_limit_s` and `memory_limit_mib` ([case fields](case-toml.md
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| All executed cases pass, and at least 1 case ran | stdout: `ID<TAB>CLASS<TAB>pass`, quantity rows, and `N cases: P pass, F fail`. | 0 |
+| Each case passes | stdout: `ID<TAB>pass`, quantity rows, and `N cases: P pass, F fail`. | 0 |
 | `ccx` does not start | stderr: `fh validate: cannot start ccx (PATH): ERROR. fh-solve-ccx needs CalculiX: install it as docs/ccx.md tells, then put ccx on PATH or set FH_CCX` | 1 |
-| Convergence directory contains class N | stdout: `ID<TAB>N<TAB>skipped, one mesh`. Skipped cases count in the total, not pass or fail. | 0 if no failure and at least 1 case ran |
-| No case ran (each case skipped) | stderr: `fh validate: no case ran` after the summary. | 1 |
-| Case failure | stdout: case row with `fail: REASON`, then summary. Convergence failures also print `fh validate: REASON` on stderr. | 1 |
+| Case failure | stdout: case row with `fail: REASON`, then summary. | 1 |
 | Solver absent or measurement cannot run | stdout: case row with `cannot run: REASON`. | 1 |
 | Fixture load error | stderr: `fh validate: FILE[:LINE]: MESSAGE` | 1 |
-| Normal-run mesh parse, undeclared element type, missing set, or missing step | stderr: `fh validate: CASE.toml: MESSAGE` | 1 |
-| Missing option value | `fh validate: --root needs a directory` or `--convergence needs a path` | 2 |
+| Mesh parse error, missing set, or missing step | stderr: `fh validate: CASE.toml: MESSAGE` | 1 |
+| Missing option value | `fh validate: --root needs a directory` | 2 |
 | Any other argument | `fh validate: unknown option: ARGUMENT` | 2 |
 | Empty case directory | `fh validate: no cases under PATH` | 2 |
 
-Quantity rows contain the case ID, quantity name, `computed`, `reference`, `tolerance`, `margin`, and a note.
-Convergence case rows also contain the mesh count.
+Quantity rows contain the case ID, quantity name, `computed`, `reference`, `tolerance` and `margin`.
 Read or solver failures, absent result fields, empty sets, and invalid reductions can supply the failure reason.
 See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 
 ## `fh run`
 
 ```text
-fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--preview] [--state DIR] [--no-open]
-fh run --example NAME [--size H] [--order 1|2] [--preview] [--state DIR] [--no-open]
+fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--preview] [--state DIR] [--no-open]
+fh run --example NAME [--size H] [--preview] [--state DIR] [--no-open]
 ```
 
 Source: [run.rs](../../crates/cli/src/run.rs).
@@ -224,7 +188,6 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 | Option | Default or rule |
 |---|---|
 | `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder, 8 for `bar-pressure`. |
-| `--order 1\|2` | Sent to `fh mesh`. The `fh mesh` default (2). |
 | `--preview` | Show the model with its supports and loads in the page, then stop. No solve occurs. |
 | `--state DIR` | The state folder of the daemon, the same default as `fh serve`. |
 | `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
@@ -262,8 +225,8 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
 | The daemon refused the run | `fh run: the daemon refused the run: MESSAGE (CODE)`, for example `queue.full` | 1 |
-| No input, unknown option, bad value (for example `--order needs 1 or 2`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
-| `--size` or `--order` with an `.inp` file | `fh run: --size and --order go to fh mesh, ... (run.option.mesh)` | 2 |
+| No input, unknown option, bad value (for example `--size needs a number above 0`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
+| `--size` with an `.inp` file | `fh run: --size goes to fh mesh, ... (run.option.mesh)` | 2 |
 | The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
 | The input is not an `.inp` file, a folder, `case.toml` or a STEP file | `fh run: PATH: ... (run.input.kind)` | 2 |
 | A folder with no `case.toml` | `fh run: DIR: no case.toml, so this is not a case folder (run.case.missing)` | 2 |

@@ -331,7 +331,7 @@ fn an_input_that_the_solver_refuses_exits_1_with_the_line_in_the_file() {
 fn a_run_that_fails_in_the_solve_exits_1() {
     let mut lab = Lab::new("run-failed");
     lab.failing_solver("ccx failed: singular stiffness");
-    let model = root().join("fixtures/inp/cantilever.inp");
+    let model = root().join("validation/cases/cantilever-c3d10/mesh-8.inp");
     let out = lab.fh(&["run", p(&model)]);
     fails(&out, 1, "run-000001 failed: ");
     fails(&out, 1, "ccx failed: singular stiffness");
@@ -687,10 +687,16 @@ fn bad_run_arguments_exit_2() {
         "unknown option: --bogus",
     );
     let bar = root().join("validation/cases/bar-pressure/bar.inp");
-    for option in ["--size", "--order"] {
-        let out = lab.fh(&["run", p(&bar), option, "1"]);
-        fails(&out, 2, "(run.option.mesh)");
-    }
+    fails(
+        &lab.fh(&["run", p(&bar), "--size", "1"]),
+        2,
+        "(run.option.mesh)",
+    );
+    fails(
+        &lab.fh(&["run", p(&bar), "--order", "2"]),
+        2,
+        "unknown option: --order",
+    );
     assert!(!lab.state.exists(), "no daemon for a usage error");
 }
 

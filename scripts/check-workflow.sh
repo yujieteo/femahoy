@@ -61,15 +61,14 @@ copy_case() {
     cp "validation/cases/$1/case.toml" "$d/"
   printf '%s\n' "$d"
 }
-# path NAME CASE_DIR UNIT SIZE: build123d STEP, unit check, mesh, mesh check, model, parse check.
+# path NAME CASE_DIR UNIT SIZE: build123d STEP, unit check, mesh, mesh check, model.
 path() {
   local name="$1" cdir="$2" unit="$3" size="$4"
   [[ -f "$cdir/bar.step" ]] || step "$name-cad" 0 "$python" scripts/cad/bar.py "$cdir/bar.step" "$unit" || return 1
   step "$name-step-units" 0 "$fh" info "$cdir/bar.step" --case "$cdir" || return 1
   step "$name-mesh" 0 "$fh" mesh "$cdir/bar.step" --case "$cdir" --size "$size" -o "$cdir/bar.msh" --gmsh "$gmsh" || return 1
   step "$name-mesh-quality" 0 "$fh" info "$cdir/bar.msh" --case "$cdir" || return 1
-  step "$name-model" 0 "$fh" model "$cdir/bar.msh" --case "$cdir" -o "$cdir/bar.inp" || return 1
-  step "$name-check-inp" 0 "$fh" check "$cdir/bar.inp"
+  step "$name-model" 0 "$fh" model "$cdir/bar.msh" --case "$cdir" -o "$cdir/bar.inp"
 }
 # validate NAME ROOT: solve every case under ROOT and compare with the analytical references.
 validate() {

@@ -29,7 +29,6 @@ The reference neglects end effects and through-thickness displacement offsets.
 ## Tolerance
 
 The relative tolerance is 0.01. It covers tetrahedral discretization, tip effects and the displacement offset through the thickness.
-The tolerance is larger than the tolerance of `bimetal-strip`, which checks a regular C3D8I mesh away from the tip.
 This case checks the complete workflow with an unstructured C3D10 mesh.
 
 ## Reproduce

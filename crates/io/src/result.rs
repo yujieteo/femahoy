@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 
 use fh_inp::Model;
 
-use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA};
+use crate::vtu::{Field, Grid, VTK_QUADRATIC_TETRA};
 
 /// The grid of `model` without result fields: the points and the cells in model order,
 /// `NODE_ID` and `ELEMENT_ID`, and for each set a flag array, `NSET_<name>` on the points and
@@ -22,7 +22,6 @@ pub fn base_grid(model: &Model) -> Result<Grid, String> {
     for el in &model.elements {
         grid.cell_types.push(match el.element_type.as_str() {
             "C3D10" => VTK_QUADRATIC_TETRA,
-            "C3D8" | "C3D8I" => VTK_HEXAHEDRON,
             _ => return Err(format!("element {}: unsupported type", el.id)),
         });
         let cell = el

@@ -89,19 +89,16 @@ pub fn real_gmsh() -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
-/// A copy of the patch test case that declares `units`. Its `mesh` is an absolute path to the
-/// shared fixture.
-pub fn patch_case(units: &str) -> PathBuf {
+/// A copy of the bar-tension case that declares `units`. It has no mesh file, so it loads only
+/// with `Case::load_before_mesh`.
+pub fn unit_case(units: &str) -> PathBuf {
     let dir = scratch(&format!("case-{units}"));
-    let src = root().join("validation/cases/patch-test");
+    let src = root().join("validation/cases/bar-tension");
     for file in ["derivation.md", "case.toml"] {
         std::fs::copy(src.join(file), dir.join(file)).unwrap();
     }
     let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
-    let mesh = root().join("fixtures/inp/patch-test.inp");
-    let toml = toml
-        .replace("units = \"SI-mm\"", &format!("units = \"{units}\""))
-        .replace("../../../fixtures/inp/patch-test.inp", p(&mesh));
+    let toml = toml.replace("units = \"SI-mm\"", &format!("units = \"{units}\""));
     std::fs::write(dir.join("case.toml"), toml).unwrap();
     dir
 }

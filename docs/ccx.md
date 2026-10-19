@@ -25,13 +25,13 @@ The summary says `solver: "ccx <version>, unvalidated"`.
 
 ## Keyword subset
 
-`*NODE`, `*ELEMENT` (`C3D8`, `C3D8I`, `C3D10`), `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*EXPANSION`, `*SOLID SECTION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE`, `*BOUNDARY`, `*STEP`, `*STATIC`, `*CLOAD`, `*DLOAD`, `*DSLOAD` and `*TEMPERATURE`.
-The adapter refuses `*EQUATION`, `*MPC`, `*COUPLING`, `*SURFACE, TYPE=NODE` and `NLGEOM` with a clear error.
+`*NODE`, `*ELEMENT` (`C3D10` only), `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*EXPANSION`, `*SOLID SECTION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE`, `*BOUNDARY`, `*STEP`, `*STATIC`, `*CLOAD`, `*DLOAD`, `*DSLOAD` and `*TEMPERATURE`.
+The parser refuses each other keyword, parameter and element type with a clear error ([inp.md](reference/inp.md)).
 
 Changes for `ccx`:
 
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
-- Each step is one linear increment. The adapter ignores the `*STATIC` data line.
+- Each step is one linear increment. The parser does not read the `*STATIC` data lines.
 - The element stress `S` is the volume mean of the `ccx` integration point stress (`docs/solver-protocol.md`, "Result contract").
 - Each number in `job.inp` has 20 characters or fewer, because `ccx` reads only the first 20 characters of a number.
   A longer number lost the end of its exponent with no error. For example, `-1.33027879758290e-17` became -0.133.
@@ -68,38 +68,14 @@ If `fh-solve-ccx` is not there, `fh run` stops with `run.solver.missing`. Then r
 ## Limits
 
 - The `.frd` file has 6 significant digits, so U and RF have 6 digits. The `.dat` stress has 7.
-- Thus a class N displacement can fail on rounding. `bar-pressure` u_x tip passes with a margin of only 3e-17 mm.
+- Thus a displacement with a small tolerance can fail on rounding. `bar-pressure` u_x tip passes with a margin of only 3e-17 mm.
 - `ccx` extrapolates the stress to the nodes in `.frd` with an error of about 1e-5. Thus the adapter does not use the `.frd` stress.
 
-## Record of stage C1 (2026-10-18)
-
-Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
-`FH_SOLVE=fh-solve-ccx fh validate`: 16 of 16 cases pass. The tolerances are the same as for the native solver `fh-solve`, which D-29 removed later.
-
-| Case | Quantity | `ccx` | `fh-solve` | Reference |
-|---|---|---|---|---|
-| `cantilever` | tip uz, Richardson limit (mm) | -1.9087822e-2 | -1.9087899e-2 | -1.919619e-2, pass |
-| `cantilever` | tip uz, mesh-32 (mm) | -1.90587e-2 | -1.9058737e-2 | |
-| `lame-cylinder` | ur inner (mm) | 9.0796256e-2 | 9.0794389e-2 | 9.0793651e-2, pass |
-| `bar-pressure` | u_x tip (mm) | 4.76190e-2 | 4.7619048e-2 | 4.7619048e-2, pass |
-| `bar-pressure` | rf_x (N) | -20000.01 | -20000.00 | -20000, pass |
-| `bar-pressure` | s_xx (MPa) | 100.0000 | 100.0000 | 100, pass |
-| `patch-test` | s_xx (MPa) | 327.6000 | 327.6000 | 327.6, pass |
-
-## Record of the thermal strain change (2026-10-18)
-
-Tested `ccx`: 2.23 from `nixpkgs#calculix-ccx`, on macOS aarch64.
-`fh validate` and `FH_SOLVE=fh-solve-ccx fh validate`: 17 of 17 cases pass. The 16 earlier cases give the same numbers as before.
-
-| Case | Quantity | `ccx` | Reference |
-|---|---|---|---|
-| `bimetal-strip` | u3 at `P20` (mm) | -1.53425e-1 | -1.5342466e-1, pass |
-| `bimetal-strip` | u1 at `P20` (mm) | 1.80548e-2 | 1.8054795e-2, pass |
-
-## Record of the native solver removal (2026-10-19)
+## Record of the case cut (2026-10-19)
 
 Tested `ccx`: 2.23, on macOS aarch64.
-`fh validate` runs each case through `fh-solve-ccx`: 19 of 19 cases pass. The tolerances did not change.
+The owner cut the suite to 9 cases with 1 `C3D10` mesh each. `fh validate` runs each case through `fh-solve-ccx`: 9 of 9 cases pass.
+The earlier records of this file, with the deleted cases, are in the Git history.
 
 ## Public warpage workflow
 
@@ -143,7 +119,7 @@ The own solver did not solve it. The first solve reached the time limit, and the
 The case uses the 20 mm C3D10 mesh of the chat, without the back-face support that the third solve added.
 It has `time_limit_s = 120` and `memory_limit_mib = 6144`.
 
-The reference comes from a separate graded hex model at 3 levels, with Richardson extrapolation.
+The reference comes from a separate graded `C3D8I` model at 3 levels (`reference.py`), with Richardson extrapolation. This model is not a case.
 The [derivation](../validation/cases/plate-on-edge/derivation.md) gives the model, the reference and the mesh study.
 On a laptop with 16 GB of memory, `ccx` 2.23 gives these values:
 

@@ -1,6 +1,6 @@
 # femahoy: TOON Output Schema
 
-Status: agreed, version 1.1.0 of each schema. Implement in M1 (`fh`, `fh check`, `fh validate`) and later milestones (`fh run`, `fh solvers`).
+Status: agreed, version 1.1.0 of each schema. Implement in M1 (`fh`, `fh validate`) and later milestones (`fh run`, `fh solvers`).
 Scope: everything `fh` prints on stdout, and the summary file that subprocess solvers write.
 Rule source: our own rules, based on the AXI principles (Agent eXperience Interface, kunchenguid). Do not copy AXI text into the repo.
 
@@ -36,10 +36,10 @@ Rule source: our own rules, based on the AXI principles (Agent eXperience Interf
 ### 2.1 Header
 
 ```toon
-schema: fh.check
+schema: fh.validate
 version: 1.1.0
-source: models/bracket.inp
-source_hash: 9f3c1a
+source: validation/cases
+source_hash: c01d9e
 units: unspecified
 status: ok
 precision: 4
@@ -97,7 +97,7 @@ Code ranges. Each code is stable and listed in `docs/diagnostics.md`.
 
 ```toon
 next[2]{cmd,why}:
-  fh check models/bracket.inp --full,see the fix hint for INP021
+  fh info models/bracket.msh,see the mesh quality
   fh docs keywords,list supported keywords
 ```
 
@@ -124,7 +124,7 @@ models[2]{file,check,last_run,run_status}:
   models/bracket.inp,ok,r-0007,converged
   models/clip.inp,error,none,none
 next[2]{cmd,why}:
-  fh check models/clip.inp,clip.inp has errors
+  fh run models/clip.inp --preview,see the errors of clip.inp
   fh validate,one validation case fails
 ```
 
@@ -134,64 +134,7 @@ next[2]{cmd,why}:
 
 ### 3.2 `fh.check`
 
-```toon
-schema: fh.check
-version: 1.1.0
-source: models/bracket.inp
-source_hash: 9f3c1a
-units: unspecified
-status: error
-precision: 4
-totals:
-  nodes: 48210
-  elements: 30112
-  sets: 14
-  materials: 1
-  steps: 1
-  errors: 1
-  warnings: 2
-element_types[2]{type,count}:
-  C3D10,29800
-  C3D8I,312
-sets[3]{name,kind,size}:
-  Part-1-1.FIXED,nset,412
-  Part-1-1.LOAD,surface,96
-  Part-1-1.ALL,elset,30112
-sets_more: 11
-materials[1]{name,behaviour,used_by}:
-  STEEL,elastic-plastic,1
-steps[1]{name,procedure,nlgeom,loads}:
-  Step-1,static,no,2
-quality[3]{metric,worst,limit,bad}:
-  min_scaled_jacobian,0.21,0.1,0
-  max_aspect_ratio,8.4,10,0
-  inverted,0,0,0
-diagnostics[1]{code,severity,line,message}:
-  INP021,error,1204,unknown keyword *CONTACT CONTROLS
-next[2]{cmd,why}:
-  fh check models/bracket.inp --full,see the fix hint for INP021
-  fh docs keywords,list supported keywords
-```
-
-| Table | Rank |
-|---|---|
-| `element_types{type,count}` | Count, largest first |
-| `sets{name,kind,size}` | Sets used by steps first, then by name |
-| `materials{name,behaviour,used_by}` | Name |
-| `steps{name,procedure,nlgeom,loads}` | Input order |
-| `quality{metric,worst,limit,bad}` | Fixed order |
-
-Pre-solve checks, reported as diagnostics:
-
-| Check | Severity |
-|---|---|
-| Element with no section | error |
-| Section with no material | error |
-| Load on an empty set or surface | error |
-| Rigid-body motion not fully stopped in a connected mesh region (restrained-DOF count) | error |
-| Inverted element (with its label) | error |
-| Element below the quality limit (with its label) | warning |
-| Set or surface never used | warning |
+Deleted (2026-10-19). `fh` has no `check` command.
 
 ### 3.3 `fh.validate`
 
@@ -208,10 +151,10 @@ totals:
   pass: 12
   fail: 1
   skip: 0
-cases[3]{id,class,status,margin}:
-  hertz-sphere,N,fail,1.37
-  lame-cylinder,L,pass,0.81
-  cantilever-c3d8i,L,pass,0.42
+cases[3]{id,status,margin}:
+  hertz-sphere,fail,1.37
+  lame-cylinder-c3d10,pass,0.81
+  cantilever-c3d10,pass,0.42
 cases_more: 10
 next[1]{cmd,why}:
   fh validate hertz-sphere,see which quantity fails
@@ -242,13 +185,11 @@ next[1]{cmd,why}:
   fh validate hertz-sphere --full,see tolerances and mesh data
 ```
 
-Extra tables by class:
+Extra table:
 
-| Class | Table |
+| Option | Table |
 |---|---|
-| L | `refinement{mesh,size,value}` |
-| R | `rates{field,observed,expected}` |
-| `--full` (all) | `tolerance{name,tolerance,source}` |
+| `--full` | `tolerance{name,tolerance,source}` |
 
 ### 3.5 `fh.run` (also `fh wait`)
 

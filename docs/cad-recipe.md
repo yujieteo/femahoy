@@ -33,8 +33,7 @@ The cases `validation/cases/bar-pressure` (mm) and `validation/cases/bar-pressur
 
 ## Rules
 
-- The mesh is C3D10 (D-19). Use hex8 only for a part that is a 2D shape extruded along one axis.
-  gmsh automatic hex meshing gave inverted elements on parts with fillets and holes.
+- The mesh is C3D10 (D-19). C3D10 is the only element.
 - The `.geo` file sets `Geometry.OCCTargetUnit` in every run. gmsh keeps this option as state, and `.msh` has no unit.
 - A part with more than 1 body needs `Coherence;` (the template has it). Without it the bodies share no nodes.
 - STEP keeps no face names. The template and `fh mesh` select faces by plane or by box with `Surface In BoundingBox`.

@@ -96,7 +96,7 @@ Ctrl+C during a run cancels the run. A second Ctrl+C ends `fh run` at once.
 
 For example, `fh run validation/cases/bar-pressure` in the repository solves the case of the example.
 `fh run` does not change the case folder. Its mesh and input go to the work folder.
-`--size H` and `--order 1|2` go to `fh mesh`. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
+`--size H` goes to `fh mesh`. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
 [`fh` commands](reference/fh.md#fh-run) gives the exit codes and the messages.
 
 The sections below do the same steps one at a time.
@@ -130,14 +130,13 @@ Use the existing [bar-tension case TOML](../validation/cases/bar-tension/case.to
 Its first keys include these values.
 
 ```toml
-schema = 2
+schema = 3
 id = "bar-tension"
 units = "SI-mm"
-class = "N"
 ```
 
 This is an excerpt, not a complete case file.
-`--case` needs the full case, its mesh files and its derivation file.
+`--case` needs the full case and its derivation file.
 The [case schema](../crates/validation/SCHEMA.md) defines all required keys.
 
 | System | Length | Force | Stress | Mass | Time |
@@ -165,7 +164,7 @@ This `fh mesh` command takes `--units` and does not read the case TOML. Section 
 If gmsh is outside `PATH`, add `--gmsh /path/to/gmsh`.
 
 ```sh
-fh mesh "$WORK/bar.step" -o "$WORK/bar.msh" --units SI-mm --order 2 --size 5
+fh mesh "$WORK/bar.step" -o "$WORK/bar.msh" --units SI-mm --size 5
 fh info "$WORK/bar.msh" --case validation/cases/bar-tension
 ```
 
@@ -204,7 +203,7 @@ value = 0.1
 ```
 
 A `[[model.cload]]` table applies a force to each node of a set. It is not a total force.
-The command keeps `C3D10` as the element. It accepts hex8 only for an extruded part.
+The command keeps `C3D10` as the element. It refuses another element type.
 `fh model` writes the line `** units: SI-mm` into the input. Section 6 shows named regions and a pressure load.
 
 ```sh
@@ -323,13 +322,13 @@ fh validate
 Output excerpt:
 
 ```text
-bar-pressure    N       pass
-bar-pressure-m  N       pass
-bar-tension     N       pass
-bimetal-strip   N       pass
+bar-pressure    pass
+bar-pressure-m  pass
+bar-tension     pass
+cantilever-c3d10        pass
 ...
-warpage-thick-copper    N       pass
-19 cases: 19 pass, 0 fail
+warpage-thick-copper    pass
+9 cases: 9 pass, 0 fail
 ```
 
 The full output compares computed values with references, tolerances and margins.

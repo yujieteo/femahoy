@@ -1,12 +1,12 @@
 # cantilever-2step
 
-Results of `cantilever-2step.inp` (the `cantilever.inp` beam with a second step that doubles the tip load). The viewer tests read them.
+Results of `cantilever-2step.inp`: a 10 x 1 x 1 mm steel beam of 24 `C3D10` elements, fixed at x = 0. Step 1 puts a load in z on the 9 nodes of the tip x = 10. Step 2 doubles the load. The viewer tests read them.
 
-The native solver `fh-solve` made these files. The owner removed it on 2026-10-19. Main commit `08a97c2` has it. `fh-solve-ccx` writes no text results, so keep these files. They were made with:
+`fh-solve-ccx` with `ccx` 2.23 made these files:
 
 ```
-fh-solve cantilever-2step.inp run --formats text,vtu
-cp run/results.pvd run/step-*.vtu run/step-*.txt .
+fh-solve-ccx cantilever-2step.inp run
+cp run/results.pvd run/step-*.vtu .
 ```
 
-Do not edit the files by hand. The tests compare the VTU values with the text results.
+Do not edit the files by hand.

@@ -39,7 +39,7 @@ The leader chooses the model for each task.
 
 1. **Bug:** write a failing test that reproduces it first. Show the failing output. Fix the bug. Show the passing output.
 2. **New feature:** write the test or fixture first, then the code.
-3. **Solver change:** run the convergence check for each changed element or contact path, and include the table.
+3. **Solver change:** run `fh validate`, and include the table of the changed cases.
 4. **Evidence:** every claim in a hand-back has the command and its output (cut to the relevant lines).
 
 ## 6. Merge gate
@@ -53,7 +53,6 @@ cargo fmt --check
 cargo clippy -p <crate> --all-targets -- -D warnings # for each changed crate
 cargo test -p <crate>                                # for each changed crate
 fh validate                      # when the change touches solver code
-fh validate --convergence <path> # for each changed solver path
 ```
 
 - The leader can re-plan, re-assign, or make the task smaller.

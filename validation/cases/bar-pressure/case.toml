@@ -1,16 +1,14 @@
 # Uniaxial tension of a 100 x 20 x 10 mm bar by a pressure on a named face (M2b).
 # The case declares named regions. fh mesh makes a gmsh physical group for each region, and
 # fh model writes each region as a node set and an element-face surface. The load is *DSLOAD.
-# Class N: the stress field is uniform, so C3D10 reproduces it to round-off.
-schema = 2
+# The stress field is uniform, so C3D10 reproduces it to round-off.
+schema = 3
 id = "bar-pressure"
 units = "SI-mm"
-class = "N"
-justification = "The pressure on a flat face gives a uniform stress and a linear displacement field, which C3D10 represents exactly. No mesh error exists, so Richardson does not apply. The tolerance covers round-off in a sparse solve only. Each reference is far from zero, so the absolute tolerance is 0."
+justification = "The pressure on a flat face gives a uniform stress and a linear displacement field, which C3D10 represents exactly. No mesh error exists. The tolerance covers round-off in a sparse solve only. Each reference is far from zero, so the absolute tolerance is 0."
 derivation = "derivation.md"
-element_types = ["C3D10"]
 # bar.inp is the output of: fh mesh bar.step --case . --size 8 -o bar.msh && fh model bar.msh --case . -o bar.inp
-mesh = ["bar.inp"]
+mesh = "bar.inp"
 rel_tol = 1e-6
 abs_tol = 0.0
 

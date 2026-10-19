@@ -17,7 +17,7 @@ fh run model.inp            # solve, then open the results of the run in the bro
 | Contour | One field in 9 colour bands from blue (lowest) to red (highest), with a legend that gives the band limits and the unit. |
 | Step selector | One entry for each step of `results.pvd`, with its time and its file. The `<` and `>` buttons go to the previous and the next step. |
 
-The viewer draws `C3D4`, `C3D8` (also `C3D8R` and `C3D8I`) and `C3D10` elements, and the VTK cell types 10, 12 and 24. It skips other element types and elements that name a missing node. The status bar shows the counts.
+The viewer draws `C3D10` elements and the VTK cell type 24. It skips other element types and elements that name a missing node. The status bar shows the counts.
 
 ### Deformed shape
 

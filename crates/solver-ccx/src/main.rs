@@ -77,39 +77,16 @@ fn temperatures(out: &mut String, keyword: &str, list: &[Temperature]) {
     }
 }
 
-/// The `ccx` input for `model`.
-/// Anything outside the linear subset is an error that names the keyword.
+/// The `ccx` input for `model`. The parser refuses each keyword outside the linear subset.
 fn ccx_input(model: &Model) -> Result<String, String> {
-    let unsupported = [
-        (!model.equations.is_empty(), "*EQUATION"),
-        (!model.mpcs.is_empty(), "*MPC"),
-        (!model.couplings.is_empty(), "*COUPLING"),
-        (!model.surfaces.is_empty(), "*SURFACE, TYPE=NODE"),
-        (model.steps.iter().any(|s| s.nlgeom), "*STEP, NLGEOM"),
-    ];
-    if let Some((_, k)) = unsupported.iter().find(|(used, _)| *used) {
-        return Err(format!(
-            "{k} is not in the keyword subset of the ccx adapter"
-        ));
-    }
     let mut out = String::from("*NODE\n");
     for n in &model.nodes {
         let [x, y, z] = n.xyz.map(real);
         let _ = writeln!(out, "{}, {x}, {y}, {z}", n.id);
     }
-    let mut kind = String::new();
+    // The parser accepts only C3D10.
+    out.push_str("*ELEMENT, TYPE=C3D10\n");
     for e in &model.elements {
-        let t = e.element_type.to_ascii_uppercase();
-        if !matches!(t.as_str(), "C3D8" | "C3D8I" | "C3D10") {
-            return Err(format!(
-                "element {}: type {t} is not in the keyword subset of the ccx adapter",
-                e.id
-            ));
-        }
-        if t != kind {
-            let _ = writeln!(out, "*ELEMENT, TYPE={t}");
-        }
-        kind = t;
         let nodes: Vec<String> = e.nodes.iter().map(u32::to_string).collect();
         let _ = writeln!(out, "{}, {}", e.id, nodes.join(", "));
     }
@@ -439,64 +416,36 @@ fn read_dat(text: &str) -> Vec<Points> {
     blocks
 }
 
-/// The integration points of `ccx` in the order of `job.dat`, with their weights. `C3D8` and
-/// `C3D8I`: 2 x 2 x 2 Gauss points, xi changes first, then eta, then zeta. `C3D10`: 4 points,
-/// point k is near corner k.
-fn ccx_points(kind: &str) -> Vec<([f64; 3], f64)> {
-    if kind == "C3D10" {
-        let (a, b) = (0.138_196_601_125_011, 0.585_410_196_624_968);
-        let p = [[a, a, a], [b, a, a], [a, b, a], [a, a, b]];
-        p.map(|p| (p, 1.0 / 24.0)).to_vec()
-    } else {
-        let g = 1.0 / 3f64.sqrt();
-        let at = |i: usize, k: usize| if i >> k & 1 == 1 { g } else { -g };
-        (0..8)
-            .map(|i| ([at(i, 0), at(i, 1), at(i, 2)], 1.0))
-            .collect()
-    }
+/// The 4 integration points of a `C3D10` in `ccx`, in the order of `job.dat`, with their
+/// weights. Point k is near corner k.
+fn ccx_points() -> [([f64; 3], f64); 4] {
+    let (a, b) = (0.138_196_601_125_011, 0.585_410_196_624_968);
+    [[a, a, a], [b, a, a], [a, b, a], [a, a, b]].map(|p| (p, 1.0 / 24.0))
 }
 
-/// The derivatives of the shape functions by the natural coordinates `p`, in node order.
-fn shape_derivatives(kind: &str, p: [f64; 3]) -> Vec<[f64; 3]> {
-    if kind == "C3D10" {
-        // Corner 1 is at p = 0, corners 2, 3 and 4 are at p = 1 on the axes. The midside
-        // nodes 5 to 10 are on the edges 1-2, 2-3, 3-1, 1-4, 2-4 and 3-4.
-        let l = [1.0 - p[0] - p[1] - p[2], p[0], p[1], p[2]];
-        let dl = [[-1.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-        let mut dn: Vec<[f64; 3]> = (0..4)
-            .map(|i| dl[i].map(|d| (4.0 * l[i] - 1.0) * d))
-            .collect();
-        for (i, j) in [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)] {
-            dn.push(std::array::from_fn(|k| {
-                4.0 * (l[i] * dl[j][k] + l[j] * dl[i][k])
-            }));
-        }
-        dn
-    } else {
-        let corners = [
-            [-1.0, -1.0, -1.0],
-            [1.0, -1.0, -1.0],
-            [1.0, 1.0, -1.0],
-            [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, 1.0],
-            [1.0, -1.0, 1.0],
-            [1.0, 1.0, 1.0],
-            [-1.0, 1.0, 1.0],
-        ];
-        let dn = |s: [f64; 3]| {
-            let f: [f64; 3] = std::array::from_fn(|k| 1.0 + s[k] * p[k]);
-            [s[0] * f[1] * f[2], f[0] * s[1] * f[2], f[0] * f[1] * s[2]].map(|v| 0.125 * v)
-        };
-        corners.map(dn).to_vec()
+/// The derivatives of the `C3D10` shape functions by the natural coordinates `p`, in node
+/// order. Corner 1 is at p = 0, corners 2, 3 and 4 are at p = 1 on the axes. The midside
+/// nodes 5 to 10 are on the edges 1-2, 2-3, 3-1, 1-4, 2-4 and 3-4.
+fn shape_derivatives(p: [f64; 3]) -> Vec<[f64; 3]> {
+    let l = [1.0 - p[0] - p[1] - p[2], p[0], p[1], p[2]];
+    let dl = [[-1.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mut dn: Vec<[f64; 3]> = (0..4)
+        .map(|i| dl[i].map(|d| (4.0 * l[i] - 1.0) * d))
+        .collect();
+    for (i, j) in [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)] {
+        dn.push(std::array::from_fn(|k| {
+            4.0 * (l[i] * dl[j][k] + l[j] * dl[i][k])
+        }));
     }
+    dn
 }
 
 /// The weight times the Jacobian determinant of each `ccx` integration point of an element
 /// with the node coordinates `x`.
-fn point_weights(kind: &str, x: &[[f64; 3]]) -> Vec<f64> {
+fn point_weights(x: &[[f64; 3]]) -> Vec<f64> {
     let weight = |(p, w): ([f64; 3], f64)| {
         let mut j = [[0.0; 3]; 3];
-        for (x, d) in x.iter().zip(shape_derivatives(kind, p)) {
+        for (x, d) in x.iter().zip(shape_derivatives(p)) {
             for (r, row) in j.iter_mut().enumerate() {
                 for (c, v) in row.iter_mut().enumerate() {
                     *v += x[r] * d[c];
@@ -508,7 +457,7 @@ fn point_weights(kind: &str, x: &[[f64; 3]]) -> Vec<f64> {
             + j[0][2] * (j[1][0] * j[2][1] - j[1][1] * j[2][0]);
         w * det
     };
-    ccx_points(kind).into_iter().map(weight).collect()
+    ccx_points().into_iter().map(weight).collect()
 }
 
 /// Write the VTU file of each step, the PVD collection and the summary. Each file is written
@@ -533,7 +482,7 @@ fn write_results(
     let weights: Vec<Vec<f64>> = (model.elements.iter())
         .map(|e| {
             let x: Vec<[f64; 3]> = e.nodes.iter().map(|n| coords[n]).collect();
-            point_weights(&e.element_type, &x)
+            point_weights(&x)
         })
         .collect();
     if dat.len() != model.steps.len() {

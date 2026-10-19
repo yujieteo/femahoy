@@ -30,4 +30,4 @@ With `ccx` installed: `fh validate` (it uses `fh-solve-ccx` beside `fh`).
 
 ## Examples
 
-`FH_CCX=/path/to/ccx fh-solve-ccx validation/cases/cantilever/mesh-32.inp /tmp/run`
+`FH_CCX=/path/to/ccx fh-solve-ccx validation/cases/cantilever-c3d10/mesh-8.inp /tmp/run`

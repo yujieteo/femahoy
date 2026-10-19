@@ -23,7 +23,7 @@ fn info_step(dir: &Path, unit: &str) -> Output {
 }
 
 fn run_step(unit: &str, case_units: &str) -> Output {
-    info_step(&patch_case(case_units), unit)
+    info_step(&unit_case(case_units), unit)
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn a_missing_unit_record_is_refused() {
 
 #[test]
 fn a_case_without_units_is_refused() {
-    let dir = patch_case("SI-mm");
+    let dir = unit_case("SI-mm");
     let toml = std::fs::read_to_string(dir.join("case.toml")).unwrap();
     std::fs::write(
         dir.join("case.toml"),
@@ -96,7 +96,7 @@ fn gmsh_recipe_gives_a_c3d10_bar_that_passes_the_gate() {
         .replace("@SIZE@", "5")
         .replace("@OUT@", "bar.msh");
     run_gmsh(&gmsh, &dir, "bar.geo", &geo);
-    let case = patch_case("SI-mm");
+    let case = unit_case("SI-mm");
     let out = fh(&["info", p(&dir.join("bar.step")), "--case", p(&case)]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let out = fh(&["info", p(&dir.join("bar.msh")), "--case", p(&case)]);
@@ -110,13 +110,12 @@ fn gmsh_recipe_gives_a_c3d10_bar_that_passes_the_gate() {
     assert!(stdout.contains("volume: 2.000000e4"), "{stdout}");
 }
 
-/// A one-hex `.msh` file. `top` is the x coordinate of the top face corners 2 and 3.
-fn hex_msh(top: f64) -> String {
+/// A one-hex `.msh` file. The hex is gmsh type 5.
+fn hex_msh() -> String {
     let xy = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
     let mut nodes = String::new();
-    for (i, z) in [0.0, 1.0].into_iter().enumerate() {
+    for z in [0.0, 1.0] {
         for (x, y) in xy {
-            let x = if i == 1 && x == 1.0 { top } else { x };
             nodes.push_str(&format!("{x} {y} {z}\n"));
         }
     }
@@ -126,11 +125,15 @@ fn hex_msh(top: f64) -> String {
 }
 
 #[test]
-fn a_hex_mesh_is_accepted_only_when_it_is_an_extrusion() {
+fn a_hex_mesh_is_refused() {
     let file = scratch("hex").join("hex.msh");
-    std::fs::write(&file, hex_msh(1.0)).unwrap();
+    std::fs::write(&file, hex_msh()).unwrap();
     let out = fh(&["info", p(&file)]);
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    std::fs::write(&file, hex_msh(1.5)).unwrap();
-    fails(&fh(&["info", p(&file)]), 1, "mesh.hex.not_extruded");
+    // A mesh that the reader refuses is an input error: exit code 2.
+    assert_eq!(out.status.code(), Some(2), "{}", stdout(&out));
+    let text = format!("{}{}", stdout(&out), stderr(&out));
+    assert!(
+        text.contains("element type 5 is not accepted, use 11 (C3D10)"),
+        "{text}"
+    );
 }

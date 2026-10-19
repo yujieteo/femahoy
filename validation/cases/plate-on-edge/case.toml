@@ -1,13 +1,11 @@
 # The steel plate on its edge from the chat, with the 20 mm mesh of the chat, through CalculiX.
-schema = 2
+schema = 3
 id = "plate-on-edge"
 units = "SI-mm"
-class = "N"
 justification = "The reference is the converged value of a separate graded hex model in CalculiX (derivation.md). The 20 mm tetrahedral mesh is 3.8 percent from it. The 5 percent tolerance holds this mesh error and the 0.2 percent error of the reference."
 derivation = "derivation.md"
-element_types = ["C3D10"]
 solver = "fh-solve-ccx"
-mesh = ["part.inp"]
+mesh = "part.inp"
 # A 16 GB laptop solved this mesh in 12 s with 2.9 GiB. The limits stop a run that is 10 times slower or 2 times larger.
 time_limit_s = 120.0
 memory_limit_mib = 6144.0

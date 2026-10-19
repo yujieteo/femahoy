@@ -44,9 +44,6 @@ pub fn parse_all(text: &str) -> Result<Model, Vec<ParseError>> {
             "step has no *END STEP",
         ));
     }
-    if let Err(e) = p.close_coupling() {
-        errors.push(e);
-    }
     if errors.is_empty() {
         Ok(p.model)
     } else {
@@ -65,17 +62,10 @@ struct Parser {
     step_seen: bool,
     /// A `*STATIC` had an error, so a missing procedure is not a second error.
     static_failed: bool,
+    /// The open step has its `*STATIC`.
+    step_static: bool,
     /// Index into `model.materials` of the material that is open.
     material: Option<usize>,
-    /// A `*COUPLING` that still waits for `*KINEMATIC` or `*DISTRIBUTING`.
-    open_coupling: Option<PendingCoupling>,
-}
-
-struct PendingCoupling {
-    line: usize,
-    name: String,
-    ref_node: u32,
-    surface: String,
 }
 
 fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError> {
@@ -91,19 +81,18 @@ fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError>
 
 /// A finite number. The Rust parser also accepts NaN, infinity and numbers that overflow to
 /// infinity, and these would change or remove a constraint without an error.
-fn finite(f: &str) -> Option<f64> {
-    f.parse::<f64>().ok().filter(|x| x.is_finite())
-}
-
 fn real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<f64, ParseError> {
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
-    finite(f).ok_or_else(|| {
-        b.error(
-            code::INVALID_VALUE,
-            d.line_of(i),
-            format!("{what} must be a finite number, found '{f}'"),
-        )
-    })
+    f.parse::<f64>()
+        .ok()
+        .filter(|x| x.is_finite())
+        .ok_or_else(|| {
+            b.error(
+                code::INVALID_VALUE,
+                d.line_of(i),
+                format!("{what} must be a finite number, found '{f}'"),
+            )
+        })
 }
 
 fn opt_real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<Option<f64>, ParseError> {
@@ -126,23 +115,15 @@ fn dof(b: &Block, d: &DataLine, i: usize) -> Result<u8, ParseError> {
     }
 }
 
-fn element_nodes(element_type: &str) -> Option<usize> {
-    match element_type {
-        "C3D4" => Some(4),
-        "C3D8" | "C3D8I" => Some(8),
-        "C3D10" => Some(10),
-        _ => None,
-    }
-}
+/// The only element type: the 10-node tetrahedron.
+const ELEMENT_TYPE: &str = "C3D10";
+const ELEMENT_NODES: usize = 10;
 
 impl Parser {
     fn block(&mut self, b: &Block) -> Result<(), ParseError> {
         // A material keyword (*ELASTIC, *EXPANSION) only applies inside *MATERIAL.
         if !["ELASTIC", "EXPANSION", "MATERIAL"].contains(&b.keyword.as_str()) {
             self.material = None;
-        }
-        if b.keyword != "KINEMATIC" && b.keyword != "DISTRIBUTING" {
-            self.close_coupling()?;
         }
         match b.keyword.as_str() {
             "NODE" => self.node(b),
@@ -162,11 +143,6 @@ impl Parser {
             "DSLOAD" => self.dsload(b),
             "SOLID SECTION" => self.solid_section(b),
             "SURFACE" => self.surface(b),
-            "COUPLING" => self.coupling(b),
-            "KINEMATIC" => self.coupling_kind(b, CouplingKind::Kinematic),
-            "DISTRIBUTING" => self.coupling_kind(b, CouplingKind::Distributing),
-            "EQUATION" => self.equation(b),
-            "MPC" => self.mpc(b),
             "END STEP" => self.end_step(b),
             "PART" | "END PART" | "ASSEMBLY" | "END ASSEMBLY" | "INSTANCE" | "END INSTANCE" => {
                 Err(b.error(
@@ -228,13 +204,14 @@ impl Parser {
                 "parameter TYPE is required",
             )
         })?;
-        let count = element_nodes(ty).ok_or_else(|| {
-            b.error(
+        if ty != ELEMENT_TYPE {
+            return Err(b.error(
                 code::UNSUPPORTED_VALUE,
                 b.line,
-                format!("unsupported element type {ty}"),
-            )
-        })?;
+                format!("unsupported element type {ty}; only C3D10 is supported"),
+            ));
+        }
+        let count = ELEMENT_NODES;
         let mut ids = Vec::new();
         for d in &b.data {
             if d.fields.len() != count + 1 {
@@ -269,7 +246,7 @@ impl Parser {
             }
             self.model.elements.push(Element {
                 id,
-                element_type: ty.to_owned(),
+                element_type: ELEMENT_TYPE.to_owned(),
                 nodes,
             });
             ids.push(id);
@@ -587,58 +564,32 @@ impl Parser {
     }
 
     fn step(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["NAME", "NLGEOM"])?;
+        b.allow(&["NAME"])?;
         if self.open_step.is_some() {
             return Err(b.error(code::OUT_OF_PLACE, b.line, "step inside a step"));
         }
-        let nlgeom = match b.value("NLGEOM")? {
-            None | Some("NO") => false,
-            Some("YES") => true,
-            Some(v) => {
-                return Err(b.error(
-                    code::INVALID_VALUE,
-                    b.line,
-                    format!("NLGEOM must be YES or NO, found {v}"),
-                ))
-            }
-        };
         if let Some(d) = b.data.first() {
             return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
         }
         self.step_line = b.line;
         self.step_seen = true;
+        self.step_static = false;
         self.open_step = Some(Step {
             name: b.value("NAME")?.map(str::to_owned),
-            nlgeom,
             ..Step::default()
         });
         Ok(())
     }
 
+    /// `*STATIC`: the adapter writes its own `*STATIC` line, so the data lines are not read.
     fn static_proc(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&[])?;
-        let step = self
-            .open_step
-            .as_mut()
-            .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"))?;
-        if step.static_procedure.is_some() {
+        if self.open_step.is_none() {
+            return Err(b.error(code::OUT_OF_PLACE, b.line, "keyword needs an open *STEP"));
+        }
+        if std::mem::replace(&mut self.step_static, true) {
             return Err(b.error(code::DUPLICATE, b.line, "step already has *STATIC"));
         }
-        let mut s = Static::default();
-        if let Some(d) = b.data.first() {
-            if b.data.len() > 1 || d.fields.len() > 4 {
-                return Err(b.error(
-                    code::BAD_DATA_LINE,
-                    d.line,
-                    "keyword takes 1 data line with at most 4 values",
-                ));
-            }
-            s.initial_increment = opt_real(b, d, 0, "initial increment")?;
-            s.time_period = opt_real(b, d, 1, "time period")?;
-            s.min_increment = opt_real(b, d, 2, "minimum increment")?;
-            s.max_increment = opt_real(b, d, 3, "maximum increment")?;
-        }
-        step.static_procedure = Some(s);
         Ok(())
     }
 
@@ -722,14 +673,6 @@ impl Parser {
         Ok(())
     }
 
-    fn known_node(&self, b: &Block, line: usize, id: u32) -> Result<u32, ParseError> {
-        if self.node_ids.contains(&id) {
-            Ok(id)
-        } else {
-            Err(b.error(code::UNDEFINED, line, format!("node {id} is not defined")))
-        }
-    }
-
     /// Model data applies to all steps, so it must come before the first step starts.
     fn model_data(&self, b: &Block) -> Result<(), ParseError> {
         if self.step_seen {
@@ -786,9 +729,8 @@ impl Parser {
     fn surface(&mut self, b: &Block) -> Result<(), ParseError> {
         b.allow(&["TYPE", "NAME"])?;
         self.model_data(b)?;
-        let element = match b.value("TYPE")? {
-            Some("NODE") => false,
-            Some("ELEMENT") => true,
+        match b.value("TYPE")? {
+            Some("ELEMENT") => {}
             Some(t) => {
                 return Err(b.error(
                     code::UNSUPPORTED_VALUE,
@@ -803,7 +745,7 @@ impl Parser {
                     "parameter TYPE is required",
                 ))
             }
-        };
+        }
         let name = b.value("NAME")?.ok_or_else(|| {
             b.error(
                 code::MISSING_PARAMETER,
@@ -811,48 +753,18 @@ impl Parser {
                 "parameter NAME is required",
             )
         })?;
-        // A coupling finds its surface by name, so a second surface of a name is lost.
-        if self.model.surfaces.iter().any(|s| s.name == name)
-            || self.model.element_surface(name).is_some()
-        {
+        if self.model.element_surface(name).is_some() {
             return Err(b.error(
                 code::DUPLICATE,
                 b.line,
                 format!("surface '{name}' is already defined"),
             ));
         }
-        if element {
-            return self.element_surface(b, name);
-        }
-        let mut ids = Vec::new();
-        for d in &b.data {
-            if d.fields.len() != 1 {
-                return Err(b.error(
-                    code::BAD_DATA_LINE,
-                    d.line,
-                    "line needs 1 node number or 1 node set name, without a weight",
-                ));
-            }
-            match self.target(b, d)? {
-                Target::Node(id) => ids.push(id),
-                Target::Set(s) => ids.extend(self.model.nset(&s).map_or(&[][..], |n| &n.ids)),
-            }
-        }
-        self.model.surfaces.push(NodeSurface {
-            name: name.to_owned(),
-            ids,
-        });
-        Ok(())
+        self.element_surface(b, name)
     }
 
     /// Data lines: `element or element set, S<face>`.
     fn element_surface(&mut self, b: &Block, name: &str) -> Result<(), ParseError> {
-        let types: std::collections::HashMap<u32, &str> = self
-            .model
-            .elements
-            .iter()
-            .map(|e| (e.id, e.element_type.as_str()))
-            .collect();
         let mut faces = Vec::new();
         for d in &b.data {
             if d.fields.len() != 2 {
@@ -892,245 +804,19 @@ impl Parser {
                     }
                 }
             };
-            for id in ids {
-                let max = match types.get(&id).copied() {
-                    Some("C3D10") => 4,
-                    _ => 6,
-                };
-                if !(1..=max).contains(&face) {
-                    return Err(b.error(
-                        code::INVALID_VALUE,
-                        d.line,
-                        format!("face must be 1 to {max} for element {id}, found {face}"),
-                    ));
-                }
-                faces.push((id, face));
+            if !(1..=4).contains(&face) {
+                return Err(b.error(
+                    code::INVALID_VALUE,
+                    d.line,
+                    format!("face must be 1 to 4, found {face}"),
+                ));
             }
+            faces.extend(ids.into_iter().map(|id| (id, face)));
         }
         self.model.element_surfaces.push(ElementSurface {
             name: name.to_owned(),
             faces,
         });
-        Ok(())
-    }
-
-    fn coupling(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&["CONSTRAINT NAME", "REF NODE", "SURFACE"])?;
-        self.model_data(b)?;
-        let name = b.value("CONSTRAINT NAME")?.ok_or_else(|| {
-            b.error(
-                code::MISSING_PARAMETER,
-                b.line,
-                "parameter CONSTRAINT NAME is required",
-            )
-        })?;
-        let surface = b.value("SURFACE")?.ok_or_else(|| {
-            b.error(
-                code::MISSING_PARAMETER,
-                b.line,
-                "parameter SURFACE is required",
-            )
-        })?;
-        let ref_text = b.value("REF NODE")?.ok_or_else(|| {
-            b.error(
-                code::MISSING_PARAMETER,
-                b.line,
-                "parameter REF NODE is required",
-            )
-        })?;
-        let ref_id = ref_text.parse::<u32>().map_err(|_| {
-            b.error(
-                code::INVALID_VALUE,
-                b.line,
-                format!("REF NODE must be a node id, found '{ref_text}'"),
-            )
-        })?;
-        let ref_node = self.known_node(b, b.line, ref_id)?;
-        if !self.model.surfaces.iter().any(|s| s.name == surface)
-            && self.model.element_surface(surface).is_none()
-        {
-            return Err(b.error(
-                code::UNDEFINED,
-                b.line,
-                format!("surface '{surface}' is not defined"),
-            ));
-        }
-        if let Some(d) = b.data.first() {
-            return Err(b.error(code::BAD_DATA_LINE, d.line, "keyword takes no data lines"));
-        }
-        self.open_coupling = Some(PendingCoupling {
-            line: b.line,
-            name: name.to_owned(),
-            ref_node,
-            surface: surface.to_owned(),
-        });
-        Ok(())
-    }
-
-    fn coupling_kind(&mut self, b: &Block, kind: CouplingKind) -> Result<(), ParseError> {
-        b.allow(&[])?;
-        let c = self.open_coupling.take().ok_or_else(|| {
-            b.error(
-                code::OUT_OF_PLACE,
-                b.line,
-                "keyword needs an open *COUPLING",
-            )
-        })?;
-        let (mut first_dof, mut last_dof) = (1, 6);
-        if let Some(d) = b.data.first() {
-            if b.data.len() > 1 || d.fields.len() > 2 {
-                return Err(b.error(
-                    code::INVALID_VALUE,
-                    d.line,
-                    "keyword takes 1 data line: first dof, last dof",
-                ));
-            }
-            first_dof = dof(b, d, 0)?;
-            last_dof = if d.fields.len() > 1 {
-                dof(b, d, 1)?
-            } else {
-                first_dof
-            };
-            if last_dof < first_dof {
-                return Err(b.error(code::INVALID_VALUE, d.line, "last dof is below first dof"));
-            }
-        }
-        self.model.couplings.push(Coupling {
-            name: c.name,
-            ref_node: c.ref_node,
-            surface: c.surface,
-            kind,
-            first_dof,
-            last_dof,
-        });
-        Ok(())
-    }
-
-    /// Fail when a `*COUPLING` is open and the next keyword is not its kind.
-    fn close_coupling(&mut self) -> Result<(), ParseError> {
-        match self.open_coupling.take() {
-            None => Ok(()),
-            Some(c) => Err(ParseError::new(
-                code::INCOMPLETE,
-                c.line,
-                Some("COUPLING"),
-                "needs *KINEMATIC or *DISTRIBUTING",
-            )),
-        }
-    }
-
-    fn equation(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&[])?;
-        self.model_data(b)?;
-        let first = b
-            .data
-            .first()
-            .ok_or_else(|| b.error(code::BAD_DATA_LINE, b.line, "keyword needs data lines"))?;
-        if first.fields.len() != 1 {
-            return Err(b.error(
-                code::BAD_DATA_LINE,
-                first.line,
-                "the first line gives only the number of terms",
-            ));
-        }
-        // Not `int`: a count of 0 gets its own message.
-        let text = first.fields[0].as_str();
-        let n = text.parse::<usize>().map_err(|_| {
-            b.error(
-                code::INVALID_VALUE,
-                first.line,
-                format!("number of terms must be a positive integer, found '{text}'"),
-            )
-        })?;
-        if n == 0 {
-            return Err(b.error(
-                code::BAD_DATA_LINE,
-                first.line,
-                "equation needs at least 1 term",
-            ));
-        }
-        // Keep the empty fields: without them the next terms move to the wrong place.
-        // The value check then refuses each empty field.
-        let fields: Vec<(usize, &String)> = b.data[1..]
-            .iter()
-            .flat_map(|d| d.fields.iter().enumerate().map(|(j, f)| (d.line_of(j), f)))
-            .collect();
-        if fields.len() != 3 * n {
-            return Err(b.error(
-                code::BAD_DATA_LINE,
-                first.line,
-                format!("equation needs {n} terms of node, dof, coefficient"),
-            ));
-        }
-        let mut terms = Vec::with_capacity(n);
-        for t in fields.chunks(3) {
-            let node = t[0].1.parse::<u32>().map_err(|_| {
-                b.error(
-                    code::INVALID_VALUE,
-                    t[0].0,
-                    format!("node id must be a positive integer, found '{}'", t[0].1),
-                )
-            })?;
-            let dof = t[1]
-                .1
-                .parse::<u8>()
-                .ok()
-                .filter(|d| (1..=6).contains(d))
-                .ok_or_else(|| {
-                    b.error(
-                        code::INVALID_VALUE,
-                        t[1].0,
-                        format!("degree of freedom must be 1 to 6, found '{}'", t[1].1),
-                    )
-                })?;
-            let coefficient = finite(t[2].1).ok_or_else(|| {
-                b.error(
-                    code::INVALID_VALUE,
-                    t[2].0,
-                    format!("coefficient must be a finite number, found '{}'", t[2].1),
-                )
-            })?;
-            terms.push(EquationTerm {
-                node: self.known_node(b, t[0].0, node)?,
-                dof,
-                coefficient,
-            });
-        }
-        self.model.equations.push(Equation { terms });
-        Ok(())
-    }
-
-    fn mpc(&mut self, b: &Block) -> Result<(), ParseError> {
-        b.allow(&[])?;
-        self.model_data(b)?;
-        for d in &b.data {
-            let kind = match d.fields[0].to_uppercase().as_str() {
-                "TIE" => MpcKind::Tie,
-                "PIN" => MpcKind::Pin,
-                "LINK" => MpcKind::Link,
-                "BEAM" => MpcKind::Beam,
-                t => {
-                    return Err(b.error(
-                        code::UNSUPPORTED_VALUE,
-                        d.line,
-                        format!("unsupported MPC type {t}"),
-                    ))
-                }
-            };
-            if d.fields.len() != 3 {
-                return Err(b.error(
-                    code::BAD_DATA_LINE,
-                    d.line,
-                    format!("{} needs 2 nodes", d.fields[0]),
-                ));
-            }
-            let mut nodes = Vec::new();
-            for k in 1..3 {
-                let id = int(b, d, k, "node id")?;
-                nodes.push(self.known_node(b, d.line_of(k), id)?);
-            }
-            self.model.mpcs.push(Mpc { kind, nodes });
-        }
         Ok(())
     }
 
@@ -1159,11 +845,11 @@ impl Parser {
                         format!("unsupported load type {ty}"),
                     )
                 })?;
-            if !(1..=6).contains(&face) {
+            if !(1..=4).contains(&face) {
                 return Err(b.error(
                     code::INVALID_VALUE,
                     d.line,
-                    format!("face must be 1 to 6, found {face}"),
+                    format!("face must be 1 to 4, found {face}"),
                 ));
             }
             let f = d.fields[0].as_str();
@@ -1250,7 +936,7 @@ impl Parser {
             .open_step
             .take()
             .ok_or_else(|| b.error(code::OUT_OF_PLACE, b.line, "no open *STEP"))?;
-        if step.static_procedure.is_none() && !std::mem::take(&mut self.static_failed) {
+        if !self.step_static && !std::mem::take(&mut self.static_failed) {
             return Err(b.error(
                 code::INCOMPLETE,
                 self.step_line,
@@ -1266,8 +952,9 @@ impl Parser {
 mod tests {
     use super::*;
 
-    const MESH: &str =
-        "*NODE\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n";
+    /// The nodes of 1 C3D10: 4 corners, then 6 midside nodes. The mesh ends at line 11.
+    const MESH: &str = "*NODE\n1,0,0,0\n2,1,0,0\n3,0,1,0\n4,0,0,1\n5,.5,0,0\n6,.5,.5,0\n\
+                        7,0,.5,0\n8,0,0,.5\n9,.5,0,.5\n10,0,.5,.5\n";
 
     fn err(text: &str) -> String {
         parse(text).unwrap_err().to_string()
@@ -1282,8 +969,16 @@ mod tests {
     }
 
     #[test]
-    fn contact_keywords_are_rejected() {
-        for k in ["CONTACT PAIR", "SURFACE INTERACTION, NAME=A"] {
+    fn contact_and_constraint_keywords_are_rejected() {
+        for k in [
+            "CONTACT PAIR",
+            "SURFACE INTERACTION, NAME=A",
+            "COUPLING, CONSTRAINT NAME=C, REF NODE=1, SURFACE=S",
+            "KINEMATIC",
+            "DISTRIBUTING",
+            "EQUATION",
+            "MPC",
+        ] {
             assert!(
                 err(&format!("*{k}\n")).contains("unsupported keyword"),
                 "{k}"
@@ -1295,28 +990,16 @@ mod tests {
     fn an_error_on_a_continuation_line_names_that_line() {
         let mut bad = Vec::new();
         for (text, want) in [
-            // Line 13 is the second physical line of the record.
+            // Line 14 is the second physical line of the record.
             (
-                "*EQUATION\n2\n1,1,1,\n2,7,-1\n",
-                "line 13, *EQUATION: degree of freedom",
+                "*ELEMENT, TYPE=C3D10\n1,1,2,3,4,5,\n6,7,8,9,99\n",
+                "line 14, *ELEMENT: node 99",
             ),
             (
-                "*EQUATION\n2\n1,1,1,\n2,1,x\n",
-                "line 13, *EQUATION: coefficient",
+                "*ELEMENT, TYPE=C3D10\n1,1,2,3,4,5,\n6,7,8,9,x\n",
+                "line 14, *ELEMENT: node id",
             ),
-            (
-                "*EQUATION\n2\n1,1,1,\n99,1,-1\n",
-                "line 13, *EQUATION: node 99",
-            ),
-            (
-                "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,\n5,6,7,99\n",
-                "line 12, *ELEMENT: node 99",
-            ),
-            (
-                "*ELEMENT, TYPE=C3D8\n1,1,2,3,4,\n5,6,7,x\n",
-                "line 12, *ELEMENT: node id",
-            ),
-            ("*NODE\n9,0,\n0,x\n", "line 12, *NODE: "),
+            ("*NODE\n11,0,\n0,x\n", "line 14, *NODE: "),
         ] {
             let e = err(&format!("{MESH}{text}"));
             if !e.starts_with(want) {
@@ -1340,42 +1023,34 @@ mod tests {
             err("*NODE\n0,0,0,0\n"),
             "line 2, *NODE: node id must be a positive integer, found '0' (INP006)"
         );
-        let element = format!("{MESH}*ELEMENT, TYPE=C3D8\n0,1,2,3,4,5,6,7,8\n");
+        let element = format!("{MESH}*ELEMENT, TYPE=C3D10\n0,1,2,3,4,5,6,7,8,9,10\n");
         assert_eq!(
             err(&element),
-            "line 11, *ELEMENT: element id must be a positive integer, found '0' (INP006)"
-        );
-    }
-
-    #[test]
-    fn c3d4_keeps_node_count_and_reference_checks() {
-        let prefix = format!("{MESH}*ELEMENT, TYPE=c3d4\n");
-        let model = parse(&format!("{prefix}1,1,2,3,4\n")).unwrap();
-        assert_eq!(model.elements[0].element_type, "C3D4");
-        assert_eq!(model.elements[0].nodes, [1, 2, 3, 4]);
-        for nodes in ["1,2,3", "1,2,3,4,5"] {
-            assert!(err(&format!("{prefix}1,{nodes}\n"))
-                .starts_with("line 11, *ELEMENT: C3D4 needs an id and 4 nodes"));
-        }
-        assert_eq!(
-            err(&format!("{prefix}1,1,2,3,99\n")),
-            "line 11, *ELEMENT: node 99 is not defined (INP009)"
+            "line 13, *ELEMENT: element id must be a positive integer, found '0' (INP006)"
         );
     }
 
     #[test]
     fn element_errors_name_the_line() {
-        let short = format!("{MESH}*ELEMENT, TYPE=C3D8\n1,1,2,3\n");
-        assert!(err(&short).starts_with("line 11, *ELEMENT: C3D8 needs an id and 8 nodes"));
-        let missing = format!("{MESH}*ELEMENT, TYPE=C3D8\n1,1,2,3,4,5,6,7,99\n");
+        let prefix = format!("{MESH}*ELEMENT, TYPE=c3d10\n");
+        let model = parse(&format!("{prefix}1,1,2,3,4,5,6,7,8,9,10\n")).unwrap();
+        assert_eq!(model.elements[0].element_type, "C3D10");
+        assert_eq!(model.elements[0].nodes, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        for nodes in ["1,2,3", "1,2,3,4,5,6,7,8,9,10,1"] {
+            assert!(err(&format!("{prefix}1,{nodes}\n"))
+                .starts_with("line 13, *ELEMENT: C3D10 needs an id and 10 nodes"));
+        }
         assert_eq!(
-            err(&missing),
-            "line 11, *ELEMENT: node 99 is not defined (INP009)"
+            err(&format!("{prefix}1,1,2,3,4,5,6,7,8,9,99\n")),
+            "line 13, *ELEMENT: node 99 is not defined (INP009)"
         );
-        for ty in ["S4R", "C3D10M"] {
+        for ty in ["S4R", "C3D4", "C3D8", "C3D8I", "C3D10M"] {
             assert_eq!(
                 err(&format!("{MESH}*ELEMENT, TYPE={ty}\n")),
-                format!("line 10, *ELEMENT: unsupported element type {ty} (INP005)")
+                format!(
+                    "line 12, *ELEMENT: unsupported element type {ty}; only C3D10 is supported \
+                     (INP005)"
+                )
             );
         }
     }
@@ -1447,6 +1122,22 @@ mod tests {
             err("*CLOAD\n"),
             "line 1, *CLOAD: keyword needs an open *STEP (INP010)"
         );
+        assert_eq!(
+            err("*STEP, NLGEOM=YES\n*STATIC\n*END STEP\n"),
+            "line 1, *STEP: unsupported parameter NLGEOM (INP003)"
+        );
+        assert_eq!(
+            err("*STEP\n*STATIC\n*STATIC\n*END STEP\n"),
+            "line 3, *STATIC: step already has *STATIC (INP008)"
+        );
+    }
+
+    #[test]
+    fn a_node_surface_is_rejected() {
+        assert_eq!(
+            err(&format!("{MESH}*SURFACE, TYPE=NODE, NAME=S\n1\n")),
+            "line 12, *SURFACE: unsupported TYPE NODE (INP005)"
+        );
     }
 
     #[test]
@@ -1483,12 +1174,11 @@ mod tests {
     #[test]
     fn full_step_parses() {
         let m = parse(&format!(
-            "{MESH}*MATERIAL, NAME=M\n*ELASTIC, TYPE=ISOTROPIC\n100, 0.3\n*STEP, NAME=S, NLGEOM=NO\n*STATIC\n0.1, 1\n*CLOAD\n8, 3, -2.5\n*END STEP\n"
+            "{MESH}*MATERIAL, NAME=M\n*ELASTIC, TYPE=ISOTROPIC\n100, 0.3\n*STEP, NAME=S\n*STATIC\n0.1, 1\n*CLOAD\n8, 3, -2.5\n*END STEP\n"
         ))
         .unwrap();
         let s = &m.steps[0];
-        assert!(!s.nlgeom);
-        assert_eq!(s.static_procedure.as_ref().unwrap().time_period, Some(1.0));
+        assert_eq!(s.name.as_deref(), Some("S"));
         assert_eq!(
             s.cloads[0],
             Cload {
@@ -1549,35 +1239,35 @@ mod tests {
             ),
             (
                 format!("{MESH}*INITIAL CONDITIONS\n1, 20\n"),
-                "line 10, *INITIAL CONDITIONS: parameter TYPE is required (INP004)",
+                "line 12, *INITIAL CONDITIONS: parameter TYPE is required (INP004)",
             ),
             (
                 format!("{MESH}*INITIAL CONDITIONS, TYPE=STRESS\n1, 20\n"),
-                "line 10, *INITIAL CONDITIONS: unsupported TYPE STRESS (INP005)",
+                "line 12, *INITIAL CONDITIONS: unsupported TYPE STRESS (INP005)",
             ),
             (
-                format!("{MESH}*INITIAL CONDITIONS, TYPE=TEMPERATURE\n9, 20\n"),
-                "line 11, *INITIAL CONDITIONS: node 9 is not defined (INP009)",
+                format!("{MESH}*INITIAL CONDITIONS, TYPE=TEMPERATURE\n99, 20\n"),
+                "line 13, *INITIAL CONDITIONS: node 99 is not defined (INP009)",
             ),
             (
                 format!("{MESH}*INITIAL CONDITIONS, TYPE=TEMPERATURE\n1, 20, 30\n"),
-                "line 11, *INITIAL CONDITIONS: line needs node and temperature (INP007)",
+                "line 13, *INITIAL CONDITIONS: line needs node and temperature (INP007)",
             ),
             (
                 format!("{MESH}*STEP\n*STATIC\n*INITIAL CONDITIONS, TYPE=TEMPERATURE\n1, 20\n"),
-                "line 12, *INITIAL CONDITIONS: keyword must come before the first *STEP (INP010)",
+                "line 14, *INITIAL CONDITIONS: keyword must come before the first *STEP (INP010)",
             ),
             (
                 format!("{MESH}*TEMPERATURE\n1, 20\n"),
-                "line 10, *TEMPERATURE: keyword needs an open *STEP (INP010)",
+                "line 12, *TEMPERATURE: keyword needs an open *STEP (INP010)",
             ),
             (
                 format!("{MESH}*STEP\n*STATIC\n*TEMPERATURE, OP=NEW\n1, 20\n*END STEP\n"),
-                "line 12, *TEMPERATURE: unsupported parameter OP (INP003)",
+                "line 14, *TEMPERATURE: unsupported parameter OP (INP003)",
             ),
             (
                 format!("{MESH}*STEP\n*STATIC\n*TEMPERATURE\n1, x\n*END STEP\n"),
-                "line 13, *TEMPERATURE: temperature must be a finite number, found 'x' (INP006)",
+                "line 15, *TEMPERATURE: temperature must be a finite number, found 'x' (INP006)",
             ),
         ] {
             assert_eq!(err(&text), message, "{text}");

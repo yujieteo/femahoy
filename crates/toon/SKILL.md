@@ -9,7 +9,7 @@ Encode short agent summaries with schema `fh.run`. The other schemas of `toon-sc
 - Schema version is `1.1.0`.
 - Every schema header includes `precision`, which defaults to 4 significant figures.
 - `Opts` sets row limits and precision. These are library options, not implemented `fh` flags.
-- Exact field values remain in VTU files. `fh check` and `fh validate` currently print plain text.
+- Exact field values remain in VTU files. `fh validate` currently prints plain text.
 
 ## Invariants the code must keep
 

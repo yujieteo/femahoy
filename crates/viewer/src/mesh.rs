@@ -60,16 +60,6 @@ pub(crate) struct Face {
     pub(crate) mids: Option<Vec<u32>>,
 }
 
-/// Local corner indices of each face, ordered so that the face is closed.
-const HEX_FACES: [[usize; 4]; 6] = [
-    [0, 1, 2, 3],
-    [4, 5, 6, 7],
-    [0, 1, 5, 4],
-    [1, 2, 6, 5],
-    [2, 3, 7, 6],
-    [3, 0, 4, 7],
-];
-
 /// Local corner indices of each tet face, and the local indices of the mid-side nodes
 /// (C3D10 order: 4 to 9 are the mids of edges 0-1, 1-2, 2-0, 0-3, 1-3, 2-3).
 const TET_FACES: [([usize; 3], [usize; 3]); 4] = [
@@ -84,24 +74,6 @@ const TET_FACES: [([usize; 3], [usize; 3]); 4] = [
 pub(crate) fn element_faces(element_type: &str, nodes: &[u32]) -> Option<Vec<Face>> {
     let t = element_type.to_ascii_uppercase();
     match t.as_str() {
-        "C3D8" | "C3D8R" | "C3D8I" if nodes.len() >= 8 => Some(
-            HEX_FACES
-                .iter()
-                .map(|f| Face {
-                    corners: f.iter().map(|&i| nodes[i]).collect(),
-                    mids: None,
-                })
-                .collect(),
-        ),
-        "C3D4" if nodes.len() >= 4 => Some(
-            TET_FACES
-                .iter()
-                .map(|(c, _)| Face {
-                    corners: c.iter().map(|&i| nodes[i]).collect(),
-                    mids: None,
-                })
-                .collect(),
-        ),
         "C3D10" if nodes.len() >= 10 => Some(
             TET_FACES
                 .iter()
@@ -189,8 +161,6 @@ pub fn build(model: &Model) -> RenderMesh {
 /// The element type name of a VTK cell type, or `None` when the viewer cannot draw it.
 pub fn vtk_element_type(cell_type: u8) -> Option<&'static str> {
     match cell_type {
-        10 => Some("C3D4"),
-        12 => Some("C3D8"),
         // VTK quadratic tetra has the C3D10 node order.
         24 => Some("C3D10"),
         _ => None,
@@ -381,31 +351,6 @@ mod tests {
         Node { id, xyz: [x, y, z] }
     }
 
-    fn unit_cube_nodes() -> Vec<Node> {
-        let c = [
-            [0., 0., 0.],
-            [1., 0., 0.],
-            [1., 1., 0.],
-            [0., 1., 0.],
-            [0., 0., 1.],
-            [1., 0., 1.],
-            [1., 1., 1.],
-            [0., 1., 1.],
-        ];
-        c.iter()
-            .enumerate()
-            .map(|(i, p)| node(i as u32 + 1, p[0], p[1], p[2]))
-            .collect()
-    }
-
-    fn hex(id: u32, nodes: [u32; 8]) -> Element {
-        Element {
-            id,
-            element_type: "C3D8".into(),
-            nodes: nodes.to_vec(),
-        }
-    }
-
     fn model(nodes: Vec<Node>, elements: Vec<Element>) -> Model {
         Model {
             nodes,
@@ -414,80 +359,60 @@ mod tests {
         }
     }
 
-    #[test]
-    fn single_hex_has_six_quads_and_twelve_edges() {
-        let m = build(&model(
-            unit_cube_nodes(),
-            vec![hex(1, [1, 2, 3, 4, 5, 6, 7, 8])],
-        ));
-        assert_eq!(m.triangles.len(), 12);
-        assert_eq!(m.edges.len(), 12);
-        assert_eq!(m.feature_edges.len(), 12);
-        assert_eq!((m.node_count, m.element_count), (8, 1));
-    }
-
-    #[test]
-    fn two_hexes_hide_the_shared_face_and_the_flat_edges() {
-        let mut nodes = unit_cube_nodes();
-        nodes.extend([
-            node(9, 2., 0., 0.),
-            node(10, 2., 1., 0.),
-            node(11, 2., 0., 1.),
-            node(12, 2., 1., 1.),
-        ]);
-        let els = vec![
-            hex(1, [1, 2, 3, 4, 5, 6, 7, 8]),
-            hex(2, [2, 9, 10, 3, 6, 11, 12, 7]),
-        ];
-        let m = build(&model(nodes, els));
-        // 10 outer quads.
-        assert_eq!(m.triangles.len(), 20);
-        // A closed quad surface with 10 faces has 10 x 4 / 2 = 20 edges.
-        assert_eq!(m.edges.len(), 20);
-        // The outline is the box edges. The 4 edges along x are split in two by the
-        // middle nodes: 8 + 4 + 4 = 16 segments.
-        assert_eq!(m.feature_edges.len(), 16);
-    }
-
-    #[test]
-    fn single_tet_has_four_faces() {
-        let nodes = vec![
-            node(1, 0., 0., 0.),
-            node(2, 1., 0., 0.),
-            node(3, 0., 1., 0.),
-            node(4, 0., 0., 1.),
-        ];
-        let el = Element {
-            id: 1,
-            element_type: "C3D4".into(),
-            nodes: vec![1, 2, 3, 4],
-        };
-        let m = build(&model(nodes, vec![el]));
-        assert_eq!(m.triangles.len(), 4);
-        assert_eq!(m.edges.len(), 6);
-        assert_eq!(m.feature_edges.len(), 6);
+    /// C3D10 elements from the corner positions (ids 1, 2, ...) and the corners of each
+    /// element. Each edge gets one midside node, with an id after the corners.
+    fn tets(corners: &[[f64; 3]], list: &[[u32; 4]]) -> Model {
+        let mut nodes: Vec<Node> = (corners.iter().enumerate())
+            .map(|(i, p)| node(i as u32 + 1, p[0], p[1], p[2]))
+            .collect();
+        let mut mids = std::collections::HashMap::new();
+        let mut elements = Vec::new();
+        for (e, t) in list.iter().enumerate() {
+            let mut ids = t.to_vec();
+            for (a, b) in [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)] {
+                let key = (t[a].min(t[b]), t[a].max(t[b]));
+                let next = nodes.len() as u32 + 1;
+                let id = *mids.entry(key).or_insert_with(|| {
+                    let (p, q) = (corners[key.0 as usize - 1], corners[key.1 as usize - 1]);
+                    let m: [f64; 3] = std::array::from_fn(|k| 0.5 * (p[k] + q[k]));
+                    nodes.push(node(next, m[0], m[1], m[2]));
+                    next
+                });
+                ids.push(id);
+            }
+            elements.push(Element {
+                id: e as u32 + 1,
+                element_type: "C3D10".into(),
+                nodes: ids,
+            });
+        }
+        model(nodes, elements)
     }
 
     fn tet10() -> Model {
-        let c = [[0., 0., 0.], [2., 0., 0.], [0., 2., 0.], [0., 0., 2.]];
-        let mid =
-            |a: usize, b: usize| -> [f64; 3] { std::array::from_fn(|k| 0.5 * (c[a][k] + c[b][k])) };
-        let pairs = [(0, 1), (1, 2), (2, 0), (0, 3), (1, 3), (2, 3)];
-        let mut nodes: Vec<Node> = c
-            .iter()
-            .enumerate()
-            .map(|(i, p)| node(i as u32 + 1, p[0], p[1], p[2]))
-            .collect();
-        for (i, (a, b)) in pairs.iter().enumerate() {
-            let p = mid(*a, *b);
-            nodes.push(node(i as u32 + 5, p[0], p[1], p[2]));
-        }
-        let el = Element {
-            id: 1,
-            element_type: "C3D10".into(),
-            nodes: (1..=10).collect(),
-        };
-        model(nodes, vec![el])
+        tets(
+            &[[0., 0., 0.], [2., 0., 0.], [0., 2., 0.], [0., 0., 2.]],
+            &[[1, 2, 3, 4]],
+        )
+    }
+
+    /// 2 tets on the 2 sides of the plane x = 0. They share the face 1 3 4. The corner 5 is
+    /// at `x5`.
+    fn two_tets(x5: [f64; 3]) -> Model {
+        let corners = [[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.], x5];
+        tets(&corners, &[[1, 2, 3, 4], [1, 3, 5, 4]])
+    }
+
+    #[test]
+    fn two_tets_hide_the_shared_face_and_the_flat_edges() {
+        let m = build(&two_tets([-1., 0., 0.]));
+        // 6 outer faces of 4 triangles each.
+        assert_eq!(m.triangles.len(), 24);
+        // 9 outer edges, each split in two by its midside node.
+        assert_eq!(m.edges.len(), 18);
+        // The faces at z = 0 and at y = 0 are flat across x = 0, so 2 of the 9 edges are not
+        // features: 7 x 2 = 14 segments.
+        assert_eq!(m.feature_edges.len(), 14);
     }
 
     #[test]
@@ -501,47 +426,28 @@ mod tests {
 
     #[test]
     fn smooth_fold_below_threshold_is_not_a_feature() {
-        // Two quads that meet at 10 degrees: a bent plate, one element each side.
+        // The face of tet 2 at z = 0 turns by 10 degrees about the y axis: a bent plate.
         let a = 10f64.to_radians();
-        let nodes = vec![
-            node(1, 0., 0., 0.),
-            node(2, 1., 0., 0.),
-            node(3, 1., 1., 0.),
-            node(4, 0., 1., 0.),
-            node(5, 0., 0., 0.2),
-            node(6, 1., 0., 0.2),
-            node(7, 1., 1., 0.2),
-            node(8, 0., 1., 0.2),
-            node(9, 1. + a.cos(), 0., a.sin()),
-            node(10, 1. + a.cos(), 1., a.sin()),
-            node(11, 1. + a.cos(), 0., 0.2 + a.sin()),
-            node(12, 1. + a.cos(), 1., 0.2 + a.sin()),
-        ];
-        let els = vec![
-            hex(1, [1, 2, 3, 4, 5, 6, 7, 8]),
-            hex(2, [2, 9, 10, 3, 6, 11, 12, 7]),
-        ];
-        let m = build(&model(nodes, els));
-        // The two slabs share a face and the outer surface bends by 10 degrees across
-        // the shared plane. The two bend edges are not features. The 16 outline
-        // segments are.
-        assert_eq!(m.feature_edges.len(), 16);
+        let m = build(&two_tets([-a.cos(), 0., a.sin()]));
+        // The bend edge is not a feature. The 14 outline segments are.
+        assert_eq!(m.feature_edges.len(), 14);
     }
 
     #[test]
     fn unknown_element_and_missing_node_are_skipped() {
-        let els = vec![
-            Element {
-                id: 1,
-                element_type: "S4".into(),
-                nodes: vec![1, 2, 3, 4],
-            },
-            hex(2, [1, 2, 3, 4, 5, 6, 7, 99]),
-            hex(3, [1, 2, 3, 4, 5, 6, 7, 8]),
-        ];
-        let m = build(&model(unit_cube_nodes(), els));
+        let mut m = tet10();
+        let tet = m.elements[0].clone();
+        m.elements.push(Element {
+            id: 2,
+            element_type: "S4".into(),
+            nodes: vec![1, 2, 3, 4],
+        });
+        let mut missing = Element { id: 3, ..tet };
+        missing.nodes[9] = 99;
+        m.elements.push(missing);
+        let m = build(&m);
         assert_eq!(m.skipped_elements, 2);
-        assert_eq!(m.triangles.len(), 12);
+        assert_eq!(m.triangles.len(), 16);
         assert_eq!(m.element_count, 3);
     }
 
@@ -562,41 +468,28 @@ mod tests {
     }
 
     fn fixture(name: &str) -> Model {
-        let path = format!("{}/../../fixtures/inp/{name}", env!("CARGO_MANIFEST_DIR"));
+        let path = format!("{}/../../{name}", env!("CARGO_MANIFEST_DIR"));
         fh_inp::parse(&std::fs::read_to_string(path).unwrap()).unwrap()
     }
 
     #[test]
     fn cantilever_fixture_is_a_closed_box() {
-        let m = build(&fixture("cantilever.inp"));
+        let m = build(&fixture("validation/cases/cantilever-c3d10/mesh-8.inp"));
         assert_eq!(m.skipped_elements, 0);
         assert!(!m.triangles.is_empty());
         let b = m.bounds.unwrap();
         assert!(b.radius() > 0.0);
-        // A closed quad surface has twice as many edges as quads, and two triangles
-        // make one quad.
-        assert_eq!(m.edges.len(), m.triangles.len());
+        // Each face of a closed C3D10 surface has 4 triangles and 3 edge segments of its own:
+        // its 6 segments are shared with the next faces.
+        assert_eq!(4 * m.edges.len(), 3 * m.triangles.len());
         // A box has 12 sharp edges, each split into segments by the mesh.
         assert!(m.feature_edges.len() >= 12);
         assert!(m.feature_edges.len() < m.edges.len());
     }
 
     #[test]
-    fn c3d4_fixture_draws_without_skips() {
-        let m = build(&fixture("viewer-c3d4.inp"));
-        assert_eq!(
-            (m.node_count, m.element_count, m.skipped_elements),
-            (4, 1, 0)
-        );
-        assert_eq!(m.positions.len(), 4);
-        assert_eq!(m.triangles.len(), 4);
-        assert_eq!(m.edges.len(), 6);
-        assert_eq!(m.feature_edges.len(), 6);
-    }
-
-    #[test]
     fn c3d10_fixture_draws_without_skips() {
-        let m = build(&fixture("m2-keywords.inp"));
+        let m = build(&fixture("fixtures/inp/m2-keywords.inp"));
         assert!(m.triangles.len() >= 16);
         assert!(m.element_count > m.skipped_elements);
     }

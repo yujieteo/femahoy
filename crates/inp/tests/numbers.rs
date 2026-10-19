@@ -1,12 +1,12 @@
 //! Every number field rejects NaN, infinity and numbers that overflow to infinity. The Rust
-//! number parser accepts all of them, and a NaN or infinite equation coefficient changes or
-//! removes the constraint in the solver without an error.
+//! number parser accepts all of them, and a NaN or infinite support value or load changes the
+//! model in the solver without an error.
 
 use fh_inp::parse;
 
 const MESH: &str =
-    "*NODE\n1,0,0,0\n2,1,0,0\n3,1,1,0\n4,0,1,0\n5,0,0,1\n6,1,0,1\n7,1,1,1\n8,0,1,1\n\
-*ELEMENT, TYPE=C3D8, ELSET=E\n1,1,2,3,4,5,6,7,8\n";
+    "*NODE\n1,0,0,0\n2,1,0,0\n3,0,1,0\n4,0,0,1\n5,.5,0,0\n6,.5,.5,0\n7,0,.5,0\n8,0,0,.5\n\
+9,.5,0,.5\n10,0,.5,.5\n*ELEMENT, TYPE=C3D10, ELSET=E\n1,1,2,3,4,5,6,7,8,9,10\n";
 const MATERIAL: &str =
     "*MATERIAL, NAME=M\n*ELASTIC\n1000,0.3\n*SOLID SECTION, ELSET=E, MATERIAL=M\n";
 
@@ -25,7 +25,7 @@ const BAD: [&str; 8] = [
 fn cases() -> Vec<(&'static str, String)> {
     let step = |data: &str| format!("{MESH}{MATERIAL}*STEP\n*STATIC\n{data}*END STEP\n");
     vec![
-        ("NODE", format!("{MESH}*NODE\n9,0,@,0\n")),
+        ("NODE", format!("{MESH}*NODE\n11,0,@,0\n")),
         (
             "ELASTIC",
             format!("{MESH}*MATERIAL, NAME=M\n*ELASTIC\n@,0.3\n"),
@@ -34,15 +34,9 @@ fn cases() -> Vec<(&'static str, String)> {
             "ELASTIC",
             format!("{MESH}*MATERIAL, NAME=M\n*ELASTIC\n1000,@\n"),
         ),
-        ("STATIC", step("@,1.\n")),
-        ("STATIC", step("0.1,@\n")),
-        ("STATIC", step("0.1,1.,@\n")),
-        ("STATIC", step("0.1,1.,1e-5,@\n")),
         ("BOUNDARY", format!("{MESH}{MATERIAL}*BOUNDARY\n1,1,1,@\n")),
         ("BOUNDARY", step("*BOUNDARY\n1,1,1,@\n")),
         ("CLOAD", step("*CLOAD\n7,1,@\n")),
-        ("EQUATION", format!("{MESH}*EQUATION\n2\n1,1,@,2,1,-1\n")),
-        ("EQUATION", format!("{MESH}*EQUATION\n2\n1,1,1\n2,1,@\n")),
         ("DLOAD", step("*DLOAD\nE,P1,@\n")),
     ]
 }

@@ -14,32 +14,24 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 
 | Key | Count | Meaning |
 |---|---|---|
-| `schema` | 1 | The schema version. It is `2`. Any other value is an error. |
+| `schema` | 1 | The schema version. It is `3`. Any other value is an error. |
 | `id` | 1 | Case name (string). |
 | `units` | 1 | The unit system of every number in the case: `"SI-mm"` (mm, N, MPa, tonne, s) or `"SI-m"` (m, N, Pa, kg, s). No default. A missing or other value is an error (D-12). |
-| `class` | 1 | `"L"`, `"N"` or `"R"`. |
-| `justification` | 1 | Why the class and the tolerance are right (string). |
+| `justification` | 1 | Why the tolerance is right (string). |
 | `derivation` | 1 | A file in the folder that shows how the reference values were derived. |
-| `element_types` | 1 | Array of the element types of the meshes (`C3D8`, `C3D8I`, `C3D10`). The case runs once for each type. `fh validate` fails if a mesh holds another type. |
 | `solver` | 0 or 1 | The solver program. The only value is `"fh-solve-ccx"` (CalculiX), the default. If `ccx` does not start, `fh validate` stops before the first case. |
-| `mesh` | 1 | Array of input files, path relative to the folder, coarse to fine. |
+| `mesh` | 1 | One input file (string), path relative to the folder. It holds only `C3D10` elements (D-19). |
 | `time_limit_s` | 0 or 1 | The time limit of each solve in `fh validate`, in seconds (above 0). The default is no time limit. |
 | `memory_limit_mib` | 0 or 1 | The memory limit of each solve in `fh validate`, in MiB (above 0). The default is the limit of the runner, 85 % of the RAM. |
-| `[ref]` | class L and N: 1 table, 1 or more entries. Not in class R. | `name = value`. The reference values. |
-| `[quantity.<name>]` | class L and N: 1 table for each `[ref]` entry. Not in class R. | What to measure for that reference. See below. |
-| `ratio`, `reference_error` | class L | Mesh size ratio (above 1), and the relative error of the reference (0 or more). |
-| `order_min`, `order_max` | class L | The band of the observed Richardson order. Both are above 0. |
-| `rel_tol`, `abs_tol` | class N | Pass if `|computed - ref| <= rel_tol * |ref| + abs_tol`. Both tolerances are 0 or more. |
-| `rate`, `band` | class R | Expected convergence rate, and the allowed band (0 or more). |
-| `mesh_size` | class R | Array of positive numbers, one for each `mesh`, falling from coarse to fine. |
-| `boundary_set` | class R | The node set that gets the boundary values. Every mesh holds it. |
-| `[exact]` | class R | Table with `u1`, `u2`, `u3`: the exact displacement as text in `x`, `y`, `z`. |
+| `[ref]` | 1 table, 1 or more entries | `name = value`. The reference values. |
+| `[quantity.<name>]` | 1 table for each `[ref]` entry | What to measure for that reference. See below. |
+| `rel_tol`, `abs_tol` | 1 each | Pass if `|computed - ref| <= rel_tol * |ref| + abs_tol`. Both tolerances are 0 or more. |
 
 ## Model table (optional)
 
 `fh model` builds a solver input from a `.msh` file and the `[model]` table. The table is optional.
 `fh info`, `fh mesh` and `fh model` load the case with `Case::load_before_mesh`, which does not need the `mesh` files.
-`fh check` and `fh validate` use `Case::load`, which needs them.
+`fh validate` uses `Case::load`, which needs them.
 
 | Key | Meaning |
 |---|---|
@@ -57,13 +49,13 @@ Each `[ref]` entry has a `[quantity.<name>]` table with the same name. A case ne
 
 | Key | Meaning |
 |---|---|
-| `set` | Name of a node set (fields `U`, `RF`) or an element set (field `S`) in every mesh. |
+| `set` | Name of a node set (fields `U`, `RF`) or an element set (field `S`) in the mesh. |
 | `field` | `"U"` displacement, `"RF"` reaction force, `"S"` stress. |
 | `component` | Integer. `U` and `RF`: 1, 2 or 3. `S`: 11, 22, 33, 12, 23 or 13. |
-| `step` | Name of the step in every mesh. The result is the one at the end of that step. |
+| `step` | Name of the step in the mesh. The result is the one at the end of that step. |
 | `op` | `"value"` (the set holds one entity), `"mean"`, `"max"`, `"min"` or `"sum"`. |
 
-`fh validate` checks that every mesh holds the set and the step. A quantity without a `[ref]` entry is an error. A `[ref]` entry without a quantity is an error.
+`fh validate` checks that the mesh holds the set and the step. A quantity without a `[ref]` entry is an error. A `[ref]` entry without a quantity is an error.
 
 `model.temperature_change` sets a uniform temperature change from 0. Each thermal material needs `expansion`.
 Material boxes select physical volume groups. Each element needs exactly one material.
@@ -72,39 +64,28 @@ The full rules are in [case-toml.md](../../docs/reference/case-toml.md).
 ## Example
 
 ```toml
-schema = 2
-id = "patch-test"
+schema = 3
+id = "bar-tension"
 units = "SI-mm"
-class = "N"
-justification = "Linear field, so no discretisation error."
+justification = "Linear field, so C3D10 has no discretisation error."
 derivation = "derivation.md"
-element_types = ["C3D8"]
-mesh = ["../../../fixtures/inp/patch-test.inp"]
-rel_tol = 1e-8
-abs_tol = 1e-12
+mesh = "bar.inp"
+rel_tol = 1e-6
+abs_tol = 1e-6
 
 [ref]
-u9_x = 0.000325
+rf_x = -42000.0
 
-[quantity.u9_x]
-set = "N9"
-field = "U"
+[quantity.rf_x]
+set = "FIXED"
+field = "RF"
 component = 1
 step = "LOAD"
-op = "value"
+op = "sum"
 ```
 
 ## Rules
 
-- Class R fixes the `boundary_set` nodes to the exact field and compares `U` with the exact field at every node (root mean square). The observed rate is the least squares slope of `log(error)` against `log(mesh_size)` over all meshes. It must lie in `rate +/- band`, and the error must fall from each mesh to the next. The mesh files hold no step. The harness adds one.
-- The text of `[exact]` accepts numbers, `x`, `y`, `z`, `pi`, `+ - * / ^`, brackets, and `sin`, `cos`, `sinh`, `cosh`, `exp`, `sqrt`.
-- Class L needs at least 3 `mesh` entries. Class N needs exactly 1 (the reference mesh). Class R needs at least 2.
-- Class L uses the last 3 mesh values for the Richardson limit, the observed order and the estimate (the error of the finest value).
-- Class L passes if `|limit - ref| <= estimate + reference_error * |ref|`. The window is centred on the extrapolated limit, not on the finest value.
-- Class L fails if the observed order is outside `order_min` to `order_max`. A low order widens the estimate, so the band stops it from hiding a wrong value.
-- Class L rejects values whose observed Richardson order is 0 or less (no convergence). Equal mesh values are also rejected, because they have no finite observed order.
 - Every number must be finite. An infinite or NaN value in a fixture, a result or a tolerance is an error and never a pass.
-- `fh validate --convergence PATH` takes a case folder, or a folder of case folders. A class N case has one mesh, so it is skipped in a folder and it is an error when named alone.
-- A key that belongs to another class is an error.
 - An unknown key, a missing key, a wrong type or a missing file is an error. The message names the file and the line.
 - No Abaqus text, files or numbers. No NAFEMS values.

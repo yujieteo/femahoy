@@ -15,7 +15,7 @@ import sys
 A, W, P = 10.0, 200.0, 100.0  # hole radius, half-width (mm), far-field stress (MPa)
 E, NU = 210000.0, 0.3
 GRADE = 2.5  # radial grading: the cells grow with distance from the hole
-MESHES = [(4, 4), (8, 8), (16, 16)]  # (cells over 90 degrees, cells in radius)
+MESHES = [(16, 16)]  # (cells over 90 degrees, cells in radius)
 EPS = 1e-9
 
 
