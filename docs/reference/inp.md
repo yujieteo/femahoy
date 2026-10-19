@@ -32,7 +32,6 @@ The lexer ignores blank lines and lines that start with `**`. A trailing comma c
 
 The page and the preview draw the element types that `ccx` writes to the result file: `C3D4`, `C3D6`, `C3D8`, `C3D10`, `C3D15` and `C3D20`.
 `ccx` writes a shell or a beam element (for example `S8R`, `S4` or `B32`) as one of these solid elements, so the page shows it too. The adapter also converts the 2D and line cells of the result file, but the page does not draw them.
-`fh mesh` writes `C3D10`, or `S6` with `--shell`.
 
 ## Units
 

@@ -16,24 +16,14 @@ fh serve
 
 For your own model, give `fh run` a CalculiX `.inp` file. `fh mesh` makes the mesh and the sets from a STEP file. [`fh` commands](docs/reference/fh.md) gives the options and the exit codes.
 
-## Product
-
-The engine is the `fh` command-line program. The main interface is a visual chat. A 3D viewport is beside the chat.
-
-The chat has 1 focused agent. It plans and does the work.
-
-The input is CalculiX `.inp` text. Agent-facing output is plain text lines. Results are VTU files, so ParaView can open them.
-
-The solver is CalculiX (`ccx`). `fh` starts it directly.
-
 ## Get `ccx`
 
-`fh` starts CalculiX (`ccx`) as a separate program. You install it. femahoy never bundles or links `ccx`, because it is GPL.
+`fh` starts CalculiX (`ccx`) as a separate program. You install it.
 
 - Nix (macOS, Linux): `nix build nixpkgs#calculix-ccx -o ccx`, then `export FH_CCX=$PWD/ccx/bin/ccx`.
 - Debian, Ubuntu: `apt install calculix-ccx`. This puts `ccx` on PATH.
 
-`fh` uses `$FH_CCX`. If `FH_CCX` is not set, it uses `ccx` on PATH. If `ccx` does not start, each solve and `fh validate` stop with an error. The validation cases are tested with `ccx` 2.23. The Ubuntu package is older.
+`fh` uses `$FH_CCX`. If `FH_CCX` is not set, it uses `ccx` on PATH. The validation cases are tested with `ccx` 2.23. The Ubuntu package is older.
 
 ## Licence
 

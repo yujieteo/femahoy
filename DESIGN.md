@@ -35,8 +35,6 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector. |
 | `fh` CLI | Works alone over SSH and tmux, with no GUI. |
 
-Rule: the page shows only what helps the work: the chat, the run in the viewport and its controls.
-
 ---
 
 ## 4. Architecture
@@ -68,23 +66,21 @@ Reason: a web page on another origin must not use the daemon, and a key in the b
 ### 4.2 Clients
 
 - **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the Inter font.
-- **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls. The `fh` binary does not link eframe and wgpu.
-- **`fh` CLI:** `fh run` uses the daemon, and starts one when none answers. `fh validate` and `fh mesh` run alone.
+- **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls.
 
 Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport needs the GPU, and egui hosts it well.
 
 ### 4.3 Agent
 
 - The agent is a CLI harness process: Claude Code, with the user's own Claude Code login. femahoy has no agent loop of its own.
-- The leader runs in headless mode with a JSON event stream (`claude -p --output-format stream-json`). The leader process stays alive between the messages, and each message goes to its stdin.
 - The leader runs under the permission system of its harness.
 
 ---
 
 ## 5. Input and meshes
 
-- `.inp` is the native input format. One model format keeps the parser small. CalculiX reads and checks it. The small reader of `fh` takes only the keywords for the preview (`docs/reference/inp.md`) and never refuses a keyword.
-- `fh mesh` calls gmsh as an external program and writes the nodes, the `C3D10` elements (the `S6` elements with `--shell`) and the named sets as CalculiX input. Users install gmsh themselves.
+- `.inp` is the native input format. One model format keeps the parser small. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
+- `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel and no STEP reader.
 
@@ -100,7 +96,7 @@ Reason: a wrong unit gives wrong results without any warning. There is no defaul
 
 `C3D10` (tet10) is the element that `fh mesh` writes. With `--shell` it writes `S6` (the 6-node shell triangle) for a part drawn as a mid-surface. The chat can write another element type in its CalculiX input, for example `S8R`, and the page shows each element type that CalculiX writes to the result file.
 
-Reason: tetrahedra mesh any shape, and quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case, plain hex8 (`C3D8`) gave 0.35 to 2.07 times the beam deflection. One element type keeps `fh mesh` and the cases small. `S6`, not `S8R`, is the shell element: on the roof case `S6` gives -301.5 mm (reference -302.4 mm) at every mesh size, but gmsh gives no reliable all-quad mesh of a curved surface (mixed meshes, or an element with 2 nodes at one point).
+Reason: tetrahedra mesh any shape, and quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case, plain hex8 (`C3D8`) gave 0.35 to 2.07 times the beam deflection. One element type keeps `fh mesh` and the cases small. `S6`, not `S8R`, is the shell element: on the roof case `S6` gives -301.5 mm on the 1250 mm mesh (reference -302.4 mm), but gmsh gives no reliable all-quad mesh of a curved surface (mixed meshes, or an element with 2 nodes at one point).
 
 ---
 
@@ -108,27 +104,21 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 `fh` starts `ccx` directly, as a separate program that the user installs. The crate `solver-ccx` writes the `ccx` input, runs `ccx` and writes the results. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
 
-Reason: CalculiX passed all 6 capability tests of the first check, its input is closest to `.inp`, and no run needed another solver.
-
-The owner removed the native solver `fh-solve` on 2026-10-19. Main commit `08a97c2` has its code.
+Reason: its input is closest to `.inp`, and no run needed another solver.
 
 ### 6.1 Limits of the `ccx` process
 
 - Each run has its own working folder.
-- Each run has a memory limit. The default is 85 percent of the RAM of the machine. A time limit applies only when the case or an option sets one.
+- Each run has a memory limit. The default is 85 percent of the RAM of the machine. A run has a time limit only when `--timeout` or `fh validate` sets one.
 - A cancel, the memory limit and the time limit kill the whole process group of `ccx` at once. A guard process kills the group when `fh` stops.
-- The run reads the memory use of the group with an operating system probe (Linux and macOS).
-- The run folder has `step-N.vtu` for the last increment of step N, the PVD collection, and the `ccx` files in `ccx/`. The run record has the state and the time.
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops.
 
 ### 6.2 Results
 
-- The solver writes one VTU file for each step (`step-N.vtu`) and a PVD collection.
-- VTU: binary data appended raw. Sets are integer arrays. femahoy writes and reads these files in Rust, with no C library. There is no compression, because that needs a new dependency and costs time on a slow CPU.
-- Every writer takes one array at a time and makes no copy of a field.
+- The run folder has `step-N.vtu` (the last increment of step N) for each step, the PVD collection, and the `ccx` files in `ccx/`.
+- VTU: binary data appended raw. Sets are integer arrays.
 - Atomic write: a writer writes a temporary file and renames it when complete. A reader never sees a partial file, because a run can die at any time.
-- Agents read plain text lines. Full field data stays in the VTU files.
 
 ---
 
@@ -136,22 +126,17 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 
 - References are analytical solutions and measured values. The cases are in `validation/cases/<id>/`.
 - No Abaqus licence is available, so there are no Abaqus runs. The Abaqus verification manual can be a list of problem ideas, cited by number.
-- Each case is a data file pair: `job.inp` and `check.toml`. TOML is easy for people and agents to edit, and it has comments. The fields are in `docs/reference/check-toml.md`.
 - Cases use our own input files. Each target value cites its source.
-- Each case has 1 mesh and a fixed tolerance, written and justified in its files. A quantity passes if `|computed - reference| <= rel_tol * |reference| + abs_tol`.
-- `fh validate` runs the suite and reports pass or fail per case. A change to a solver or its adapter merges only if the full suite passes. A failure blocks the merge. There is no override.
+- Each case has 1 mesh and a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
+- A change to a solver or its adapter merges only if `fh validate` passes the full suite. A failure blocks the merge. There is no override.
 
 Reason: a solver can give a wrong result without a warning. The suite is the only check.
 
 ---
 
-## 8. Workspace and machine
+## 8. Font
 
-- Cargo workspace.
-- The Inter font is under the SIL Open Font License 1.1, in `crates/viewer/fonts` with its licence.
-- **Target machine:** an Apple Silicon laptop with 16 GB RAM. The plate on a 10 mm mesh needs 7.5 GiB. Input files are small. Results files are not: write them in pieces.
-- **Platforms:** macOS and Linux. The user installs `fh` with `scripts/install.sh`, runs `fh serve`, and the UI opens in the browser.
-- **aarch64:** all code builds and passes tests on aarch64 with default flags. CI builds and tests on aarch64 macOS.
+The Inter font is under the SIL Open Font License 1.1, in `crates/viewer/fonts` with its licence.
 
 ---
 
