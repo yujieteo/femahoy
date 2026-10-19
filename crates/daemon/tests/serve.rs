@@ -150,6 +150,55 @@ fn a_request_with_a_wrong_token_fails() {
     assert_eq!(error_code(&body), Some("token.missing"));
 }
 
+/// The answer to a POST that tells a body of `length` bytes and sends none. The daemon
+/// refuses a body that is too large from the head alone, so it never reads the body.
+fn head_only(serve: &Serve, path: &str, length: usize) -> (u16, String) {
+    let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, serve.port)).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let head = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{}\r\nAuthorization: {}\r\n\
+         Content-Length: {length}\r\n\r\n",
+        serve.port,
+        serve.bearer()
+    );
+    stream.write_all(head.as_bytes()).unwrap();
+    let mut answer = String::new();
+    stream.read_to_string(&mut answer).unwrap();
+    let body = answer.split_once("\r\n\r\n").map_or("", |(_, b)| b);
+    (answer[9..12].parse().unwrap(), body.to_owned())
+}
+
+/// A chat message can hold a long pasted paper, and the chat route keeps a limit. Every other
+/// route keeps the small limit of 16 KiB.
+#[test]
+fn a_chat_message_can_hold_a_long_paper_and_the_limit_stays() {
+    let serve = Serve::start("body-limit");
+    let auth = serve.bearer();
+    let headers = [("Authorization", auth.as_str())];
+    let code = |body: &str| error_code(body).map(str::to_owned);
+    // 200000 characters: more than a long paper. No agent runs in this test, so the answer
+    // can be any error, but not a refusal of the size.
+    let paper = format!("text={}\n", "a ".repeat(100_000));
+    let (status, body) = request(serve.port, "POST", "/api/v1/chat", &headers, &paper);
+    assert_ne!(
+        code(&body).as_deref(),
+        Some("http.too-large"),
+        "{status} {body}"
+    );
+    let refused = |(status, body): (u16, String)| (status, code(&body));
+    let too_large = (413, Some("http.too-large".to_owned()));
+    assert_eq!(
+        refused(head_only(&serve, "/api/v1/chat", 2 << 20)),
+        too_large
+    );
+    assert_eq!(
+        refused(head_only(&serve, "/api/v1/runs", 17 << 10)),
+        too_large
+    );
+}
+
 #[test]
 fn a_request_from_a_wrong_origin_fails() {
     let serve = Serve::start("wrong-origin");

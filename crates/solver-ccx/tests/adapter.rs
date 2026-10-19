@@ -240,6 +240,26 @@ fn a_ccx_failure_tells_why_and_what_to_do() {
     }
 }
 
+/// The error text holds the end of the ccx log, so that a reader sees why ccx stopped
+/// without a read of the log file.
+#[test]
+fn a_ccx_failure_shows_the_end_of_the_log() {
+    let dir = scratch("tail");
+    let ccx = fake_ccx(
+        &dir,
+        "i=1\nwhile [ $i -le 40 ]; do echo \" iteration $i residual 0.$i\"; i=$((i+1)); done\n\
+         echo ' *ERROR in contact: no existing contact pair defined'\nexit 201",
+    );
+    let err = run(&tet(&dir, ""), &dir.join("run"), &ccx).unwrap_err();
+    for part in ["iteration 40 residual 0.40", "iteration 30 residual 0.30"] {
+        assert!(err.contains(part), "{part} is not in {err}");
+    }
+    assert!(
+        !err.contains("iteration 2 residual"),
+        "the tail is short: {err}"
+    );
+}
+
 #[test]
 fn an_invalid_result_file_is_an_error() {
     let dir = scratch("invalid");
