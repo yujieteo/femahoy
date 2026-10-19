@@ -41,5 +41,5 @@ fn every_case_input_has_a_mesh_and_units() {
         assert!(!fh_inp::units(&text).is_empty(), "{}", dir.display());
         n += 1;
     }
-    assert_eq!(n, 8);
+    assert_eq!(n, 9);
 }
