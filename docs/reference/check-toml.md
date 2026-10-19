@@ -57,7 +57,7 @@ op = "sum"
 ```
 
 `job.inp` holds `*NODE PRINT, NSET=FIXED` and `RF` in its step.
-See [bar-tension](../../validation/cases/bar-tension/check.toml) for a complete case.
+See [bar-pressure](../../validation/cases/bar-pressure/check.toml) for a complete case.
 
 ## Errors
 

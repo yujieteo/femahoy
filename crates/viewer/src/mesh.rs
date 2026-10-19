@@ -707,8 +707,8 @@ mod tests {
     }
 
     #[test]
-    fn cantilever_fixture_is_a_closed_box() {
-        let m = build(&fixture("validation/cases/cantilever-c3d10/job.inp"));
+    fn bar_fixture_is_a_closed_box() {
+        let m = build(&fixture("validation/cases/bar-pressure/job.inp"));
         assert_eq!(m.skipped_elements, 0);
         assert!(!m.triangles.is_empty());
         let b = m.bounds.unwrap();

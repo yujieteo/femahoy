@@ -15,10 +15,9 @@ impl Solve for Value {
     }
 }
 
-/// The shipped cantilever case, with one reference.
+/// The shipped bar case, with one reference.
 fn case(reference: f64, rel_tol: f64) -> Case {
-    let dir =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases/cantilever-c3d10");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases/bar-pressure");
     let mut c = Case::load(&dir).unwrap();
     c.references.truncate(1);
     c.references[0].value = reference;

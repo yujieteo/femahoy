@@ -52,8 +52,6 @@ The relative tolerance is 0.12. It is the root sum square of these contributions
 | Layers not in the model | The seed copper (0.2 µm) gives +0.9% in plate theory. The paper gives no TiW data. The budget gives the TiW layer the effect of 0.3 µm of copper. | 2.4% |
 | Silicon elasticity | The inputs give a biaxial modulus E/(1 - nu) of 166.7 GPa. The (100) silicon wafer has 180.5 GPa (Hopcroft, Nix and Kenny, J. MEMS 19 (2010) 229). | 7.1% |
 
-The tolerance is wider than the tolerance of `warpage-strip`, because that reference is a theory with exact inputs.
-
 ## Check of the solve
 
 For the same inputs, the plate form of the bilayer curvature (Timoshenko) gives -0.0271253 mm (0.67813 µm/K).

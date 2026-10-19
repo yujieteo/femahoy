@@ -174,33 +174,20 @@ fn a_case_without_an_input_is_refused() {
 fn the_shipped_cases_load_and_have_their_inputs() {
     let cases = load_all(&root()).unwrap();
     let ids: Vec<_> = cases.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(
-        ids,
-        [
-            "bar-pressure",
-            "bar-pressure-m",
-            "bar-tension",
-            "cantilever-c3d10",
-            "kirsch-plate-c3d10",
-            "lame-cylinder-c3d10",
-            "plate-on-edge",
-            "warpage-strip",
-            "warpage-thick-copper"
-        ]
-    );
+    assert_eq!(ids, ["bar-pressure", "warpage-thick-copper"]);
     for c in &cases {
         assert!(c.input.is_file(), "{}", c.input.display());
         assert!(!c.references.is_empty(), "{}", c.id);
     }
     let tip = &cases
         .iter()
-        .find(|c| c.id == "cantilever-c3d10")
+        .find(|c| c.id == "bar-pressure")
         .unwrap()
-        .references[0];
-    assert_eq!(tip.value, -0.01919619048);
+        .references[2];
+    assert_eq!(tip.value, 0.047619047619047616);
     let q = &tip.quantity;
-    assert_eq!((q.field, q.component, q.op), (Field::U, 3, Op::Mean));
-    assert_eq!(q.set, "tip");
+    assert_eq!((q.field, q.component, q.op), (Field::U, 1, Op::Mean));
+    assert_eq!(q.set, "LOAD");
 }
 
 #[test]
