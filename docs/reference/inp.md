@@ -6,7 +6,7 @@ The solver is CalculiX (`ccx`), through the adapter crate `solver-ccx` ([ccx.md]
 The native solver `fh-solve` solved more of this input. The owner removed it on 2026-10-19. Main commit `08a97c2` has it.
 
 Sources: [parser](../../crates/inp/src/parse.rs), [lexer](../../crates/inp/src/lexer.rs) and
-[adapter](../../crates/solver-ccx/src/main.rs).
+[adapter](../../crates/solver-ccx/src/lib.rs).
 
 ## Keywords
 
