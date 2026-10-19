@@ -35,7 +35,7 @@ The input has no material, no step and no load. The chat includes it with `*INCL
 | `--units` | Required: `SI-mm` or `SI-m`. STEP units must match. The command writes `** units: SI-mm` (or `SI-m`) into the output. |
 | `--face NAME=SEL` | Repeatable. A node set `NAME` and a surface `NAME` of the faces of the part that lie fully inside the selection, within 1e-6 of the diagonal of the part. With `--shell`, the part has edges, not faces. The surface is the edges of the shells: `S3` and up in the `*DSLOAD` face number, with edge `k` from corner `k` to corner `k+1`. |
 | `--nodes NAME=SEL` | Repeatable. A node set of the nodes in the selection. |
-| `--volume NAME=box:...` | Repeatable. An element set of the elements in the box. Each element must be in exactly 1 box. With `--shell`, a box selects surfaces. |
+| `--volume NAME=box:...` | Repeatable. An element set of the elements of the bodies that lie fully inside the box, within 1e-6 of the diagonal of the part. Each element must be in exactly 1 box. With `--shell`, a box selects surfaces. |
 | `--refine NAME[,NAME]...=H` | Repeatable. Positive finite number H, below `--size`. Each `NAME` is the name of a `--face`. The elements at that set have the size H. The size grows to `--size` away from the set, by 0.3 for each unit of distance. Needs `--size`. Each name is used once. |
 | `--shell` | Off by default. Mesh the surfaces of the STEP file as `S6` shells. The file must have no volume. The mid-surface is the work of the chat (build123d). |
 
