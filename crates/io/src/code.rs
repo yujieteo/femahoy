@@ -1,4 +1,4 @@
-//! Stable diagnostic codes of the io crate. `docs/diagnostics.md` lists them.
+//! Diagnostic codes of the io crate.
 
 /// A `.msh` file has a syntax error.
 pub const MSH_SYNTAX: &str = "MSH001";

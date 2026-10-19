@@ -18,10 +18,6 @@
 
 <!-- Case id, value, reference, tolerance, pass or fail. Write "none" if no case applies. -->
 
-## Lines
-
-<!-- Crate: before -> after. -->
-
 ## Risks
 
 <!-- Open problems. Write "none" if there are none. -->

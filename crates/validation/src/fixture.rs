@@ -1,4 +1,4 @@
-//! The check file of a case: `validation/cases/<id>/check.toml` (see `SCHEMA.md`).
+//! The check file of a case: `validation/cases/<id>/check.toml` (see `docs/reference/check-toml.md`).
 
 use std::fmt;
 use std::path::{Path, PathBuf};

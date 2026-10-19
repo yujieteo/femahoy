@@ -39,7 +39,7 @@ pub const RUN_MARKER: &str = ".fh-run";
 /// Name of the `ccx` job in `<run-dir>/ccx`.
 const JOB: &str = "job";
 
-/// Stable diagnostic codes of a run. `docs/diagnostics.md` lists them.
+/// Diagnostic codes of a run.
 pub mod code {
     pub const CANCELLED: &str = "API001";
     pub const RUN_FOLDER: &str = "API002";
@@ -345,7 +345,7 @@ impl Ccx {
             Error::new(
                 code::START_FAILED,
                 format!(
-                    "cannot start {}: {e}. Install CalculiX (docs/ccx.md) and put ccx on PATH, \
+                    "cannot start {}: {e}. Install CalculiX (README.md) and put ccx on PATH, \
                      or set FH_CCX",
                     self.exe.display()
                 ),

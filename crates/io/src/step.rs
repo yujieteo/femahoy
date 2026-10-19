@@ -1,5 +1,5 @@
 //! STEP unit scan. It reads the length-unit record of a STEP file as text.
-//! Decisions D-12 and D-13, see DESIGN.md: gmsh does the geometry, `fh` checks the unit.
+//! Decisions D-02 and D-18, see DESIGN.md: gmsh does the geometry, `fh` checks the unit.
 
 use std::fmt;
 

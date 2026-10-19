@@ -188,7 +188,7 @@ fn no_ccx_is_a_clear_error() {
     let dir = scratch("none");
     let err = run(&tet(&dir, ""), &dir.join("run"), &dir.join("no-ccx")).unwrap_err();
     assert!(
-        err.contains("cannot start") && err.contains("FH_CCX") && err.contains("docs/ccx.md"),
+        err.contains("cannot start") && err.contains("FH_CCX") && err.contains("README.md"),
         "{err}"
     );
 }

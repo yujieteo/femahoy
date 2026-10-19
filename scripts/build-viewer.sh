@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the wasm viewer that `fh serve` serves (crates/viewer, docs/viewer.md).
+# Build the wasm viewer that `fh serve` serves (crates/viewer).
 #
 # Needs the Rust target wasm32-unknown-unknown and wasm-bindgen-cli at the version of
 # wasm-bindgen in Cargo.lock:

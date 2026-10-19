@@ -139,8 +139,8 @@ details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: 
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 <script type="module" nonce="NONCE">
-// The page of fh serve: the chat with the agent (docs/chat.md), the list of the runs and
-// the wasm viewer (docs/viewer.md). The token comes from the page address and goes only
+// The page of fh serve: the chat with the agent, the list of the runs and
+// the wasm viewer. The token comes from the page address and goes only
 // in the Authorization header of each request to this daemon.
 const query = new URLSearchParams(location.search);
 const token = query.get("token") || "";

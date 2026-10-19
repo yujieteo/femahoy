@@ -127,7 +127,7 @@ fn without_ccx_validate_stops_and_tells_how_to_install_it() {
     let (stdout, stderr) = (text(out.stdout), text(out.stderr));
     assert_eq!(out.status.code(), Some(1), "{stdout}{stderr}");
     assert!(stderr.contains("cannot start ccx"), "{stderr}");
-    assert!(stderr.contains("docs/ccx.md"), "{stderr}");
+    assert!(stderr.contains("README.md"), "{stderr}");
     assert!(!stdout.contains("pass"), "{stdout}");
 }
 

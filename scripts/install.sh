@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install femahoy from this repository: build `fh` and the wasm viewer, and copy them to one
-# folder. Each solve needs CalculiX (`ccx`), see docs/ccx.md.
+# folder. Each solve needs CalculiX (`ccx`), see README.md.
 # Make the Python environment of the CAD step with uv.
 #
 #   scripts/install.sh [--prefix DIR] [--venv DIR]
@@ -100,7 +100,7 @@ echo "install: build fh (release)"
 cargo build --release --locked --bin fh
 echo "install: build the wasm viewer"
 scripts/build-viewer.sh "$target/release/viewer"
-# The tested version of docs/cad-recipe.md.
+# The tested version of build123d.
 echo "install: make the Python environment with build123d in $venv"
 uv venv --quiet --allow-existing -p 3.12 "$venv"
 uv pip install --quiet -p "$venv/bin/python" build123d==0.13.0
@@ -116,10 +116,8 @@ put() {
 update=no
 if [ -e "$prefix/fh" ]; then update=yes; fi
 mkdir -p "$prefix/viewer"
-exe=
-if [[ $(uname -s) == MINGW* || $(uname -s) == MSYS* || $(uname -s) == CYGWIN* ]]; then exe=.exe; fi
-put "$target/release/fh$exe" "$prefix/fh$exe" 755
-rm -f "$prefix/fh-solve$exe" "$prefix/fh-solve-ccx$exe"
+put "$target/release/fh" "$prefix/fh" 755
+rm -f "$prefix/fh-solve" "$prefix/fh-solve-ccx"
 for file in fh_viewer.js fh_viewer_bg.wasm; do
   put "$target/release/viewer/$file" "$prefix/viewer/$file" 644
 done
@@ -129,7 +127,7 @@ put "$target/release/fh-python" "$prefix/fh-python" 755
 
 if [ $update = yes ]; then verb=updated; else verb=installed; fi
 echo "install: $verb in $prefix:"
-for file in "fh$exe" fh-python viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
+for file in fh fh-python viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
   echo "  $prefix/$file"
 done
 echo "install: fh-python runs the Python of $venv, with build123d: fh-python part.py"
@@ -137,7 +135,7 @@ if [ $update = yes ]; then
   echo "install: if a daemon runs, it keeps the earlier fh until it stops. Stop it with: fh serve --stop"
 fi
 if ! command -v "${FH_CCX:-ccx}" >/dev/null 2>&1; then
-  echo "install: ccx (CalculiX) is not installed. Each solve needs it: apt install calculix-ccx (Debian, Ubuntu), or see docs/ccx.md"
+  echo "install: ccx (CalculiX) is not installed. Each solve needs it: apt install calculix-ccx (Debian, Ubuntu), or see README.md"
 fi
 if ! command -v gmsh >/dev/null 2>&1 && [ ! -x /Applications/Gmsh.app/Contents/MacOS/gmsh ]; then
   echo "install: gmsh is not installed. fh mesh needs it for a STEP file: brew install gmsh (macOS), or see https://gmsh.info"

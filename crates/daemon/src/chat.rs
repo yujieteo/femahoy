@@ -1,4 +1,4 @@
-//! The chat of the page (roadmap item M4, DESIGN.md section 5.1): the daemon runs the agent
+//! The chat of the page (DESIGN.md section 4.3): the daemon runs the agent
 //! as a Claude Code process in headless mode, with the login of the person (connection
 //! path 1). femahoy has no agent loop of its own. The daemon reads the JSON event stream of
 //! the agent (`--output-format stream-json`) and keeps each action as a chat entry: the

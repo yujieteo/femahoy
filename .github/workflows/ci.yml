@@ -16,9 +16,9 @@ jobs:
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
-      # fh starts CalculiX (ccx) as the solver (docs/ccx.md). Only this job installs
+      # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
-      # The validation cases are tested with ccx 2.23 (docs/ccx.md). The Ubuntu package is older,
+      # The validation cases are tested with ccx 2.23 (README.md). The Ubuntu package is older,
       # so ccx comes from nixpkgs.
       - uses: cachix/install-nix-action@v31
       - name: Install ccx
@@ -31,7 +31,7 @@ jobs:
         env:
           FH_REQUIRE_CCX: "1"
 
-  # aarch64 build and tests (D-07, P1). The check job keeps fmt, clippy and the tests. This
+  # aarch64 build and tests (D-07). The check job keeps fmt, clippy and the tests. This
   # job has no ccx, so the tests that solve through the real ccx skip here.
   test-aarch64:
     runs-on: macos-14

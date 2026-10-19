@@ -19,7 +19,7 @@ fn solver_ready() -> bool {
         Err(e) => {
             eprintln!(
                 "fh validate: cannot start ccx ({}): {e}. fh needs CalculiX: install it as \
-                 docs/ccx.md tells, then put ccx on PATH or set FH_CCX",
+                 README.md tells, then put ccx on PATH or set FH_CCX",
                 exe.display()
             );
             false
