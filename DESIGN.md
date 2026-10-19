@@ -175,7 +175,7 @@ VTU needs no large library, and ParaView opens it. HDF5 and Exodus need C librar
 One model format keeps the parser small. Reverse if a real run shows that a second format is needed.
 
 ### D-06 Target machine
-16 GB of RAM, 4 to 6 cores and a slow disk are the machine of the expected user. The plate on a 10 mm mesh needs 7.5 GiB, and a 16 GB laptop solves it (`validation/cases/plate-on-edge/derivation.md`).
+16 GB of RAM, 4 to 6 cores and a slow disk are the machine of the expected user. The plate on a 10 mm mesh needs 7.5 GiB, and a 16 GB laptop solves it.
 
 ### D-07 Code builds and passes on aarch64
 The captain tests on an Apple Silicon MacBook.
