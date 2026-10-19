@@ -125,11 +125,16 @@ impl Server {
                 }
                 let (ctx, active) = (ctx.clone(), active.clone());
                 std::thread::spawn(move || {
-                    let answer = read_request(&mut stream).and_then(|req| {
-                        authorize(&req, port, &ctx.token)?;
-                        route(&ctx, &req)
-                    });
-                    let _ = respond(&mut stream, answer);
+                    // A browser opens spare connections. One that sends no byte before the
+                    // timeout, or closes, gets no answer: the browser can send its next request
+                    // on it and read a 400 that answers nothing.
+                    if matches!(stream.peek(&mut [0]), Ok(1)) {
+                        let answer = read_request(&mut stream).and_then(|req| {
+                            authorize(&req, port, &ctx.token)?;
+                            route(&ctx, &req)
+                        });
+                        let _ = respond(&mut stream, answer);
+                    }
                     active.fetch_sub(1, Ordering::SeqCst);
                 });
             }

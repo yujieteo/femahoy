@@ -349,3 +349,25 @@ fn two_daemons_use_one_state_folder() {
     let chat = second.get("/api/v1/chat?since=0", &[("Authorization", &bearer)]);
     assert!(!chat.text().contains("show"), "{}", chat.text());
 }
+
+/// A browser opens spare connections and can send its next request on one of them. A connection
+/// that sends no byte before the timeout gets no answer, because a 400 on it can be the
+/// answer to that next request. A request that is really bad still gets a 400.
+#[test]
+fn a_connection_that_sends_nothing_gets_no_answer() {
+    let lab = Lab::new("silent");
+    let port = lab.daemon.port();
+    let mut idle = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+    idle.set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let mut bytes = Vec::new();
+    idle.read_to_end(&mut bytes).unwrap();
+    assert!(bytes.is_empty(), "{}", String::from_utf8_lossy(&bytes));
+
+    let mut bad = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+    bad.write_all(b"BAD\r\n\r\n").unwrap();
+    let mut bytes = Vec::new();
+    bad.read_to_end(&mut bytes).unwrap();
+    let head = String::from_utf8_lossy(&bytes);
+    assert!(head.starts_with("HTTP/1.1 400 "), "{head}");
+}
