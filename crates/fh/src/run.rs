@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use fh::ccx::{CancelToken, Ccx};
+use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 
 const USAGE: &str = "usage: fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB]";
@@ -102,11 +102,6 @@ fn fail(code: u8, message: &str) -> ExitCode {
     ExitCode::from(code)
 }
 
-/// The number of result frames that `results.pvd` lists.
-fn frames(out: &Path) -> usize {
-    fs::read_to_string(out.join("results.pvd")).map_or(0, |t| t.matches("<DataSet").count())
-}
-
 /// Print the wall time and the result folder of a run that succeeded.
 fn report(run: &str, out: &Path, seconds: f64) {
     println!("fh run: {run} succeeded in {seconds:.2} s");
@@ -116,7 +111,7 @@ fn report(run: &str, out: &Path, seconds: f64) {
         out.display(),
         out.display()
     );
-    if frames(out) == 0 {
+    if result_frames(out) == 0 {
         println!(
             "fh run: the page has no field to show. Add *NODE FILE or *EL FILE to a *STEP to \
              write a field"

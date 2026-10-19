@@ -72,4 +72,7 @@ ORIGIN, 3, 3, 0.0
 NALL, 60
 *NODE PRINT, NSET=CORNER
 U
+** The full displacement goes to the result file, so that a person can read it in the viewer.
+*NODE FILE
+U
 *END STEP

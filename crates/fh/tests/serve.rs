@@ -5,9 +5,13 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::Duration;
 
 use fh::daemon::{new_preview, new_run, Daemon, Options};
+
+mod common;
+use common::{ccx_solver, p, root};
 
 struct Lab {
     dir: PathBuf,
@@ -293,4 +297,77 @@ fn the_page_reads_the_run_and_preview_folders() {
     assert!(run.contains("write a relative path"), "{run}");
     let preview = new_preview(&state, &file, "x").unwrap_err();
     assert!(preview.contains("write a relative path"), "{preview}");
+}
+
+/// The solve of a case that asks for no field (no `*NODE FILE`, no `*EL FILE`) ends with code 0
+/// and a `results.pvd` with no step file. The viewer shows such a run as an error, so the list
+/// leaves it out.
+#[test]
+fn a_run_that_wrote_no_field_is_not_listed() {
+    let Some(solver) = ccx_solver() else { return };
+    let lab = Lab::new("no-field");
+    let input = root().join("validation/cases/bar-pressure/job.inp");
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&input)])
+        .env("FH_STATE", lab.state())
+        .env("FH_CCX", &solver)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    let pvd = fs::read_to_string(lab.state().join("runs/run-000001/out/results.pvd")).unwrap();
+    assert!(!pvd.contains("<DataSet"), "the run wrote a field: {pvd}");
+    let bearer = lab.bearer();
+    let list = lab
+        .get("/api/v1/runs", &[("Authorization", &bearer)])
+        .text();
+    assert_eq!(list.trim(), "", "the list holds the run: {list}");
+}
+
+/// Two daemons use one state folder. The start of the second daemon keeps the preview that the
+/// folder holds, and the chat of the second daemon does not show it as new.
+#[test]
+fn two_daemons_use_one_state_folder() {
+    let first = Lab::new("two");
+    let state = first.state();
+    let file = first.dir.join("project/job.inp");
+    fs::write(&file, "*NODE\n").unwrap();
+    let preview = new_preview(&state, &file, "job").unwrap();
+
+    let daemon = Daemon::start_with_options(&state, Options::default());
+    let second = Lab {
+        dir: first.dir.clone(),
+        daemon: daemon.expect("a second daemon starts"),
+    };
+    for lab in [&first, &second] {
+        let bearer = lab.bearer();
+        let auth = [("Authorization", bearer.as_str())];
+        let shown = lab.get(&format!("/api/v1/previews/{preview}"), &auth);
+        assert_eq!(shown.status, 200, "{}", shown.text());
+    }
+    // The second daemon started after the preview, so its chat does not show it as new.
+    let bearer = second.bearer();
+    let chat = second.get("/api/v1/chat?since=0", &[("Authorization", &bearer)]);
+    assert!(!chat.text().contains("show"), "{}", chat.text());
+}
+
+/// A browser opens spare connections and can send its next request on one of them. A connection
+/// that sends no byte before the timeout gets no answer, because a 400 on it can be the
+/// answer to that next request. A request that is really bad still gets a 400.
+#[test]
+fn a_connection_that_sends_nothing_gets_no_answer() {
+    let lab = Lab::new("silent");
+    let port = lab.daemon.port();
+    let mut idle = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+    idle.set_read_timeout(Some(Duration::from_secs(20)))
+        .unwrap();
+    let mut bytes = Vec::new();
+    idle.read_to_end(&mut bytes).unwrap();
+    assert!(bytes.is_empty(), "{}", String::from_utf8_lossy(&bytes));
+
+    let mut bad = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
+    bad.write_all(b"BAD\r\n\r\n").unwrap();
+    let mut bytes = Vec::new();
+    bad.read_to_end(&mut bytes).unwrap();
+    let head = String::from_utf8_lossy(&bytes);
+    assert!(head.starts_with("HTTP/1.1 400 "), "{head}");
 }

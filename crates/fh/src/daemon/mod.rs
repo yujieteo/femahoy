@@ -9,9 +9,8 @@
 //!   its actions as chat entries for the page (`chat`).
 //!
 //! The daemon starts no solver. `fh run` starts `ccx` through the `ccx` module (DESIGN.md
-//! section 6), and a run does not depend on the daemon.
-//!
-//! One daemon at a time uses a state folder. A lock file makes this sure.
+//! section 6), and a run does not depend on the daemon. The daemon changes no file of the
+//! state folder, so any number of daemons can use one state folder.
 
 mod browser;
 mod chat;
@@ -47,16 +46,13 @@ pub struct Daemon {
     chat: Arc<chat::Chat>,
     server: http::Server,
     token: String,
-    /// The lock of the state folder, free when the daemon ends.
-    _lock: File,
 }
 
 impl Daemon {
-    /// Lock the state folder, make a random token and listen on 127.0.0.1 at any free port.
+    /// Make a random token and listen on 127.0.0.1 at any free port.
     /// `options.viewer` is the folder of the wasm viewer (see `fh serve`).
     pub fn start_with_options(state_dir: &Path, options: Options) -> Result<Daemon, String> {
-        let (store, lock) = store::Store::open(state_dir)?;
-        let store = Arc::new(store);
+        let store = Arc::new(store::Store::open(state_dir)?);
         let token = random_hex(32)?;
         let chat = chat::Chat::new(store.clone(), state_dir.to_owned(), token.clone());
         let server = http::Server::start(store, chat.clone(), token.clone(), options.viewer)
@@ -65,7 +61,6 @@ impl Daemon {
             chat,
             server,
             token,
-            _lock: lock,
         })
     }
 
