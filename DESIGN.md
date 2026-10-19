@@ -133,7 +133,6 @@ Scope: CalculiX reads and checks the input, and it takes every keyword that it h
 
 - Keyword names and meanings match Abaqus for the supported subset.
 - CalculiX defines the meaning of each keyword. The small reader gives no error for a keyword that it skips.
-- `docs/compatibility.md` lists every difference. A test covers each difference.
 - Tests use our own `.inp` files. No Abaqus manual files go in the repo (section 10.1).
 
 ---
@@ -402,7 +401,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 ### D-19 C3D10 is the default element
 - **Decided by:** the captain.
 - **Choice:** `C3D10` (tet10) is the element that `fh mesh` writes (2026-10-19). Before that, hex8 (`C3D8I`, `C3D8`) was allowed for extruded parts. The chat can write another element type in its CalculiX input, for example a shell (`S8R`), and the page shows it (this change).
-- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case (1 x 1 mm section, 1 element through it), plain hex8 (`C3D8`, B-bar) gave 0.35 to 2.07 times the beam deflection. `docs/compatibility.md` at main commit `50dded8` has the data. 1 element type for the mesher keeps `fh mesh` and the cases small.
+- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case (1 x 1 mm section, 1 element through it), plain hex8 (`C3D8`, B-bar) gave 0.35 to 2.07 times the beam deflection. The file `docs/compatibility.md` at main commit `50dded8` has the data (deleted later). 1 element type for the mesher keeps `fh mesh` and the cases small.
 - **Rejected:** hex8 as the default element, and hex8 for extruded parts.
 - **Reverse if:** the workflow benchmark records (B1) show that typical tet10 models do not fit D-06.
 - **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`). The `.msh` reader accepts only `C3D10`.
