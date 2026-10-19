@@ -75,7 +75,7 @@ def main():
         assert not state.exists(), "use a new proof folder"
         try:
             run(f"run-{size}", [fh, "run", case, "--size", size, "--state", state, "--no-open"])
-            outputs = list(state.glob("projects/*/runs/*/out/step-1.vtu"))
+            outputs = list(state.glob("runs/*/out/step-1.vtu"))
             assert len(outputs) == 1
             out = outputs[0].parent
             vtu = arrays(outputs[0])

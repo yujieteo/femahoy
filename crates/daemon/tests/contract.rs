@@ -1,9 +1,7 @@
 //! The D1 exit checks of the run contract, with a shell script as a protocol v2 solver.
 //!
-//! Browser close, CLI reconnect, a duplicate submission, cancel and a daemon restart each
-//! keep one correct run record. A foreign browser `Origin` fails. An authorized CLI passes.
-
-#![cfg(unix)]
+//! Browser close, cancel, a daemon stop and a daemon failure each keep one correct run
+//! record. A foreign browser `Origin` fails. An authorized CLI passes.
 
 use std::fs;
 use std::io::Write;
@@ -13,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{Client, Config, Daemon, Options, Outcome, RunRecord, RunState};
+use fh_daemon::{Client, Config, Daemon, Options, RunRecord, RunState};
 use fh_solver_api::SubprocessSolver;
 
 /// A solver that runs until a cancel or the end of stdin when the input has the word
@@ -70,7 +68,6 @@ impl Lab {
         Config {
             state_dir: self.state.clone(),
             solver: SubprocessSolver::new(&self.solver),
-            solver_dirs: Vec::new(),
         }
     }
 
@@ -78,9 +75,10 @@ impl Lab {
         Daemon::start_with_options(self.config(), 0, Options::default()).unwrap()
     }
 
-    fn input(&self, name: &str, text: &str) -> String {
-        fs::write(self.root.join(name), text).unwrap();
-        name.to_owned()
+    fn input(&self, name: &str, text: &str) -> PathBuf {
+        let path = self.root.join(name);
+        fs::write(&path, text).unwrap();
+        path
     }
 
     fn open_gate(&self) {
@@ -96,16 +94,14 @@ impl Lab {
     }
 }
 
-fn wait_for(c: &Client, project: &str, run: &str, want: fn(RunState) -> bool) -> RunRecord {
+fn wait_for(c: &Client, run: &str, want: fn(RunState) -> bool) -> RunRecord {
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut since = 0;
     loop {
-        let events = c
-            .events(project, run, since, Duration::from_millis(500))
-            .unwrap();
+        let events = c.events(run, since, Duration::from_millis(500)).unwrap();
         since = events.last;
         if want(events.state) {
-            return c.record(project, run).unwrap();
+            return c.record(run).unwrap();
         }
         assert!(
             Instant::now() < deadline,
@@ -127,14 +123,12 @@ fn wait_file(lab: &Lab, name: &str) -> String {
 }
 
 /// Send a request and close the connection before the answer.
-fn send_and_close(port: u16, token: &str, origin: Option<&str>, head: &str, body: &str) {
+fn send_and_close(port: u16, token: &str, origin: &str, head: &str) {
     let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    let origin = origin.map_or(String::new(), |o| format!("Origin: {o}\r\n"));
     write!(
         s,
-        "{head} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\n{origin}\
-         Content-Length: {}\r\n\r\n{body}",
-        body.len()
+        "{head} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAuthorization: Bearer {token}\r\n\
+         Origin: {origin}\r\nContent-Length: 0\r\n\r\n"
     )
     .unwrap();
 }
@@ -145,195 +139,26 @@ fn an_authorized_cli_passes_and_a_foreign_origin_fails() {
     let daemon = lab.start();
     let cli = Client::discover(&lab.state).unwrap();
     assert_eq!(cli.port(), daemon.port());
-    assert!(cli.status().is_ok());
-    let project = cli.register(&lab.root).unwrap();
-    assert_eq!(cli.register(&lab.root).unwrap(), project);
     let input = lab.input("a.inp", "*NODE\n");
 
     let foreign = daemon.client().with_origin("http://evil.example");
-    for result in [
-        foreign.status().map(|_| ()),
-        foreign.submit(&project, "evil-1", &input).map(|_| ()),
-        foreign.runs(&project).map(|_| ()),
-    ] {
-        let e = result.unwrap_err();
-        assert_eq!((e.status, e.code.as_str()), (403, "origin.refused"));
-    }
-    let null = daemon.client().with_origin("null").status().unwrap_err();
-    assert_eq!(null.code, "origin.refused");
-    let no_token = Client::new(daemon.port(), "").status().unwrap_err();
-    assert_eq!(
-        (no_token.status, no_token.code.as_str()),
-        (401, "token.missing")
-    );
-    let bad_token = Client::new(daemon.port(), "0".repeat(64))
-        .status()
-        .unwrap_err();
-    assert_eq!(bad_token.code, "token.invalid");
+    let e = foreign.submit(&input).unwrap_err();
+    assert_eq!((e.status, e.code.as_str()), (403, "origin.refused"));
     assert!(
-        cli.runs(&project).unwrap().is_empty(),
+        cli.runs().unwrap().is_empty(),
         "a refused submit made a run"
     );
 
     let own = daemon
         .client()
         .with_origin(&format!("http://127.0.0.1:{}", daemon.port()));
-    let ack = own.submit(&project, "page-1", &input).unwrap();
-    assert_eq!(ack.outcome, Outcome::Created);
-    let ack = cli.submit(&project, "cli-1", &input).unwrap();
-    assert_eq!(
-        (ack.outcome, ack.run.as_str()),
-        (Outcome::Existing, "run-000001")
-    );
+    let run = own.submit(&input).unwrap().run;
     lab.open_gate();
-    let record = wait_for(&cli, &project, &ack.run, RunState::is_final);
+    let record = wait_for(&cli, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Succeeded);
     // Only the user can read the token.
     let info = fs::metadata(lab.state.join(fh_daemon::INFO_FILE)).unwrap();
     assert_eq!(info.permissions().mode() & 0o777, 0o600);
-}
-
-#[test]
-fn a_submit_can_name_only_a_known_solver() {
-    let lab = Lab::new("named-solver");
-    let daemon = Daemon::start_with_options(lab.config(), 0, Options::default()).unwrap();
-    let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let input = lab.input("a.inp", "*NODE\n");
-    lab.open_gate();
-
-    let e = c
-        .submit_with_solver(&project, "named-0", &input, "abaqus")
-        .unwrap_err();
-    assert_eq!((e.status, e.code.as_str()), (400, "solver.unknown"));
-    let e = c
-        .submit_with_solver(&project, "named-1", &input, "fh-solve")
-        .unwrap_err();
-    assert_eq!((e.status, e.code.as_str()), (400, "solver.unknown"));
-
-    // fh-solve-ccx is the solver of the daemon.
-    let ack = c
-        .submit_with_solver(&project, "named-2", &input, "fh-solve-ccx")
-        .unwrap();
-    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
-    assert_eq!(
-        (record.state, record.solver.as_str()),
-        (RunState::Succeeded, "")
-    );
-    assert_eq!(lab.starts(), 1);
-}
-
-#[test]
-fn a_duplicate_submission_keeps_one_run() {
-    let lab = Lab::new("duplicate");
-    let daemon = lab.start();
-    let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let input = lab.input("a.inp", "*NODE\n");
-
-    let first = c.submit(&project, "dup-1", &input).unwrap();
-    assert_eq!(
-        (first.outcome, first.state),
-        (Outcome::Created, RunState::Queued)
-    );
-    let again = c.submit(&project, "dup-1", &input).unwrap();
-    assert_eq!(
-        (again.outcome, again.run.as_str()),
-        (Outcome::Replay, "run-000001")
-    );
-    let other = c.submit(&project, "dup-2", &input).unwrap();
-    assert_eq!(
-        (other.outcome, other.run.as_str()),
-        (Outcome::Existing, "run-000001")
-    );
-    let reused = c.submit(&project, "dup-1", "b.inp").unwrap_err();
-    assert_eq!(
-        (reused.status, reused.code.as_str()),
-        (409, "request.reused")
-    );
-
-    lab.open_gate();
-    wait_for(&c, &project, &first.run, RunState::is_final);
-    let late = c.submit(&project, "dup-1", &input).unwrap();
-    assert_eq!(
-        (late.outcome, late.state),
-        (Outcome::Replay, RunState::Succeeded)
-    );
-    assert_eq!(
-        c.runs(&project).unwrap(),
-        [("run-000001".to_owned(), RunState::Succeeded)]
-    );
-    assert_eq!(lab.starts(), 1, "the solver ran more than once");
-
-    // A new submit of the same file after the end is a new run of the same revision.
-    let next = c.submit(&project, "dup-3", &input).unwrap();
-    assert_eq!(
-        (next.outcome, next.run.as_str()),
-        (Outcome::Created, "run-000002")
-    );
-    let record = wait_for(&c, &project, &next.run, RunState::is_final);
-    assert_eq!(
-        record.revision,
-        c.record(&project, "run-000001").unwrap().revision
-    );
-}
-
-#[test]
-fn a_cli_that_reconnects_gets_the_same_run() {
-    let lab = Lab::new("reconnect");
-    let daemon = lab.start();
-    let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let input = lab.input("a.inp", "*NODE\n");
-
-    // The connection breaks before the answer of the submit.
-    send_and_close(
-        daemon.port(),
-        daemon.token(),
-        None,
-        &format!("POST /api/v1/projects/{project}/runs"),
-        &format!("request=lost-1\ninput={input}\n"),
-    );
-    let deadline = Instant::now() + Duration::from_secs(30);
-    while c.runs(&project).unwrap().is_empty() {
-        assert!(
-            Instant::now() < deadline,
-            "the daemon did not take the submit"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    // The CLI connects again and sends the same command.
-    let ack = Client::discover(&lab.state)
-        .unwrap()
-        .submit(&project, "lost-1", &input)
-        .unwrap();
-    assert_eq!(
-        (ack.outcome, ack.run.as_str()),
-        (Outcome::Replay, "run-000001")
-    );
-
-    // A client that follows the events over many connections sees each event once.
-    lab.open_gate();
-    let mut seen = Vec::new();
-    let mut since = 0;
-    loop {
-        let events = Client::discover(&lab.state)
-            .unwrap()
-            .events(&project, &ack.run, since, Duration::from_secs(5))
-            .unwrap();
-        assert_eq!(events.dropped, 0);
-        seen.extend(events.items.iter().map(|e| e.seq));
-        since = events.last;
-        if events.state.is_final() && events.items.is_empty() {
-            break;
-        }
-    }
-    assert_eq!(seen, (1..=since).collect::<Vec<_>>());
-    assert_eq!(c.runs(&project).unwrap().len(), 1);
-    assert_eq!(
-        c.record(&project, &ack.run).unwrap().state,
-        RunState::Succeeded
-    );
 }
 
 #[test]
@@ -342,29 +167,33 @@ fn a_closed_browser_does_not_stop_the_run() {
     let daemon = lab.start();
     let page = format!("http://127.0.0.1:{}", daemon.port());
     let browser = daemon.client().with_origin(&page);
-    let project = browser.register(&lab.root).unwrap();
     let input = lab.input("a.inp", "*NODE\n");
-    let ack = browser.submit(&project, "page-1", &input).unwrap();
-    wait_for(&browser, &project, &ack.run, |s| s == RunState::Running);
+    let run = browser.submit(&input).unwrap().run;
+    wait_for(&browser, &run, |s| s == RunState::Running);
 
     // The browser waits for events, and then the tab closes.
-    send_and_close(
-        daemon.port(),
-        daemon.token(),
-        Some(&page),
-        &format!(
-            "GET /api/v1/projects/{project}/runs/{}/events?since=100&wait_ms=20000",
-            ack.run
-        ),
-        "",
-    );
+    let events = format!("GET /api/v1/runs/{run}/events?since=100&wait_ms=20000");
+    send_and_close(daemon.port(), daemon.token(), &page, &events);
     std::thread::sleep(Duration::from_millis(100));
     lab.open_gate();
 
-    let cli = Client::discover(&lab.state).unwrap();
-    let record = wait_for(&cli, &project, &ack.run, RunState::is_final);
-    assert_eq!(record.state, RunState::Succeeded);
-    assert_eq!(cli.runs(&project).unwrap().len(), 1);
+    // A client that follows the events over many connections sees each event once.
+    let mut seen = Vec::new();
+    let mut since = 0;
+    loop {
+        let events = Client::discover(&lab.state)
+            .unwrap()
+            .events(&run, since, Duration::from_secs(5))
+            .unwrap();
+        assert_eq!(events.dropped, 0);
+        seen.extend(events.items.iter().map(|e| e.seq));
+        since = events.last;
+        if events.state.is_final() && events.items.is_empty() {
+            assert_eq!(events.state, RunState::Succeeded);
+            break;
+        }
+    }
+    assert_eq!(seen, (1..=since).collect::<Vec<_>>());
     assert_eq!(lab.starts(), 1);
 }
 
@@ -373,45 +202,22 @@ fn cancel_keeps_one_record() {
     let lab = Lab::new("cancel");
     let daemon = lab.start();
     let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let slow = lab.input("slow.inp", "** slow\n");
-    let queued = lab.input("b.inp", "*NODE\n");
-
-    let run = c.submit(&project, "run-1", &slow).unwrap().run;
-    let waiting = c.submit(&project, "run-2", &queued).unwrap().run;
-    wait_for(&c, &project, &run, |s| s == RunState::Running);
-    assert_eq!(
-        c.record(&project, &waiting).unwrap().state,
-        RunState::Queued
-    );
+    let run = c.submit(&lab.input("slow.inp", "** slow\n")).unwrap().run;
+    let waiting = c.submit(&lab.input("b.inp", "*NODE\n")).unwrap().run;
+    wait_for(&c, &run, |s| s == RunState::Running);
+    assert_eq!(c.record(&waiting).unwrap().state, RunState::Queued);
 
     // A queued run ends at once and never starts.
-    let ack = c.cancel(&project, &waiting, "cancel-2").unwrap();
-    assert_eq!(
-        (ack.outcome, ack.state),
-        (Outcome::CancelRequested, RunState::Cancelled)
-    );
-
-    let ack = c.cancel(&project, &run, "cancel-1").unwrap();
-    assert_eq!(
-        (ack.outcome, ack.state),
-        (Outcome::CancelRequested, RunState::Cancelling)
-    );
-    let again = c.cancel(&project, &run, "cancel-1").unwrap();
-    assert_eq!(again.outcome, Outcome::Replay);
-    let record = wait_for(&c, &project, &run, RunState::is_final);
+    assert_eq!(c.cancel(&waiting).unwrap().state, RunState::Cancelled);
+    assert_eq!(c.cancel(&run).unwrap().state, RunState::Cancelling);
+    let record = wait_for(&c, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Cancelled);
     assert_eq!(wait_file(&lab, "solver.end"), "cancelled\n");
-    let late = c.cancel(&project, &run, "cancel-3").unwrap();
+    // A cancel of a final run changes nothing.
+    assert_eq!(c.cancel(&run).unwrap(), record);
+    assert_eq!(c.cancel("run-000009").unwrap_err().status, 404);
     assert_eq!(
-        (late.outcome, late.state),
-        (Outcome::AlreadyFinal, RunState::Cancelled)
-    );
-
-    let unknown = c.cancel(&project, "run-000009", "cancel-4").unwrap_err();
-    assert_eq!(unknown.status, 404);
-    assert_eq!(
-        c.runs(&project).unwrap(),
+        c.runs().unwrap(),
         [
             ("run-000001".to_owned(), RunState::Cancelled),
             ("run-000002".to_owned(), RunState::Cancelled),
@@ -423,51 +229,32 @@ fn cancel_keeps_one_record() {
     // The records stay after a restart.
     let daemon = lab.start();
     let c = daemon.client();
-    assert_eq!(c.record(&project, &run).unwrap(), record);
-    let events = c.events(&project, &run, 0, Duration::ZERO).unwrap();
+    assert_eq!(c.record(&run).unwrap(), record);
+    let events = c.events(&run, 0, Duration::ZERO).unwrap();
     let texts: Vec<&str> = events.items.iter().map(|e| e.text.as_str()).collect();
     assert_eq!(texts.first(), Some(&"state queued"));
     assert_eq!(texts.last(), Some(&"state cancelled"));
 }
 
 #[test]
-fn the_revision_is_fixed_at_submit() {
-    let lab = Lab::new("revision");
+fn a_run_solves_a_copy_of_its_input() {
+    let lab = Lab::new("copy");
     let daemon = lab.start();
     let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
     let input = lab.input("a.inp", "*NODE\n1, 0, 0, 0\n");
-    let first = c.submit(&project, "rev-1", &input).unwrap();
+    let first = c.submit(&input).unwrap().run;
     // The user changes the file while the run waits.
     lab.input("a.inp", "*NODE\n1, 9, 9, 9\n");
-    let second = c.submit(&project, "rev-2", &input).unwrap();
-    assert_eq!(second.outcome, Outcome::Created);
-    let (r1, r2) = (
-        c.record(&project, &first.run).unwrap(),
-        c.record(&project, &second.run).unwrap(),
-    );
-    assert_ne!(r1.revision, r2.revision);
-    let fixed = lab
-        .state
-        .join("projects")
-        .join(&project)
-        .join("revisions")
-        .join(&r1.revision)
-        .join("input.inp");
-    assert_eq!(fs::read_to_string(&fixed).unwrap(), "*NODE\n1, 0, 0, 0\n");
-    assert!(fs::metadata(&fixed).unwrap().permissions().readonly());
-    // The revision ID is the FNV-1a hash of the bytes, as `source_hash` of `fh.run`.
-    let hash = b"*NODE\n1, 0, 0, 0\n"
-        .iter()
-        .fold(0xcbf2_9ce4_8422_2325u64, |h, &b| {
-            (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-        });
-    assert_eq!(r1.revision, format!("rev-{hash:016x}"));
+    let copy = lab.state.join("runs").join(&first).join("input.inp");
+    assert_eq!(fs::read_to_string(&copy).unwrap(), "*NODE\n1, 0, 0, 0\n");
+    assert!(fs::metadata(&copy).unwrap().permissions().readonly());
+    let record = c.record(&first).unwrap();
+    assert_eq!(record.input, input.to_str().unwrap());
 
-    let outside = c.submit(&project, "rev-3", "../solver.sh").unwrap_err();
-    assert_eq!(outside.code, "input.outside");
+    let relative = c.submit(Path::new("a.inp")).unwrap_err();
+    assert_eq!(relative.code, "input.invalid");
     lab.open_gate();
-    wait_for(&c, &project, &second.run, RunState::is_final);
+    wait_for(&c, &first, RunState::is_final);
 }
 
 #[test]
@@ -475,25 +262,17 @@ fn the_event_log_and_queue_are_bounded() {
     let lab = Lab::new("bounded");
     let daemon = lab.start();
     let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let input = lab.input("a.inp", "** chatty\n");
     lab.open_gate();
-    let run = c.submit(&project, "chatty-1", &input).unwrap().run;
-    let record = wait_for(&c, &project, &run, RunState::is_final);
+    let run = c.submit(&lab.input("a.inp", "** chatty\n")).unwrap().run;
+    let record = wait_for(&c, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Succeeded, "{}", record.message);
-    let events = c.events(&project, &run, 0, Duration::ZERO).unwrap();
+    let events = c.events(&run, 0, Duration::ZERO).unwrap();
     assert!(events.dropped > 0 && events.last > fh_daemon::EVENT_QUEUE as u64);
     assert!(events
         .items
         .iter()
         .all(|e| e.text.len() <= fh_daemon::EVENT_TEXT));
-    let log = lab
-        .state
-        .join("projects")
-        .join(&project)
-        .join("runs")
-        .join(&run)
-        .join("events.log");
+    let log = lab.state.join("runs").join(&run).join("events.log");
     let size = fs::metadata(&log).unwrap().len();
     assert!(
         size <= fh_daemon::EVENT_LOG + 4096,
@@ -515,16 +294,13 @@ fn a_second_daemon_cannot_use_the_same_state() {
 }
 
 #[test]
-fn a_stopped_daemon_leaves_one_interrupted_record() {
+fn a_stopped_daemon_leaves_interrupted_records() {
     let lab = Lab::new("stop");
     let daemon = lab.start();
     let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let slow = lab.input("slow.inp", "** slow\n");
-    let queued = lab.input("b.inp", "*NODE\n");
-    let run = c.submit(&project, "stop-1", &slow).unwrap().run;
-    let waiting = c.submit(&project, "stop-2", &queued).unwrap().run;
-    wait_for(&c, &project, &run, |s| s == RunState::Running);
+    let run = c.submit(&lab.input("slow.inp", "** slow\n")).unwrap().run;
+    let waiting = c.submit(&lab.input("b.inp", "*NODE\n")).unwrap().run;
+    wait_for(&c, &run, |s| s == RunState::Running);
     let old_token = daemon.token().to_owned();
     drop(daemon);
     assert_eq!(lab.file("solver.end").as_deref(), Some("cancelled\n"));
@@ -534,21 +310,16 @@ fn a_stopped_daemon_leaves_one_interrupted_record() {
     assert_eq!(stale.code, "token.invalid");
     let c = Client::discover(&lab.state).unwrap();
     assert_eq!(
-        c.runs(&project).unwrap(),
+        c.runs().unwrap(),
         [
-            (run.clone(), RunState::Interrupted),
-            (waiting, RunState::Interrupted),
+            (run, RunState::Interrupted),
+            (waiting, RunState::Interrupted)
         ]
-    );
-    let ack = c.submit(&project, "stop-1", &slow).unwrap();
-    assert_eq!(
-        (ack.outcome, ack.run, ack.state),
-        (Outcome::Replay, run, RunState::Interrupted)
     );
     assert_eq!(lab.starts(), 1);
 }
 
-/// The daemon of `a_failed_daemon_leaves_one_interrupted_record`, in a child process.
+/// The daemon of `a_failed_daemon_leaves_no_running_run`, in a child process.
 #[test]
 fn daemon_child() {
     let (Ok(state), Ok(solver)) = (
@@ -560,7 +331,6 @@ fn daemon_child() {
     let config = Config {
         state_dir: state.into(),
         solver: SubprocessSolver::new(solver),
-        solver_dirs: Vec::new(),
     };
     let _daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     loop {
@@ -569,7 +339,7 @@ fn daemon_child() {
 }
 
 #[test]
-fn a_failed_daemon_leaves_one_interrupted_record() {
+fn a_failed_daemon_leaves_no_running_run() {
     let lab = Lab::new("crash");
     let mut child = Command::new(std::env::current_exe().unwrap())
         .args([
@@ -595,10 +365,9 @@ fn a_failed_daemon_leaves_one_interrupted_record() {
         assert!(Instant::now() < deadline, "the child daemon did not start");
         std::thread::sleep(Duration::from_millis(20));
     };
-    let project = c.register(&lab.root).unwrap();
     let slow = lab.input("slow.inp", "** slow\n");
-    let run = c.submit(&project, "crash-1", &slow).unwrap().run;
-    wait_for(&c, &project, &run, |s| s == RunState::Running);
+    let run = c.submit(&slow).unwrap().run;
+    wait_for(&c, &run, |s| s == RunState::Running);
     let pid = wait_file(&lab, "solver.pid");
 
     // SIGKILL: the daemon cannot clean up.
@@ -621,30 +390,16 @@ fn a_failed_daemon_leaves_one_interrupted_record() {
         std::thread::sleep(Duration::from_millis(20));
     }
 
+    // The next daemon shows the run as interrupted, not as running.
     let daemon = lab.start();
     let c = daemon.client();
-    let record = c.record(&project, &run).unwrap();
-    assert_eq!(record.state, RunState::Interrupted);
-    assert!(record.finished_ms >= record.started_ms && record.started_ms > 0);
-    assert_eq!(
-        c.runs(&project).unwrap(),
-        [(run.clone(), RunState::Interrupted)]
-    );
-    let ack = c.submit(&project, "crash-1", &slow).unwrap();
-    assert_eq!(
-        (ack.outcome, ack.run.as_str()),
-        (Outcome::Replay, run.as_str())
-    );
-    let cancel = c.cancel(&project, &run, "crash-cancel").unwrap();
-    assert_eq!(cancel.outcome, Outcome::AlreadyFinal);
+    assert_eq!(c.record(&run).unwrap().state, RunState::Interrupted);
+    assert_eq!(c.runs().unwrap(), [(run.clone(), RunState::Interrupted)]);
     // The run counter goes on. No run ID is used twice.
-    let next = c.submit(&project, "crash-2", &slow).unwrap();
-    assert_eq!(
-        (next.outcome, next.run.as_str()),
-        (Outcome::Created, "run-000002")
-    );
-    c.cancel(&project, &next.run, "crash-cancel-2").unwrap();
-    wait_for(&c, &project, &next.run, RunState::is_final);
+    let next = c.submit(&slow).unwrap().run;
+    assert_eq!(next, "run-000002");
+    c.cancel(&next).unwrap();
+    wait_for(&c, &next, RunState::is_final);
     assert_eq!(lab.starts(), 2);
 }
 
@@ -658,13 +413,11 @@ fn the_last_event_of_a_failed_run_tells_why() {
     .unwrap();
     let daemon = lab.start();
     let c = daemon.client();
-    let project = c.register(&lab.root).unwrap();
-    let input = lab.input("a.inp", "*NODE\n");
-    let ack = c.submit(&project, "fail-1", &input).unwrap();
-    let record = wait_for(&c, &project, &ack.run, RunState::is_final);
+    let run = c.submit(&lab.input("a.inp", "*NODE\n")).unwrap().run;
+    let record = wait_for(&c, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Failed);
     assert!(record.message.contains("boom"), "{}", record.message);
-    let events = c.events(&project, &ack.run, 0, Duration::ZERO).unwrap();
+    let events = c.events(&run, 0, Duration::ZERO).unwrap();
     let last = events.items.last().map(|e| e.text.clone());
     assert_eq!(last, Some(format!("state failed: {}", record.message)));
 }

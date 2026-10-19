@@ -189,66 +189,63 @@ function el(tag, cls, text) {
 
 // The model view.
 let view = null;
-let shown = query.get("project") && query.get("run") ? [query.get("project"), query.get("run")] : null;
+let shown = query.get("run");
 
 // Show the results of a run, and keep the run in the page address for a reload.
-function openRun(project, run) {
-  shown = [project, run];
+function openRun(run) {
+  shown = run;
   select();
-  history.replaceState(null, "", "?" + new URLSearchParams({ token, project, run }));
-  if (view) view.open(project, run);
+  history.replaceState(null, "", "?" + new URLSearchParams({ token, run }));
+  if (view) view.open(run);
 }
 
 function select() {
-  runs.value = shown ? shown.join(" ") : "";
+  runs.value = shown || "";
   if (runs.selectedIndex < 0) runs.value = "";
 }
 
-// The name of each project: the last folder of its root.
+// The name of each run: the folder of its input file.
 const names = {};
 let listing = null;
 
 // The runs that succeeded, newest first, in the list at the top of the model view.
 async function listRuns() {
   const found = [];
-  for (const line of (await reply("/api/v1/projects")).items) {
-    const [project, root] = split(line);
-    const name = root.split(/[\\/]/).filter((p) => p).pop() || root;
-    names[project] = name;
-    for (const item of (await reply("/api/v1/projects/" + project + "/runs")).items.reverse()) {
-      const [run, state] = split(item);
-      if (state === "succeeded") found.push([project, run, name, root]);
-    }
+  for (const item of (await reply("/api/v1/runs")).items.reverse()) {
+    const [run, rest] = split(item);
+    const [state, input] = split(rest);
+    names[run] = input.split("/").slice(-2, -1)[0] || input;
+    if (state === "succeeded") found.push([run, input]);
   }
   const first = new Option(found.length ? "Open a run" : "No run has results", "");
   first.disabled = true;
   runs.replaceChildren(first);
-  for (const [project, run, name, root] of found) {
-    const o = new Option(name + " · " + run, project + " " + run);
-    o.title = root;
+  for (const [run, input] of found) {
+    const o = new Option(runLabel(run), run);
+    o.title = input;
     runs.add(o);
   }
   select();
 }
-runs.addEventListener("change", () => runs.value && openRun(...split(runs.value)));
+runs.addEventListener("change", () => runs.value && openRun(runs.value));
 
-// Read the list again, 1 time at once. Then each run on the page shows its project name.
+// Read the list again, 1 time at once. Then each run on the page shows its name.
 function relist() {
   listing ||= listRuns()
     .catch((e) => showError(e.message))
     .finally(() => {
       listing = null;
-      for (const e of document.querySelectorAll("[data-run]")) e.textContent = runLabel(e.dataset.project, e.dataset.run);
+      for (const e of document.querySelectorAll("[data-run]")) e.textContent = runLabel(e.dataset.run);
     });
 }
 
-// A run as `<project name> · <run>`, because each case folder has its own run-000001.
-const runLabel = (project, run) => (names[project] ? names[project] + " · " : "") + run;
+// A run as `<name> · <run>`.
+const runLabel = (run) => (names[run] ? names[run] + " · " : "") + run;
 
-function runName(project, run) {
-  const e = el("span", "", runLabel(project, run));
-  Object.assign(e.dataset, { project, run });
-  if (!(project in names)) relist();
+function runName(run) {
+  const e = el("span", "", runLabel(run));
+  e.dataset.run = run;
+  if (!(run in names)) relist();
   return e;
 }
 
@@ -263,7 +260,7 @@ async function startViewer() {
     msg.remove();
     // The canvas takes the focus when it starts. The person writes first.
     input.focus();
-    if (shown) view.open(...shown);
+    if (shown) view.open(shown);
   } catch (e) {
     msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }
@@ -303,14 +300,14 @@ function setRunning(on, fields = {}) {
   started = Number(fields.started_ms) || 0;
   tick();
   const solving = (fields.solving || "").split(" ");
-  const [project, run, state] = solving;
-  const step = Object.fromEntries(solving.slice(4).map((p) => p.split("=")));
+  const [run, state] = solving;
+  const step = Object.fromEntries(solving.slice(3).map((p) => p.split("=")));
   const text = step.phase
     ? step.phase + " " + Math.round(Number(step.fraction) * 100) + "%, step " + step.step
     : state;
   $("solve").hidden = !run;
-  // The progress first, because a long project name gets cut at the end.
-  if (run) $("solve").lastChild.replaceChildren(text + " · ", runName(project, run));
+  // The progress first, because a long name gets cut at the end.
+  if (run) $("solve").lastChild.replaceChildren(text + " · ", runName(run));
 }
 
 function status(id, text, title) {
@@ -337,15 +334,15 @@ function failure(title, text) {
 }
 
 // A failed solve, also in the status while the agent works.
-function failedRun(project, run, error) {
+function failedRun(run, error) {
   const p = el("p", "failed", "");
   const line = el("span", "", "");
-  line.append(runName(project, run), ": " + error.split("\n")[0]);
+  line.append(runName(run), ": " + error.split("\n")[0]);
   p.append(el("b", "", "Failed"), line);
   p.title = error;
   fails.push(p);
   work.append(p);
-  const title = ["The solve of ", runName(project, run), " failed"];
+  const title = ["The solve of ", runName(run), " failed"];
   return failure(title, error || "The run has no error message.");
 }
 
@@ -402,36 +399,30 @@ function entry(kind, text, fresh) {
       result(alone, kind, text);
       return alone;
     }
-    case "failed": {
-      const [project, tail] = split(text);
-      return failedRun(project, ...split(tail));
-    }
+    case "failed":
+      return failedRun(...split(text));
     case "error":
       rest();
       return failure("The agent failed", text);
     case "open": {
-      const [project, run] = split(text);
       const b = el("button", "open", "Show the results of ");
-      b.append(runName(project, run));
+      b.append(runName(text));
       b.type = "button";
-      b.title = "Project " + project;
-      b.addEventListener("click", () => openRun(project, run));
+      b.addEventListener("click", () => openRun(text));
       if (fresh) {
-        openRun(project, run);
+        openRun(text);
         listRuns().catch((e) => showError(e.message));
       }
       return b;
     }
     case "show": {
-      const [project, rest] = split(text);
-      const [revision, title] = split(rest);
+      const [preview, title] = split(text);
       const b = el("button", "open", "Show the supports and loads of " + title);
       b.type = "button";
-      b.title = "Project " + project;
       const open = () => {
         shown = null;
         select();
-        if (view) view.show(project, revision, title);
+        if (view) view.show(preview, title);
       };
       b.addEventListener("click", open);
       if (fresh) open();

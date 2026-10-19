@@ -37,8 +37,7 @@ pub fn script(path: &Path, text: &str) -> PathBuf {
 /// Else `None` with a message, and the test does not solve. With `FH_REQUIRE_CCX=1`, as in CI,
 /// a missing one fails the test.
 pub fn ccx_solver() -> Option<PathBuf> {
-    let solver = Path::new(env!("CARGO_BIN_EXE_fh"))
-        .with_file_name(format!("fh-solve-ccx{}", std::env::consts::EXE_SUFFIX));
+    let solver = Path::new(env!("CARGO_BIN_EXE_fh")).with_file_name("fh-solve-ccx");
     let ccx = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
     let found = solver.is_file() && Command::new(ccx).arg("-v").output().is_ok();
     if !found {

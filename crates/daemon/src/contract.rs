@@ -1,5 +1,5 @@
-//! The run contract, version 1: identifiers, run states, run records, command
-//! acknowledgements, events and the text form that the daemon and its clients share.
+//! The run contract, version 2: run IDs, run states, run records, events and the text form
+//! that the daemon and its clients share.
 //!
 //! # Text form
 //!
@@ -12,7 +12,7 @@ use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The version of the run contract. Each message has the field `contract`.
-pub const CONTRACT: &str = "1";
+pub const CONTRACT: &str = "2";
 
 /// An error of a command, with an HTTP status and a stable code.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,42 +113,14 @@ impl Message {
     }
 }
 
-/// A request ID that the client makes for each command: 1 to 64 letters, digits, `.`, `_`
-/// or `-`, with a letter or a digit first. A retry of the command keeps the ID.
-pub fn valid_request(id: &str) -> bool {
-    (1..=64).contains(&id.len())
-        && id.starts_with(|c: char| c.is_ascii_alphanumeric())
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
-}
-
-/// A project ID: `p-` and 16 hex digits.
-pub fn valid_project(id: &str) -> bool {
-    id.strip_prefix("p-").is_some_and(|h| hex_digits(h, 16))
-}
-
-/// A run ID: `run-` and 6 or more digits. Run IDs count up in each project.
+/// A run ID: `run-` and 6 or more digits. Run IDs count up in each state folder.
 pub fn valid_run(id: &str) -> bool {
     id.strip_prefix("run-")
         .is_some_and(|n| n.len() >= 6 && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// A revision ID: `rev-` and 16 hex digits, and `-N` when other bytes have the same hash.
-pub fn valid_revision(id: &str) -> bool {
-    let Some(rest) = id.strip_prefix("rev-") else {
-        return false;
-    };
-    let (hash, n) = rest.split_once('-').unwrap_or((rest, "1"));
-    hex_digits(hash, 16) && !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
-}
-
 pub(crate) fn run_id(number: u64) -> String {
     format!("run-{number:06}")
-}
-
-fn hex_digits(s: &str, n: usize) -> bool {
-    s.len() == n && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 /// The state of a run.
@@ -226,17 +198,9 @@ fn parse_state(s: &str) -> Result<RunState, Error> {
 /// The one record of a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunRecord {
-    pub project: String,
     pub run: String,
-    /// The fixed input revision that the run solves.
-    pub revision: String,
-    /// The input path that the client gave, relative to the project root.
+    /// The path of the input file that the client gave. The run solves a copy of it.
     pub input: String,
-    /// The request ID of the submit command.
-    pub request: String,
-    /// The solver that the submit named, a name of `SOLVERS` after the first. Empty means the
-    /// solver of the daemon (`FH_SOLVE`, else `fh-solve-ccx`).
-    pub solver: String,
     pub state: RunState,
     /// Times in milliseconds since the Unix epoch. 0 means not yet.
     pub created_ms: u64,
@@ -249,12 +213,8 @@ pub struct RunRecord {
 impl RunRecord {
     pub fn to_message(&self) -> Message {
         let mut m = Message::new();
-        m.set("project", &self.project);
         m.set("run", &self.run);
-        m.set("revision", &self.revision);
         m.set("input", &self.input);
-        m.set("request", &self.request);
-        m.set("solver", &self.solver);
         m.set("state", self.state);
         m.set("created_ms", self.created_ms);
         m.set("started_ms", self.started_ms);
@@ -270,118 +230,13 @@ impl RunRecord {
                 .map_err(|_| Error::bad("field.invalid", format!("{key} is not a number")))
         };
         Ok(RunRecord {
-            project: m.need("project")?.to_owned(),
             run: m.need("run")?.to_owned(),
-            revision: m.need("revision")?.to_owned(),
             input: m.need("input")?.to_owned(),
-            request: m.need("request")?.to_owned(),
-            solver: m.get("solver").unwrap_or_default().to_owned(),
             state: parse_state(m.need("state")?)?,
             created_ms: num("created_ms")?,
             started_ms: num("started_ms")?,
             finished_ms: num("finished_ms")?,
             message: m.get("message").unwrap_or_default().to_owned(),
-        })
-    }
-}
-
-/// The commands that change runs. Each one has a request ID and gets an [`Ack`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Command {
-    Submit,
-    Cancel,
-}
-
-impl Command {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Command::Submit => "submit",
-            Command::Cancel => "cancel",
-        }
-    }
-}
-
-/// What a command did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
-    /// The submit made a new run.
-    Created,
-    /// A run of the same project and revision was still active. The submit made no new run.
-    Existing,
-    /// The cancel stopped a queued run, or asked the solver of a running run to stop.
-    CancelRequested,
-    /// The run had already ended. The cancel changed nothing.
-    AlreadyFinal,
-    /// The daemon had already done the command with this request ID. It did nothing again.
-    Replay,
-}
-
-impl Outcome {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Outcome::Created => "created",
-            Outcome::Existing => "existing",
-            Outcome::CancelRequested => "cancel-requested",
-            Outcome::AlreadyFinal => "already-final",
-            Outcome::Replay => "replay",
-        }
-    }
-
-    fn parse(s: &str) -> Option<Outcome> {
-        [
-            Outcome::Created,
-            Outcome::Existing,
-            Outcome::CancelRequested,
-            Outcome::AlreadyFinal,
-            Outcome::Replay,
-        ]
-        .into_iter()
-        .find(|o| o.as_str() == s)
-    }
-}
-
-/// The acknowledgement of a command. The daemon keeps it, so a retry with the same request
-/// ID gets the same run and the outcome `replay`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ack {
-    pub request: String,
-    pub command: Command,
-    pub project: String,
-    pub run: String,
-    /// The input path of a submit. Empty for a cancel.
-    pub input: String,
-    /// The state of the run when the daemon sent the acknowledgement.
-    pub state: RunState,
-    pub outcome: Outcome,
-}
-
-impl Ack {
-    pub fn to_message(&self) -> Message {
-        let mut m = Message::new();
-        m.set("request", &self.request);
-        m.set("command", self.command.as_str());
-        m.set("project", &self.project);
-        m.set("run", &self.run);
-        m.set("input", &self.input);
-        m.set("state", self.state);
-        m.set("outcome", self.outcome.as_str());
-        m
-    }
-
-    pub fn from_message(m: &Message) -> Result<Ack, Error> {
-        let invalid = |key: &str| Error::bad("field.invalid", format!("bad {key}"));
-        Ok(Ack {
-            request: m.need("request")?.to_owned(),
-            command: match m.need("command")? {
-                "submit" => Command::Submit,
-                "cancel" => Command::Cancel,
-                _ => return Err(invalid("command")),
-            },
-            project: m.need("project")?.to_owned(),
-            run: m.need("run")?.to_owned(),
-            input: m.get("input").unwrap_or_default().to_owned(),
-            state: parse_state(m.need("state")?)?,
-            outcome: Outcome::parse(m.need("outcome")?).ok_or_else(|| invalid("outcome"))?,
         })
     }
 }
@@ -466,7 +321,7 @@ mod tests {
         m.set("message", "two\nlines");
         m.items = vec!["1 state queued".into()];
         let text = m.to_text();
-        assert_eq!(text, "contract=1\nmessage=two lines\n\n1 state queued\n");
+        assert_eq!(text, "contract=2\nmessage=two lines\n\n1 state queued\n");
         assert_eq!(Message::parse(&text).unwrap(), m);
         assert!(Message::parse("a=1\na=2\n").is_err());
         assert!(Message::parse("no field\n").is_err());
@@ -496,15 +351,10 @@ mod tests {
     }
 
     #[test]
-    fn ids_are_checked() {
-        assert!(valid_request("cli-0f3a.1_b"));
-        assert!(!valid_request("../x"));
-        assert!(!valid_request(".hidden"));
-        assert!(!valid_request(&"a".repeat(65)));
-        assert!(valid_project("p-0123456789abcdef"));
-        assert!(!valid_project("p-0123456789ABCDEF"));
+    fn run_ids_are_checked() {
         assert!(valid_run(&run_id(7)));
         assert_eq!(run_id(7), "run-000007");
         assert!(!valid_run("run-7"));
+        assert!(!valid_run("../x"));
     }
 }

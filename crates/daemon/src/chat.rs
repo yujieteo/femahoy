@@ -69,7 +69,7 @@ struct Log {
     /// The session of the agent, so that a new agent continues it.
     session: Option<String>,
     /// The runs that were final before the agent started to work.
-    seen: HashSet<(String, String)>,
+    seen: HashSet<String>,
 }
 
 impl Log {
@@ -103,12 +103,9 @@ impl Log {
             return;
         };
         // The agent is the first process of its own group.
-        #[cfg(unix)]
         unsafe {
             libc::kill(-(child.id() as i32), libc::SIGTERM);
         }
-        #[cfg(not(unix))]
-        let _ = child.kill();
         std::thread::spawn(move || child.wait());
     }
 }
@@ -150,17 +147,17 @@ impl Chat {
         }
     }
 
-    /// The entry `show <project> <revision> <title>`: the page shows the model of the
-    /// revision with its supports and loads.
-    pub(crate) fn show(&self, project: &str, revision: &str, title: &str) {
-        let text = format!("{project} {revision} {title}");
+    /// The entry `show <preview> <title>`: the page shows the model of the preview with its
+    /// supports and loads.
+    pub(crate) fn show(&self, preview: &str, title: &str) {
+        let text = format!("{preview} {title}");
         self.push(&mut self.lock(), "show", &text);
     }
 
     /// The state of the chat and the entries after `since`, as the items `<seq> <kind>
     /// <text>`. The fields are `state` (`running` or `idle`) and `next`. While the agent
     /// works, `started_ms` is the time when it started, and `solving` is the first run of
-    /// the daemon that is not final: `<project> <run> <state> <last progress event>`.
+    /// the daemon that is not final: `<run> <state> <last progress event>`.
     pub(crate) fn read(&self, since: u64) -> Message {
         let mut m = Message::new();
         let log = self.lock();
@@ -173,7 +170,7 @@ impl Chat {
             m.set("started_ms", log.started_ms);
             drop(log);
             if let Some((r, progress)) = self.service.active().into_iter().next() {
-                let solving = format!("{} {} {} {progress}", r.project, r.run, r.state);
+                let solving = format!("{} {} {progress}", r.run, r.state);
                 m.set("solving", solving.trim_end());
             }
         }
@@ -235,7 +232,6 @@ impl Chat {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        #[cfg(unix)]
         std::os::unix::process::CommandExt::process_group(&mut cmd, 0);
         let mut child = match cmd.spawn() {
             Ok(child) => child,
@@ -283,33 +279,28 @@ impl Chat {
 
     /// The final runs of the daemon, with their records.
     fn final_runs(&self) -> Vec<RunRecord> {
-        let projects = self.service.projects().into_iter();
-        let runs = projects.flat_map(|(p, _)| self.service.runs(&p).unwrap_or_default());
+        let runs = self.service.runs().unwrap_or_default().into_iter();
         runs.filter(|r| r.state.is_final()).collect()
     }
 
-    /// The keys of the final runs of the daemon.
-    fn finished(&self) -> HashSet<(String, String)> {
-        let runs = self.final_runs().into_iter();
-        runs.map(|r| (r.project, r.run)).collect()
+    /// The IDs of the final runs of the daemon.
+    fn finished(&self) -> HashSet<String> {
+        self.final_runs().into_iter().map(|r| r.run).collect()
     }
 
     /// Add an entry for each run that became final since the agent started to work:
-    /// `open <project> <run>` for a run that succeeded, `failed <project> <run> <error>`
-    /// for a run that failed.
+    /// `open <run>` for a run that succeeded, `failed <run> <error>` for a run that failed.
     fn report_runs(&self) {
-        let mut runs = self.final_runs();
-        runs.sort_by(|a, b| (&a.project, &a.run).cmp(&(&b.project, &b.run)));
+        let runs = self.final_runs();
         let mut log = self.lock();
         for r in runs {
-            if !log.seen.insert((r.project.clone(), r.run.clone())) {
+            if !log.seen.insert(r.run.clone()) {
                 continue;
             }
-            let (project, run) = (&r.project, &r.run);
             match r.state {
-                RunState::Succeeded => self.push(&mut log, "open", &format!("{project} {run}")),
+                RunState::Succeeded => self.push(&mut log, "open", &r.run),
                 RunState::Failed => {
-                    let text = format!("{project} {run} {}", r.message);
+                    let text = format!("{} {}", r.run, r.message);
                     self.push(&mut log, "failed", &text);
                 }
                 _ => {}

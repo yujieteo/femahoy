@@ -58,10 +58,10 @@ It also has `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS` set to 86400000 
 
 A wrong support face or a wrong load direction gives a result that looks correct. Thus the page shows the supports and the loads before each solve.
 
-1. `fh run` makes the input file with `fh mesh` and `fh model`, then sends it to `POST /api/v1/projects/P/preview`.
-2. The daemon keeps the input as a revision, and adds a `show` entry to the chat.
-3. The page opens the entry: it gets the revision and shows the model.
-4. `fh run` then solves the same revision. With `--preview`, it stops before the solve.
+1. `fh run` makes the input file with `fh mesh` and `fh model`, then sends its path to `POST /api/v1/previews`.
+2. The daemon copies the input file as a preview, and adds a `show` entry to the chat.
+3. The page opens the entry: it gets the copy and shows the model.
+4. `fh run` then solves the same file. With `--preview`, it stops before the solve.
 
 The viewer shows:
 
@@ -80,7 +80,7 @@ The viewer shows:
 The page reads the solver input, not `case.toml`. Thus it shows the faces that the solver gets.
 A region that has no face shows a warning in the list.
 
-The results of a run show the same labels and arrows, and the outline of the faces of each region. The page gets the input from the revision in the run record. The labels move with the deformed shape.
+The results of a run show the same labels and arrows, and the outline of the faces of each region. The page gets the copy of the input that the run solved. The labels move with the deformed shape.
 To hide the labels and the arrows, clear `Show them on the model` under `Supports and loads` in the results panel, or `Show the labels and the arrows` in the panel before the solve.
 
 The agent has 1 rule for the supports and the loads (`crates/daemon/src/agent.md`):
@@ -99,10 +99,10 @@ The routes have the token and `Origin` rules of the other routes of `fh serve` (
 | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`; one item `<seq> <kind> <text>` for each entry after `N`. While the agent works, also `started_ms` and `solving` |
 | `POST /api/v1/chat` | `text` | `state=running`: the message goes to the agent, also while it works. `chat.empty` for an empty message, 502 `chat.agent` when the agent cannot start or take the message |
 | `POST /api/v1/chat/stop` | | `state=idle` |
-| `POST /api/v1/projects/P/preview` | `input`, `title` | `revision`. The chat gets the entry `show`. The errors are those of a submit (`docs/run-contract.md`) |
-| `GET /api/v1/projects/P/revisions/REV` | | the bytes of the input file of the revision. 400 `revision.invalid`, 404 `revision.unknown` |
+| `POST /api/v1/previews` | `input`, `title` | `preview`. The chat gets the entry `show`. The errors are those of a submit (`docs/run-contract.md`) |
+| `GET /api/v1/previews/ID` | | the bytes of the copy of the input of the preview. 404 `preview.unknown` |
 
-`started_ms` is the time when the agent started to work, in ms since the Unix epoch. `solving` is the first run of the daemon that is not final: `<project> <run> <state>` and its last `progress` event, for example `p-... run-000001 running progress step=1/1 phase=solve fraction=0.5`.
+`started_ms` is the time when the agent started to work, in ms since the Unix epoch. `solving` is the first run of the daemon that is not final: `<run> <state>` and its last `progress` event, for example `run-000001 running progress step=1/1 phase=solve fraction=0.5`.
 
 | Kind | Text |
 |---|---|
@@ -112,9 +112,9 @@ The routes have the token and `Origin` rules of the other routes of `fh serve` (
 | `cmd` | a shell command of the agent, for example `fh run . --size 2.5` |
 | `tool` | another tool and its file, for example `Write /.../part.py` |
 | `out`, `fail` | the result of a tool, or its error (at most 4000 characters) |
-| `show` | `<project> <revision> <title>`: a model before the solve, with its supports and loads |
-| `open` | `<project> <run>`: a run that succeeded during the work of the agent |
-| `failed` | `<project> <run> <error>`: a run that failed during the work of the agent |
+| `show` | `<preview> <title>`: a model before the solve, with its supports and loads |
+| `open` | `<run>`: a run that succeeded during the work of the agent |
+| `failed` | `<run> <error>`: a run that failed during the work of the agent |
 | `error` | an error of the chat: the agent cannot start or take a message, or it ended before the end of its work |
 | `end` | `done in S s, N turns, cost C USD`, from the `result` event of the stream |
 
@@ -124,9 +124,9 @@ The daemon keeps the last 4000 entries in memory. A new daemon starts with an em
 ## Tests
 
 `crates/daemon/tests/chat.rs` runs a fake agent that prints a recorded event stream (`crates/daemon/tests/data/agent-*.jsonl`). No test calls a real LLM.
-The test does a preview before the solve. It checks that the `show` entry comes before the `open` entry, and that the run solves the shown revision.
+The test does a preview before the solve. It checks that the `show` entry comes before the `open` entry.
 The fake takes a second message during its work, and the test solves a run that succeeds and a run that fails during the work. Then it checks the entries, the `solving` and `started_ms` fields, a stop, a new agent with `--resume`, and an agent that ends during its work.
-`crates/daemon/tests/viewer.rs` checks the revision route: the bytes, the token and the `Origin` rules, and each refusal. It also checks the layout of the page: the chat on the left of the model view, and no file from the network.
+`crates/daemon/tests/viewer.rs` checks the preview route: the bytes, the token and the `Origin` rules, and each refusal. It also checks the layout of the page: the chat on the left of the model view, and no file from the network.
 `crates/viewer/src/preview.rs` checks the preview data: the faces and the outline of each region, the area, the total force, the direction of each arrow and each label. It also checks that the labels of a run move with its results.
 
 ## M4: the first slice

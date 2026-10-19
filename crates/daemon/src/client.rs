@@ -1,25 +1,16 @@
 //! The client side of the run contract, for the `fh` CLI and the tests.
-//!
-//! A client makes one request ID for each command and keeps it. When the connection breaks
-//! before the answer, the client connects again and sends the same command with the same
-//! request ID. The daemon then sends the first result again, with the outcome `replay`.
 
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::Path;
 use std::time::Duration;
 
-use crate::contract::{Ack, Error, Events, Message, RunRecord, RunState};
-use crate::{random_hex, INFO_FILE};
+use crate::contract::{Error, Events, Message, RunRecord, RunState};
+use crate::INFO_FILE;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ANSWER: u64 = 4 << 20;
-
-/// A new request ID for one command.
-pub fn new_request_id() -> String {
-    format!("req-{}", random_hex(12))
-}
 
 /// A connection to a daemon on 127.0.0.1.
 #[derive(Debug, Clone)]
@@ -66,7 +57,7 @@ impl Client {
     }
 
     /// The address of the page of the daemon, with the token. `query` follows the token, for
-    /// example `&project=P&run=R` to open a run.
+    /// example `&run=R` to open a run.
     pub fn page_url(&self, query: &str) -> String {
         format!(
             "http://127.0.0.1:{}/?token={}{query}",
@@ -143,77 +134,55 @@ impl Client {
         self.get("/api/v1/status")
     }
 
-    /// The project ID of the folder `root`.
-    pub fn register(&self, root: &Path) -> Result<String, Error> {
-        let root = root
-            .to_str()
-            .ok_or_else(|| Error::bad("root.invalid", "the root must be a UTF-8 path"))?;
-        Ok(self
-            .post("/api/v1/projects", &[("root", root)])?
-            .need("project")?
-            .to_owned())
+    /// Queue a run of the input file at the absolute path `input`.
+    pub fn submit(&self, input: &Path) -> Result<RunRecord, Error> {
+        let input = utf8(input)?;
+        RunRecord::from_message(&self.post("/api/v1/runs", &[("input", input)])?)
     }
 
-    pub fn submit(&self, project: &str, request: &str, input: &str) -> Result<Ack, Error> {
-        self.submit_with_solver(project, request, input, "")
+    /// Show the model of the input file at the absolute path `input` with its supports and
+    /// loads in the page, with no run. The answer is the preview ID.
+    pub fn preview(&self, input: &Path, title: &str) -> Result<String, Error> {
+        let fields = [("input", utf8(input)?), ("title", title)];
+        let answer = self.post("/api/v1/previews", &fields)?;
+        Ok(answer.need("preview")?.to_owned())
     }
 
-    /// A submit for the solver `solver`, a name of [`crate::SOLVERS`]. An empty name is the
-    /// solver of the daemon.
-    pub fn submit_with_solver(
-        &self,
-        project: &str,
-        request: &str,
-        input: &str,
-        solver: &str,
-    ) -> Result<Ack, Error> {
-        let path = format!("/api/v1/projects/{project}/runs");
-        let fields = [("request", request), ("input", input), ("solver", solver)];
-        Ack::from_message(&self.post(&path, &fields)?)
+    /// Stop a run. The answer is the record after the cancel.
+    pub fn cancel(&self, run: &str) -> Result<RunRecord, Error> {
+        RunRecord::from_message(&self.post(&format!("/api/v1/runs/{run}/cancel"), &[])?)
     }
 
-    /// Fix the input as a revision with no run, and show its model with the supports and
-    /// the loads in the page. The answer is the revision.
-    pub fn preview(&self, project: &str, input: &str, title: &str) -> Result<String, Error> {
-        let path = format!("/api/v1/projects/{project}/preview");
-        let answer = self.post(&path, &[("input", input), ("title", title)])?;
-        Ok(answer.need("revision")?.to_owned())
+    pub fn record(&self, run: &str) -> Result<RunRecord, Error> {
+        RunRecord::from_message(&self.get(&format!("/api/v1/runs/{run}"))?)
     }
 
-    pub fn cancel(&self, project: &str, run: &str, request: &str) -> Result<Ack, Error> {
-        let path = format!("/api/v1/projects/{project}/runs/{run}/cancel");
-        Ack::from_message(&self.post(&path, &[("request", request)])?)
-    }
-
-    pub fn record(&self, project: &str, run: &str) -> Result<RunRecord, Error> {
-        RunRecord::from_message(&self.get(&format!("/api/v1/projects/{project}/runs/{run}"))?)
-    }
-
-    /// Each run of the project with its state.
-    pub fn runs(&self, project: &str) -> Result<Vec<(String, RunState)>, Error> {
-        let m = self.get(&format!("/api/v1/projects/{project}/runs"))?;
+    /// Each run with its state.
+    pub fn runs(&self) -> Result<Vec<(String, RunState)>, Error> {
+        let m = self.get("/api/v1/runs")?;
         m.items
             .iter()
             .map(|item| {
-                item.split_once(' ')
-                    .and_then(|(run, s)| Some((run.to_owned(), RunState::parse(s)?)))
+                let mut parts = item.splitn(3, ' ');
+                let (run, state) = (parts.next(), parts.next().and_then(RunState::parse));
+                run.zip(state)
+                    .map(|(run, state)| (run.to_owned(), state))
                     .ok_or_else(|| Error::bad("message.invalid", format!("bad run {item}")))
             })
             .collect()
     }
 
     /// The events after `since`. The daemon waits up to `wait` for a new event.
-    pub fn events(
-        &self,
-        project: &str,
-        run: &str,
-        since: u64,
-        wait: Duration,
-    ) -> Result<Events, Error> {
+    pub fn events(&self, run: &str, since: u64, wait: Duration) -> Result<Events, Error> {
         let path = format!(
-            "/api/v1/projects/{project}/runs/{run}/events?since={since}&wait_ms={}",
+            "/api/v1/runs/{run}/events?since={since}&wait_ms={}",
             wait.as_millis()
         );
         Events::from_message(&self.send("GET", &path, None, wait)?)
     }
+}
+
+fn utf8(path: &Path) -> Result<&str, Error> {
+    path.to_str()
+        .ok_or_else(|| Error::bad("input.invalid", "the input path must be UTF-8"))
 }

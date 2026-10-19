@@ -217,8 +217,8 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 
 | Input | What `fh run` does |
 |---|---|
-| `MODEL.inp` (the extension in any case) | Solves the file as it is. The folder of the file is the project root. |
-| `CASE_DIR`, `CASE_DIR/case.toml`, or `CASE_DIR/PART.step` (`.step` or `.stp`) | Runs `fh mesh PART.step --case CASE_DIR` and `fh model` in the work folder `STATE/cases/NAME-HASH`, then solves the input. The work folder is the project root, so the case folder does not change. A folder must hold one STEP file. |
+| `MODEL.inp` (the extension in any case) | Solves the file as it is. |
+| `CASE_DIR`, `CASE_DIR/case.toml`, or `CASE_DIR/PART.step` (`.step` or `.stp`) | Runs `fh mesh PART.step --case CASE_DIR` and `fh model` in the work folder `STATE/cases/NAME-HASH`, then solves the input. Thus the case folder does not change. A folder must hold one STEP file. |
 | `--example NAME` | Writes an example case that `fh` holds to `STATE/examples/NAME`, then runs it as a case folder. It works from any folder. The example is `bar-pressure` (mesh size 8). |
 
 | Option | Default or rule |
@@ -243,12 +243,12 @@ An `.inp` file uses the solver of the daemon.
 
 Before the solve, `fh run` sends the input to the preview route of the daemon (see [the chat](../chat.md#the-model-before-the-solve)).
 The page then shows the model with the faces of each support and each load, the direction of each load, and the names of the regions.
-The line `fh run: preview: the page shows NAME (REVISION) with its supports and loads` tells this. NAME is the case folder, or the input file.
-The solve then uses the same revision. Thus the page shows the bytes that the solver gets.
+The line `fh run: preview: the page shows NAME (preview ID) with its supports and loads` tells this. NAME is the case folder, or the input file.
+The preview and the run each copy the input file, one directly after the other. Thus the page shows the bytes that the solver gets.
 With `--preview`, `fh run` prints `fh run: --preview: no solve` and stops. It does not open the browser, because the page that is open shows the model.
 A daemon that has no preview route still solves: `fh run` prints `fh run: no preview (MESSAGE)` and continues.
 
-The browser opens on `http://127.0.0.1:PORT/?token=TOKEN&project=P&run=R`, the same way as for [`fh serve`](#fh-serve).
+The browser opens on `http://127.0.0.1:PORT/?token=TOKEN&run=R`, the same way as for [`fh serve`](#fh-serve).
 Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
 Before a daemon starts, `fh run` checks the arguments and the input. Thus a usage error starts no daemon.
 
@@ -261,7 +261,7 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | `FH_SOLVE` is not set, and `fh-solve-ccx` is not beside `fh` or on `PATH` | `fh run: the solver fh-solve-ccx is not beside fh or on PATH. To install it, see docs/ccx.md (run.solver.missing)`. No daemon starts. | 1 |
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
-| The daemon refused the project or the run | `fh run: the daemon refused the project: MESSAGE (CODE)` or `the daemon refused the run: ...`, for example `queue.full` | 1 |
+| The daemon refused the run | `fh run: the daemon refused the run: MESSAGE (CODE)`, for example `queue.full` | 1 |
 | No input, unknown option, bad value (for example `--order needs 1 or 2`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
 | `--size` or `--order` with an `.inp` file | `fh run: --size and --order go to fh mesh, ... (run.option.mesh)` | 2 |
 | The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
@@ -273,7 +273,7 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | The state folder cannot be made | `fh run: no daemon: cannot make the state folder DIR: ERROR` | 3 |
 | No daemon answers and `fh serve` does not start one | `fh run: no daemon: fh serve did not start a daemon for DIR`, then the last 5 lines of `DIR/daemon.log`, for example `another daemon uses this state folder (daemon.running)` | 3 |
 | The daemon does not answer for 10 seconds during the run | `fh run: RUN: the daemon does not answer: ...` | 3 |
-| Ctrl+C, and the run ended as cancelled | stdout: `cancel: cancel-requested`. stderr: `fh run: RUN was cancelled` | 130 |
+| Ctrl+C, and the run ended as cancelled | stdout: `cancel: cancelling` (the state after the cancel). stderr: `fh run: RUN was cancelled` | 130 |
 | A second Ctrl+C | stdout: `fh run: Ctrl+C again: fh run ends. The cancel of RUN continues in the daemon.` | 130 |
 
 `crates/cli/tests/run.rs` has a test for each refusal, with a fake browser, `FH_NO_OPEN=1`, and a fake gmsh.
@@ -288,7 +288,7 @@ fh serve --stop [--state DIR]
 Source: [serve.rs](../../crates/daemon/src/serve.rs). The dispatcher calls it with the solver of `fh validate`.
 
 The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
-`--state` defaults to `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy` (`%LOCALAPPDATA%\femahoy` on Windows). `fh run` has the same default.
+`--state` defaults to `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default.
 `--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve-ccx` beside `fh`, otherwise on `PATH`. It needs CalculiX ([ccx](../ccx.md)).
 The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 The page has the chat with the agent ([chat](../chat.md)).
@@ -300,10 +300,9 @@ The address holds the token, so it does not go into the command line of a browse
 |---|---|
 | `$BROWSER`, when it is set | the file `STATE/open.html` (mode 0600), which sends the browser on to the address |
 | macOS | `open URL`: Launch Services gives the address to the default browser |
-| Windows | `rundll32 url.dll,FileProtocolHandler URL` |
 | Other Unix systems | `xdg-open STATE/open.html` |
 
-`fh serve --stop` sends SIGTERM to the daemon that answers for the state folder (`taskkill` on Windows), then waits up to 30 seconds until the daemon releases `daemon.lock`.
+`fh serve --stop` sends SIGTERM to the daemon that answers for the state folder, then waits up to 30 seconds until the daemon releases `daemon.lock`.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|

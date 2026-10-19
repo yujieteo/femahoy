@@ -78,15 +78,15 @@ The message names the file, for example `step-2.vtu: not found (results.file.mis
 
 1. Install `fh` with the viewer: `scripts/install.sh`. It builds the wasm viewer and copies it to the `viewer` folder beside `fh`.
 2. Run `fh run model.inp` (or `fh run --example bar-pressure`). It solves the model and opens the browser on the run.
-3. Or run `fh serve`. It opens the browser on the page of the daemon. Select a run in the list at the top of the viewer. The list shows each run that succeeded, as `<project folder> · <run>`. To open a run directly, add `&project=P&run=R` to the address.
+3. Or run `fh serve`. It opens the browser on the page of the daemon. Select a run in the list at the top of the viewer. The list shows each run that succeeded, as `<input folder> · <run>`. To open a run directly, add `&run=R` to the address.
 
 `--no-open`, or `FH_NO_OPEN=1`, keeps the browser closed. Then open the address that the command prints, `http://127.0.0.1:PORT/?token=TOKEN`.
 
 To build only the viewer, for example in development, run `scripts/build-viewer.sh`. The script needs the Rust target `wasm32-unknown-unknown` and `wasm-bindgen-cli` at the version of `wasm-bindgen` in `Cargo.lock` (0.2.129). It writes `fh_viewer.js` and `fh_viewer_bg.wasm` to `release/viewer` in the cargo target folder (`$CARGO_TARGET_DIR` or `target`), the folder beside `fh`. `fh serve` finds the viewer in `$FH_VIEWER`, else in the `viewer` folder beside `fh`.
 
-The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/projects/<p>/runs/<r>/files/<name>`.
+The page holds no token and no result. Its script reads the token from the page address. Then it fetches the viewer files and the result files with `Authorization: Bearer TOKEN`, so the token and `Origin` rules of `fh serve` stay the same (`docs/run-contract.md`). The result files come from `GET /api/v1/runs/<r>/files/<name>`.
 
-The page (`crates/daemon/src/page.html`) is HTML and CSS with a small plain script, and no build tool. It calls `start(canvas, token)` of the wasm module, and `open(project, run)` of the viewer that `start` gives, for each run that it shows. The font of the page and of the viewer is Inter (SIL Open Font License 1.1, `crates/viewer/fonts`). The page gets it from `font()` of the wasm module, so it loads no file from the network.
+The page (`crates/daemon/src/page.html`) is HTML and CSS with a small plain script, and no build tool. It calls `start(canvas, token)` of the wasm module, and `open(run)` of the viewer that `start` gives, for each run that it shows. The font of the page and of the viewer is Inter (SIL Open Font License 1.1, `crates/viewer/fonts`). The page gets it from `font()` of the wasm module, so it loads no file from the network.
 
 The browser needs WebGPU or WebGL 2. When the viewer cannot start, the page shows the cause.
 

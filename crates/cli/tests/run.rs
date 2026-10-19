@@ -6,8 +6,6 @@
 //! `fh mesh validation/cases/bar-pressure/bar.step --case validation/cases/bar-pressure`.
 //! Thus the case tests run with no gmsh. One test uses the real gmsh when it is installed.
 //! The solver is a fake protocol v2 solver. One test uses the real ccx when it is installed.
-#![cfg(unix)]
-
 mod common;
 use common::{ccx_solver, fails, p, real_gmsh, root, scratch, script, stderr, stdout};
 
@@ -294,10 +292,9 @@ fn the_browser_opens_on_the_run_unless_no_open_is_given() {
     let info = fs::read_to_string(lab.state.join("daemon.info")).unwrap();
     let token = info.lines().find_map(|l| l.strip_prefix("token=")).unwrap();
     assert!(
-        page.contains(&format!("?token={token}&amp;project=p-")),
+        page.contains(&format!("?token={token}&amp;run=run-000001\"")),
         "{page}"
     );
-    assert!(page.contains("&amp;run=run-000001\""), "{page}");
 
     let mut no_open = lab.cmd(&["run", p(&bar), "--no-open"]);
     succeeds(&no_open.env_remove("FH_NO_OPEN").output().unwrap());
@@ -321,7 +318,7 @@ fn an_input_that_the_solver_refuses_exits_1_with_the_line_in_the_file() {
     let bad = lab.input("bad.inp", "*NODE\n1, 0, 0\n*BOGUS\n");
     let out = lab.fh(&["run", p(&bad)]);
     fails(&out, 1, "run-000001 failed: ");
-    // The message names the file of the user, not the fixed revision in the state folder.
+    // The message names the file of the user, not the copy in the state folder.
     let bad = fs::canonicalize(bad).unwrap();
     fails(
         &out,
@@ -402,10 +399,7 @@ fn interrupt(child: &Child) {
 }
 
 fn state_of(lab: &Lab, run: &str) -> String {
-    let projects = lab.state.join("projects");
-    let project = fs::read_dir(projects).unwrap().next().unwrap().unwrap();
-    let record = fs::read_to_string(project.path().join("runs").join(run).join("record"));
-    let record = record.unwrap();
+    let record = fs::read_to_string(lab.state.join("runs").join(run).join("record")).unwrap();
     record
         .lines()
         .find_map(|l| l.strip_prefix("state="))
@@ -421,7 +415,7 @@ fn ctrl_c_cancels_the_run_through_the_contract() {
     let (child, mut lines) = start(&mut lab.cmd(&["run", p(&model)]));
     read_until(&mut lines, "step 1/1 solve 10%");
     interrupt(&child);
-    read_until(&mut lines, "  cancel: cancel-requested");
+    read_until(&mut lines, "  cancel: cancelling");
     let out = finish(child, lines);
     assert_eq!(out.status.code(), Some(130), "{}", stderr(&out));
     assert!(stderr(&out).contains("run-000001 was cancelled"));
@@ -443,7 +437,7 @@ fn a_second_ctrl_c_ends_fh_run_at_once_and_the_cancel_continues() {
     let (child, mut lines) = start(&mut lab.cmd(&["run", p(&model)]));
     read_until(&mut lines, "step 1/1 solve 10%");
     interrupt(&child);
-    read_until(&mut lines, "  cancel: cancel-requested");
+    read_until(&mut lines, "  cancel: cancelling");
     interrupt(&child);
     read_until(&mut lines, "Ctrl+C again: fh run ends");
     let out = finish(child, lines);
@@ -550,41 +544,30 @@ fn without_fh_solve_a_run_uses_fh_solve_ccx() {
 }
 
 #[test]
-fn preview_shows_the_case_in_the_page_and_the_run_solves_the_same_revision() {
+fn preview_shows_the_case_in_the_page_and_the_run_solves_the_same_model() {
     let lab = Lab::new("run-preview");
     let case = root().join("validation/cases/bar-pressure");
     let out = lab.fh(&["run", p(&case), "--preview"]);
     succeeds(&out);
     let text = stdout(&out);
     assert!(
-        text.contains("fh run: preview: the page shows bar-pressure (rev-"),
+        text.contains("fh run: preview: the page shows bar-pressure (preview 1)"),
         "{text}"
     );
     assert!(text.ends_with("fh run: --preview: no solve\n"), "{text}");
-    // The chat of the page gets the entry `show <project> <revision> <name>`.
+    // The chat of the page gets the entry `show <preview> <name>`.
     let c = fh_daemon::Client::discover(&lab.state).unwrap();
     let chat = c
         .send("GET", "/api/v1/chat?since=0", None, Duration::ZERO)
         .unwrap();
-    let show: Vec<&str> = chat
-        .items
-        .iter()
-        .find_map(|i| i.split_once(" show ").map(|(_, t)| t.split(' ').collect()))
-        .unwrap_or_else(|| panic!("{chat:?}"));
-    let [project, revision, name] = show[..] else {
-        panic!("{show:?}");
-    };
-    assert_eq!(name, "bar-pressure");
-    assert!(
-        c.runs(project).unwrap().is_empty(),
-        "a preview solves nothing"
-    );
+    let show = chat.items.iter().find_map(|i| i.split_once(" show "));
+    assert_eq!(show.map(|s| s.1), Some("1 bar-pressure"), "{chat:?}");
+    assert!(c.runs().unwrap().is_empty(), "a preview solves nothing");
 
-    let out = lab.fh(&["run", p(&case)]);
-    succeeds(&out);
-    assert!(stdout(&out).contains(&format!("({revision}) with its supports and loads")));
-    let runs = c.runs(project).unwrap();
-    assert_eq!(c.record(project, &runs[0].0).unwrap().revision, revision);
+    succeeds(&lab.fh(&["run", p(&case)]));
+    let shown = fs::read(lab.state.join("previews/1.inp")).unwrap();
+    let solved = fs::read(lab.state.join("runs/run-000001/input.inp")).unwrap();
+    assert!(shown == solved, "the run solves the model of the preview");
 }
 
 #[test]

@@ -19,17 +19,16 @@
 //! |---|---|---|
 //! | `GET /` | | the page of the daemon (HTML): the chat, the list of the runs and the wasm viewer |
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
-//! | `GET /api/v1/status` | | `instance`, `pid` |
-//! | `GET /api/v1/projects` | | one item `<project> <root>` for each project |
-//! | `POST /api/v1/projects` | `root` | `project`, `root` |
-//! | `GET /api/v1/projects/<p>/runs` | | one item `<run> <state>` for each run |
-//! | `POST /api/v1/projects/<p>/runs` | `request`, `input` | acknowledgement |
-//! | `GET /api/v1/projects/<p>/runs/<r>` | | run record |
-//! | `POST /api/v1/projects/<p>/runs/<r>/cancel` | `request` | acknowledgement |
-//! | `GET /api/v1/projects/<p>/runs/<r>/events?since=N&wait_ms=T` | | events |
-//! | `GET /api/v1/projects/<p>/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
-//! | `POST /api/v1/projects/<p>/preview` | `input`, optional `title` | `revision`: the chat gets a `show` entry, and the page shows the model with its supports and loads |
-//! | `GET /api/v1/projects/<p>/revisions/<rev>` | | the input of the revision (bytes) |
+//! | `GET /api/v1/status` | | `pid` |
+//! | `GET /api/v1/runs` | | one item `<run> <state> <input>` for each run |
+//! | `POST /api/v1/runs` | `input` | run record |
+//! | `GET /api/v1/runs/<r>` | | run record |
+//! | `POST /api/v1/runs/<r>/cancel` | | run record |
+//! | `GET /api/v1/runs/<r>/events?since=N&wait_ms=T` | | events |
+//! | `GET /api/v1/runs/<r>/input` | | the copy of the input that the run solves (bytes) |
+//! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
+//! | `POST /api/v1/previews` | `input`, optional `title` | `preview`: the chat gets a `show` entry, and the page shows the model with its supports and loads |
+//! | `GET /api/v1/previews/<id>` | | the copy of the input of the preview (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms` and `solving`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
 //! | `POST /api/v1/chat` | `text` | `state`: the message goes to the agent, also while it works |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
@@ -337,7 +336,7 @@ fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Error> {
 
 fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     if req.is_page() {
-        return Ok(Reply::Page(crate::random_hex(16)));
+        return Ok(Reply::Page(crate::random_hex(16)?));
     }
     let service = &ctx.service;
     let segments: Vec<&str> = req.path.split('/').collect();
@@ -356,69 +355,54 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
             ctx.chat.stop();
             m.set("state", "idle");
         }
-        ("GET", ["", "api", "v1", "projects", p, "runs", r, "files", name]) => {
-            return Ok(Reply::Bytes(
-                "application/octet-stream",
-                service.result_file(p, r, name)?,
-            ));
-        }
-        ("POST", ["", "api", "v1", "projects", p, "preview"]) => {
-            let b = body()?;
-            let input = b.need("input")?;
-            let revision = service.preview(p, input)?;
-            ctx.chat.show(p, &revision, b.get("title").unwrap_or(input));
-            m.set("revision", revision);
-        }
-        ("GET", ["", "api", "v1", "projects", p, "revisions", rev]) => {
-            return Ok(Reply::Bytes(
-                "application/octet-stream",
-                service.revision_file(p, rev)?,
-            ));
-        }
-        ("GET", ["", "api", "v1", "projects"]) => {
-            m.items = service
-                .projects()
-                .iter()
-                .map(|(p, root)| format!("{p} {}", root.display()))
-                .collect();
-        }
         ("GET", ["", "api", "v1", "status"]) => {
-            m.set("instance", service.instance());
             m.set("pid", std::process::id());
         }
-        ("POST", ["", "api", "v1", "projects"]) => {
-            let (project, root) = service.register(Path::new(body()?.need("root")?))?;
-            m.set("project", project);
-            m.set("root", root.display());
-        }
-        ("GET", ["", "api", "v1", "projects", p, "runs"]) => {
+        ("GET", ["", "api", "v1", "runs"]) => {
             m.items = service
-                .runs(p)?
+                .runs()?
                 .iter()
-                .map(|r| format!("{} {}", r.run, r.state))
+                .map(|r| format!("{} {} {}", r.run, r.state, r.input))
                 .collect();
         }
-        ("POST", ["", "api", "v1", "projects", p, "runs"]) => {
-            let b = body()?;
-            m = service
-                .submit(
-                    p,
-                    b.need("request")?,
-                    b.need("input")?,
-                    b.get("solver").unwrap_or_default(),
-                )?
-                .to_message();
+        ("POST", ["", "api", "v1", "runs"]) => {
+            m = service.submit(body()?.need("input")?)?.to_message();
         }
-        ("GET", ["", "api", "v1", "projects", p, "runs", r]) => {
-            m = service.record(p, r)?.to_message();
+        ("GET", ["", "api", "v1", "runs", r]) => {
+            m = service.record(r)?.to_message();
         }
-        ("POST", ["", "api", "v1", "projects", p, "runs", r, "cancel"]) => {
-            m = service.cancel(p, r, body()?.need("request")?)?.to_message();
+        ("POST", ["", "api", "v1", "runs", r, "cancel"]) => {
+            m = service.cancel(r)?.to_message();
         }
-        ("GET", ["", "api", "v1", "projects", p, "runs", r, "events"]) => {
+        ("GET", ["", "api", "v1", "runs", r, "events"]) => {
             let since = req.query_number("since")?;
             let wait = Duration::from_millis(req.query_number("wait_ms")?);
-            m = service.events(p, r, since, wait)?.to_message();
+            m = service.events(r, since, wait)?.to_message();
+        }
+        ("GET", ["", "api", "v1", "runs", r, "input"]) => {
+            return Ok(Reply::Bytes(
+                "application/octet-stream",
+                service.input_file(r)?,
+            ));
+        }
+        ("GET", ["", "api", "v1", "runs", r, "files", name]) => {
+            return Ok(Reply::Bytes(
+                "application/octet-stream",
+                service.result_file(r, name)?,
+            ));
+        }
+        ("POST", ["", "api", "v1", "previews"]) => {
+            let b = body()?;
+            let input = b.need("input")?;
+            let preview = service.preview(input)?;
+            ctx.chat.show(&preview, b.get("title").unwrap_or(input));
+            m.set("preview", preview);
+        }
+        ("GET", ["", "api", "v1", "previews", id]) => {
+            return Ok(Reply::Bytes(
+                "application/octet-stream",
+                service.preview_file(id)?,
+            ));
         }
         _ => {
             return Err(Error::new(
@@ -456,7 +440,6 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Error>) -> io::Result<(
         401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
-        409 => "Conflict",
         413 => "Payload Too Large",
         431 => "Request Header Fields Too Large",
         502 => "Bad Gateway",

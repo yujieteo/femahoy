@@ -6,14 +6,12 @@
 //! the second message during its work, and prints the second part when the file `go`
 //! exists, after the test solved a run on the daemon, as `fh run` does.
 
-#![cfg(unix)]
-
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use fh_daemon::{new_request_id, Client, Config, Daemon, Error, Message, Options, RunState};
+use fh_daemon::{Client, Config, Daemon, Error, Message, Options, RunState};
 use fh_solver_api::SubprocessSolver;
 
 /// The fake solver. A model with `FAIL` in it fails. Another model solves when the file
@@ -110,7 +108,6 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let config = Config {
         state_dir: state.clone(),
         solver: SubprocessSolver::new(dir.join("solver.sh")),
-        solver_dirs: Vec::new(),
     };
     let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     let c = daemon.client();
@@ -161,19 +158,15 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         format!("{}\n{}\n", line(request), line(redirect))
     );
 
-    // The `fh run` of the agent sends the model to the page, then solves the same revision.
-    // While it solves, the chat shows the run and its progress, and the time when the
-    // work started.
-    let project = c.register(&dir.join("project")).unwrap();
-    fs::write(dir.join("project/model.inp"), "*NODE\n").unwrap();
-    fs::write(dir.join("project/bad.inp"), "*NODE\n** FAIL\n").unwrap();
-    let revision = c.preview(&project, "model.inp", "my case").unwrap();
-    let bad = c.submit(&project, &new_request_id(), "bad.inp").unwrap();
-    let ack = c.submit(&project, &new_request_id(), "model.inp").unwrap();
-    let solving = format!(
-        "{project} {} running progress step=1/1 phase=solve fraction=0.5",
-        ack.run
-    );
+    // The `fh run` of the agent sends the model to the page, then solves it. While it
+    // solves, the chat shows the run and its progress, and the time when the work started.
+    let (model, bad) = (dir.join("project/model.inp"), dir.join("project/bad.inp"));
+    fs::write(&model, "*NODE\n").unwrap();
+    fs::write(&bad, "*NODE\n** FAIL\n").unwrap();
+    let preview = c.preview(&model, "my case").unwrap();
+    let bad = c.submit(&bad).unwrap().run;
+    let run = c.submit(&model).unwrap().run;
+    let solving = format!("{run} running progress step=1/1 phase=solve fraction=0.5");
     let m = wait(&c, |m| m.get("solving") == Some(solving.as_str()));
     assert_eq!(m.get("state"), Some("running"));
     let started: u64 = m.get("started_ms").unwrap().parse().unwrap();
@@ -184,7 +177,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     fs::write(dir.join("release"), "").unwrap();
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
-        let record = c.record(&project, &ack.run).unwrap();
+        let record = c.record(&run).unwrap();
         if record.state == RunState::Succeeded {
             break;
         }
@@ -194,10 +187,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         );
         std::thread::sleep(Duration::from_millis(20));
     }
-    assert_eq!(
-        c.record(&project, &bad.run).unwrap().state,
-        RunState::Failed
-    );
+    assert_eq!(c.record(&bad).unwrap().state, RunState::Failed);
     fs::write(chat.join("go"), "").unwrap();
     let m = wait(&c, |m| m.get("state") == Some("idle"));
     assert_eq!((m.get("solving"), m.get("started_ms")), (None, None));
@@ -219,23 +209,12 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         "{kinds:?}"
     );
     let text = m.items.join("\n");
-    assert!(
-        text.contains(&format!(" show {project} {revision} my case")),
-        "{text}"
-    );
-    let record = c.record(&project, &ack.run).unwrap();
-    assert_eq!(
-        record.revision, revision,
-        "the run solves the shown revision"
-    );
-    assert!(
-        text.contains(&format!(" open {project} {}", ack.run)),
-        "{text}"
-    );
+    assert!(text.contains(&format!(" show {preview} my case")), "{text}");
+    assert!(text.contains(&format!(" open {run}")), "{text}");
     // A failed solve is an entry with its error.
     let failed = m.items.iter().find(|i| i.contains(" failed ")).unwrap();
     assert!(
-        failed.contains(&format!(" failed {project} {} ", bad.run))
+        failed.contains(&format!(" failed {bad} "))
             && failed.contains("did not reach the tolerance"),
         "{failed}"
     );

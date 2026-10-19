@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use fh_solver_api::SubprocessSolver;
 
 use crate::browser::{no_open, open_page};
-use crate::service::{solver_dirs, LOCK_FILE};
+use crate::service::LOCK_FILE;
 use crate::{Client, Config, Daemon, Options};
 
 const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--no-open]\n       \
@@ -76,7 +76,6 @@ pub fn serve_until(
     let config = Config {
         state_dir: state_dir.clone(),
         solver: SubprocessSolver::new(solver),
-        solver_dirs: solver_dirs(),
     };
     options.viewer = viewer_dir();
     let viewer = options.viewer.clone();
@@ -176,32 +175,25 @@ fn stop_daemon(state_dir: &Path) -> ExitCode {
     ExitCode::from(1)
 }
 
-/// `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. On Windows
-/// `%LOCALAPPDATA%\femahoy`. The daemon gives `FH_STATE` to the agent of the chat.
+/// `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. The daemon
+/// gives `FH_STATE` to the agent of the chat.
 pub fn default_state_dir() -> Option<PathBuf> {
     let var = |name| std::env::var_os(name).filter(|v| !v.is_empty());
     if let Some(dir) = var("FH_STATE") {
         return Some(PathBuf::from(dir));
     }
-    let base = if cfg!(windows) {
-        PathBuf::from(var("LOCALAPPDATA")?)
-    } else {
-        var("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .or_else(|| Some(PathBuf::from(var("HOME")?).join(".local/state")))?
-    };
+    let base = var("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| Some(PathBuf::from(var("HOME")?).join(".local/state")))?;
     Some(base.join("femahoy"))
 }
 
-/// SIGINT, SIGTERM and SIGHUP stop the daemon in order. With no handler, as on Windows, the
-/// signal ends the process. The solvers then see the end of their stdin and stop, and the
-/// next start marks their runs `interrupted`.
+/// SIGINT, SIGTERM and SIGHUP stop the daemon in order.
 mod stop {
     use std::sync::atomic::AtomicBool;
 
     pub static STOP: AtomicBool = AtomicBool::new(false);
 
-    #[cfg(unix)]
     pub fn install() {
         extern "C" {
             fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
@@ -218,11 +210,7 @@ mod stop {
         }
     }
 
-    #[cfg(not(unix))]
-    pub fn install() {}
-
     /// Send SIGTERM to the process `pid`.
-    #[cfg(unix)]
     pub fn terminate(pid: u32) -> Result<(), String> {
         extern "C" {
             fn kill(pid: i32, sig: i32) -> i32;
@@ -233,20 +221,5 @@ mod stop {
             0 => Ok(()),
             _ => Err(std::io::Error::last_os_error().to_string()),
         }
-    }
-
-    /// End the process `pid`. Windows has no stop signal, so its runs end as after a daemon
-    /// failure (`interrupted` at the next start).
-    #[cfg(not(unix))]
-    pub fn terminate(pid: u32) -> Result<(), String> {
-        let pid = pid.to_string();
-        let status = std::process::Command::new("taskkill")
-            .args(["/PID", &pid, "/F"])
-            .status()
-            .map_err(|e| e.to_string())?;
-        status
-            .success()
-            .then_some(())
-            .ok_or_else(|| format!("taskkill: {status}"))
     }
 }
