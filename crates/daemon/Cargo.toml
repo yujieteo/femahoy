@@ -3,7 +3,6 @@ name = "fh-daemon"
 description = "HTTP server, token auth, process supervision, chat agent"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 publish.workspace = true
 
 [dependencies]

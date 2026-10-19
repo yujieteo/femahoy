@@ -25,10 +25,6 @@ For your own model, give `fh run` a CalculiX `.inp` file. `fh mesh` makes the me
 
 `fh` uses `$FH_CCX`. If `FH_CCX` is not set, it uses `ccx` on PATH. The validation cases are tested with `ccx` 2.23. The Ubuntu package is older.
 
-## Licence
-
-The code is licensed under AGPL-3.0.
-
 ## Documents
 
 - `DESIGN.md`: the current rules of the product, each with its reason.

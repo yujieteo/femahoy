@@ -20,9 +20,8 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 
 ---
 
-## 2. Licence
+## 2. Separate programs
 
-- **Licence:** AGPL-3.0 for all code.
 - CalculiX and gmsh stay separate programs. femahoy never links or bundles them, because they are GPL.
 
 ---
