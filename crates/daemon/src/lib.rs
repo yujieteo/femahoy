@@ -9,8 +9,8 @@
 //! - **Previews.** A preview copies the input file with no run, so that the page shows the
 //!   model with its supports and loads before the solve.
 //! - **Bounded queues.** At most [`MAX_QUEUED`] runs wait. Each run keeps its last
-//!   [`EVENT_QUEUE`] events in memory and an event log of at most [`EVENT_LOG`] bytes.
-//!   Clients read events by sequence number, so a slow client never grows a queue.
+//!   [`EVENT_QUEUE`] events in memory. Clients read events by sequence number, so a slow
+//!   client never grows a queue.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
 //!   its actions as chat entries for the page (`chat`).
@@ -49,7 +49,7 @@ pub use client::Client;
 pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
-pub use service::{Config, Limits, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
+pub use service::{Config, Limits, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";

@@ -268,9 +268,8 @@ fn cancel_keeps_one_record() {
     let c = daemon.client();
     assert_eq!(c.record(&run).unwrap(), record);
     let events = c.events(&run, 0, Duration::ZERO).unwrap();
-    let texts: Vec<&str> = events.items.iter().map(|e| e.text.as_str()).collect();
-    assert_eq!(texts.first(), Some(&"state queued"));
-    assert_eq!(texts.last(), Some(&"state cancelled"));
+    assert!(events.items.is_empty());
+    assert_eq!(events.state, RunState::Cancelled);
 }
 
 #[test]
