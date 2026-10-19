@@ -33,8 +33,9 @@ This case checks the complete workflow with an unstructured C3D10 mesh.
 
 ## Reproduce
 
-Run `fh-python scripts/check-warpage.py /tmp/warpage-proof`. It makes the STEP file with build123d and checks 2 mesh sizes.
-The script uses a private daemon state folder and the CalculiX adapter.
+`strip.step` comes from `fh-python scripts/cad/warpage_strip.py strip.step`.
+Run `fh run validation/cases/warpage-strip --size 1` (or `--size 0.5`) to solve a new mesh. `fh validate` checks the committed `strip.inp`.
+`cargo test -p fh-cli --test cli` checks the reference against the formula above.
 
 ## Measured result
 

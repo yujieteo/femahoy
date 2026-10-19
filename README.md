@@ -8,13 +8,11 @@ Run these 2 commands in a clone of this repository, on macOS or Linux:
 
 ```sh
 scripts/install.sh
-fh run --example bar-pressure
+fh serve
 ```
 
 1. `scripts/install.sh` builds `fh`, `fh-solve-ccx` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, [docs/ccx.md](docs/ccx.md)).
-2. `fh run --example bar-pressure` works in any folder. It meshes a steel bar with gmsh (`brew install gmsh`), writes the solver input, and solves it on a local daemon. Then it opens the results in the browser.
-
-The browser shows the bar with the contour of the von Mises stress. The legend shows `MISES (MPa), per element` and one band, `constant 100.0`, because a pressure of 100 MPa pulls the end of the bar. The daemon stays alive, so the page keeps the results. Stop it with `fh serve --stop`.
+2. `fh serve` starts a local daemon and opens the page in the browser. Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`) and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login ([docs/chat.md](docs/chat.md)). Stop the daemon with `fh serve --stop`.
 
 For your own model, give `fh run` an `.inp` file or a case folder (`case.toml` and one STEP file). The [quickstart](docs/quickstart.md) shows each step, and [`fh` commands](docs/reference/fh.md) gives the options and the exit codes.
 

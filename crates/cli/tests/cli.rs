@@ -76,6 +76,49 @@ fn validate_runs_every_case_through_ccx() {
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("tip_deflection_z"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
+    warpage_matches_the_theory(&stdout);
+}
+
+/// The value `key=` in the table row of quantity `name` of case `id`.
+fn row_value(table: &str, id: &str, name: &str, key: &str) -> f64 {
+    let row = format!("  {id}\t{name}\t");
+    let line = table.lines().find(|l| l.starts_with(&row)).unwrap();
+    let field = line.split('\t').find_map(|f| f.strip_prefix(key)).unwrap();
+    field.parse().unwrap()
+}
+
+/// The warpage references come from their formulas (see the derivations), and the copper
+/// slice agrees within 1% with the plate theory for the same inputs.
+fn warpage_matches_the_theory(table: &str) {
+    // warpage-strip: Lubarda and Lubarda, equations 2.5 to 2.7.
+    let (c1, c2) = (200000.0 * 4.0, 70000.0 * 4.0);
+    let stiffness = (c1 + c2) / 12.0;
+    let curvature = 2.0 * c1 * c2 * 2.0 * (2.3e-5 - 1.2e-5) * 100.0
+        / (4.0 * (c1 + c2) * stiffness + c1 * c2 * 4.0);
+    let strip = row_value(table, "warpage-strip", "warpage", "reference=");
+    assert!(
+        (strip + curvature * 40.0 * 40.0 / 2.0).abs() < 1e-10,
+        "{strip}"
+    );
+    // warpage-thick-copper: 0.700 um/K measured over 40 K (Calabretta et al. 2021, Table 2).
+    let copper = row_value(table, "warpage-thick-copper", "warpage", "reference=");
+    assert!((copper + 0.700e-3 * 40.0).abs() < 1e-12, "{copper}");
+    // Biaxial bilayer curvature, Timoshenko form with plate moduli E / (1 - nu).
+    let (m1, m2) = (120000.0 / (1.0 - 0.28), 77500.0 / (1.0 - 0.364));
+    let (h1, h2): (f64, f64) = (0.73, 0.02);
+    let strain = (1.64e-5 - 2.5e-6) * 40.0;
+    let curvature = 6.0 * m1 * m2 * h1 * h2 * (h1 + h2) * strain
+        / (m1 * m1 * h1.powi(4)
+            + 4.0 * m1 * m2 * h1.powi(3) * h2
+            + 6.0 * m1 * m2 * h1 * h1 * h2 * h2
+            + 4.0 * m1 * m2 * h1 * h2.powi(3)
+            + m2 * m2 * h2.powi(4));
+    let theory = -curvature * 50.0 * 50.0 / 8.0;
+    let computed = row_value(table, "warpage-thick-copper", "warpage", "computed=");
+    assert!(
+        (computed - theory).abs() <= 0.01 * theory.abs(),
+        "{computed} {theory}"
+    );
 }
 
 #[test]

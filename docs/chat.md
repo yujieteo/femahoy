@@ -49,7 +49,7 @@ The agent process stays alive between the messages. Each message goes on stdin a
 ```
 
 The agent replays each message when it reads it (`--replay-user-messages`). Thus the daemon knows that the agent works while it has a message that it did not read, or a turn with no `result` event.
-After a stop, or when the agent ends, the next message starts a new agent with `--resume`. The instructions are in `crates/daemon/src/agent.md`: write `part.py` and `case.toml`, then `fh info`, then `fh run .`, which runs `fh mesh`, `fh model`, the preview and the solve on the daemon of the page.
+After a stop, or when the agent ends, the next message starts a new agent with `--resume`. The instructions are in `crates/daemon/src/agent.md`: write `part.py` and `case.toml`, then `fh run .`, which runs `fh mesh`, `fh model`, the preview and the solve on the daemon of the page.
 The agent can use only the `fh` commands, `fh-python` and the file tools. Claude Code refuses each other tool in headless mode.
 The environment of the agent has `FH_STATE` (the state folder of the daemon, so that `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first on `PATH`.
 It also has `BASH_DEFAULT_TIMEOUT_MS` and `BASH_MAX_TIMEOUT_MS` set to 86400000 (24 hours). Claude Code stops a Bash command after 2 minutes by default, and a solve of a large model can take hours.

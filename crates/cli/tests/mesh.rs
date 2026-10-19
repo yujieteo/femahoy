@@ -54,6 +54,7 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
     assert!(stdout.contains("elset\tBEAM\t"), "{stdout}");
     assert!(stdout.contains("nset\tFIXED\t"), "{stdout}");
     assert!(stdout.contains("order\t2"), "{stdout}");
+    assert!(stdout.contains("min_scaled_jacobian\t0."), "{stdout}");
 }
 
 #[test]
@@ -213,6 +214,20 @@ mod fake_gmsh {
     fn mesh_file_that_the_reader_rejects_is_a_failure() {
         let body = "for a; do if [ \"$p\" = -o ]; then echo garbage > \"$a\"; fi; p=$a; done";
         fails(&run("garbage", body, &[]), 1, "not readable");
+    }
+
+    #[test]
+    fn mesh_with_an_inverted_element_is_refused() {
+        // One C3D10 element with corners 2 and 3 swapped, so its Jacobian is negative.
+        let msh = "$MeshFormat\n4.1 0 8\n$EndMeshFormat\n$Nodes\n1 10 1 10\n3 1 0 10\n\
+1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n0 0 0\n1 0 0\n0 1 0\n0 0 1\n0.5 0 0\n\
+0.5 0.5 0\n0 0.5 0\n0 0 0.5\n0 0.5 0.5\n0.5 0 0.5\n$EndNodes\n$Elements\n1 1 1 1\n\
+3 1 11 1\n1 1 3 2 4 7 6 5 8 9 10\n$EndElements\n";
+        let body = format!(
+            "for a; do if [ \"$p\" = -o ]; then cat > \"$a\" <<'EOF'\n{msh}EOF\nfi; p=$a; done"
+        );
+        let out = run("inverted", &body, &[]);
+        fails(&out, 1, "mesh.jacobian.negative: 1 elements");
     }
 
     #[test]

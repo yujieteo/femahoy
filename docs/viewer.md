@@ -77,7 +77,7 @@ The message names the file, for example `step-2.vtu: not found (results.file.mis
 ## The viewer in the browser
 
 1. Install `fh` with the viewer: `scripts/install.sh`. It builds the wasm viewer and copies it to the `viewer` folder beside `fh`.
-2. Run `fh run model.inp` (or `fh run --example bar-pressure`). It solves the model and opens the browser on the run.
+2. Run `fh run model.inp` (or `fh run validation/cases/bar-pressure`). It solves the model and opens the browser on the run.
 3. Or run `fh serve`. It opens the browser on the page of the daemon. Select a run in the list at the top of the viewer. The list shows each run that succeeded, as `<input folder> · <run>`. To open a run directly, add `&run=R` to the address.
 
 `--no-open`, or `FH_NO_OPEN=1`, keeps the browser closed. Then open the address that the command prints, `http://127.0.0.1:PORT/?token=TOKEN`.

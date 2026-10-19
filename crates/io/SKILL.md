@@ -26,8 +26,8 @@ Read gmsh meshes, scan STEP units, check mesh quality, and read or write result 
 
 ## Validation hooks it must pass
 
-Run `cargo check -p fh-io` and `cargo test -p fh-io`. Use `fh info` to check units and mesh quality.
+Run `cargo check -p fh-io` and `cargo test -p fh-io`. `fh mesh` checks the units and the mesh quality.
 
 ## Examples
 
-`fh info part.msh` reports mesh quality. `fh info part.step --case validation/cases/cantilever-c3d10` checks declared units.
+`fh mesh part.step --case validation/cases/bar-tension` checks the declared units and reports the minimum scaled Jacobian.

@@ -10,7 +10,7 @@ Run these 2 commands in a clone of this repository, on macOS or Linux:
 
 ```sh
 scripts/install.sh
-fh run --example bar-pressure
+fh serve
 ```
 
 ### The install
@@ -41,31 +41,35 @@ It also tells you when CalculiX (`ccx`) is missing. Each solve needs `ccx`: see 
 At the end, it shows the installed files and the next command.
 If the folder is not on `PATH`, the next command has the full path, and the script shows the line to add to your shell start file.
 
-### The example
+### The chat
 
-`fh run --example bar-pressure` works in any folder. It needs no file of yours.
-The example is a steel bar of 100 × 20 × 10 mm. A pressure of 100 MPa pulls one end face.
+`fh serve` opens the page in the browser. Write a request in the chat of the page. The agent makes the part, meshes it and solves it, and the viewer of the page shows the results ([chat](chat.md)).
+
+### A case folder
+
+`fh run validation/cases/bar-pressure --size 8` solves a case of the repository.
+The case is a steel bar of 100 × 20 × 10 mm. A pressure of 100 MPa pulls one end face.
 The exact von Mises stress is 100 MPa in all of the bar ([derivation](../validation/cases/bar-pressure/derivation.md)).
 
-1. `fh run` writes the case files to `STATE/examples/bar-pressure`. `STATE` is the state folder, `~/.local/state/femahoy` by default.
-2. It uses the daemon of the state folder. If no daemon answers, it starts `fh serve --no-open` in the background.
-3. It runs `fh mesh` (gmsh) and `fh model` in a work folder, `STATE/cases/bar-pressure-HASH`.
-4. It submits the input to the daemon and shows the events of the run.
-5. It shows the result folder and `summary.toon`, and opens the run in the browser.
+1. `fh run` uses the daemon of the state folder. `STATE` is the state folder, `~/.local/state/femahoy` by default. If no daemon answers, it starts `fh serve --no-open` in the background.
+2. It runs `fh mesh` (gmsh) and `fh model` in a work folder, `STATE/cases/bar-pressure-HASH`.
+3. It submits the input to the daemon and shows the events of the run.
+4. It shows the result folder and `summary.toon`, and opens the run in the browser.
 
 Output excerpt (paths cut, `STATE` for the state folder):
 
 ```text
 fh run: started a daemon for STATE (log STATE/daemon.log)
-fh run: mesh: fh mesh STATE/examples/bar-pressure/bar.step --case STATE/examples/bar-pressure -o STATE/cases/bar-pressure-1acfd60cffd6b9a9/bar.msh --size 8
+fh run: mesh: fh mesh validation/cases/bar-pressure/bar.step --case validation/cases/bar-pressure -o STATE/cases/bar-pressure-f069ef66a99460ee/bar.msh --size 8
 nodes	844
 elements	373
+min_scaled_jacobian	0.1990
 fh run: preview: the page shows bar-pressure (preview 1) with its supports and loads
-fh run: run-000001 solves STATE/cases/bar-pressure-1acfd60cffd6b9a9/bar.inp
+fh run: run-000001 solves STATE/cases/bar-pressure-f069ef66a99460ee/bar.inp
   queued
   running
   succeeded
-fh run: run-000001 succeeded in 0.21 s
+fh run: run-000001 succeeded in 0.19 s
 fh run: results in STATE/runs/run-000001/out
 fh run: summary.toon:
   ...
@@ -94,7 +98,6 @@ Ctrl+C during a run cancels the run. A second Ctrl+C ends `fh run` at once.
 | `fh run model.inp` | The `.inp` file as it is. |
 | `fh run CASE_DIR` | A case folder with `case.toml` and one STEP file: `fh mesh`, `fh model`, then the solve. `CASE_DIR/case.toml` and `CASE_DIR/PART.step` do the same. |
 
-For example, `fh run validation/cases/bar-pressure` in the repository solves the case of the example.
 `fh run` does not change the case folder. Its mesh and input go to the work folder.
 `--size H` goes to `fh mesh`. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
 [`fh` commands](reference/fh.md#fh-run) gives the exit codes and the messages.
@@ -144,18 +147,8 @@ The [case schema](../crates/validation/SCHEMA.md) defines all required keys.
 | `SI-mm` | mm | N | MPa | tonne | s |
 | `SI-m` | m | N | Pa | kg | s |
 
-```sh
-fh info "$WORK/bar.step" --case validation/cases/bar-tension
-```
-
-Output excerpt:
-
-```text
-kind: step
-step_unit: mm
-case_units: SI-mm
-units_match: yes
-```
+`fh mesh` (section 3) reads the unit record of the STEP file.
+It refuses a STEP file with no unit record (`unit.step.missing`) or with other units than the run (`unit.step.mismatch`).
 
 ## 3. Mesh the STEP file with gmsh
 
@@ -165,21 +158,20 @@ If gmsh is outside `PATH`, add `--gmsh /path/to/gmsh`.
 
 ```sh
 fh mesh "$WORK/bar.step" -o "$WORK/bar.msh" --units SI-mm --size 5
-fh info "$WORK/bar.msh" --case validation/cases/bar-tension
 ```
 
-Both commands returned exit code 0. The info command produced this excerpt.
+The command returned exit code 0. Output excerpt:
 
 ```text
-nodes: 2038
-elements: C3D10=1015
-bbox_min: [0.0, 0.0, 0.0] mm
-bbox_max: [100.0, 20.0, 10.0] mm
-volume: 2.000000e4
-min_scaled_jacobian: 0.1971
+units	SI-mm
+order	2
+nodes	2038
+elements	1015
+min_scaled_jacobian	0.1971
+type	C3D10	1015
 ```
 
-For `.msh` input, `--case` supplies unit labels. It does not verify a unit record in the mesh.
+`fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`).
 
 ## 4. Write the solver input and run the solver
 

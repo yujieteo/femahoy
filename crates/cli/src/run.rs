@@ -8,8 +8,6 @@
 //!   change.
 //! - Each run uses the solver of the daemon: `FH_SOLVE` when set, else `fh-solve-ccx` beside
 //!   `fh` or on `PATH`. `fh-solve-ccx` needs CalculiX (`docs/ccx.md`).
-//! - `fh run --example NAME` writes an example case that `fh` carries to
-//!   `<state>/examples/NAME`, then runs it as a case folder. It works from any folder.
 //!
 //! Before the solve, `fh run` sends the input to the preview route of the daemon, so that
 //! the page shows the model with each support and each load. With `--preview`, `fh run`
@@ -32,7 +30,6 @@ use std::time::{Duration, Instant};
 use fh_daemon::{Client, Event, RunRecord, RunState};
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] \
-[--preview] [--state DIR] [--no-open]\n       fh run --example NAME [--size H] \
 [--preview] [--state DIR] [--no-open]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
@@ -52,51 +49,13 @@ const LOST_WAIT: Duration = Duration::from_secs(10);
 /// The wait of each events request. It is short, so that Ctrl+C acts fast.
 const EVENT_WAIT: Duration = Duration::from_millis(500);
 
-/// An example case that `fh` carries: the files of a validation case and its mesh size.
-struct Example {
-    name: &'static str,
-    about: &'static str,
-    size: &'static str,
-    files: &'static [(&'static str, &'static [u8])],
-}
-
-const EXAMPLES: &[Example] = &[Example {
-    name: "bar-pressure",
-    about: "a steel bar of 100 x 20 x 10 mm, pulled by a pressure of 100 MPa on one end face. \
-            The MISES stress is 100 MPa in all of the bar",
-    size: "8",
-    files: &[
-        (
-            "case.toml",
-            include_bytes!("../../../validation/cases/bar-pressure/case.toml"),
-        ),
-        (
-            "bar.step",
-            include_bytes!("../../../validation/cases/bar-pressure/bar.step"),
-        ),
-        (
-            "derivation.md",
-            include_bytes!("../../../validation/cases/bar-pressure/derivation.md"),
-        ),
-    ],
-}];
-
 #[derive(Default)]
 struct Options {
     target: Option<PathBuf>,
-    example: Option<String>,
     size: Option<String>,
     state: Option<PathBuf>,
     no_open: bool,
     preview: bool,
-}
-
-fn example_names() -> String {
-    EXAMPLES
-        .iter()
-        .map(|e| e.name)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -109,7 +68,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 .ok_or_else(|| format!("{arg} needs {what}\n{USAGE}"))
         };
         match arg.as_str() {
-            "--example" => o.example = Some(value(&format!("a name: {}", example_names()))?),
             "--size" => {
                 let size = value("a mesh size")?;
                 if !size.parse::<f64>().is_ok_and(|h| h.is_finite() && h > 0.0) {
@@ -125,11 +83,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
             s => return Err(format!("unexpected argument: {s}\n{USAGE}")),
         }
     }
-    match (&o.target, &o.example) {
-        (None, None) => Err(USAGE.into()),
-        (Some(_), Some(_)) => Err(format!("give a model or --example, not both\n{USAGE}")),
-        _ => Ok(o),
+    if o.target.is_none() {
+        return Err(USAGE.into());
     }
+    Ok(o)
 }
 
 /// What `fh run` solves.
@@ -217,23 +174,6 @@ fn text(path: &Path) -> Result<String, String> {
     path.to_str()
         .map(str::to_owned)
         .ok_or_else(|| format!("{}: the path is not UTF-8", path.display()))
-}
-
-/// Write the files of an example to `<state>/examples/NAME` and give the folder.
-fn write_example(state: &Path, example: &Example) -> Result<PathBuf, String> {
-    let dir = state.join("examples").join(example.name);
-    fs::create_dir_all(&dir).map_err(|e| format!("cannot make {}: {e}", dir.display()))?;
-    for (name, bytes) in example.files {
-        let path = dir.join(name);
-        fs::write(&path, bytes).map_err(|e| format!("cannot write {}: {e}", path.display()))?;
-    }
-    println!(
-        "fh run: example {}: {}.\nfh run: the files of the example are in {}",
-        example.name,
-        example.about,
-        dir.display()
-    );
-    Ok(dir)
 }
 
 /// The tail of the daemon log, for an error message.
@@ -502,21 +442,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         .clone()
         .or_else(fh_daemon::default_state_dir)
         .ok_or_else(|| format!("no home folder, so give the state folder\n{USAGE}"))?;
-    let example = match &o.example {
-        Some(name) => Some(EXAMPLES.iter().find(|e| e.name == name).ok_or_else(|| {
-            format!(
-                "unknown example {name}. The examples: {} (run.example.unknown)",
-                example_names()
-            )
-        })?),
-        None => None,
-    };
     // Check the model before a daemon starts.
-    let input = match &o.target {
-        Some(target) => Some(resolve(target)?),
-        None => None,
-    };
-    if matches!(input, Some(Input::Inp(_))) && o.size.is_some() {
+    let input = resolve(o.target.as_deref().expect("parse needs a model"))?;
+    if matches!(input, Input::Inp(_)) && o.size.is_some() {
         return Err(format!(
             "--size goes to fh mesh, for a case folder or a STEP file. An .inp file \
              has its mesh (run.option.mesh)\n{USAGE}"
@@ -532,11 +460,6 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     // The canonical path: the daemon gives it in its paths, and a new daemon runs in the
     // state folder, where a relative path names another folder.
     let state = fs::canonicalize(&state).unwrap_or(state);
-    let input = match (input, example) {
-        (Some(input), _) => input,
-        (None, Some(example)) => resolve(&write_example(&state, example)?)?,
-        (None, None) => unreachable!("parse needs a model or an example"),
-    };
     // Without FH_SOLVE the daemon runs fh-solve-ccx. Stop now when it is not there.
     let solver = fh_daemon::SOLVER;
     if std::env::var_os("FH_SOLVE").is_none()
@@ -574,8 +497,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             // Two fh run commands on one case at the same time take turns.
             let lock = File::create(work.join(".lock")).and_then(|f| f.lock().map(|()| f));
             let _lock = lock.map_err(|e| format!("cannot lock {}: {e}", work.display()))?;
-            let size = o.size.as_deref().or(example.map(|e| e.size));
-            match prepare(&work, dir, step, size)? {
+            match prepare(&work, dir, step, o.size.as_deref())? {
                 Ok(inp) => (inp, Some(name.into_owned())),
                 Err(code) => return Ok(code),
             }
@@ -682,21 +604,8 @@ mod tests {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(parse(&args(&["m.inp", "--size", "0"])).is_err());
         assert!(parse(&args(&["m.inp", "--order", "2"])).is_err());
-        assert!(parse(&args(&["m.inp", "--example", "bar-pressure"])).is_err());
         assert!(parse(&args(&[])).is_err());
-        let o = parse(&args(&["--example", "bar-pressure", "--no-open"])).unwrap();
-        assert!(o.no_open && o.example.as_deref() == Some("bar-pressure"));
-    }
-
-    #[test]
-    fn the_example_files_make_a_case_folder() {
-        let state = std::env::temp_dir().join(format!("fh-run-example-{}", std::process::id()));
-        let dir = write_example(&state, &EXAMPLES[0]).unwrap();
-        let Input::Case { step, .. } = resolve(&dir).unwrap() else {
-            panic!("not a case folder");
-        };
-        assert_eq!(step.file_name().unwrap(), "bar.step");
-        fh_validation::Case::load_before_mesh(&dir).unwrap();
-        let _ = fs::remove_dir_all(state);
+        let o = parse(&args(&["m.inp", "--no-open"])).unwrap();
+        assert!(o.no_open);
     }
 }

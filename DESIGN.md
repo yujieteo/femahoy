@@ -407,7 +407,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - **Rejected:** a CAD kernel or a STEP reader inside `fh`.
 - **Reverse if:** build123d or gmsh cannot write or read STEP on a supported platform.
-- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, a `.geo` template for gmsh, and `fh info` for the checks. `fh model` turns the `.msh` file and the `[model]` table of the case into a solver input (case `bar-tension`). Named regions are built: `fh mesh` makes a gmsh physical surface for each `[[model.region]]` of the case, and `fh model` writes it as a node set and an element-face surface (cases `bar-pressure` and `bar-pressure-m`). `fh mesh` is built (D-18, D-19).
+- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, and `fh mesh` for gmsh and the checks. `fh model` turns the `.msh` file and the `[model]` table of the case into a solver input (case `bar-tension`). Named regions are built: `fh mesh` makes a gmsh physical surface for each `[[model.region]]` of the case, and `fh model` writes it as a node set and an element-face surface (cases `bar-pressure` and `bar-pressure-m`). `fh mesh` is built (D-18, D-19).
 
 ### D-18 The case declares units, `fh` refuses a mismatch
 - **Decided by:** the captain.
@@ -415,7 +415,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** A wrong unit gives wrong results without any warning.
 - **Rejected:** a default unit, a guessed unit, a warning in place of the refusal.
 - **Reverse if:** the captain allows a run with unknown units.
-- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`), no units (`unit.case.missing`) and the STEP unit faults of `fh info`. `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). `fh model` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve-ccx` writes those units into `summary.toon` and the PVD file.
+- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`) and no units (`unit.case.missing`). It refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). `fh model` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve-ccx` writes those units into `summary.toon` and the PVD file.
 
 ### D-19 C3D10 is the only element
 - **Decided by:** the captain.
@@ -423,7 +423,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case (1 x 1 mm section, 1 element through it), plain hex8 (`C3D8`, B-bar) gave 0.35 to 2.07 times the beam deflection. `docs/compatibility.md` at main commit `50dded8` has the data. 1 element type keeps the parser, the adapter, the viewer and the cases small.
 - **Rejected:** hex8 as the default element, and hex8 for extruded parts.
 - **Reverse if:** the workflow benchmark records (B1) show that typical tet10 models do not fit D-06.
-- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). The parser, the `.msh` reader and the viewer accept only `C3D10`.
+- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`). The parser, the `.msh` reader and the viewer accept only `C3D10`.
 
 ### D-20 Early mesh-only viewer
 - **Decided by:** the captain.
@@ -478,7 +478,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 ### D-27 The basic LLM workflow first
 - **Decided by:** the captain, 2026-10-18. The captain said: "biggest problem is getting the basic workflow to work?", "make requirements less dumb", "Delete herdr, I just want to talk" and "1 focused agent focusing on the right thing with the option to add more agents is OK".
 - **Choice:**
-  1. M4 starts now. The two tracks and the workflow lock are removed (this replaces D-16). `scripts/check-workflow.sh` stays the proof of the CLI workflow.
+  1. M4 starts now. The two tracks and the workflow lock are removed (this replaces D-16). `fh validate` is the proof of the CLI workflow (the script `scripts/check-workflow.sh` was deleted).
   2. The M4 exit test is the basic LLM workflow: one chat request gives a solved cantilever, and the page of `fh serve` shows each step. M4 needs one connection path, the user's CLI login.
   3. New item C3: thermal strain, several materials and warpage through CalculiX, now.
   4. New item B1 replaces E2: benchmark records measure the workflow, from the request to the results. D-30 removed B1.

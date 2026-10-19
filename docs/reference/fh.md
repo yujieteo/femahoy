@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `mesh`, `model`, `validate`, `info`, `run`, and `serve`.
+`fh` implements `mesh`, `model`, `validate`, `run`, and `serve`.
 This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
 The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
@@ -51,7 +51,7 @@ The command removes an existing output file before the mesh run.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Mesh success | stdout: tab-separated `ok`, `gmsh`, `units`, `order`, `nodes`, `elements`, `type`, `nset`, `elset`, and `surface` (element-face count) rows. | 0 |
+| Mesh success | stdout: tab-separated `ok`, `gmsh`, `units`, `order`, `nodes`, `elements`, `min_scaled_jacobian`, `type`, `nset`, `elset`, and `surface` (element-face count) rows. | 0 |
 | gmsh warning or different release | stdout: `warning<TAB>MESSAGE`. gmsh lines that start with `Warning` are retained. | 0 |
 | Missing option value, invalid number, units, or set name | stderr: `fh mesh: MESSAGE` | 2 |
 | Unknown option, no input, or more than 1 input | Same prefix. Includes mesh usage. | 2 |
@@ -59,7 +59,7 @@ The command removes an existing output file before the mesh run.
 | Input read, extension, path, or temporary-file error | `fh mesh: MESSAGE` | 1 |
 | Refused `.geo` command | Same prefix. Refuses `SystemCall`, `NonBlockingSystemCall`, `OnelabRun`, `Include`, and non-`.msh` or non-literal `Merge`. | 1 |
 | No STEP length record | `fh mesh: unit.step.missing: ...` | 1 |
-| Multiple STEP length units | `fh mesh: unit.step.mixed: ...` | 1 |
+| Multiple STEP length units | `fh mesh: unit.step.conflict: ...` | 1 |
 | STEP unit differs from declared units | `fh mesh: unit.step.mismatch: ...` | 1 |
 | gmsh not found or cannot start | `fh mesh: gmsh is not installed. ...` or `cannot start gmsh (PATH): ERROR` | 1 |
 | Unreadable or old version | `fh mesh: cannot read the gmsh version from ...` or `gmsh VERSION is too old, ...` | 1 |
@@ -67,6 +67,7 @@ The command removes an existing output file before the mesh run.
 | Timeout | `fh mesh: gmsh timed out after N seconds and was stopped` | 1 |
 | Child failure or a line that starts with `Error` | `fh mesh: gmsh failed (exit code N)` or `gmsh failed (stopped by a signal)`, with error text. | 1 |
 | Missing output, unreadable mesh, or no volume elements | `fh mesh: gmsh wrote no mesh file: PATH`, `the mesh is not readable (PATH): ERROR`, or `gmsh wrote a mesh with no volume elements: PATH` | 1 |
+| An element with a corner Jacobian of 0 or less | `fh mesh: mesh.jacobian.negative: ...` with the count and example element IDs | 1 |
 | A volume with no physical group, in a file with physical groups | `fh mesh: mesh.volume.unnamed: ...` | 1 |
 | A region of the case that selects no face of the part | `fh mesh: mesh.region.missing: ...` | 1 |
 | A region that is not on the outside of the solid | `fh mesh: mesh.region.inner: ...` | 1 |
@@ -107,35 +108,6 @@ Each surface region becomes a node set and an element-face surface of its name. 
 | The written input does not parse | Same refusal format with `model.inp.invalid`. | 1 |
 | Usage, case, file read, or mesh parse error | `fh model: MESSAGE` | 2 |
 
-## `fh info`
-
-```text
-fh info FILE.step|FILE.msh [--case DIR]
-```
-
-Sources: [info.rs](../../crates/cli/src/info.rs), [STEP unit reader](../../crates/io/src/step.rs),
-and [mesh statistics](../../crates/io/src/check.rs).
-
-The accepted extensions are exactly `.step`, `.stp`, and `.msh` in lower case.
-`--case DIR` loads `DIR/case.toml`. It checks STEP units or labels mesh lengths with the declared unit.
-
-| Condition | Diagnostic or output | Exit |
-|---|---|---:|
-| STEP scan succeeds | stdout: `file`, `kind: step`, `step_unit`. With a matching case: `case_units`, `units_match: yes`, `gmsh_target_unit`. | 0 |
-| Mesh scan succeeds | stdout: `file`, `kind: msh`, `nodes`, `elements`, `bbox_min`, `bbox_max`, `volume`, `min_scaled_jacobian`. | 0 |
-| No STEP length record | stderr: `fh info: refused: unit.step.missing: MESSAGE` | 1 |
-| STEP records have different units | Same refusal format with `unit.step.conflict`. | 1 |
-| STEP unit differs from case | Same refusal format with `unit.step.mismatch`. | 1 |
-| No supported solid elements | Same refusal format with `mesh.empty`. | 1 |
-| Corner Jacobian is 0 or less | Same refusal format with `mesh.jacobian.negative`. Includes the count and example element IDs. | 1 |
-| No file | `fh info: usage: fh info FILE.step|FILE.msh [--case DIR]` | 2 |
-| Missing `--case` value | `fh info: --case needs a directory` | 2 |
-| Unknown option or extra argument | `fh info: unknown option: OPTION` or `unexpected argument: ARGUMENT` | 2 |
-| Case, file read, mesh parse, statistics, or extension error | `fh info: MESSAGE` | 2 |
-
-Without a case, a single STEP unit can pass even when it is not `mm` or `m`.
-Mesh statistics can precede a Jacobian refusal. A refusal does not imply empty stdout.
-
 ## `fh validate`
 
 ```text
@@ -172,7 +144,6 @@ See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 
 ```text
 fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--preview] [--state DIR] [--no-open]
-fh run --example NAME [--size H] [--preview] [--state DIR] [--no-open]
 ```
 
 Source: [run.rs](../../crates/cli/src/run.rs).
@@ -183,11 +154,10 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 |---|---|
 | `MODEL.inp` (the extension in any case) | Solves the file as it is. |
 | `CASE_DIR`, `CASE_DIR/case.toml`, or `CASE_DIR/PART.step` (`.step` or `.stp`) | Runs `fh mesh PART.step --case CASE_DIR` and `fh model` in the work folder `STATE/cases/NAME-HASH`, then solves the input. Thus the case folder does not change. A folder must hold one STEP file. |
-| `--example NAME` | Writes an example case that `fh` holds to `STATE/examples/NAME`, then runs it as a case folder. It works from any folder. The example is `bar-pressure` (mesh size 8). |
 
 | Option | Default or rule |
 |---|---|
-| `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder, 8 for `bar-pressure`. |
+| `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder. |
 | `--preview` | Show the model with its supports and loads in the page, then stop. No solve occurs. |
 | `--state DIR` | The state folder of the daemon, the same default as `fh serve`. |
 | `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
@@ -225,13 +195,12 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
 | The daemon refused the run | `fh run: the daemon refused the run: MESSAGE (CODE)`, for example `queue.full` | 1 |
-| No input, unknown option, bad value (for example `--size needs a number above 0`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
+| No input, unknown option, bad value (for example `--size needs a number above 0`) | `fh run: MESSAGE` and the usage | 2 |
 | `--size` with an `.inp` file | `fh run: --size goes to fh mesh, ... (run.option.mesh)` | 2 |
 | The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
 | The input is not an `.inp` file, a folder, `case.toml` or a STEP file | `fh run: PATH: ... (run.input.kind)` | 2 |
 | A folder with no `case.toml` | `fh run: DIR: no case.toml, so this is not a case folder (run.case.missing)` | 2 |
 | A case folder with no STEP file, or with more than 1 | `(run.case.step.missing)`, or `(run.case.step.many)` with the names | 2 |
-| An unknown example | `fh run: unknown example NAME. The examples: bar-pressure (run.example.unknown)` | 2 |
 | A case that `fh mesh` or `fh model` cannot read | `fh run: mesh: MESSAGE` or `fh run: model: MESSAGE` | 2 |
 | The state folder cannot be made | `fh run: no daemon: cannot make the state folder DIR: ERROR` | 3 |
 | No daemon answers and `fh serve` does not start one | `fh run: no daemon: fh serve did not start a daemon for DIR`, then the last 5 lines of `DIR/daemon.log`, for example `another daemon uses this state folder (daemon.running)` | 3 |
@@ -284,5 +253,4 @@ The address holds the token, so it does not go into the command line of a browse
 
 Run `fh --help` from the branch under review after a CLI change.
 Compare dispatch and exit codes with `main.rs` and every command’s `run` function.
-Check refusal identifiers in both STEP readers. `mesh` uses `unit.step.mixed`, while `info` uses `unit.step.conflict`.
 Check returned errors as well as explicit exit codes. The dispatcher converts returned errors to exit code 2.

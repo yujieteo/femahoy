@@ -60,7 +60,7 @@ For the same inputs, the plate form of the bilayer curvature (Timoshenko) gives 
 It uses the plate moduli E/(1 - nu) of each layer.
 A free bilayer plate in linear theory bends to a spherical shape, so the plate moduli apply away from the free edges.
 The beam form with E gives 0.60445 µm/K. The paper gives 0.605 µm/K for it.
-The script `scripts/check-warpage-copper.py` checks that the computed warpage is within 1% of the plate value at each mesh size.
+`cargo test -p fh-cli --test cli` checks that the warpage of `fh validate` is within 1% of the plate value.
 
 ## Measured result
 
@@ -90,8 +90,7 @@ Thus the 20 µm copper layer gets flat tetrahedra. All Jacobians are positive, a
 
 ## Reproduce
 
-Run `FH_CCX=/path/to/ccx fh-python scripts/check-warpage-copper.py /tmp/warpage-copper-proof`.
-It makes the STEP file with build123d and runs `fh run` at 3 mesh sizes through `fh-solve-ccx`.
+Run `fh run validation/cases/warpage-thick-copper --size H` with H = 1, 0.5 or 0.25.
 The committed `slice.inp` is the coarse mesh from `fh mesh --size 1` and `fh model`. The STEP file comes from `scripts/cad/thick_copper_slice.py`.
 
 ## Choice of the case

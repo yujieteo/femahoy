@@ -83,14 +83,6 @@ The earlier records of this file, with the deleted cases, are in the Git history
 The case has 2 materials, thermal expansion, and a uniform temperature change of 100 K.
 The reference is the published bilayer solution of Lubarda and Lubarda, equations 2.5 to 2.7.
 The [derivation](../validation/cases/warpage-strip/derivation.md) gives the source, inputs and measured results at 2 mesh sizes.
-
-```sh
-cargo build -p fh-cli -p fh-solver-ccx
-FH_CCX=/path/to/ccx fh-python scripts/check-warpage.py /tmp/warpage-proof
-```
-
-The check sets `FH_SOLVE` to the adjacent `fh-solve-ccx` before it starts each private daemon.
-It reads VTU output and compares warpage with the analytical reference.
 The fine mesh gives -0.6126606 mm against -0.6136986301 mm, a difference of 0.169143% within the 1% tolerance.
 `fh validate` also checks the committed coarse mesh.
 
@@ -102,11 +94,6 @@ The source is Calabretta et al., Applied Sciences 11 (2021) 5140, open access un
 Phase-shift moiré gives 0.700 µm/°C from 50 to 90 °C, in the second cycle, where the warpage is linear.
 The case uses the materials of the paper and a temperature change of 40 K.
 The [derivation](../validation/cases/warpage-thick-copper/derivation.md) gives the inputs, the 12% tolerance and the results at 3 mesh sizes.
-
-```sh
-cargo build -p fh-cli -p fh-solver-ccx
-FH_CCX=/path/to/ccx fh-python scripts/check-warpage-copper.py /tmp/warpage-copper-proof
-```
 
 The finest mesh gives 0.67738 µm/K, 3.2% below the measured value.
 The bilayer plate theory with the same inputs gives 0.67813 µm/K. Thus the solve adds almost no error. The difference comes from the inputs, the model assumptions and the measurement.
