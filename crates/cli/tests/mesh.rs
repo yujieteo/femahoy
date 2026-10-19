@@ -3,13 +3,9 @@ use common::*;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-const BEAM: &str = "SetFactory(\"OpenCASCADE\");\n\
-Box(1) = {0, 0, 0, 4, 1, 1};\n\
-Physical Volume(\"BEAM\") = {1};\n\
-Physical Surface(\"FIXED\") = {1};\n\
-Physical Surface(\"LOAD\") = {2};\n\
-Mesh.MeshSizeMax = 0.5;\n\
-Mesh.MeshSizeMin = 0.5;\n";
+fn fixture(name: &str) -> PathBuf {
+    root().join("fixtures/step").join(name)
+}
 
 /// Run `fh mesh`. The units are required, so this adds `--units SI-mm`
 /// unless the arguments declare units.
@@ -44,18 +40,27 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
         return;
     };
     let dir = scratch("real");
-    let geo = dir.join("beam.geo");
-    std::fs::write(&geo, BEAM).unwrap();
-    let out = mesh(&[p(&geo)], Some(&gmsh));
-    let stdout = stdout(&out);
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
-    let inp = std::fs::read_to_string(dir.join("beam.inp")).unwrap();
+    let out = dir.join("block.inp");
+    let step = fixture("block.step");
+    let run = mesh(
+        &[
+            p(&step),
+            "--size",
+            "0.5",
+            "-o",
+            p(&out),
+            "--face",
+            "FIXED=x:-2",
+        ],
+        Some(&gmsh),
+    );
+    let stdout = stdout(&run);
+    assert_eq!(run.status.code(), Some(0), "stderr: {}", stderr(&run));
+    let inp = std::fs::read_to_string(&out).unwrap();
     assert!(inp.contains("*ELEMENT, TYPE=C3D10, ELSET=ALL"), "{inp}");
     assert!(inp.contains("*NSET, NSET=FIXED"), "no FIXED set");
-    assert!(inp.contains("*ELSET, ELSET=BEAM"), "no BEAM set");
     assert!(inp.contains("** units: SI-mm"), "{inp}");
     assert!(stdout.contains("ok\t"), "{stdout}");
-    assert!(stdout.contains("elset\tBEAM\t"), "{stdout}");
     assert!(stdout.contains("nset\tFIXED\t"), "{stdout}");
     assert!(stdout.contains("min_scaled_jacobian\t0."), "{stdout}");
     // The input holds the mesh and nothing else. The chat adds the model.
@@ -66,59 +71,9 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
 }
 
 #[test]
-fn geo_file_with_a_forbidden_command_is_refused_before_gmsh_starts() {
-    let dir = scratch("syscall");
-    for (i, text) in [
-        "SystemCall \"echo x\";\n",
-        "NonBlockingSystemCall \"echo x\";\n",
-        "systemcall(\"echo x\");\n",
-        "OnelabRun(\"x\");\n",
-        "Include \"evil.geo\";\n",
-        "Merge \"evil.geo\";\n",
-        "Merge \"evil.pro\";\n",
-        "Merge a;\n",
-        "/* ok */ // ok\nSystemCall \"echo x\";\n",
-    ]
-    .iter()
-    .enumerate()
-    {
-        let geo = dir.join(format!("bad{i}.geo"));
-        std::fs::write(&geo, text).unwrap();
-        let out = mesh(&[p(&geo)], no_gmsh());
-        assert_eq!(out.status.code(), Some(1), "{text}: {}", stderr(&out));
-        assert!(stderr(&out).contains("refuses"), "{text}: {}", stderr(&out));
-        assert!(!dir.join(format!("bad{i}.msh")).exists());
-    }
-}
-
-#[test]
-fn geo_file_with_merge_msh_or_commented_keywords_reaches_gmsh() {
-    let dir = scratch("allowed");
-    for (i, text) in [
-        "Merge \"part.MSH\";\n",
-        "// SystemCall \"x\";\n/* Include \"a.geo\"; OnelabRun */\nPoint(1) = {0,0,0};\n",
-        "Printf(\"// Include\");\n",
-    ]
-    .iter()
-    .enumerate()
-    {
-        let geo = dir.join(format!("ok{i}.geo"));
-        std::fs::write(&geo, text).unwrap();
-        let out = mesh(&[p(&geo)], no_gmsh());
-        assert!(
-            !stderr(&out).contains("refuses"),
-            "{text}: {}",
-            stderr(&out)
-        );
-    }
-}
-
-#[test]
 fn missing_gmsh_gives_a_clear_error() {
-    let dir = scratch("missing");
-    let geo = dir.join("a.geo");
-    std::fs::write(&geo, BEAM).unwrap();
-    fails(&mesh(&[p(&geo)], no_gmsh()), 1, "cannot start gmsh");
+    let step = fixture("block.step");
+    fails(&mesh(&[p(&step)], no_gmsh()), 1, "cannot start gmsh");
 }
 
 #[test]
@@ -146,10 +101,8 @@ const METRE_STEP: &str = "DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.
 
 #[test]
 fn a_run_with_no_units_is_refused() {
-    let dir = scratch("nounits");
-    let geo = dir.join("a.geo");
-    std::fs::write(&geo, BEAM).unwrap();
-    fails(&fh_raw(&[p(&geo)], no_gmsh()), 1, "unit.missing");
+    let step = fixture("block.step");
+    fails(&fh_raw(&[p(&step)], no_gmsh()), 1, "unit.missing");
 }
 
 #[test]
@@ -171,15 +124,15 @@ fn the_units_are_checked_against_the_step_file() {
 fn bad_options_exit_2() {
     for args in [
         &[][..],
-        &["a.geo", "--order", "2"],
-        &["a.geo", "--bogus"],
-        &["a.geo", "--case", "x"],
-        &["a.geo", "--refine"],
-        &["a.geo", "--refine", "A"],
-        &["a.geo", "--refine", "A=0"],
-        &["a.geo", "--refine", "A=x"],
-        &["a.geo", "--refine", "A=1", "--refine", "a=2"],
-        &["a.geo", "--refine", "A,A=1"],
+        &["a.step", "--order", "2"],
+        &["a.step", "--bogus"],
+        &["a.step", "--case", "x"],
+        &["a.step", "--refine"],
+        &["a.step", "--refine", "A"],
+        &["a.step", "--refine", "A=0"],
+        &["a.step", "--refine", "A=x"],
+        &["a.step", "--refine", "A=1", "--refine", "a=2"],
+        &["a.step", "--refine", "A,A=1"],
     ] {
         let out = mesh(args, None);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -199,9 +152,9 @@ mod fake_gmsh {
     fn run(name: &str, body: &str, extra: &[&str]) -> Output {
         let dir = scratch(name);
         let gmsh = script(&dir, body);
-        let geo = dir.join("a.geo");
-        std::fs::write(&geo, BEAM).unwrap();
-        let mut args = vec![p(&geo)];
+        let step = fixture("block.step");
+        let out = dir.join("a.inp");
+        let mut args = vec![p(&step), "-o", p(&out)];
         args.extend(extra);
         mesh(&args, Some(&gmsh))
     }
@@ -246,24 +199,13 @@ mod fake_gmsh {
     }
 
     #[test]
-    fn slow_gmsh_is_stopped_at_the_time_limit() {
-        let start = std::time::Instant::now();
-        fails(
-            &run("slow", "sleep 30", &["--timeout", "1"]),
-            1,
-            "timed out",
-        );
-        assert!(start.elapsed().as_secs() < 20);
-    }
-
-    #[test]
     fn gmsh_receives_explicit_arguments() {
         // Record the arguments, then fail. The record shows the explicit flags.
         let dir = scratch("args");
         let gmsh = script(&dir, "echo \"$@\" > \"$(dirname \"$0\")/args.txt\"; exit 1");
-        let geo = dir.join("a.geo");
-        std::fs::write(&geo, BEAM).unwrap();
-        mesh(&[p(&geo), "--size", "0.5", "--set", "h=2"], Some(&gmsh));
+        let step = fixture("block.step");
+        let out = dir.join("a.inp");
+        mesh(&[p(&step), "--size", "0.5", "-o", p(&out)], Some(&gmsh));
         let args = std::fs::read_to_string(dir.join("args.txt")).unwrap();
         for flag in [
             "-3",
@@ -271,55 +213,11 @@ mod fake_gmsh {
             "-format msh41",
             "-order 2",
             "-clmax 0.5",
-            "-setnumber h 2",
             "-v 2",
         ] {
             assert!(args.contains(flag), "missing `{flag}` in `{args}`");
         }
     }
-}
-
-const STRIP: &str = "SetFactory(\"OpenCASCADE\");\n\
-Rectangle(1) = {0, 0, 0, 4, 1};\n\
-Physical Surface(\"PLATE\") = {1};\n\
-Physical Curve(\"FIXED\") = {4};\n\
-Mesh.MeshSizeMax = 0.5;\n\
-Mesh.MeshSizeMin = 0.5;\n";
-
-fn fixture(name: &str) -> PathBuf {
-    root().join("fixtures/step").join(name)
-}
-
-#[test]
-fn real_gmsh_makes_an_s6_mesh_with_shell_edges_from_a_geo_file() {
-    let Some(gmsh) = real_gmsh() else {
-        eprintln!("skipped: gmsh is not installed");
-        return;
-    };
-    let dir = scratch("shell-geo");
-    let geo = dir.join("strip.geo");
-    std::fs::write(&geo, STRIP).unwrap();
-    let out = mesh(&[p(&geo), "--shell"], Some(&gmsh));
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
-    let inp = std::fs::read_to_string(dir.join("strip.inp")).unwrap();
-    assert!(inp.contains("*ELEMENT, TYPE=S6, ELSET=ALL"), "{inp}");
-    assert!(inp.contains("*ELSET, ELSET=PLATE"), "{inp}");
-    assert!(inp.contains("*NSET, NSET=FIXED"), "{inp}");
-    assert!(inp.contains("*SURFACE, TYPE=ELEMENT, NAME=FIXED"), "{inp}");
-    // The edge of a shell is face S3 to S5. The fixed edge is the left edge x=0.
-    let faces: Vec<&str> = inp
-        .lines()
-        .skip_while(|l| !l.starts_with("*SURFACE, TYPE=ELEMENT, NAME=FIXED"))
-        .skip(1)
-        .take_while(|l| !l.starts_with('*'))
-        .collect();
-    assert!(faces.len() >= 2, "{faces:?}");
-    assert!(faces
-        .iter()
-        .all(|l| l.ends_with("S3") || l.ends_with("S4") || l.ends_with("S5")));
-    let stdout = stdout(&out);
-    assert!(stdout.contains("surface\tFIXED\t"), "{stdout}");
-    assert!(stdout.contains("min_scaled_jacobian\t0."), "{stdout}");
 }
 
 #[test]
@@ -364,6 +262,17 @@ fn real_gmsh_names_the_parts_edges_and_nodes_of_a_surface_step() {
     ] {
         assert!(inp.contains(needle), "{needle}\n{inp}");
     }
+    // The edge of a shell is face S3 to S5. The fixed edge is the left edge x=0.
+    let faces: Vec<&str> = inp
+        .lines()
+        .skip_while(|l| !l.starts_with("*SURFACE, TYPE=ELEMENT, NAME=FIXED"))
+        .skip(1)
+        .take_while(|l| !l.starts_with('*'))
+        .collect();
+    assert!(faces.len() >= 2, "{faces:?}");
+    assert!(faces
+        .iter()
+        .all(|l| l.ends_with("S3") || l.ends_with("S4") || l.ends_with("S5")));
     // No --volume: the default group SHELL holds every surface, and it is not written.
     let one = mesh(&base, Some(&gmsh));
     assert_eq!(one.status.code(), Some(0), "stderr: {}", stderr(&one));

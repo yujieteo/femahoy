@@ -148,4 +148,4 @@ Each entry is a rule that is in force. The captain decided each of them.
 A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.
 
 ### D-32 The docs set
-The captain approved the docs set: `README.md`, `crates/daemon/src/agent.md`, `docs/reference` and this file.
+The owner approved the docs set: `README.md`, `crates/daemon/src/agent.md`, `docs/reference` and this file.
