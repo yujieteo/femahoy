@@ -3,7 +3,7 @@
 schema = 3
 id = "cantilever-c3d10"
 units = "SI-mm"
-justification = "Reference is Timoshenko beam theory. Beam theory ignores the 3D stress state at the clamp, so the reference has a stated error of 2 percent. This is an accepted engineering estimate. On mesh-8.inp, fh-solve-ccx gives a value 1.4 percent below the reference (derivation.md). The 2 percent tolerance holds this mesh error."
+justification = "Reference is Timoshenko beam theory. Beam theory ignores the 3D stress state at the clamp, so the reference has a stated error of 2 percent. This is an accepted engineering estimate. On mesh-8.inp, ccx gives a value 1.4 percent below the reference (derivation.md). The 2 percent tolerance holds this mesh error."
 derivation = "derivation.md"
 mesh = "mesh-8.inp"
 rel_tol = 0.02

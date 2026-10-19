@@ -40,7 +40,7 @@ Run `fh run validation/cases/warpage-strip --size 1` (or `--size 0.5`) to solve 
 ## Measured result
 
 The check passed on macOS arm64 with Python 3.12.13, build123d 0.13.0, gmsh 4.15.2-git and CalculiX 2.23.
-The solver time is `wall_s` from the adapter summary. It includes the solve and adapter work before result output.
+The solver time is the run time that `fh run` prints. It includes the solve and the result output.
 
 | Mesh size (mm) | Nodes | C3D10 elements | Shared interface nodes | Warpage (mm) | Reference (mm) | Absolute difference (mm) | Difference (%) | Solver time (s) |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|

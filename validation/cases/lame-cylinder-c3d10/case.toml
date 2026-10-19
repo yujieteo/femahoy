@@ -4,7 +4,7 @@
 schema = 3
 id = "lame-cylinder-c3d10"
 units = "SI-mm"
-justification = "Reference is the closed-form Lame solution, which has no stated error. On mesh-8x4.inp, fh-solve-ccx gives values 0.7 and 0.5 percent below the references (derivation.md). This mesh error includes the chord approximation of the arc. The 1 percent tolerance holds it."
+justification = "Reference is the closed-form Lame solution, which has no stated error. On mesh-8x4.inp, ccx gives values 0.7 and 0.5 percent below the references (derivation.md). This mesh error includes the chord approximation of the arc. The 1 percent tolerance holds it."
 derivation = "derivation.md"
 mesh = "mesh-8x4.inp"
 rel_tol = 0.01

@@ -5,21 +5,17 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, TcpStream};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use fh_daemon::{Config, Daemon, Options, RunState};
-use fh_solver_api::SubprocessSolver;
+use fh_solver_ccx::Ccx;
 
-/// A solver that writes a small run folder at once.
-const SOLVER: &str = r#"#!/bin/sh
-echo "fh-solver-protocol 2"
-echo "progress step=1/1 phase=solve fraction=1"
-printf '<VTKFile type="Collection"><Collection units="SI-mm"><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>\n' > results.pvd
-printf 'VTU\000BYTES' > step-1.vtu
-printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon
-"#;
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/ccx")
+        .join(name)
+}
 
 struct Lab {
     dir: PathBuf,
@@ -27,15 +23,12 @@ struct Lab {
 }
 
 impl Lab {
-    /// A daemon with the fake solver. `viewer` makes a viewer folder with two small files.
+    /// A daemon with the fake `ccx`. `viewer` makes a viewer folder with two small files.
     fn new(name: &str, viewer: bool) -> Lab {
         let dir = Path::new(env!("CARGO_TARGET_TMPDIR"))
             .join(format!("fh-viewer-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("project")).unwrap();
-        let solver = dir.join("solver.sh");
-        fs::write(&solver, SOLVER).unwrap();
-        fs::set_permissions(&solver, fs::Permissions::from_mode(0o755)).unwrap();
         let viewer_dir = viewer.then(|| {
             let v = dir.join("viewer");
             fs::create_dir_all(&v).unwrap();
@@ -45,7 +38,10 @@ impl Lab {
         });
         let config = Config {
             state_dir: dir.join("state"),
-            solver: SubprocessSolver::new(&solver),
+            solver: Ccx {
+                exe: fixture("fake-ccx.sh"),
+                ..Ccx::new()
+            },
         };
         let options = Options { viewer: viewer_dir };
         let daemon = Daemon::start_with_options(config, 0, options).unwrap();
@@ -79,11 +75,11 @@ impl Lab {
         format!("Bearer {}", self.daemon.token())
     }
 
-    /// Run the fake solver on `project/model.inp` and wait until the run succeeds.
+    /// Run the fake `ccx` on `project/model.inp` and wait until the run succeeds.
     fn run(&self) -> String {
         let c = self.daemon.client();
         let input = self.dir.join("project/model.inp");
-        fs::write(&input, "*NODE\n").unwrap();
+        fs::copy(fixture("tet.inp"), &input).unwrap();
         let run = c.submit(&input).unwrap().run;
         let deadline = Instant::now() + Duration::from_secs(30);
         while c.record(&run).unwrap().state != RunState::Succeeded {
@@ -247,10 +243,13 @@ fn the_runs_and_the_files_of_a_run() {
     assert_eq!(pvd.status, 200);
     assert!(pvd.text().contains("file=\"step-1.vtu\""));
     let vtu = lab.get(&format!("{base}/step-1.vtu"), &auth);
-    assert_eq!(vtu.body, b"VTU\0BYTES", "binary bytes pass unchanged");
+    let out = lab.dir.join("state/runs").join(&run).join("out");
+    let bytes = fs::read(out.join("step-1.vtu")).unwrap();
+    assert_eq!(vtu.body, bytes, "binary bytes pass unchanged");
     assert_eq!(vtu.header("Content-Type"), Some("application/octet-stream"));
     let copy = lab.get(&format!("/api/v1/runs/{run}/input"), &auth);
-    assert_eq!((copy.status, copy.body.as_slice()), (200, &b"*NODE\n"[..]));
+    let tet = fs::read(fixture("tet.inp")).unwrap();
+    assert_eq!((copy.status, copy.body), (200, tet));
 
     let missing = lab.get(&format!("{base}/step-2.vtu"), &auth);
     assert_eq!(

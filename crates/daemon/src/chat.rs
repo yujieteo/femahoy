@@ -170,8 +170,12 @@ impl Chat {
             m.set("started_ms", log.started_ms);
             drop(log);
             if let Some((r, progress)) = self.service.active().into_iter().next() {
-                let solving = format!("{} {} {progress}", r.run, r.state);
-                m.set("solving", solving.trim_end());
+                m.set(
+                    "solving",
+                    format!("{} {} {progress}", r.run, r.state)
+                        .trim_end()
+                        .to_owned(),
+                );
             }
         }
         m

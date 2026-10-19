@@ -4,7 +4,6 @@ id = "warpage-strip"
 units = "SI-mm"
 justification = "Lubarda and Lubarda equations 2.5 to 2.7 give the bilayer curvature. A 1 percent tolerance covers tetrahedral mesh error and free-end effects."
 derivation = "derivation.md"
-solver = "fh-solve-ccx"
 mesh = "strip.inp"
 rel_tol = 0.01
 abs_tol = 0.0

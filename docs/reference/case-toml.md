@@ -32,7 +32,7 @@ These fields are optional. They set the limits of each solve of the case in `fh 
 | `time_limit_s` | Number above 0 | The time limit in seconds. The default is no time limit. |
 | `memory_limit_mib` | Number above 0 | The memory limit in MiB. The default is the limit of the runner, 85% of the RAM. |
 
-At a limit, the runner stops the solver, and the case row is `cannot run: REASON` with the limit.
+At a limit, the run stops `ccx`, and the case row is `cannot run: REASON` with the limit.
 `SI-mm` uses mm, N, MPa, tonne, and s. `SI-m` uses m, N, Pa, kg, and s.
 The reader rejects unknown top-level keys.
 
@@ -108,9 +108,7 @@ A material group name cannot equal a node set name or a surface region name.
 `model.temperature_change` is an optional finite number in K.
 The initial temperature is 0 at every node. The final temperature equals the change.
 `fh model` writes `*EXPANSION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE` and `*TEMPERATURE`.
-`fh-solve-ccx` gives the thermal input to CalculiX.
-The top-level `solver` key is optional. Its only value is `"fh-solve-ccx"`, the default.
-`fh run` finds `fh-solve-ccx` beside `fh`, else on `PATH` ([`fh run`](fh.md#fh-run)).
+The `ccx` run gives the thermal input to CalculiX.
 
 A `[[model.set]]` can use `point = [x, y, z]` instead of `axis` and `at`.
 The point selector uses the default tolerance of 1e-6 of the largest mesh extent.

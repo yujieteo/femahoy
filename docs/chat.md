@@ -10,7 +10,7 @@ The code is in `crates/daemon/src/chat.rs` (the agent process and the routes) an
 - The agent makes the CAD with build123d, then meshes and solves with `fh` commands. The chat shows each action: the text of the agent, each command with its result, each file that it writes, and the end with the wall time and the cost.
 - Before each solve, the viewer of the page shows the model with each support and each load. When a support or a load is not clear in the request, the agent shows the candidates and asks you. It solves only after your answer.
 - You can send a message while the agent works. The agent reads it at its next step, so you can ask for the status or change the plan.
-- While the agent works, a status above the text box shows the time, the last command or file, the run that solves now with its progress, and each failed solve.
+- While the agent works, a status above the text box shows the time, the last command or file, the run that solves now with its state, and each failed solve.
 - When a run succeeds, the viewer of the page shows its results. A button in the chat shows them again. When a run fails, the chat shows its error in red.
 - The browser holds no API key. The agent runs in the daemon.
 
@@ -102,7 +102,7 @@ The routes have the token and `Origin` rules of the other routes of `fh serve` (
 | `POST /api/v1/previews` | `input`, `title` | `preview`. The chat gets the entry `show`. The errors are those of a submit (`docs/run-contract.md`) |
 | `GET /api/v1/previews/ID` | | the bytes of the copy of the input of the preview. 404 `preview.unknown` |
 
-`started_ms` is the time when the agent started to work, in ms since the Unix epoch. `solving` is the first run of the daemon that is not final: `<run> <state>` and its last `progress` event, for example `run-000001 running progress step=1/1 phase=solve fraction=0.5`.
+`started_ms` is the time when the agent started to work, in ms since the Unix epoch. `solving` is the first run of the daemon that is not final: `<run> <state>`, for example `run-000001 running`.
 
 | Kind | Text |
 |---|---|

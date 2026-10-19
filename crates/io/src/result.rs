@@ -1,6 +1,6 @@
 //! The result contract of a solver run, which `fh validate` reads: the base grid with its id
-//! and set flag arrays, and the element stress rule. `docs/solver-protocol.md`, section
-//! "Result contract".
+//! and set flag arrays, and the element stress rule. `docs/ccx.md`, section "Result
+//! contract".
 
 use std::collections::{HashMap, HashSet};
 

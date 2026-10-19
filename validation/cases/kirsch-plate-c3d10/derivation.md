@@ -40,7 +40,7 @@ The value is at the element centroid, so it is below the edge value and converge
 
 ## Tolerance
 
-`fh-solve-ccx` gave these values on 3 meshes (2026-10-19):
+`ccx` gave these values on 3 meshes (2026-10-19):
 
 | Cells | edge90 S11 (MPa) | Difference | edge0 S22 (MPa) | Difference |
 |---|---|---|---|---|

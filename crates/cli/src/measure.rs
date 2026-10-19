@@ -1,57 +1,31 @@
 //! Run the solver of a case on a mesh and read one number per reference from the result files.
 
 use fh_io::vtu::{read_vtu, Grid, Values};
-use fh_solver_api::SubprocessSolver;
+use fh_solver_ccx::Ccx;
 use fh_validation::{Case, Field, Op, Quantity, Solve};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
-/// Runs a solver binary in a scratch folder for the mesh of a case, through the runner of the solver
-/// protocol. The runner stops the solver at the time and memory limits.
+/// Runs `ccx` in a scratch folder for the mesh of a case. The run stops `ccx` at the time and
+/// memory limits.
 pub struct Subprocess {
-    pub solver: SubprocessSolver,
+    pub solver: Ccx,
 }
 
 impl Subprocess {
-    /// The solver is `$FH_SOLVE`, else `fh-solve-ccx` next to the `fh` binary or on `PATH`.
-    /// When it is in neither place, the path next to `fh` gives the error.
-    pub fn locate() -> Self {
-        match std::env::var_os("FH_SOLVE") {
-            Some(exe) => Subprocess::new(exe.into()),
-            None => {
-                let name = fh_daemon::SOLVER;
-                let exe =
-                    fh_daemon::find_solver(&fh_daemon::solver_dirs(), name).unwrap_or_else(|| {
-                        std::env::current_exe()
-                            .map(|me| me.with_file_name(name))
-                            .unwrap_or_else(|_| PathBuf::from(name))
-                    });
-                Subprocess::new(exe)
-            }
-        }
-    }
-
-    /// The solver of `case`: [`Subprocess::locate`], with the limits of the case.
+    /// `ccx` with the limits of `case`.
     pub fn for_case(case: &Case) -> Self {
-        let mut s = Subprocess::locate();
+        let mut solver = Ccx::new();
         if let Some(t) = case.time_limit_s {
-            s.solver.timeout = Some(Duration::from_secs_f64(t));
+            solver.timeout = Some(Duration::from_secs_f64(t));
         }
         if let Some(mib) = case.memory_limit_mib {
-            s.solver.memory_limit = (mib * f64::from(1 << 20)) as u64;
+            solver.memory_limit = (mib * f64::from(1 << 20)) as u64;
         }
-        s
+        Subprocess { solver }
     }
 
-    fn new(exe: PathBuf) -> Self {
-        Subprocess {
-            solver: SubprocessSolver::new(exe),
-        }
-    }
-}
-
-impl Subprocess {
-    /// Run the solver on `input` in a scratch folder named after `stem`. `read` gets the folder
+    /// Run `ccx` on `input` in a scratch folder named after `stem`. `read` gets the folder
     /// of the results. The folder is removed afterwards.
     fn run<T>(
         &self,
@@ -61,17 +35,9 @@ impl Subprocess {
     ) -> Result<T, String> {
         let run = std::env::temp_dir().join(format!("fh-validate-{}-{stem}", std::process::id()));
         let _ = std::fs::remove_dir_all(&run);
-        // The solvers write VTU only by default, and the harness reads VTU only.
         let result = match self.solver.run(input, &run) {
-            Ok(_) => read(&run),
-            Err(e) => Err(format!(
-                "{}: {e}",
-                self.solver
-                    .exe
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            )),
+            Ok(()) => read(&run),
+            Err(e) => Err(format!("ccx: {e}")),
         };
         let _ = std::fs::remove_dir_all(&run);
         result

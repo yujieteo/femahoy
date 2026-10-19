@@ -14,7 +14,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use fh_solver_api::SubprocessSolver;
+use fh_solver_ccx::Ccx;
 
 use crate::browser::{no_open, open_page};
 use crate::service::LOCK_FILE;
@@ -27,19 +27,14 @@ const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--no-open]\n     
 const STOP_WAIT: Duration = Duration::from_secs(30);
 
 /// Run `fh serve` with the arguments after `serve`, until SIGINT, SIGTERM or SIGHUP.
-/// `solver` is the protocol v2 solver, for example `fh-solve-ccx`.
-pub fn serve(args: &[String], solver: PathBuf) -> Result<ExitCode, String> {
+pub fn serve(args: &[String]) -> Result<ExitCode, String> {
     stop::install();
-    serve_until(args, solver, &stop::STOP)
+    serve_until(args, &stop::STOP)
 }
 
 /// Run `fh serve` until `stop` is true. A usage error is an `Err`. A daemon that cannot
 /// start prints the cause and gives exit code 1.
-pub fn serve_until(
-    args: &[String],
-    solver: PathBuf,
-    stop: &AtomicBool,
-) -> Result<ExitCode, String> {
+pub fn serve_until(args: &[String], stop: &AtomicBool) -> Result<ExitCode, String> {
     let mut state = None;
     let mut port = 0;
     let mut options = Options::default();
@@ -75,7 +70,7 @@ pub fn serve_until(
     }
     let config = Config {
         state_dir: state_dir.clone(),
-        solver: SubprocessSolver::new(solver),
+        solver: Ccx::new(),
     };
     options.viewer = viewer_dir();
     let viewer = options.viewer.clone();

@@ -4,7 +4,7 @@
 mod common;
 use common::*;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, Stdio};
+use std::process::Output;
 
 /// The bar-tension case in a new folder, with `edit` applied to its `case.toml`.
 fn case(name: &str, edit: impl Fn(String) -> String) -> PathBuf {
@@ -301,12 +301,9 @@ fn step_to_results_matches_the_analytical_bar() {
     let made = fh(&["model", p(&msh), "--case", p(&dir), "-o", p(&inp)]);
     assert_eq!(made.status.code(), Some(0), "{}", stderr(&made));
     let results = dir.join("results");
-    let run = Command::new(&solver)
-        .args([p(&inp), p(&results)])
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
-    assert!(run.status.success(), "{}{}", stdout(&run), stderr(&run));
+    let mut ccx = fh_solver_ccx::Ccx::new();
+    ccx.exe = solver;
+    ccx.run(&inp, &results).unwrap();
     let bytes = std::fs::read(results.join("step-1.vtu")).unwrap();
     let grid = fh_io::vtu::read_vtu(&bytes).unwrap();
     let u = grid.point_field("U").unwrap().as_f64().unwrap();

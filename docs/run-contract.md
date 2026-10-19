@@ -2,7 +2,7 @@
 
 The run contract is one contract for runs. The `fh` CLI and the UI both use it. The code is in `crates/daemon`. `fh serve` runs the daemon (see [`fh serve`](#fh-serve)). `fh run` is the CLI client (see [`fh run`](#fh-run)).
 
-The solve path does not change. A run starts the protocol v2 solver (`fh-solve-ccx`, `docs/solver-protocol.md`) on a copy of the input file.
+A run starts `ccx` in the daemon process on a copy of the input file (`docs/ccx.md`).
 
 The contract has 4 commands for the chat and the CLI: start a run, show its progress, stop it and show its results. The page also shows a model before the solve (a preview).
 
@@ -54,7 +54,7 @@ A message is UTF-8 text with one `key=value` line for each field. An empty line 
 
 The `input` of a submit or a preview is the absolute path of a file, else `input.invalid` (400).
 
-A cancel stops a queued run at once (`cancelled`). A cancel of a running run gives `cancelling`, and the solver gets the protocol v2 `cancel`. A cancel of a final run changes nothing.
+A cancel stops a queued run at once (`cancelled`). A cancel of a running run gives `cancelling`, and the daemon kills the process group of `ccx`. A cancel of a final run changes nothing.
 
 ## Limits
 
@@ -69,7 +69,7 @@ A cancel stops a queued run at once (`cancelled`). A cancel of a running run giv
 | Wait of an events request | 30 seconds |
 | Connections at the same time | 32 |
 
-The protocol v2 runner writes the full solver output to `out/stdout.txt`. The contract does not limit that file.
+The `ccx` run writes the full `ccx` output to `out/ccx/job.log`. The contract does not limit that file.
 
 ## Which process stays alive
 
@@ -77,7 +77,7 @@ The daemon owns every run. A browser and the CLI are only clients.
 
 1. A client that closes or disconnects stops nothing. The run continues. The client reads the same record when it connects again.
 2. Only a cancel command stops a run on purpose.
-3. The solver never lives longer than the daemon. A daemon that stops cancels its runs, and they end as `interrupted`. A daemon that fails closes the stdin of the solver, and protocol v2 then stops the solver.
+3. The solver never lives longer than the daemon. A daemon that stops cancels its runs, and they end as `interrupted`. If a daemon fails, a guard process kills the process group of `ccx`.
 4. A later daemon shows a run that an earlier daemon did not end as `interrupted`, never as `running`. It never starts such a run again.
 5. One daemon at a time uses a state folder. The lock file `daemon.lock` makes this sure.
 6. `fh run` uses the daemon that answers for the state folder. If no daemon answers, `fh run` starts `fh serve --state DIR --no-open` in the background, in its own process group, with its output in `DIR/daemon.log`. This file has mode 0600, because it holds the page address with the token. That daemon stays alive when `fh run` ends, so the browser keeps the results. `fh serve --stop` stops it. When 2 `fh run` commands start a daemon at the same time, the lock lets one start, and both use it. The other `fh run` stops the `fh serve` that it started, so that this `fh serve` cannot take the lock later.
@@ -90,7 +90,7 @@ The daemon owns every run. A browser and the CLI are only clients.
 <state>/runs/<r>/input.inp                  the read-only copy of the input that the run solves
 <state>/runs/<r>/record
 <state>/runs/<r>/events.log
-<state>/runs/<r>/out/                       protocol v2 run folder
+<state>/runs/<r>/out/                       the run folder of ccx
 <state>/previews/<id>.inp                   the copy of the input of a preview
 <state>/open.html                           the page that sends the browser on to the page of the daemon (mode 0600)
 <state>/daemon.log                          the output of a daemon that fh run started (mode 0600)
@@ -115,7 +115,7 @@ fh serve --stop [--state DIR]
 | `--no-open` | Off: `fh serve` opens its page in the browser. `FH_NO_OPEN` with a value that is not empty and not `0` does the same as `--no-open`. |
 | `--stop` | Stop the daemon that answers for the state folder, and wait until it frees `daemon.lock`. |
 
-The solver is `$FH_SOLVE`, else `fh-solve-ccx` beside `fh`, else `fh-solve-ccx` on `PATH`. It needs CalculiX (`docs/ccx.md`). The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
+The solver is `$FH_CCX`, else `ccx` on `PATH` (`docs/ccx.md`). The wasm viewer is in `$FH_VIEWER`, or in the `viewer` folder beside `fh` (`scripts/install.sh` puts it there). At start, `fh serve` prints the address of the page with the token, `http://127.0.0.1:<port>/?token=<token>`, the viewer folder and the state folder. When the viewer is not built, `fh serve` says so and the page shows the error.
 
 Then `fh serve` opens the page in the browser. The token must not go into the command line of a browser process, because other users of the machine can read a command line. Thus `$BROWSER` (when it is set) and `xdg-open` get the file `<state>/open.html` (mode 0600), which sends the browser on to the address. On macOS, `open` gives the address to the default browser through Launch Services. The exact rules are in [`fh serve`](reference/fh.md#fh-serve).
 
@@ -137,7 +137,7 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 2. It sends the absolute path of the input file to the preview route, then submits it.
 3. It reads the events with `wait_ms=500` and shows them, until the run is final. The state event of a run that fails also gives the reason: `state failed: REASON`. `REASON` is the `message` of the record. Thus `events.log` tells why a run failed.
 4. On Ctrl+C, it sends a cancel command and continues to read the events. A second Ctrl+C ends `fh run`. The run continues in the daemon until the cancel ends it.
-5. It reads the record. For a run that succeeded, it shows the result folder and `summary.toon`, and opens the page on `&run=R`.
+5. It reads the record. For a run that succeeded, it shows the wall time and the result folder, and opens the page on `&run=R`.
 
 ## Tests
 
@@ -147,9 +147,8 @@ SIGINT (Ctrl+C), SIGTERM and SIGHUP stop the daemon in order: it removes `daemon
 - a closed browser does not stop the run, and a client that reads the events over many connections gets each event 1 time,
 - cancel keeps one record,
 - a run solves a copy of its input,
-- the event queue and the event log are bounded,
 - a stopped daemon leaves `interrupted` records,
-- after a failed daemon (SIGKILL), the solver stops, and the next daemon shows the run as `interrupted`.
+- after a failed daemon (SIGKILL), the guard stops `ccx`, and the next daemon shows the run as `interrupted`.
 
 `crates/cli/tests/run.rs` tests `fh run` and the browser and stop options of `fh serve`: an `.inp` file, a case folder (also with the real gmsh), a second run on the same daemon, the browser open and `--no-open`, a missing file, an input that the solver refuses, a failed run, no daemon possible, Ctrl+C, and a second Ctrl+C.
 

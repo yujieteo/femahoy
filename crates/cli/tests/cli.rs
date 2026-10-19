@@ -2,8 +2,8 @@ mod common;
 use common::{ccx_solver, p};
 use std::process::{Command, Output};
 
-/// A solver that does not exist. A test that does not solve uses it.
-const NO_SOLVER: &str = "/nonexistent/solver";
+/// A ccx that does not exist. A test that does not solve uses it.
+const NO_SOLVER: &str = "/nonexistent/ccx";
 
 fn fh(args: &[&str]) -> Output {
     fh_with_solver(args, NO_SOLVER)
@@ -12,7 +12,7 @@ fn fh(args: &[&str]) -> Output {
 fn fh_with_solver(args: &[&str], solver: &str) -> Output {
     Command::new(env!("CARGO_BIN_EXE_fh"))
         .args(args)
-        .env("FH_SOLVE", solver)
+        .env("FH_CCX", solver)
         .output()
         .expect("run fh")
 }
@@ -123,22 +123,12 @@ fn warpage_matches_the_theory(table: &str) {
 
 #[test]
 fn without_ccx_validate_stops_and_tells_how_to_install_it() {
-    // FH_SOLVE is not set, so the solver is fh-solve-ccx. A path to it needs ccx also.
-    for solver in [None, Some("/somewhere/fh-solve-ccx")] {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
-        cmd.args(["validate", "--root", &root()])
-            .env("FH_CCX", "/nonexistent/ccx");
-        match solver {
-            Some(path) => cmd.env("FH_SOLVE", path),
-            None => cmd.env_remove("FH_SOLVE"),
-        };
-        let out = cmd.output().unwrap();
-        let (stdout, stderr) = (text(out.stdout), text(out.stderr));
-        assert_eq!(out.status.code(), Some(1), "{stdout}{stderr}");
-        assert!(stderr.contains("cannot start ccx"), "{stderr}");
-        assert!(stderr.contains("docs/ccx.md"), "{stderr}");
-        assert!(!stdout.contains("pass"), "{stdout}");
-    }
+    let out = fh(&["validate", "--root", &root()]);
+    let (stdout, stderr) = (text(out.stdout), text(out.stderr));
+    assert_eq!(out.status.code(), Some(1), "{stdout}{stderr}");
+    assert!(stderr.contains("cannot start ccx"), "{stderr}");
+    assert!(stderr.contains("docs/ccx.md"), "{stderr}");
+    assert!(!stdout.contains("pass"), "{stdout}");
 }
 
 /// Like [`copy_root`], with only the case `id`, so that a solve stays short.
@@ -197,9 +187,9 @@ fn validate_stops_a_case_at_its_time_and_memory_limits() {
             toml.replacen("rel_tol", &format!("{limit}\nrel_tol"), 1),
         )
         .unwrap();
-        // A solver that runs for 30 s.
-        let slow = dir.join("slow-solver");
-        std::fs::write(&slow, "#!/bin/sh\necho 'fh-solver-protocol 2'\nsleep 30\n").unwrap();
+        // A ccx that runs for 30 s. `-v` is the check of `fh validate` before the cases.
+        let slow = dir.join("slow-ccx");
+        std::fs::write(&slow, "#!/bin/sh\n[ \"$1\" = -v ] || sleep 30\n").unwrap();
         std::fs::set_permissions(&slow, std::fs::Permissions::from_mode(0o755)).unwrap();
         let clock = std::time::Instant::now();
         let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&slow));
@@ -212,15 +202,6 @@ fn validate_stops_a_case_at_its_time_and_memory_limits() {
         assert!(clock.elapsed() < std::time::Duration::from_secs(20));
         let _ = std::fs::remove_dir_all(dir);
     }
-}
-
-#[test]
-fn validate_exits_1_when_the_solver_is_missing() {
-    let out = fh(&["validate", "--root", &root()]);
-    assert_eq!(out.status.code(), Some(1));
-    let stdout = text(out.stdout);
-    assert!(stdout.contains("cannot run"), "{stdout}");
-    assert!(!stdout.contains("0 fail, 0 cannot"), "{stdout}");
 }
 
 #[test]

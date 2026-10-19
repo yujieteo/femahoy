@@ -7,5 +7,5 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-fh-solver-api = { path = "../solver-api" }
+fh-solver-ccx = { path = "../solver-ccx" }
 libc = "0.2.190"

@@ -8,29 +8,33 @@
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use fh_daemon::{Client, Config, Daemon, Error, Message, Options, RunState};
-use fh_solver_api::SubprocessSolver;
+use fh_solver_ccx::Ccx;
 
-/// The fake solver. A model with `FAIL` in it fails. Another model solves when the file
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/ccx")
+        .join(name)
+}
+
+/// The fake `ccx`. A model with the node set `FAIL` fails. Another model solves when the file
 /// `release` exists.
 fn solver(dir: &Path) -> String {
     format!(
         r#"#!/bin/sh
-echo "fh-solver-protocol 2"
-echo "progress step=1/1 phase=solve fraction=0.5"
-if grep -q FAIL "$1"; then
-  echo "the conjugate gradient solver did not reach the tolerance" >&2
-  exit 3
+if grep -q FAIL job.inp; then
+  echo " *ERROR in fake: the conjugate gradient solver did not reach the tolerance"
+  exit 201
 fi
+printf ' STEP 1\n INCREMENT 1\n'
 while [ ! -e '{}' ]; do sleep 0.05; done
-printf '<VTKFile type="Collection"><Collection units="SI-mm"><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>\n' > results.pvd
-printf 'VTU' > step-1.vtu
-printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon
+exec '{}' "$@"
 "#,
-        dir.join("release").display()
+        dir.join("release").display(),
+        fixture("fake-ccx.sh").display()
     )
 }
 
@@ -107,7 +111,10 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let state = dir.join("state");
     let config = Config {
         state_dir: state.clone(),
-        solver: SubprocessSolver::new(dir.join("solver.sh")),
+        solver: Ccx {
+            exe: dir.join("solver.sh"),
+            ..Ccx::new()
+        },
     };
     let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     let c = daemon.client();
@@ -159,14 +166,15 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     );
 
     // The `fh run` of the agent sends the model to the page, then solves it. While it
-    // solves, the chat shows the run and its progress, and the time when the work started.
+    // solves, the chat shows the run and its state and progress, and the time when the work started.
     let (model, bad) = (dir.join("project/model.inp"), dir.join("project/bad.inp"));
-    fs::write(&model, "*NODE\n").unwrap();
-    fs::write(&bad, "*NODE\n** FAIL\n").unwrap();
+    let tet = fs::read_to_string(fixture("tet.inp")).unwrap();
+    fs::write(&model, &tet).unwrap();
+    fs::write(&bad, tet.replace("*STEP", "*NSET, NSET=FAIL\n1\n*STEP")).unwrap();
     let preview = c.preview(&model, "my case").unwrap();
     let bad = c.submit(&bad).unwrap().run;
     let run = c.submit(&model).unwrap().run;
-    let solving = format!("{run} running progress step=1/1 phase=solve fraction=0.5");
+    let solving = format!("{run} running progress step=1 increment=1");
     let m = wait(&c, |m| m.get("solving") == Some(solving.as_str()));
     assert_eq!(m.get("state"), Some("running"));
     let started: u64 = m.get("started_ms").unwrap().parse().unwrap();
