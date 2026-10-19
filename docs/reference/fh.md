@@ -141,7 +141,7 @@ The state folder is `$FH_STATE`, the same default as `fh serve`. Each run has it
 | `in/input.inp` | The read-only copy of the input, with the copies of its `*INCLUDE` files. |
 | `out/` | The run folder of `ccx`: the `ccx` files in `ccx/`, `step-N.vtu` and `results.pvd`. |
 
-`results.pvd` is the last file that the run writes. The page lists a run when this file exists.
+`results.pvd` is the last file that the run writes. The page lists a run when this file names at least 1 step file. A solve with no `*NODE FILE` and no `*EL FILE` writes an empty `results.pvd`, so the page does not list that run.
 
 Before the solve, `fh run` copies the input to `previews/N` in the state folder.
 The page then shows the model with the faces of each support and each load, the direction of each load, and the names of the sets.
@@ -171,7 +171,7 @@ Source: [serve.rs](../../crates/fh/src/daemon/serve.rs).
 
 The command runs the daemon on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
 `fh serve` takes no option. The state folder is `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default. The port is a free port.
-The daemon reads the run and preview folders that `fh run` writes. It does not start `ccx`.
+The daemon reads the run and preview folders that `fh run` writes. It does not start `ccx`. It changes no file of the state folder, so any number of `fh serve` can use the same state folder at the same time.
 The page is the wasm viewer, from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 The page has the chat with the agent.
 

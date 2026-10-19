@@ -34,7 +34,7 @@ use crate::vtu::{write_pvd, write_vtu};
 
 pub use sys::total_memory;
 
-pub(crate) const PVD_FILE: &str = "results.pvd";
+const PVD_FILE: &str = "results.pvd";
 /// A run puts this file in a run folder that it made. It clears only a folder that has the
 /// file.
 const RUN_MARKER: &str = ".fh-run";
@@ -169,6 +169,12 @@ fn write_results(results: &frd::Frd, run_dir: &Path, units: &str) -> Result<(), 
         });
     }
     atomic(PVD_FILE, write_pvd(&entries, units).as_bytes())
+}
+
+/// The number of result frames that `results.pvd` in the run folder `out` lists. A run folder
+/// with no `results.pvd` has none.
+pub fn result_frames(out: &Path) -> usize {
+    fs::read_to_string(out.join(PVD_FILE)).map_or(0, |t| t.matches("<DataSet").count())
 }
 
 /// The place of a running solve, from the output of `ccx`. Steps and increments count from 1.

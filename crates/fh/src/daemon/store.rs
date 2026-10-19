@@ -1,31 +1,29 @@
 //! The state folder on disk. `fh run` writes the run and preview folders. The daemon reads
-//! them for the page, and takes the lock of the folder.
+//! them for the page.
 //!
 //! ```text
-//! <state>/daemon.lock                 exclusive lock of the one daemon
 //! <state>/runs/<run>/source           the path of the input file that the run solves
 //! <state>/runs/<run>/in/input.inp     the read-only copy of that input, with the copies of its
 //!                                     `*INCLUDE` files
 //! <state>/runs/<run>/out/             run folder of ccx. `results.pvd` is the last file that
-//!                                     ccx writes, so a run has results when it exists
+//!                                     ccx writes, so a run has results when it lists a step
 //! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
 //! <state>/previews/<n>/title          the name of the model in the page
 //! ```
 //!
 //! A run ID or a preview number belongs to the process that creates its folder first, so
 //! 2 `fh run` commands at the same time get 2 folders. A preview folder is built under a hidden
-//! name and renamed, so the daemon never sees a partial preview.
+//! name and renamed, so the daemon never sees a partial preview. The daemon only reads these
+//! folders, so any number of daemons can use one state folder.
 
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
-use crate::ccx::{input_text, stage_input, PVD_FILE};
+use crate::ccx::{input_text, result_frames, stage_input};
 
 use super::message::{bad, fail, Failure};
 
-const LOCK_FILE: &str = "daemon.lock";
 const RUNS_DIR: &str = "runs";
 const PREVIEWS_DIR: &str = "previews";
 const SOURCE_FILE: &str = "source";
@@ -134,39 +132,13 @@ pub(crate) struct Store {
 }
 
 impl Store {
-    /// Take the lock of the state folder and clear the previews of an earlier daemon. Only one
-    /// daemon at a time can use a state folder. The daemon keeps the lock file open as long
-    /// as it runs.
-    pub(crate) fn open(state_dir: &Path) -> Result<(Store, File), String> {
+    /// Make sure that the state folder has a `runs` folder. A daemon changes no file of the
+    /// folder, so another daemon can use it at the same time.
+    pub(crate) fn open(state_dir: &Path) -> Result<Store, String> {
         let err = |e| format!("state folder: {e}");
         fs::create_dir_all(state_dir.join(RUNS_DIR)).map_err(err)?;
         let dir = fs::canonicalize(state_dir).map_err(err)?;
-        let lock = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(dir.join(LOCK_FILE))
-            .map_err(err)?;
-        // A child that another thread spawns gets a copy of each open file until its exec
-        // closes the copy, so the lock of a stopped daemon in this process can stay for some
-        // milliseconds. Try again for a short time before the refusal.
-        let end = Instant::now() + Duration::from_secs(1);
-        let mut locked = lock.try_lock();
-        while matches!(locked, Err(TryLockError::WouldBlock)) && Instant::now() < end {
-            std::thread::sleep(Duration::from_millis(10));
-            locked = lock.try_lock();
-        }
-        match locked {
-            Ok(()) => {}
-            Err(TryLockError::WouldBlock) => {
-                return Err("another daemon uses this state folder".to_owned())
-            }
-            Err(TryLockError::Error(e)) => return Err(err(e)),
-        }
-        // Only the chat of this daemon shows a preview, so the previews of an earlier daemon go.
-        let _ = fs::remove_dir_all(dir.join(PREVIEWS_DIR));
-        fs::create_dir_all(dir.join(PREVIEWS_DIR)).map_err(err)?;
-        Ok((Store { dir }, lock))
+        Ok(Store { dir })
     }
 
     fn run_dir(&self, run: &str) -> Result<PathBuf, Failure> {
@@ -178,14 +150,15 @@ impl Store {
         }
     }
 
-    /// The runs that have results, in run order: the run and the path of its input file.
+    /// The runs that have at least one result frame, in run order: the run and the path of its
+    /// input file. The page cannot show a run with no frame, so it is not in the list.
     pub(crate) fn runs(&self) -> Result<Vec<(String, String)>, Failure> {
         let dir = self.dir.join(RUNS_DIR);
         let entries = fs::read_dir(&dir).map_err(|e| fail(500, format!("runs: {e}")))?;
         let mut names: Vec<String> = entries
             .flatten()
             .filter_map(|e| e.file_name().into_string().ok())
-            .filter(|n| valid_run(n) && dir.join(n).join(OUT_DIR).join(PVD_FILE).is_file())
+            .filter(|n| valid_run(n) && result_frames(&dir.join(n).join(OUT_DIR)) > 0)
             .collect();
         names.sort();
         Ok(names

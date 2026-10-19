@@ -143,11 +143,14 @@ fn escape(text: &str) -> String {
 }
 
 impl Chat {
-    /// The runs that have results already do not get an `open` entry.
+    /// The runs that have results and the previews that the state folder holds already do not
+    /// get an entry.
     pub(crate) fn new(store: Arc<Store>, state_dir: PathBuf, token: String) -> Arc<Chat> {
         let old = store.runs().unwrap_or_default();
+        let shown = store.previews();
         let log = Log {
             runs: old.into_iter().map(|(run, _)| run).collect(),
+            previews: shown.into_iter().map(|(preview, _)| preview).collect(),
             ..Log::default()
         };
         Arc::new(Chat {
