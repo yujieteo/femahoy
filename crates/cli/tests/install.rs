@@ -307,7 +307,7 @@ fn the_install_builds_copies_and_then_updates() {
         "{}",
         stdout(&again)
     );
-    assert!(stdout(&again).contains("Stop it with: fh serve --stop"));
+    assert!(stdout(&again).contains("Stop it with Ctrl+C"));
     assert_ne!(fs::read_to_string(prefix.join("fh")).unwrap(), "old");
     let left: Vec<_> = fs::read_dir(&prefix)
         .unwrap()

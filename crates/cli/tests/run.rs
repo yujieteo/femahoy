@@ -1,6 +1,7 @@
-//! `fh run` and the browser and stop options of `fh serve`. Each test has its own state
-//! folder and stops its daemon at the end. Each command gets a fake browser program in
-//! `BROWSER` and `FH_NO_OPEN=1`, so that no test opens the browser of the machine.
+//! `fh run` and the start and stop of `fh serve`. Each test has its own state folder (`FH_STATE`)
+//! and its own daemon, and ends the daemon with SIGTERM at the end. Each command gets a fake
+//! browser program in `BROWSER` and `FH_NO_OPEN=1`, so that no test opens the browser of the
+//! machine.
 //!
 //! The ccx is a wrapper around `fixtures/ccx/fake-ccx.sh`. One test uses the real ccx when it
 //! is installed.
@@ -9,7 +10,6 @@ use common::{ccx_solver, fails, p, root, scratch, script, stderr, stdout};
 
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -53,11 +53,12 @@ impl Lab {
         }
     }
 
-    /// `fh ARGS --state STATE` with the fake browser, `FH_NO_OPEN=1` and the fake ccx.
+    /// `fh ARGS` with `FH_STATE`, the fake browser, `FH_NO_OPEN=1` and the fake ccx.
     fn cmd(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
-        cmd.args(args).args(["--state", p(&self.state)]);
+        cmd.args(args);
         cmd.current_dir(&self.dir)
+            .env("FH_STATE", &self.state)
             .env("BROWSER", self.dir.join("browser"))
             .env("FH_NO_OPEN", "1")
             .env("FH_CCX", &self.solver);
@@ -100,18 +101,51 @@ impl Lab {
         }
     }
 
-    fn daemon_pid(&self) -> String {
-        let info = fs::read_to_string(self.state.join("daemon.info")).unwrap();
-        info.lines()
-            .find_map(|l| l.strip_prefix("pid="))
-            .unwrap()
-            .to_owned()
+    /// Start `fh serve` and read its output to the line that ends the start.
+    fn serve(&self) -> Serving {
+        self.start_serve(false)
+    }
+
+    /// With `open`, `fh serve` opens the page in the fake browser.
+    fn start_serve(&self, open: bool) -> Serving {
+        let mut cmd = self.cmd(&["serve"]);
+        if open {
+            cmd.env_remove("FH_NO_OPEN");
+        }
+        let (child, mut lines) = start(&mut cmd);
+        read_until(&mut lines, "Stop with Ctrl+C.");
+        Serving {
+            child: Some(child),
+            lines: Some(lines),
+        }
     }
 }
 
-impl Drop for Lab {
+/// A running `fh serve`. SIGTERM ends it.
+struct Serving {
+    child: Option<Child>,
+    lines: Option<Lines>,
+}
+
+impl Serving {
+    fn lines(&mut self) -> &mut Lines {
+        self.lines.as_mut().unwrap()
+    }
+
+    /// End the daemon with SIGTERM and return its output.
+    fn stop(mut self) -> Output {
+        let child = self.child.take().unwrap();
+        signal(&child, "-TERM");
+        finish(child, self.lines.take().unwrap())
+    }
+}
+
+impl Drop for Serving {
     fn drop(&mut self) {
-        let _ = self.fh(&["serve", "--stop"]);
+        if let Some(mut child) = self.child.take() {
+            signal(&child, "-TERM");
+            let _ = child.wait();
+        }
     }
 }
 
@@ -141,13 +175,13 @@ fn slow_model(lab: &Lab) -> PathBuf {
 }
 
 #[test]
-fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
+fn an_inp_file_runs_on_the_daemon_and_a_second_run_uses_it() {
     let lab = Lab::new("run-inp");
+    let _daemon = lab.serve();
     let bar = root().join("validation/cases/bar-pressure/job.inp");
     let out = lab.fh(&["run", p(&bar)]);
     succeeds(&out);
     let text = stdout(&out);
-    assert!(text.contains("fh run: started a daemon"), "{text}");
     assert!(text.contains("run-000001 succeeded"), "{text}");
     assert!(solved(&lab), "{}", stdout(&out));
     let folder = text
@@ -155,121 +189,12 @@ fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
         .find_map(|l| l.strip_prefix("fh run: results in "))
         .unwrap();
     assert!(Path::new(folder).join("results.pvd").is_file());
-    assert!(text.contains("&run=run-000001"), "{text}");
-    // FH_NO_OPEN=1: no browser.
+    // FH_NO_OPEN=1 and `fh run` never opens a browser.
     assert_eq!(lab.browser_log(), None);
-    // The daemon that fh run starts writes its start lines to daemon.log.
-    let log = fs::read_to_string(lab.state.join("daemon.log")).unwrap();
-    assert!(log.contains("fh serve: state folder"), "{log}");
 
-    let pid = lab.daemon_pid();
     let again = lab.fh(&["run", p(&bar)]);
     succeeds(&again);
-    assert!(!stdout(&again).contains("started a daemon"));
     assert!(stdout(&again).contains("run-000002 succeeded"));
-    assert_eq!(lab.daemon_pid(), pid);
-}
-
-#[test]
-fn the_daemon_log_has_mode_0600_for_an_old_and_a_new_log() {
-    let lab = Lab::new("run-log-mode");
-    let bar = root().join("validation/cases/bar-pressure/job.inp");
-    let log = lab.state.join("daemon.log");
-    let mode = |path: &Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
-    fs::create_dir_all(&lab.state).unwrap();
-    fs::write(&log, "old\n").unwrap();
-    fs::set_permissions(&log, fs::Permissions::from_mode(0o644)).unwrap();
-    succeeds(&lab.fh(&["run", p(&bar)]));
-    assert_eq!(mode(&log), 0o600);
-    succeeds(&lab.fh(&["serve", "--stop"]));
-    fs::remove_file(&log).unwrap();
-    succeeds(&lab.fh(&["run", p(&bar)]));
-    assert_eq!(mode(&log), 0o600);
-}
-
-#[test]
-fn a_relative_state_folder_names_the_folder_in_the_current_folder() {
-    let lab = Lab::new("run-relative-state");
-    let bar = root().join("validation/cases/bar-pressure/job.inp");
-    // The last --state wins: "state" in the folder of the lab, the same as lab.state.
-    let out = lab
-        .cmd(&["run", p(&bar)])
-        .args(["--state", "state"])
-        .output();
-    let out = out.unwrap();
-    succeeds(&out);
-    let state = fs::canonicalize(&lab.state).unwrap();
-    let hint = format!("Stop it with: fh serve --stop --state {}\n", p(&state));
-    assert!(stdout(&out).contains(&hint), "{}", stdout(&out));
-    assert!(lab.state.join("daemon.info").is_file());
-}
-
-#[test]
-fn two_runs_that_start_at_the_same_time_use_one_daemon() {
-    let lab = Lab::new("run-race");
-    let bar = root().join("validation/cases/bar-pressure/job.inp");
-    let children: Vec<Child> = (0..2)
-        .map(|_| {
-            lab.cmd(&["run", p(&bar)])
-                .stdout(Stdio::piped())
-                .spawn()
-                .unwrap()
-        })
-        .collect();
-    let outs: Vec<Output> = children
-        .into_iter()
-        .map(|c| c.wait_with_output().unwrap())
-        .collect();
-    for out in &outs {
-        succeeds(out);
-    }
-    let started = outs
-        .iter()
-        .filter(|o| stdout(o).contains("started a daemon"))
-        .count();
-    assert_eq!(started, 1);
-    let runs = outs
-        .iter()
-        .filter(|o| stdout(o).contains("succeeded in"))
-        .count();
-    assert_eq!(runs, 2);
-    // The fh serve of the other fh run ended with its fh run. Thus after a stop, no daemon
-    // takes the free lock, also after the 1 s in which a new daemon tries the lock.
-    let stop = lab.fh(&["serve", "--stop"]);
-    let said = format!("{}{}", stdout(&stop), stderr(&stop));
-    assert!(said.contains("stopped the daemon"), "{said}");
-    std::thread::sleep(Duration::from_millis(1500));
-    let again = lab.fh(&["serve", "--stop"]);
-    let said = format!("{}{}", stdout(&again), stderr(&again));
-    assert!(said.contains("no daemon answers"), "{said}");
-}
-
-#[test]
-fn the_browser_opens_on_the_run_unless_no_open_is_given() {
-    let lab = Lab::new("run-open");
-    let bar = root().join("validation/cases/bar-pressure/job.inp");
-    let out = lab
-        .cmd(&["run", p(&bar)])
-        .env_remove("FH_NO_OPEN")
-        .output()
-        .unwrap();
-    succeeds(&out);
-    assert!(stdout(&out).contains("opened run-000001 in the browser"));
-    // The browser gets the page that sends it on, not the address with the token.
-    let opened = lab.opened(1);
-    let state = fs::canonicalize(&lab.state).unwrap();
-    assert_eq!(opened.trim(), p(&state.join("open.html")));
-    let page = fs::read_to_string(opened.trim()).unwrap();
-    let info = fs::read_to_string(lab.state.join("daemon.info")).unwrap();
-    let token = info.lines().find_map(|l| l.strip_prefix("token=")).unwrap();
-    assert!(
-        page.contains(&format!("?token={token}&amp;run=run-000001\"")),
-        "{page}"
-    );
-
-    let mut no_open = lab.cmd(&["run", p(&bar), "--no-open"]);
-    succeeds(&no_open.env_remove("FH_NO_OPEN").output().unwrap());
-    assert_eq!(lab.browser_log().unwrap().lines().count(), 1);
 }
 
 #[test]
@@ -278,12 +203,12 @@ fn a_missing_file_exits_2() {
     let out = lab.fh(&["run", "no-such-model.inp"]);
     fails(&out, 2, "no-such-model.inp: ");
     fails(&out, 2, "(run.input.missing)");
-    assert!(!lab.state.exists(), "no daemon for a missing file");
 }
 
 #[test]
 fn the_timeout_option_stops_a_slow_solve() {
     let lab = Lab::new("run-timeout");
+    let _daemon = lab.serve();
     let model = slow_model(&lab);
     let start = Instant::now();
     let out = lab.fh(&["run", p(&model), "--timeout", "1"]);
@@ -294,6 +219,7 @@ fn the_timeout_option_stops_a_slow_solve() {
 #[test]
 fn an_include_file_that_is_missing_exits_1_and_names_the_file() {
     let lab = Lab::new("run-no-include");
+    let _daemon = lab.serve();
     let bad = lab.input("bad.inp", "*INCLUDE, INPUT=nope.inp\n");
     let out = lab.fh(&["run", p(&bad)]);
     assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
@@ -304,6 +230,7 @@ fn an_include_file_that_is_missing_exits_1_and_names_the_file() {
 #[test]
 fn an_include_file_is_solved_with_the_input_and_a_later_edit_does_not_change_the_run() {
     let lab = Lab::new("run-include");
+    let _daemon = lab.serve();
     let tet = fs::read_to_string(root().join("fixtures/ccx/tet.inp")).unwrap();
     let (mesh, step) = tet.split_at(tet.find("*STEP").unwrap());
     lab.input("mesh.inp", mesh);
@@ -319,6 +246,7 @@ fn an_include_file_is_solved_with_the_input_and_a_later_edit_does_not_change_the
 fn a_run_that_fails_in_the_solve_exits_1() {
     let mut lab = Lab::new("run-failed");
     lab.failing_solver(" *ERROR in e_c3d: nonpositive jacobian");
+    let _daemon = lab.serve();
     let model = root().join("validation/cases/bar-pressure/job.inp");
     let out = lab.fh(&["run", p(&model)]);
     fails(&out, 1, "run-000001 failed: ");
@@ -326,22 +254,12 @@ fn a_run_that_fails_in_the_solve_exits_1() {
 }
 
 #[test]
-fn no_daemon_possible_exits_3() {
+fn no_daemon_exits_3_and_tells_the_user_to_start_one() {
     let lab = Lab::new("run-no-daemon");
     let bar = root().join("validation/cases/bar-pressure/job.inp");
-    // The state folder cannot be made.
-    fs::write(&lab.state, "not a folder").unwrap();
     let out = lab.fh(&["run", p(&bar)]);
-    fails(&out, 3, "no daemon: cannot make the state folder");
-    fs::remove_file(&lab.state).unwrap();
-
-    // A daemon holds the lock of the state folder, but it does not answer.
-    fs::create_dir_all(&lab.state).unwrap();
-    let lock = fs::File::create(lab.state.join("daemon.lock")).unwrap();
-    lock.try_lock().unwrap();
-    let out = lab.fh(&["run", p(&bar)]);
-    fails(&out, 3, "no daemon: fh serve did not start a daemon");
-    fails(&out, 3, "another daemon uses this state folder");
+    fails(&out, 3, "no daemon: ");
+    fails(&out, 3, "Start it with `fh serve`");
 }
 
 /// The lines of the stdout of a child process.
@@ -379,9 +297,9 @@ fn finish(child: Child, lines: Lines) -> Output {
     child.wait_with_output().unwrap()
 }
 
-fn interrupt(child: &Child) {
+fn signal(child: &Child, option: &str) {
     let sent = Command::new("kill")
-        .args(["-INT", &child.id().to_string()])
+        .args([option, &child.id().to_string()])
         .status();
     assert!(sent.unwrap().success());
 }
@@ -398,27 +316,25 @@ fn state_of(lab: &Lab, run: &str) -> String {
 #[test]
 fn ctrl_c_cancels_the_run_through_the_contract() {
     let lab = Lab::new("run-cancel");
+    let _daemon = lab.serve();
     let model = slow_model(&lab);
     let (child, mut lines) = start(&mut lab.cmd(&["run", p(&model)]));
     read_until(&mut lines, "  running");
-    interrupt(&child);
+    signal(&child, "-INT");
     read_until(&mut lines, "  cancel: cancelling");
     let out = finish(child, lines);
     assert_eq!(out.status.code(), Some(130), "{}", stderr(&out));
     assert!(stderr(&out).contains("run-000001 was cancelled"));
     assert_eq!(state_of(&lab, "run-000001"), "cancelled");
     // The daemon stays alive after the Ctrl+C.
-    let stop = lab.fh(&["serve", "--stop"]);
-    assert!(
-        stdout(&stop).contains("stopped the daemon"),
-        "{}",
-        stdout(&stop)
-    );
+    let c = fh_daemon::Client::discover(&lab.state).unwrap();
+    assert!(c.status().is_ok());
 }
 
 #[test]
 fn preview_shows_the_model_in_the_page_and_the_run_solves_the_same_model() {
     let lab = Lab::new("run-preview");
+    let _daemon = lab.serve();
     let model = root().join("validation/cases/bar-pressure/job.inp");
     let out = lab.fh(&["run", p(&model), "--preview"]);
     succeeds(&out);
@@ -446,14 +362,11 @@ fn preview_shows_the_model_in_the_page_and_the_run_solves_the_same_model() {
 #[test]
 fn an_inp_file_runs_through_the_real_ccx() {
     let Some(solver) = ccx_solver() else { return };
-    let lab = Lab::new("run-ccx");
+    let mut lab = Lab::new("run-ccx");
+    lab.solver = solver;
+    let _daemon = lab.serve();
     let bar = root().join("validation/cases/bar-pressure/job.inp");
-    let run = |model: &Path| {
-        lab.cmd(&["run", p(model)])
-            .env("FH_CCX", &solver)
-            .output()
-            .unwrap()
-    };
+    let run = |model: &Path| lab.fh(&["run", p(model)]);
     // The model asks for text results only, so the page has no field to show.
     let out = run(&bar);
     succeeds(&out);
@@ -493,14 +406,12 @@ fn a_target_that_is_not_an_inp_file_exits_2() {
         2,
         "(run.input.kind)",
     );
-    assert!(!lab.state.exists(), "no daemon for a bad input");
 }
 
 #[test]
 fn bad_run_arguments_exit_2() {
     let lab = Lab::new("run-usage");
     fails(&lab.fh(&["run"]), 2, "usage: fh run");
-    // The lab adds --state, so this has no state folder. The check comes before its use.
     fails(
         &common::fh(&["run", "a.inp", "--timeout"]),
         2,
@@ -528,70 +439,34 @@ fn bad_run_arguments_exit_2() {
             &format!("unknown option: {gone}"),
         );
     }
-    assert!(!lab.state.exists(), "no daemon for a usage error");
-}
-
-/// Start `fh serve` and read its output to the line that ends the start.
-fn serve(lab: &Lab, args: &[&str], open: bool) -> (Child, Lines) {
-    let mut cmd = lab.cmd(&[&["serve"], args].concat());
-    if open {
-        cmd.env_remove("FH_NO_OPEN");
-    }
-    let (child, mut lines) = start(&mut cmd);
-    read_until(&mut lines, "Stop with Ctrl+C.");
-    (child, lines)
 }
 
 #[test]
-fn fh_serve_opens_the_page_unless_told_not_to_and_stop_ends_it() {
+fn fh_serve_opens_the_page_unless_fh_no_open_is_set_and_sigterm_ends_it() {
     let lab = Lab::new("serve-open");
-    let (child, mut lines) = serve(&lab, &[], true);
-    read_until(&mut lines, "fh serve: opened the page in the browser");
-    lab.opened(1);
+    let mut daemon = lab.start_serve(true);
+    read_until(daemon.lines(), "fh serve: opened the page in the browser");
+    // The browser gets the page that sends it on, not the address with the token.
+    let opened = lab.opened(1);
+    assert_eq!(opened.trim(), p(&lab.state.join("open.html")));
     let page = fs::read_to_string(lab.state.join("open.html")).unwrap();
     let info = fs::read_to_string(lab.state.join("daemon.info")).unwrap();
     let token = info.lines().find_map(|l| l.strip_prefix("token=")).unwrap();
     assert!(page.contains(&format!("/?token={token}\"")), "{page}");
-    let stop = lab.fh(&["serve", "--stop"]);
-    succeeds(&stop);
-    assert!(stdout(&stop).contains("stopped the daemon"));
-    let out = finish(child, lines);
+    let out = daemon.stop();
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     assert!(!lab.state.join("daemon.info").exists());
 
-    // --no-open, and FH_NO_OPEN.
-    for (args, open) in [(&["--no-open"][..], true), (&[][..], false)] {
-        let (child, lines) = serve(&lab, args, open);
-        succeeds(&lab.fh(&["serve", "--stop"]));
-        finish(child, lines);
-    }
+    // FH_NO_OPEN=1: no second open.
+    lab.serve().stop();
     assert_eq!(lab.browser_log().unwrap().lines().count(), 1);
-}
-
-#[test]
-fn fh_serve_stop_with_no_daemon_and_with_other_options() {
-    let lab = Lab::new("serve-stop");
-    let out = lab.fh(&["serve", "--stop"]);
-    succeeds(&out);
-    assert!(
-        stdout(&out).contains("no daemon answers"),
-        "{}",
-        stdout(&out)
-    );
-    fails(
-        &lab.fh(&["serve", "--stop", "--port", "1"]),
-        2,
-        "--stop takes only --state DIR",
-    );
 }
 
 #[test]
 fn a_second_fh_serve_names_the_page_of_the_running_daemon() {
     let lab = Lab::new("serve-second");
-    let (child, lines) = serve(&lab, &[], false);
+    let _daemon = lab.serve();
     let second = lab.fh(&["serve"]);
     fails(&second, 1, "(daemon.running)");
     fails(&second, 1, "its page is http://127.0.0.1:");
-    succeeds(&lab.fh(&["serve", "--stop"]));
-    finish(child, lines);
 }

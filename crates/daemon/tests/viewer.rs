@@ -44,7 +44,7 @@ impl Lab {
             },
         };
         let options = Options { viewer: viewer_dir };
-        let daemon = Daemon::start_with_options(config, 0, options).unwrap();
+        let daemon = Daemon::start_with_options(config, options).unwrap();
         Lab { dir, daemon }
     }
 

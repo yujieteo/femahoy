@@ -132,7 +132,7 @@ for file in fh fh-python viewer/fh_viewer.js viewer/fh_viewer_bg.wasm; do
 done
 echo "install: fh-python runs the Python of $venv, with build123d: fh-python part.py"
 if [ $update = yes ]; then
-  echo "install: if a daemon runs, it keeps the earlier fh until it stops. Stop it with: fh serve --stop"
+  echo "install: if a daemon runs, it keeps the earlier fh until it stops. Stop it with Ctrl+C"
 fi
 if ! command -v "${FH_CCX:-ccx}" >/dev/null 2>&1; then
   echo "install: ccx (CalculiX) is not installed. Each solve needs it: apt install calculix-ccx (Debian, Ubuntu), or see README.md"

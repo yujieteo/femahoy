@@ -45,7 +45,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use browser::{no_open, open_page};
 pub use client::Client;
 pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
@@ -93,27 +92,18 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    /// Open the service, make a random token, listen on 127.0.0.1 at `port` (0 for any free
-    /// port) and write `daemon.info` for the clients. `options.viewer` is the folder of the
-    /// wasm viewer (see `fh serve`).
-    pub fn start_with_options(
-        config: Config,
-        port: u16,
-        options: Options,
-    ) -> Result<Daemon, Error> {
+    /// Open the service, make a random token, listen on 127.0.0.1 at any free port and write
+    /// `daemon.info` for the clients. `options.viewer` is the folder of the wasm viewer (see
+    /// `fh serve`).
+    pub fn start_with_options(config: Config, options: Options) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
         let state_dir = config.state_dir.clone();
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32)?;
         let chat = chat::Chat::new(service.clone(), state_dir, token.clone());
-        let server = http::Server::start(
-            service.clone(),
-            chat.clone(),
-            port,
-            token.clone(),
-            options.viewer,
-        )
-        .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
+        let server =
+            http::Server::start(service.clone(), chat.clone(), token.clone(), options.viewer)
+                .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
         let mut m = Message::new();
         m.set("port", server.port());
         m.set("token", &token);
