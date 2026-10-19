@@ -17,9 +17,19 @@
 //!
 //! The agent gets the instructions of `agent.md`, the state folder of the daemon in
 //! `FH_STATE` (so `fh run` writes its runs where this daemon reads them) and the folder of
-//! `fh` first on `PATH`. It works in `STATE/chat`. Its tools are the `fh` commands, Python for
-//! the CAD script, and the file tools. `FH_AGENT` names another agent program, for example a
-//! fake agent that prints a recorded event stream in the tests.
+//! `fh` first on `PATH`. It ignores the personal Claude Code setup of the person: the user
+//! settings with their hooks and plugins, `~/.claude/CLAUDE.md`, the MCP servers and the
+//! claude.ai connectors. It loads no setting source at all, because Claude Code reads the
+//! settings and the `CLAUDE.md` files of each folder above `STATE/chat` as project files, also
+//! `~/.claude/CLAUDE.md` when the state folder is in the home folder. Thus each person gets the
+//! same agent, with the default model and the login of the person.
+//!
+//! The agent works in `STATE/chat`: it can make, change and delete the files there with the file
+//! tools and with file commands such as `mkdir`, `mv`, `rm` and an output redirect
+//! (`--permission-mode acceptEdits`). Its other commands are `fh`, `fh-python` (the Python of
+//! the CAD script), `pdflatex` and `ccx -v`. Solves go through `fh run`. `FH_AGENT` names
+//! another agent program, for example a fake agent that prints a recorded event stream in the
+//! tests.
 //!
 //! An entry is the item `<seq> <kind> <text>`. In the text, `\n` is a line break and `\\`
 //! is a backslash, because an item is one line. The token of the daemon never goes into an
@@ -40,7 +50,8 @@ use super::store::Store;
 /// The instructions of the agent.
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
-const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep,WebSearch,WebFetch";
+const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Bash(pdflatex *),Bash(ccx -v),Read,Write,Edit,\
+                     Glob,Grep,WebSearch,WebFetch";
 /// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
 /// 2 minutes by default, and a solve of a large model can take hours.
 const BASH_TIMEOUT_MS: &str = "86400000";
@@ -453,6 +464,12 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
             "--replay-user-messages",
             "--append-system-prompt",
             INSTRUCTIONS,
+            // No setting source and no MCP server: the personal setup stays out (module text).
+            "--setting-sources",
+            "",
+            "--strict-mcp-config",
+            "--permission-mode",
+            "acceptEdits",
             "--allowedTools",
             TOOLS,
         ]);
