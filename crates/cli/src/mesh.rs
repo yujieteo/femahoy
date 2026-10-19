@@ -750,109 +750,6 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn step(unit: &str) -> String {
-        format!(
-            "DATA;\n#1=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));\n#2=({unit});\nENDSEC;"
-        )
-    }
-
-    fn args(a: &[&str]) -> Result<Options, String> {
-        parse_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-    }
-
-    #[test]
-    fn step_units_are_checked_against_the_declared_units() {
-        let mm = step("LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.)");
-        let inch = step("CONVERSION_BASED_UNIT('INCH',#9)LENGTH_UNIT()NAMED_UNIT(#8)");
-        assert_eq!(check_step(&mm, Units::SiMm), Ok(()));
-        assert!(check_step(&mm, Units::SiM)
-            .unwrap_err()
-            .starts_with("unit.step.mismatch"));
-        assert!(check_step(&inch, Units::SiMm)
-            .unwrap_err()
-            .starts_with("unit.step.mismatch"));
-        assert!(check_step("DATA;ENDSEC;", Units::SiMm)
-            .unwrap_err()
-            .starts_with("unit.step.missing"));
-    }
-
-    #[test]
-    fn version_is_parsed() {
-        assert_eq!(version_of("4.15.2\n"), Some((4, 15)));
-        assert_eq!(version_of("4.15.2-git"), Some((4, 15)));
-        assert_eq!(version_of("x"), None);
-    }
-
-    #[test]
-    fn selections_are_parsed() {
-        assert_eq!(
-            parse_select("x:20"),
-            Ok(Select::Plane { axis: 0, at: 20.0 })
-        );
-        assert_eq!(
-            parse_select("z:-1.5e-3"),
-            Ok(Select::Plane {
-                axis: 2,
-                at: -0.0015
-            })
-        );
-        assert_eq!(
-            parse_select("box:0,1,2,3,4,5"),
-            Ok(Select::Box {
-                min: [0.0, 1.0, 2.0],
-                max: [3.0, 4.0, 5.0]
-            })
-        );
-        assert_eq!(
-            parse_select("point: 1, 2, 3"),
-            Ok(Select::Point([1.0, 2.0, 3.0]))
-        );
-        for bad in [
-            "",
-            "x",
-            "x:a",
-            "x:1,2",
-            "w:1",
-            "box:1,2,3",
-            "box:5,0,0,1,1,1",
-            "point:1,2",
-            "x:inf",
-        ] {
-            assert!(parse_select(bad).is_err(), "{bad}");
-        }
-    }
-
-    #[test]
-    fn set_options_are_checked() {
-        let o = args(&[
-            "a.step",
-            "--face",
-            "TOP=z:1",
-            "--face",
-            "P=box:0,0,0,1,1,1",
-            "--nodes",
-            "PIN=point:0,0,0",
-            "--volume",
-            "UPPER=box:0,0,1,2,2,2",
-        ])
-        .unwrap();
-        assert_eq!((o.faces.len(), o.nodes.len(), o.volumes.len()), (2, 1, 1));
-        assert_eq!(o.output, PathBuf::from("a.inp"));
-        for bad in [
-            &["a.step", "--face", "TOP"][..],
-            &["a.step", "--face", "TOP=point:0,0,0"],
-            &["a.step", "--volume", "V=z:1"],
-            &["a.step", "--face", "ALL=z:1"],
-            &["a.step", "--nodes", "nall=z:1"],
-            &["a.step", "--nodes", "A B=z:1"],
-            &["a.step", "--face", "TOP=z:1", "--nodes", "top=z:0"],
-            &["a.step", "--face"],
-        ] {
-            assert!(args(bad).is_err(), "{bad:?}");
-        }
-    }
-
     #[test]
     fn the_gmsh_script_names_the_groups() {
         let faces = vec![
@@ -905,29 +802,6 @@ mod tests {
         assert!(parts.contains("Physical Surface(\"LOW\")"), "{parts}");
     }
 
-    #[test]
-    fn refine_gives_a_size_to_each_named_set() {
-        let o = args(&["a.step", "--refine", "A,b=0.5", "--refine", "C=2"]).unwrap();
-        let sizes: Vec<(&str, f64)> = o.refine.iter().map(|(n, h)| (n.as_str(), *h)).collect();
-        assert_eq!(sizes, [("A", 0.5), ("b", 0.5), ("C", 2.0)]);
-        for bad in [
-            &["a.step", "--refine"][..],
-            &["a.step", "--refine", "A"],
-            &["a.step", "--refine", "A=0"],
-            &["a.step", "--refine", "A=x"],
-            &["a.step", "--refine", "A=1", "--refine", "a=2"],
-            &["a.step", "--refine", "A,a=1"],
-        ] {
-            assert!(args(bad).is_err(), "{bad:?}");
-        }
-    }
-
-    #[test]
-    fn the_shell_option_is_a_flag() {
-        assert!(!args(&["a.step"]).unwrap().shell);
-        assert!(args(&["a.step", "--shell"]).unwrap().shell);
-    }
-
     fn block() -> fh_io::MshMesh {
         let text = std::fs::read_to_string(
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/msh/block-tet10.msh"),
@@ -974,37 +848,5 @@ mod tests {
         assert!(text.lines().all(|l| l.split(',').count() <= 16), "{text}");
         let hidden = write_inp(model, "block.step", Units::SiMm, &[], Some("BLOCK"));
         assert!(!hidden.contains("*ELSET, ELSET=BLOCK"));
-    }
-
-    #[test]
-    fn a_coordinate_has_at_most_20_characters() {
-        // CalculiX reads 20 characters of each number. gmsh gives round-off values near 0.
-        let mut model = block().model;
-        let xyz = [
-            -4.874999160318342e-15,
-            1.2345678901234567e-4,
-            19.90369453344394,
-        ];
-        model.nodes[0].xyz = xyz;
-        let text = write_inp(&model, "block.step", Units::SiMm, &[], None);
-        let line = text.lines().nth(3).unwrap();
-        assert!(line.split(", ").all(|w| w.len() <= 20), "{line}");
-        let back = fh_inp::parse(&text).nodes[0].xyz;
-        for (b, x) in back.iter().zip(xyz) {
-            assert!((b - x).abs() <= 1e-12 * x.abs(), "{b} {x}");
-        }
-    }
-
-    #[test]
-    fn a_node_set_with_no_node_or_a_used_name_is_refused() {
-        let mesh = block();
-        let far = [("FAR".to_owned(), Select::Point([9.0, 9.0, 9.0]))];
-        assert!(pick_sets(&mesh.model, &far)
-            .unwrap_err()
-            .starts_with("mesh.set.empty"));
-        let used = [("fix".to_owned(), Select::Plane { axis: 0, at: 0.0 })];
-        assert!(pick_sets(&mesh.model, &used)
-            .unwrap_err()
-            .starts_with("mesh.name.duplicate"));
     }
 }

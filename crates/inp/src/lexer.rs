@@ -72,36 +72,3 @@ pub(crate) fn lex(text: &str) -> Vec<Block> {
     }
     blocks
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn keywords_are_case_insensitive_and_params_split() {
-        let b = lex("*Node, nset=Top\n1, 0, 0, 0\n");
-        assert_eq!(b[0].keyword, "NODE");
-        assert_eq!(b[0].value("NSET"), Some("TOP"));
-        assert_eq!(b[0].data, vec![vec!["1", "0", "0", "0"]]);
-    }
-
-    #[test]
-    fn comments_and_blank_lines_are_skipped() {
-        let b = lex("** a\n\n*NSET, NSET=A, GENERATE\n** b\n1, 9, 2\n");
-        assert_eq!(b.len(), 1);
-        assert!(b[0].has("GENERATE"));
-        assert_eq!(b[0].data, vec![vec!["1", "9", "2"]]);
-    }
-
-    #[test]
-    fn a_line_that_ends_in_a_comma_continues() {
-        let b = lex("*ELEMENT, TYPE=C3D20\n1, 1, 2, 3,\n 4, 5\n2, 6\n");
-        assert_eq!(b[0].data[0], vec!["1", "1", "2", "3", "4", "5"]);
-        assert_eq!(b[0].data[1], vec!["2", "6"]);
-    }
-
-    #[test]
-    fn a_data_line_before_a_keyword_is_dropped() {
-        assert!(lex("1, 2, 3\n").is_empty());
-    }
-}

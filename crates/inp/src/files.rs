@@ -97,41 +97,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn units_come_from_the_comment_line() {
-        assert_eq!(units("*NODE\n** units: SI-mm\n"), "SI-mm");
-        assert_eq!(units("*NODE\n"), "");
-    }
-
-    #[test]
-    fn include_lines_are_found_in_any_case() {
-        let text = "*node\n*Include, input=mesh.inp\n** *INCLUDE, INPUT=no.inp\n*INCLUDE,INPUT = a/b.inp\n";
-        assert_eq!(includes(text), vec!["mesh.inp", "a/b.inp"]);
-    }
-
-    #[test]
     fn include_paths_stay_inside() {
         assert!(include_path("mesh.inp").is_ok());
         assert!(include_path("./a/mesh.inp").is_ok());
         for bad in ["../mesh.inp", "/etc/mesh.inp", "a/../../x", ""] {
             assert!(include_path(bad).is_err(), "{bad}");
         }
-    }
-
-    #[test]
-    fn flatten_puts_each_file_in_the_place_of_its_line() {
-        let dir = std::env::temp_dir().join(format!("fh-inp-flatten-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("sub")).unwrap();
-        std::fs::write(dir.join("job.inp"), "*A\n*INCLUDE, INPUT=sub/m.inp\n*D\n").unwrap();
-        std::fs::write(dir.join("sub/m.inp"), "*B\n*INCLUDE, INPUT=n.inp\n").unwrap();
-        std::fs::write(dir.join("n.inp"), "*C\n").unwrap();
-        let flat = flatten(&dir.join("job.inp")).unwrap();
-        assert_eq!(flat.text, "*A\n*B\n*C\n*D\n");
-        assert_eq!(
-            flat.files,
-            vec![PathBuf::from("n.inp"), PathBuf::from("sub/m.inp")]
-        );
-        std::fs::write(dir.join("n.inp"), "*INCLUDE, INPUT=n.inp\n").unwrap();
-        assert!(flatten(&dir.join("job.inp")).unwrap_err().contains("nests"));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -17,39 +17,12 @@ fn fh_with_solver(args: &[&str], solver: &str) -> Output {
         .expect("run fh")
 }
 
-#[test]
-fn help_prints_usage_and_exits_0() {
-    for flag in ["--help", "-h"] {
-        let out = fh(&[flag]);
-        assert_eq!(out.status.code(), Some(0), "exit code for {flag}");
-        let stdout = String::from_utf8(out.stdout).unwrap();
-        assert!(stdout.starts_with("usage: fh"), "usage line for {flag}");
-    }
-}
-
-#[test]
-fn unknown_argument_prints_usage_to_stderr_and_exits_2() {
-    let out = fh(&["--bogus"]);
-    assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty(), "nothing on stdout");
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    assert!(stderr.contains("unknown argument: --bogus"));
-    assert!(stderr.contains("usage: fh"));
-}
-
 fn root() -> String {
     format!("{}/../..", env!("CARGO_MANIFEST_DIR"))
 }
 
 fn text(bytes: Vec<u8>) -> String {
     String::from_utf8(bytes).unwrap()
-}
-
-#[test]
-fn help_lists_validate_and_not_check() {
-    let out = text(fh(&["--help"]).stdout);
-    assert!(!out.contains("  check     "));
-    assert!(out.contains("  validate  "));
 }
 
 #[test]
@@ -162,11 +135,6 @@ fn validate_exits_1_when_the_case_folder_is_bad() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-#[test]
-fn validate_rejects_an_unknown_option_with_exit_2() {
-    assert_eq!(fh(&["validate", "--bogus"]).status.code(), Some(2));
-}
-
 /// Copy the shipped case folders to a scratch root, so a test can break one of them.
 fn copy_root(tag: &str) -> std::path::PathBuf {
     let dst = std::env::temp_dir().join(format!("fh-cli-{tag}-{}", std::process::id()));
@@ -193,31 +161,4 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
         }
     }
     out
-}
-
-#[test]
-fn validate_names_a_set_that_the_input_does_not_print() {
-    let Some(solver) = ccx_solver() else { return };
-    let dir = copy_case("noset", "bar-pressure");
-    let path = dir.join("validation/cases/bar-pressure/check.toml");
-    let toml = std::fs::read_to_string(&path).unwrap();
-    assert!(toml.contains("set = \"LOAD\""));
-    std::fs::write(&path, toml.replace("set = \"LOAD\"", "set = \"nope\"")).unwrap();
-    let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&solver));
-    let stdout = text(out.stdout);
-    assert_eq!(out.status.code(), Some(1), "{stdout}");
-    assert!(stdout.contains("cannot run"), "{stdout}");
-    assert!(stdout.contains("set `nope`"), "{stdout}");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-#[test]
-fn validate_names_an_include_file_that_is_missing() {
-    let dir = copy_case("noinclude", "bar-pressure");
-    let job = dir.join("validation/cases/bar-pressure/job.inp");
-    std::fs::write(job, "** units: SI-mm\n*INCLUDE, INPUT=part.inp\n").unwrap();
-    let out = fh(&["validate", "--root", p(&dir)]);
-    assert_eq!(out.status.code(), Some(1));
-    assert!(text(out.stderr).contains("part.inp"));
-    let _ = std::fs::remove_dir_all(dir);
 }

@@ -1,58 +1,34 @@
-//! The daemon of femahoy (`fh serve`, DESIGN.md section 4.1). This crate has the run
-//! contract: one contract for runs that the CLI and the UI share.
+//! The daemon of femahoy (`fh serve`, DESIGN.md section 4.1): the page with the chat, the
+//! list of the runs and the wasm viewer.
 //!
-//! - **Runs.** A submit names the absolute path of an input file. The daemon copies the
-//!   file and its `*INCLUDE` files into the folder of a new run, and the run solves the
-//!   copy, so a later edit of a file does not change the run. A submit can set the time and
-//!   memory limit of the run. Each run has an ID, one record on disk and one state
-//!   ([`RunState`]).
-//! - **Previews.** A preview copies the input file with no run, so that the page shows the
-//!   model with its supports and loads before the solve.
-//! - **Bounded queues.** At most [`MAX_QUEUED`] runs wait. Each run keeps its last
-//!   [`EVENT_QUEUE`] events in memory. Clients read events by sequence number, so a slow
-//!   client never grows a queue.
+//! - **Runs and previews.** `fh run` writes each run and each preview into its own folder of
+//!   the state folder (`store` module). The daemon only reads these folders, so the page
+//!   shows the model with its supports and loads before the solve, and the results of each run.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
 //!   its actions as chat entries for the page (`chat`).
 //!
-//! A run starts `ccx` through `fh_solver_ccx` in the daemon process (DESIGN.md section 6).
-//! The contract only starts it, cancels it and keeps the record.
+//! The daemon starts no solver. `fh run` starts `ccx` through `fh_solver_ccx` (DESIGN.md
+//! section 6), and a run does not depend on the daemon.
 //!
-//! # Which process stays alive
-//!
-//! The daemon owns every run. A browser and the CLI are only clients.
-//!
-//! 1. A client that closes or disconnects stops nothing. The run continues, and the client
-//!    reads the same record when it connects again.
-//! 2. Only a cancel command stops a run on purpose.
-//! 3. The solver never lives longer than the daemon. A daemon that stops cancels its runs.
-//!    When a daemon fails, a guard process kills the process group of `ccx`.
-//! 4. A later daemon shows a run that an earlier daemon did not end as `interrupted`. It
-//!    never starts such a run again.
-//! 5. One daemon at a time uses a state folder. A lock file makes this sure.
+//! One daemon at a time uses a state folder. A lock file makes this sure.
 
 mod browser;
 mod chat;
-mod client;
-mod contract;
 mod http;
 mod json;
+mod message;
 mod serve;
-mod service;
+mod store;
 
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use client::Client;
-pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
+pub use message::Error;
 pub use serve::{default_state_dir, serve, serve_until};
-use service::Service;
-pub use service::{Config, Limits, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
-
-/// The file in the state folder that tells clients the port and the token.
-pub const INFO_FILE: &str = "daemon.info";
+pub use store::{new_preview, new_run, Run};
 
 /// `n` random bytes as hex digits, from `/dev/urandom`.
 pub(crate) fn random_hex(n: usize) -> Result<String, Error> {
@@ -84,37 +60,28 @@ pub struct Options {
 }
 
 pub struct Daemon {
-    service: Arc<Service>,
     chat: Arc<chat::Chat>,
     server: http::Server,
     token: String,
-    info: PathBuf,
+    /// The lock of the state folder, free when the daemon ends.
+    _lock: File,
 }
 
 impl Daemon {
-    /// Open the service, make a random token, listen on 127.0.0.1 at any free port and write
-    /// `daemon.info` for the clients. `options.viewer` is the folder of the wasm viewer (see
-    /// `fh serve`).
-    pub fn start_with_options(config: Config, options: Options) -> Result<Daemon, Error> {
-        let info = config.state_dir.join(INFO_FILE);
-        let state_dir = config.state_dir.clone();
-        let service = Arc::new(Service::open(config)?);
+    /// Lock the state folder, make a random token and listen on 127.0.0.1 at any free port.
+    /// `options.viewer` is the folder of the wasm viewer (see `fh serve`).
+    pub fn start_with_options(state_dir: &Path, options: Options) -> Result<Daemon, Error> {
+        let (store, lock) = store::Store::open(state_dir)?;
+        let store = Arc::new(store);
         let token = random_hex(32)?;
-        let chat = chat::Chat::new(service.clone(), state_dir, token.clone());
-        let server =
-            http::Server::start(service.clone(), chat.clone(), token.clone(), options.viewer)
-                .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
-        let mut m = Message::new();
-        m.set("port", server.port());
-        m.set("token", &token);
-        m.set("pid", std::process::id());
-        write_private(&info, &m.to_text())?;
+        let chat = chat::Chat::new(store.clone(), state_dir.to_owned(), token.clone());
+        let server = http::Server::start(store, chat.clone(), token.clone(), options.viewer)
+            .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
         Ok(Daemon {
-            service,
             chat,
             server,
             token,
-            info,
+            _lock: lock,
         })
     }
 
@@ -125,18 +92,11 @@ impl Daemon {
     pub fn token(&self) -> &str {
         &self.token
     }
-
-    /// A client with the token of this daemon.
-    pub fn client(&self) -> Client {
-        Client::new(self.port(), &self.token)
-    }
 }
 
 impl Drop for Daemon {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.info);
         self.server.stop();
         self.chat.stop();
-        self.service.stop();
     }
 }

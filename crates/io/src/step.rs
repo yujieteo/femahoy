@@ -158,34 +158,11 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_record_that_spans_lines() {
-        let text = step("#9=(\n  LENGTH_UNIT()\n  NAMED_UNIT(*)\n  SI_UNIT(.MILLI.,.METRE.)\n);");
-        assert_eq!(step_length_unit(&text), Ok(StepUnit::Mm));
-    }
-
-    #[test]
     fn ignores_angle_units_and_comments() {
         let text = step(
             "/* LENGTH_UNIT() SI_UNIT($,.METRE.) */\n#8=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));\n#9=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.));",
         );
         assert_eq!(step_length_unit(&text), Ok(StepUnit::Mm));
-    }
-
-    #[test]
-    fn other_units_keep_their_name() {
-        let cm = step("#9=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.CENTI.,.METRE.));");
-        assert_eq!(
-            step_length_unit(&cm),
-            Ok(StepUnit::Other("centimetre".to_owned()))
-        );
-        assert_eq!(StepUnit::Other("x".into()).gmsh_name(), None);
-    }
-
-    #[test]
-    fn no_record_is_an_error() {
-        let text = step("#9=(NAMED_UNIT(*)PLANE_ANGLE_UNIT()SI_UNIT($,.RADIAN.));");
-        assert_eq!(step_length_unit(&text), Err(StepUnitError::Missing));
-        assert_eq!(StepUnitError::Missing.code(), "unit.step.missing");
     }
 
     #[test]

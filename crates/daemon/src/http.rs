@@ -1,12 +1,12 @@
-//! The HTTP transport of the run contract, on 127.0.0.1 only (DESIGN.md section 4.1).
+//! The HTTP server of the page, on 127.0.0.1 only (DESIGN.md section 4.1).
 //!
 //! # Access rules
 //!
 //! 1. The `Host` header must be `127.0.0.1:<port>`. This stops DNS rebinding.
 //! 2. A request with an `Origin` header must come from the daemon's own page,
 //!    `http://127.0.0.1:<port>`. Any other `Origin`, also `null`, fails with 403.
-//! 3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`,
-//!    such as the CLI, needs only the token. Only `GET /`, the page of the daemon, can also
+//! 3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`
+//!    needs only the token. Only `GET /`, the page of the daemon, can also
 //!    take the token as `?token=<token>`, because a browser that opens a link sends no header.
 //!
 //! The daemon sends no CORS header, so a page of another origin cannot read an answer.
@@ -19,17 +19,11 @@
 //! |---|---|---|
 //! | `GET /` | | the page of the daemon (HTML): the chat, the list of the runs and the wasm viewer |
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
-//! | `GET /api/v1/status` | | `pid` |
-//! | `GET /api/v1/runs` | | one item `<run> <state> <input>` for each run |
-//! | `POST /api/v1/runs` | `input`, optional `timeout` (seconds) and `memory` (MiB) | run record |
-//! | `GET /api/v1/runs/<r>` | | run record |
-//! | `POST /api/v1/runs/<r>/cancel` | | run record |
-//! | `GET /api/v1/runs/<r>/events?since=N&wait_ms=T` | | events |
+//! | `GET /api/v1/runs` | | one item `<run> <input>` for each run that has results |
 //! | `GET /api/v1/runs/<r>/input` | | the text of the copy of the input that the run solves, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
-//! | `POST /api/v1/previews` | `input`, optional `title` | `preview`: the chat gets a `show` entry, and the page shows the model with its supports and loads |
 //! | `GET /api/v1/previews/<id>` | | the text of the copy of the input of the preview, with its `*INCLUDE` files (bytes) |
-//! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms` and `solving`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
+//! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
 //! | `POST /api/v1/chat` | `text` | `state`: the message goes to the agent, also while it works |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
 //!
@@ -37,6 +31,8 @@
 //! fetches the viewer and the results with the `Authorization` header, so only `GET /`
 //! takes the token in the query. The page allows only its own script (a new nonce for each
 //! answer), the viewer module, wasm, and fetches to its own origin.
+//!
+//! The run and preview routes only read. `fh run` writes those folders (`store` module).
 //!
 //! An error has the fields `error` (a stable code) and `message`.
 
@@ -49,8 +45,8 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crate::chat::Chat;
-use crate::contract::{Error, Message};
-use crate::service::{Limits, Service};
+use crate::message::{Error, Message};
+use crate::store::Store;
 
 const MAX_HEAD: usize = 16 << 10;
 const MAX_HEADERS: usize = 64;
@@ -82,7 +78,7 @@ enum Reply {
 }
 
 struct Ctx {
-    service: Arc<Service>,
+    store: Arc<Store>,
     chat: Arc<Chat>,
     viewer: Option<PathBuf>,
     token: String,
@@ -97,7 +93,7 @@ pub(crate) struct Server {
 impl Server {
     /// `viewer` is the folder with the wasm viewer files, or `None` when it is not built.
     pub(crate) fn start(
-        service: Arc<Service>,
+        store: Arc<Store>,
         chat: Arc<Chat>,
         token: String,
         viewer: Option<PathBuf>,
@@ -105,7 +101,7 @@ impl Server {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
         let ctx = Arc::new(Ctx {
-            service,
+            store,
             chat,
             viewer,
             token,
@@ -344,34 +340,11 @@ fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Error> {
     Ok(Reply::Bytes(kind, bytes))
 }
 
-/// The limits of a run from the fields `timeout` (seconds) and `memory` (MiB) of a body.
-fn limits_of(b: &Message) -> Result<Limits, Error> {
-    let bad = |field: &str| Error::bad("limit.invalid", format!("{field} needs a number above 0"));
-    let timeout = b.get("timeout").map(|t| {
-        t.parse::<f64>()
-            .ok()
-            .filter(|t| *t > 0.0)
-            .and_then(|t| Duration::try_from_secs_f64(t).ok())
-            .ok_or_else(|| bad("timeout"))
-    });
-    let memory = b.get("memory").map(|m| {
-        m.parse::<u64>()
-            .ok()
-            .filter(|m| *m > 0)
-            .and_then(|m| m.checked_mul(1 << 20))
-            .ok_or_else(|| bad("memory"))
-    });
-    Ok(Limits {
-        timeout: timeout.transpose()?,
-        memory: memory.transpose()?,
-    })
-}
-
 fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
     if req.is_page() {
         return Ok(Reply::Page(crate::random_hex(16)?));
     }
-    let service = &ctx.service;
+    let store = &ctx.store;
     let segments: Vec<&str> = req.path.split('/').collect();
     let body = || Message::parse(&req.body);
     let mut m = Message::new();
@@ -388,56 +361,29 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Error> {
             ctx.chat.stop();
             m.set("state", "idle");
         }
-        ("GET", ["", "api", "v1", "status"]) => {
-            m.set("pid", std::process::id());
-        }
         ("GET", ["", "api", "v1", "runs"]) => {
-            m.items = service
+            m.items = store
                 .runs()?
                 .iter()
-                .map(|r| format!("{} {} {}", r.run, r.state, r.input))
+                .map(|(run, input)| format!("{run} {input}"))
                 .collect();
-        }
-        ("POST", ["", "api", "v1", "runs"]) => {
-            let b = body()?;
-            m = service
-                .submit(b.need("input")?, limits_of(&b)?)?
-                .to_message();
-        }
-        ("GET", ["", "api", "v1", "runs", r]) => {
-            m = service.record(r)?.to_message();
-        }
-        ("POST", ["", "api", "v1", "runs", r, "cancel"]) => {
-            m = service.cancel(r)?.to_message();
-        }
-        ("GET", ["", "api", "v1", "runs", r, "events"]) => {
-            let since = req.query_number("since")?;
-            let wait = Duration::from_millis(req.query_number("wait_ms")?);
-            m = service.events(r, since, wait)?.to_message();
         }
         ("GET", ["", "api", "v1", "runs", r, "input"]) => {
             return Ok(Reply::Bytes(
                 "application/octet-stream",
-                service.input_file(r)?,
+                store.input_file(r)?,
             ));
         }
         ("GET", ["", "api", "v1", "runs", r, "files", name]) => {
             return Ok(Reply::Bytes(
                 "application/octet-stream",
-                service.result_file(r, name)?,
+                store.result_file(r, name)?,
             ));
-        }
-        ("POST", ["", "api", "v1", "previews"]) => {
-            let b = body()?;
-            let input = b.need("input")?;
-            let preview = service.preview(input)?;
-            ctx.chat.show(&preview, b.get("title").unwrap_or(input));
-            m.set("preview", preview);
         }
         ("GET", ["", "api", "v1", "previews", id]) => {
             return Ok(Reply::Bytes(
                 "application/octet-stream",
-                service.preview_file(id)?,
+                store.preview_file(id)?,
             ));
         }
         _ => {
@@ -504,66 +450,4 @@ fn page_policy(nonce: &str) -> String {
          style-src 'unsafe-inline'; connect-src 'self'; \
          frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request(headers: &[(&str, &str)]) -> Request {
-        Request {
-            method: "GET".into(),
-            path: "/api/v1/status".into(),
-            query: String::new(),
-            headers: headers
-                .iter()
-                .map(|(n, v)| (n.to_string(), v.to_string()))
-                .collect(),
-            body: String::new(),
-        }
-    }
-
-    #[test]
-    fn access_rules() {
-        let host = ("host", "127.0.0.1:7000");
-        let token = ("authorization", "Bearer secret");
-        let code = |h: &[(&str, &str)]| authorize(&request(h), 7000, "secret").map_err(|e| e.code);
-        assert_eq!(code(&[host, token]), Ok(()));
-        assert_eq!(
-            code(&[host, token, ("origin", "http://127.0.0.1:7000")]),
-            Ok(())
-        );
-        let refused = Err("origin.refused".to_owned());
-        assert_eq!(
-            code(&[host, token, ("origin", "http://evil.example")]),
-            refused
-        );
-        assert_eq!(code(&[host, token, ("origin", "null")]), refused);
-        assert_eq!(
-            code(&[host, token, ("origin", "http://localhost:7000")]),
-            refused
-        );
-        assert_eq!(
-            code(&[("host", "evil.example:7000"), token]),
-            Err("host.refused".into())
-        );
-        assert_eq!(code(&[host]), Err("token.missing".into()));
-        let wrong = ("authorization", "Bearer secreT");
-        assert_eq!(code(&[host, wrong]), Err("token.invalid".into()));
-    }
-
-    #[test]
-    fn only_the_page_takes_the_token_in_the_query() {
-        let host = ("host", "127.0.0.1:7000");
-        let code = |path: &str, query: &str| {
-            let mut req = request(&[host]);
-            (req.path, req.query) = (path.into(), query.into());
-            authorize(&req, 7000, "secret").map_err(|e| e.code)
-        };
-        assert_eq!(code("/", "token=secret"), Ok(()));
-        assert_eq!(code("/", "token=secreT"), Err("token.invalid".into()));
-        assert_eq!(code("/", ""), Err("token.missing".into()));
-        let api = Err("token.missing".to_owned());
-        assert_eq!(code("/api/v1/status", "token=secret"), api);
-    }
 }

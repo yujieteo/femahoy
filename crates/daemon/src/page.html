@@ -70,7 +70,6 @@ details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: 
 #work p { display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0; }
 #work b { flex: none; width: 40px; font-weight: 500; }
 #work code, #work span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-#work .failed span, #work .failed b { color: var(--error); }
 #busy::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.2; } }
 #clock { margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -113,7 +112,6 @@ details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: 
   <div id="work" hidden>
     <p id="busy">The agent works<span id="clock"></span></p>
     <p id="now" hidden><b>Now</b><code></code></p>
-    <p id="solve" hidden><b>Solve</b><span></span></p>
   </div>
   <p id="error" hidden></p>
   <form id="composer">
@@ -208,14 +206,13 @@ function select() {
 const names = {};
 let listing = null;
 
-// The runs that succeeded, newest first, in the list at the top of the model view.
+// The runs that have results, newest first, in the list at the top of the model view.
 async function listRuns() {
   const found = [];
   for (const item of (await reply("/api/v1/runs")).items.reverse()) {
-    const [run, rest] = split(item);
-    const [state, input] = split(rest);
+    const [run, input] = split(item);
     names[run] = input.split("/").slice(-2, -1)[0] || input;
-    if (state === "succeeded") found.push([run, input]);
+    found.push([run, input]);
   }
   const first = new Option(found.length ? "Open a run" : "No run has results", "");
   first.disabled = true;
@@ -277,9 +274,8 @@ let again = false;
 let timer = 0;
 // The commands and the tools with no result yet, the oldest first.
 let waiting = [];
-// The time when the agent started to work, and the failed solves of this work.
+// The time when the agent started to work.
 let started = 0;
-let fails = [];
 
 const unescape = (t) => t.replace(/\\(.?)/g, (_, c) => (c === "n" ? "\n" : c || "\\"));
 
@@ -288,9 +284,8 @@ function showError(text) {
   $("error").hidden = !text;
 }
 
-// The status of the work above the composer: the time, the last action of the agent, the
-// run that solves now and each failed solve. The text box is always on: the agent reads a
-// message at its next step.
+// The status of the work above the composer: the time and the last action of the agent. The
+// text box is always on: the agent reads a message at its next step.
 function setRunning(on, fields = {}) {
   running = on;
   work.hidden = !on;
@@ -299,10 +294,6 @@ function setRunning(on, fields = {}) {
   $("hint").textContent = on ? "The agent reads your message at its next step" : "Ctrl+Enter sends";
   started = Number(fields.started_ms) || 0;
   tick();
-  const [run, state, , ...place] = (fields.solving || "").split(" ");
-  $("solve").hidden = !run;
-  // The state first, because a long name gets cut at the end.
-  if (run) $("solve").lastChild.replaceChildren(state + " · ", runName(run), place.length ? " · " + place.join(" ").replaceAll("=", " ") : "");
 }
 
 function status(id, text, title) {
@@ -328,24 +319,9 @@ function failure(title, text) {
   return d;
 }
 
-// A failed solve, also in the status while the agent works.
-function failedRun(run, error) {
-  const p = el("p", "failed", "");
-  const line = el("span", "", "");
-  line.append(runName(run), ": " + error.split("\n")[0]);
-  p.append(el("b", "", "Failed"), line);
-  p.title = error;
-  fails.push(p);
-  work.append(p);
-  const title = ["The solve of ", runName(run), " failed"];
-  return failure(title, error || "The run has no error message.");
-}
-
 function rest() {
   waiting = [];
   status("now", "");
-  fails.forEach((p) => p.remove());
-  fails = [];
 }
 
 // A command or a tool as 1 line. The person can expand it to see the full text and the result.
@@ -394,8 +370,6 @@ function entry(kind, text, fresh) {
       result(alone, kind, text);
       return alone;
     }
-    case "failed":
-      return failedRun(...split(text));
     case "error":
       rest();
       return failure("The agent failed", text);

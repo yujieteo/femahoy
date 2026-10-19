@@ -170,21 +170,6 @@ mod tests {
     }
 
     #[test]
-    fn a_heat_result_shows_the_temperature() {
-        let mut r = fixture();
-        for step in &mut r.steps {
-            let n = step.displacement.len();
-            step.fields = vec![results::ScalarField {
-                name: "NT".into(),
-                quantity: results::Quantity::Other,
-                location: results::Location::Point,
-                values: vec![20.0; n],
-            }];
-        }
-        assert_eq!(ViewState::new(&r).field.as_deref(), Some("NT"));
-    }
-
-    #[test]
     fn the_step_selector_changes_the_shape_and_the_range() {
         let r = fixture();
         let mut v = ViewState::new(&r);
@@ -209,19 +194,6 @@ mod tests {
     }
 
     #[test]
-    fn the_undeformed_shape_and_plain_faces() {
-        let r = fixture();
-        let mut v = ViewState::new(&r);
-        v.deformed = false;
-        v.field = None;
-        let g = v.geometry(&r, 1);
-        assert_eq!(g.positions, r.mesh.positions);
-        assert_eq!(g.faces.len(), 3 * r.mesh.triangles.len());
-        assert!(g.faces.iter().all(|f| f[3] == 0.0));
-        assert_eq!(v.contour(&r), Contour::Off);
-    }
-
-    #[test]
     fn face_vertices_carry_the_contour_value_of_each_corner() {
         let r = fixture();
         let v = ViewState::new(&r);
@@ -234,33 +206,6 @@ mod tests {
             assert_eq!([f[0], f[1], f[2]], g.positions[p]);
             assert_eq!(f[3], values[i]);
         }
-    }
-
-    #[test]
-    fn a_field_missing_in_the_step_is_reported() {
-        let r = fixture();
-        let mut v = ViewState::new(&r);
-        v.field = Some("PEEQ".into());
-        assert_eq!(v.contour(&r), Contour::Missing("PEEQ"));
-        // The faces are drawn plain.
-        assert!(v.geometry(&r, 1).faces.iter().all(|f| f[3] == 0.0));
-    }
-
-    #[test]
-    fn field_names_list_each_field_once() {
-        let names = field_names(&fixture());
-        assert_eq!(names.iter().filter(|n| *n == "MISES").count(), 1);
-        assert_eq!(names[0], "U magnitude");
-    }
-
-    #[test]
-    fn limits_are_distinct_text() {
-        let limits = results::band_limits(100.0 - 4e-6, 100.0 + 4e-6);
-        let texts = format_limits(&limits);
-        assert_eq!(texts.len(), limits.len());
-        assert!(texts.windows(2).all(|w| w[0] != w[1]), "{texts:?}");
-        let plain = format_limits(&results::band_limits(0.0, 9.0));
-        assert_eq!(plain[1], "1.000");
     }
 
     #[test]

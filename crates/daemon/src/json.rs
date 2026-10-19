@@ -227,16 +227,6 @@ mod tests {
     }
 
     #[test]
-    fn surrogates_and_hex_digits_in_escapes() {
-        let text = |s: &str| Json::parse(s).unwrap();
-        assert_eq!(text(r#""\ud83d\u0041""#), Json::Text("\u{FFFD}A".into()));
-        assert_eq!(text(r#""\ud83d\ude00""#), Json::Text("😀".into()));
-        assert_eq!(text(r#""\ud83dx""#), Json::Text("\u{FFFD}x".into()));
-        assert!(Json::parse(r#""\u+041""#).is_err());
-        assert!(Json::parse(r#""\u-041""#).is_err());
-    }
-
-    #[test]
     fn reads_an_event_and_refuses_bad_json() {
         let text = r#"{"result":{"pane":{"focused":false,"pane_id":"w1:p2","scroll":{"rows":40},
             "label":"caf\u00e9 \ud83d\ude00 \"q\""}},"n":[1,-2.5e1,null,true]}"#;

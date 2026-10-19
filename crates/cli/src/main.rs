@@ -12,7 +12,7 @@ fn usage() -> &'static str {
     "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE --units U [options] [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR])\n  \
-         run       solve a CalculiX input on the daemon (fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB])\n  \
+         run       solve a CalculiX input with CalculiX (fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB])\n  \
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve)\n"
 }
 

@@ -30,7 +30,7 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 
 | Interface | Purpose |
 |---|---|
-| Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the `fh` command it ran. The text box is always available: a message during the work reaches the leader at its next step, and `Stop` ends the work at once. A status shows the current action, the solve and its progress, the time, and each failure. |
+| Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the `fh` command it ran. The text box is always available: a message during the work reaches the leader at its next step, and `Stop` ends the work at once. A status shows the current action of the leader and the time. |
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector. |
 | `fh` CLI | Works alone over SSH and tmux, with no GUI. |
 
@@ -39,21 +39,20 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 ## 4. Architecture
 
 ```
- browser (page + wasm viewer)                       fh CLI (SSH / tmux)
-        \                                                /
-         \-------- HTTP (127.0.0.1, token) -------------/
-                                |
-                         fh serve (daemon)
-             +-----------+-----------+-----------+
-             |  solver   |  agent    |  files    |
-             | (ccx)     | (Claude   | (project, |
-             |           |  Code)    |  results) |
-             +-----------+-----------+-----------+
+ browser (page + wasm viewer)
+        |  HTTP (127.0.0.1, token)
+        v
+ fh serve (daemon) --- starts ---> agent (Claude Code)
+        |                                  |
+      reads                                | runs fh commands
+        |                                  v
+   state folder <---- writes ----- fh run ----> ccx
+ (previews, runs, results)         (also alone, over SSH / tmux)
 ```
 
 ### 4.1 Daemon (`fh serve`)
 
-- Owns the solver runs, the agent process, and the project files.
+- Owns the agent process. It reads the preview and run folders that `fh run` writes, and serves them to the page. It does not start `ccx`.
 - Binds to 127.0.0.1 only.
 - Makes a random token at start, as Jupyter does. Every HTTP request must carry the token.
 - Rejects any request whose `Origin` is not the daemon's own page.
@@ -101,15 +100,15 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ## 6. Solver
 
-`fh` starts `ccx` directly, as a separate program that the user installs. The crate `solver-ccx` writes the `ccx` input, runs `ccx` and writes the results. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
+`fh run` and `fh validate` start `ccx` directly, as a separate program that the user installs. The crate `solver-ccx` writes the `ccx` input, runs `ccx` and writes the results. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
 
 Reason: its input is closest to `.inp`, and no run needed another solver.
 
 ### 6.1 Limits of the `ccx` process
 
-- Each run has its own working folder.
+- Each run has its own folder in the state folder, with the copy of the input, the `ccx` files and the results.
 - Each run has a memory limit. The default is 85 percent of the RAM of the machine. A run has a time limit only when `--timeout` or `fh validate` sets one.
-- A cancel, the memory limit and the time limit kill the whole process group of `ccx` at once. A guard process kills the group when `fh` stops.
+- A cancel, the memory limit and the time limit kill the whole process group of `ccx` at once. A guard process kills the group when `fh` stops. When `fh run` ends for any reason, `ccx` stops: Ctrl+C, SIGTERM and SIGHUP cancel the run, and the guard process handles SIGKILL.
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops.
 
