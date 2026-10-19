@@ -4,9 +4,7 @@
 //! Plain functions with no GPU or file types. The caller gives the file bytes to `load`. The
 //! browser fetches them from the daemon, and the tests read them from disk.
 
-use std::fmt;
-
-use fh_io::vtu::{read_pvd, read_vtu, Grid};
+use fh_core::vtu::{read_pvd, read_vtu, Grid};
 
 use crate::mesh::{self, RenderMesh};
 
@@ -30,26 +28,9 @@ pub const BAND_COLORS: [[f32; 3]; BANDS] = [
 /// size, when the automatic scale is on.
 pub const AUTO_SCALE_FRACTION: f64 = 0.1;
 
-/// A problem with the result files. `file` names the file that has the problem.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LoadError {
-    pub code: &'static str,
-    pub file: String,
-    pub message: String,
-}
-
-impl fmt::Display for LoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} ({})", self.file, self.message, self.code)
-    }
-}
-
-fn fail<T>(code: &'static str, file: &str, message: impl Into<String>) -> Result<T, LoadError> {
-    Err(LoadError {
-        code,
-        file: file.to_owned(),
-        message: message.into(),
-    })
+/// An error text for a result file. It starts with the name of the file that has the problem.
+fn fail<T>(file: &str, message: impl Into<String>) -> Result<T, String> {
+    Err(format!("{file}: {}", message.into()))
 }
 
 /// Where the values of a field are.
@@ -148,7 +129,7 @@ fn quantity(name: &str) -> Quantity {
 
 /// The contour fields of a grid: the magnitude and the components of each vector field,
 /// the components of `S`, and each scalar field. Integer arrays (ids and sets) are not fields.
-fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, LoadError> {
+fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
     let mut out = Vec::new();
     let groups = [
         (Location::Point, &grid.point_data, grid.points.len()),
@@ -162,7 +143,6 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, LoadError> {
             let c = field.components.max(1);
             if values.len() != c * count {
                 return fail(
-                    "results.field.length",
                     file,
                     format!(
                         "field {} has {} values, expected {} ({} x {c})",
@@ -175,7 +155,6 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, LoadError> {
             }
             if let Some(i) = values.iter().position(|v| !v.is_finite()) {
                 return fail(
-                    "results.field.nonfinite",
                     file,
                     format!(
                         "field {} has value {} at item {}",
@@ -225,17 +204,13 @@ pub fn load(
     pvd_name: &str,
     pvd: &str,
     mut read: impl FnMut(&str) -> Result<Vec<u8>, String>,
-) -> Result<Results, LoadError> {
+) -> Result<Results, String> {
     let entries = match read_pvd(pvd) {
         Ok(e) => e,
-        Err(e) => return fail(e.code, pvd_name, e.message),
+        Err(e) => return fail(pvd_name, e),
     };
     if entries.is_empty() {
-        return fail(
-            "results.empty",
-            pvd_name,
-            "the collection names no step file",
-        );
+        return fail(pvd_name, "the collection names no step file");
     }
     let mut first: Option<Grid> = None;
     let mut steps = Vec::with_capacity(entries.len());
@@ -243,41 +218,31 @@ pub fn load(
         let file = entry.file.as_str();
         if !is_plain_file_name(file) {
             return fail(
-                "results.file.path",
                 pvd_name,
                 format!("step file {file} is not in the run folder"),
             );
         }
         let bytes = match read(file) {
             Ok(b) => b,
-            Err(e) => return fail("results.file.missing", file, e),
+            Err(e) => return fail(file, e),
         };
         let grid = match read_vtu(&bytes) {
             Ok(g) => g,
-            Err(e) => return fail(e.code, file, e.message),
+            Err(e) => return fail(file, e),
         };
         if grid.points.is_empty() || grid.cells.is_empty() {
-            return fail(
-                "results.mesh.empty",
-                file,
-                "the grid has no point or no cell",
-            );
+            return fail(file, "the grid has no point or no cell");
         }
         if let Some(f) = &first {
             if f.points != grid.points || f.cells != grid.cells || f.cell_types != grid.cell_types {
                 return fail(
-                    "results.mesh.changed",
                     file,
                     format!("the mesh is not the mesh of {}", steps_file(&steps)),
                 );
             }
         }
         if grid.points.iter().flatten().any(|c| !c.is_finite()) {
-            return fail(
-                "results.mesh.nonfinite",
-                file,
-                "a point coordinate is not a finite number",
-            );
+            return fail(file, "a point coordinate is not a finite number");
         }
         let fields = fields_of(&grid, file)?;
         let displacement = match grid.point_field("U") {
@@ -286,7 +251,6 @@ pub fn load(
                 (Some(u), 3) => u.as_chunks::<3>().0.to_vec(),
                 _ => {
                     return fail(
-                        "results.field.missing",
                         file,
                         "the displacement field U must have 3 float components",
                     )
@@ -307,7 +271,6 @@ pub fn load(
     let mesh = mesh::build_grid(&grid);
     if mesh.triangles.is_empty() {
         return fail(
-            "results.mesh.unsupported",
             &steps[0].file,
             format!(
                 "no cell type that the page draws ({} cells)",
@@ -462,7 +425,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    use fh_io::vtu::Field;
+    use fh_core::vtu::Field;
 
     fn fixture_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/results/cantilever-2step")

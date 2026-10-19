@@ -1,12 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/inp",
-    "crates/io",
-    "crates/solver-ccx",
-    "crates/validation",
-    "crates/daemon",
-    "crates/cli",
+    "crates/core",
+    "crates/fh",
     "crates/viewer",
 ]
 

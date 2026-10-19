@@ -1,0 +1,11 @@
+[package]
+name = "fh"
+description = "`fh` commands, server, chat, CalculiX runner and validation"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+fh-core = { path = "../core" }
+libc = "0.2.190"
+toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }

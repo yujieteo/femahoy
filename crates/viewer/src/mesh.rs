@@ -4,8 +4,8 @@
 
 use std::collections::HashMap;
 
-use fh_inp::Model;
-use fh_io::vtu::{
+use fh_core::inp::Model;
+use fh_core::vtu::{
     VTK_HEXAHEDRON, VTK_QUADRATIC_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_QUADRATIC_WEDGE, VTK_TETRA,
     VTK_WEDGE,
 };
@@ -263,7 +263,7 @@ pub fn vtk_element_type(cell_type: u8) -> Option<&'static str> {
 }
 
 /// Build the render data for a VTU grid. Cell `k` of the grid is element `k`.
-pub fn build_grid(grid: &fh_io::vtu::Grid) -> RenderMesh {
+pub fn build_grid(grid: &fh_core::vtu::Grid) -> RenderMesh {
     let n = grid.points.len();
     let elements: Vec<Option<(&str, Vec<u32>)>> = grid
         .cell_types
@@ -449,7 +449,7 @@ pub fn bounds(points: &[[f32; 3]]) -> Option<Bounds> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fh_inp::{Element, Node};
+    use fh_core::inp::{Element, Node};
 
     fn node(id: u32, x: f64, y: f64, z: f64) -> Node {
         Node { id, xyz: [x, y, z] }

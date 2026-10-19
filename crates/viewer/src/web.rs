@@ -1,4 +1,4 @@
-//! The browser entry point. The page of `fh serve` (`crates/daemon/src/page.html`) calls
+//! The browser entry point. The page of `fh serve` (`crates/fh/src/daemon/page.html`) calls
 //! `start` with its canvas and the token, and `Viewer::open` for each run that it shows.
 //! The viewer fetches the result files from the daemon with `Authorization: Bearer
 //! <token>`.
@@ -61,7 +61,7 @@ async fn load_run(token: &str, run: &str) -> Result<Content, String> {
     let base = format!("/api/v1/runs/{run}/files");
     let pvd_path = format!("{base}/{RESULTS_FILE}");
     let pvd = text(get(token, &pvd_path).await?, &pvd_path)?;
-    let entries = fh_io::vtu::read_pvd(&pvd).map_err(|e| format!("{RESULTS_FILE}: {e}"))?;
+    let entries = fh_core::vtu::read_pvd(&pvd).map_err(|e| format!("{RESULTS_FILE}: {e}"))?;
     let mut files = HashMap::new();
     for e in &entries {
         if !results::is_plain_file_name(&e.file) {
@@ -81,7 +81,7 @@ async fn load_run(token: &str, run: &str) -> Result<Content, String> {
 /// Fetch an input file from the daemon path `path` and read its supports and loads.
 async fn model(token: &str, path: &str, name: &str) -> Result<Box<preview::Preview>, String> {
     let input = text(get(token, path).await?, path)?;
-    let mut p = preview::build(&fh_inp::parse(&input), &fh_inp::units(&input));
+    let mut p = preview::build(&fh_core::inp::parse(&input), &fh_core::inp::units(&input));
     p.title = name.to_owned();
     Ok(Box::new(p))
 }

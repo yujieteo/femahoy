@@ -7,10 +7,10 @@ A validation case is a folder `validation/cases/<id>/` with 2 files that `fh val
 
 Other files in the folder (`derivation.md`, the STEP file, scripts) are documents. No field points to them.
 
-Sources: [check reader](../../crates/validation/src/fixture.rs),
-[pass rule](../../crates/validation/src/run.rs),
-[validation command](../../crates/cli/src/validate.rs), and
-[measurements](../../crates/cli/src/measure.rs).
+Sources: [check reader](../../crates/fh/src/validation/fixture.rs),
+[pass rule](../../crates/fh/src/validation/run.rs),
+[validation command](../../crates/fh/src/validate.rs), and
+[measurements](../../crates/fh/src/validation/measure.rs).
 
 ## Fields
 
