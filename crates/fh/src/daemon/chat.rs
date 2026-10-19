@@ -19,8 +19,10 @@
 //! `FH_STATE` (so `fh run` writes its runs where this daemon reads them) and the folder of
 //! `fh` first on `PATH`. It ignores the personal Claude Code setup of the person: the user
 //! settings with their hooks and plugins, `~/.claude/CLAUDE.md`, the MCP servers and the
-//! claude.ai connectors. Thus each person gets the same agent, with the model Claude Opus and
-//! the login of the person.
+//! claude.ai connectors. It loads no setting source at all, because Claude Code reads the
+//! settings and the `CLAUDE.md` files of each folder above `STATE/chat` as project files, also
+//! `~/.claude/CLAUDE.md` when the state folder is in the home folder. Thus each person gets the
+//! same agent, with the model Claude Opus and the login of the person.
 //!
 //! The agent works in `STATE/chat`: it can make, change and delete the files there with any
 //! command (`--permission-mode acceptEdits`). It can list and read the run folders
@@ -464,9 +466,9 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
             INSTRUCTIONS,
             "--model",
             "opus",
-            // No `user` source and no MCP server: the personal setup stays out (module text).
+            // No setting source and no MCP server: the personal setup stays out (module text).
             "--setting-sources",
-            "project,local",
+            "",
             "--strict-mcp-config",
             "--permission-mode",
             "acceptEdits",
