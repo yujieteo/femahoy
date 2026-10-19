@@ -22,7 +22,7 @@ mod serve;
 mod store;
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -37,21 +37,6 @@ pub(crate) fn random_hex(n: usize) -> Result<String, Error> {
         .and_then(|mut f| f.read_exact(&mut bytes))
         .map_err(|e| Error::io("/dev/urandom", e))?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
-}
-
-/// Write a file that only the user can read.
-fn write_private(path: &Path, text: &str) -> Result<(), Error> {
-    let err = |e| Error::io(&path.display().to_string(), e);
-    let tmp = path.with_extension("tmp");
-    let _ = std::fs::remove_file(&tmp);
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(&tmp).map_err(err)?;
-    file.write_all(text.as_bytes())
-        .and_then(|()| file.sync_all())
-        .map_err(err)?;
-    std::fs::rename(&tmp, path).map_err(err)
 }
 
 #[derive(Clone, Debug, Default)]

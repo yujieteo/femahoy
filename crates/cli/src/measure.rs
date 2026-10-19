@@ -176,7 +176,7 @@ pub fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
         _ => {}
     }
     let picked = values_of(dat, q)?;
-    // f64::max and f64::min drop a NaN, so the check comes before the reduction.
+    // f64::max drops a NaN, so the check comes before the reduction.
     if let Some(v) = picked.iter().find(|v| !v.is_finite()) {
         return Err(format!(
             "set `{}` has the value {v}, which is not finite",
@@ -194,7 +194,6 @@ pub fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
         }
         Op::Mean => picked.iter().sum::<f64>() / picked.len() as f64,
         Op::Max => picked.iter().copied().fold(f64::NEG_INFINITY, f64::max),
-        Op::Min => picked.iter().copied().fold(f64::INFINITY, f64::min),
         Op::Sum => picked.iter().sum(),
     };
     if !value.is_finite() {

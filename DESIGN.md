@@ -32,7 +32,6 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 |---|---|
 | Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the `fh` command it ran. The text box is always available: a message during the work reaches the leader at its next step, and `Stop` ends the work at once. A status shows the current action of the leader and the time. |
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector. |
-| `fh` CLI | Works alone over SSH and tmux, with no GUI. |
 
 ---
 
@@ -47,7 +46,7 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
       reads                                | runs fh commands
         |                                  v
    state folder <---- writes ----- fh run ----> ccx
- (previews, runs, results)         (also alone, over SSH / tmux)
+ (previews, runs, results)
 ```
 
 ### 4.1 Daemon (`fh serve`)
@@ -56,7 +55,7 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 - Binds to 127.0.0.1 only.
 - Makes a random token at start, as Jupyter does. Every HTTP request must carry the token.
 - Rejects any request whose `Origin` is not the daemon's own page.
-- Serves the page and the wasm viewer itself, then opens the user's browser at that page.
+- Serves the page and the wasm viewer itself. On macOS it then opens the user's browser at that page. On other systems it only prints the address.
 - The browser never holds an API key.
 
 Reason: a web page on another origin must not use the daemon, and a key in the browser can leak.
@@ -100,7 +99,7 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ## 6. Solver
 
-`fh run` and `fh validate` start `ccx` directly, as a separate program that the user installs. The crate `solver-ccx` writes the `ccx` input, runs `ccx` and writes the results. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
+`fh run` and `fh validate` start `ccx` directly, as a separate program that the user installs. The crate `solver-ccx` gives the input to `ccx` as it is, runs `ccx` and writes the results. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
 
 Reason: its input is closest to `.inp`, and no run needed another solver.
 
@@ -123,7 +122,6 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 ## 7. Validation
 
 - References are analytical solutions and measured values. The cases are in `validation/cases/<id>/`.
-- No Abaqus licence is available, so there are no Abaqus runs. The Abaqus verification manual can be a list of problem ideas, cited by number.
 - Cases use our own input files. Each target value cites its source.
 - Each case has 1 mesh and a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
 - A change to a solver or its adapter merges only if `fh validate` passes the full suite. A failure blocks the merge. There is no override.
@@ -140,7 +138,7 @@ The Inter font is under the SIL Open Font License 1.1, in `crates/viewer/fonts` 
 
 ## 9. Decision log
 
-Each entry is a rule that is in force. The captain decided each of them.
+Each entry is a rule that is in force. The owner decided each of them.
 
 ### D-30 A requirement stays only if a real run showed the need
 A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.

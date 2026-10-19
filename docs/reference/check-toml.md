@@ -27,7 +27,7 @@ A check of `U`, `RF`, `S` or `NT` has these 5 keys. All are required.
 | `set` | Node set (fields `U`, `RF`, `NT`) or element set (field `S`) in a print request of `job.inp`. The match ignores letter case. |
 | `field` | `U` (displacement), `RF` (reaction force) and `NT` (temperature) from `*NODE PRINT`. `S` (stress) from `*EL PRINT`. |
 | `component` | `U` and `RF`: 1, 2, 3. `S`: 11, 22, 33, 12, 13, 23. `NT`: 1. |
-| `op` | `value` (the set holds exactly 1 value), `mean`, `max`, `min` or `sum`. |
+| `op` | `value` (the set holds exactly 1 value), `mean`, `max` or `sum`. |
 
 A check of `FREQ` or `BUCKLE` has 3 keys: `value`, `field` and `mode` (the mode number, 1 or more).
 `FREQ` is the frequency in cycles per time from the eigenvalue table of `*FREQUENCY`.

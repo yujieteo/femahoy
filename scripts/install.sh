@@ -8,8 +8,7 @@
 # The prefix (default ~/.local/bin) gets fh, the folder viewer beside fh, where
 # `fh serve` looks for it, and fh-python. fh-python runs the Python of the venv (default
 # ${XDG_DATA_HOME:-~/.local/share}/femahoy/venv), which has Python 3.12 and build123d.
-# A second run builds again and updates the files and the venv. It removes the fh-solve and
-# fh-solve-ccx of an earlier install: fh starts ccx directly now.
+# A second run builds again and updates the files and the venv.
 #
 # The script finds cargo in ~/.cargo/bin ($CARGO_HOME/bin) when cargo is not on PATH. It
 # checks all the tools before the build and shows the install command of each missing tool.
@@ -117,7 +116,6 @@ update=no
 if [ -e "$prefix/fh" ]; then update=yes; fi
 mkdir -p "$prefix/viewer"
 put "$target/release/fh" "$prefix/fh" 755
-rm -f "$prefix/fh-solve" "$prefix/fh-solve-ccx"
 for file in fh_viewer.js fh_viewer_bg.wasm; do
   put "$target/release/viewer/$file" "$prefix/viewer/$file" 644
 done

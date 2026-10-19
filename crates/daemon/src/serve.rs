@@ -3,7 +3,8 @@
 //! address of the page. Each request must carry the token, and a request from a page of
 //! another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
-//! At start, `fh serve` opens the page in the browser (`browser` module).
+//! At start on macOS, `fh serve` opens the page in the browser (`browser` module). On other
+//! systems it only prints the address.
 //! The state folder `DIR` is `$FH_STATE` (see `default_state_dir`). Ctrl+C stops the daemon.
 
 use std::path::{Path, PathBuf};
@@ -60,7 +61,7 @@ pub fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode 
         state_dir.display()
     );
     if open {
-        match open_page(state_dir, &url) {
+        match open_page(&url) {
             Ok(()) => println!("fh serve: opened the page in the browser"),
             Err(e) => println!("fh serve: no browser ({e}). Open the address above."),
         }

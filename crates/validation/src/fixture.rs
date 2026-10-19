@@ -31,7 +31,6 @@ pub enum Op {
     Value,
     Mean,
     Max,
-    Min,
     Sum,
 }
 
@@ -264,12 +263,11 @@ impl Reader<'_> {
             "value" => Op::Value,
             "mean" => Op::Mean,
             "max" => Op::Max,
-            "min" => Op::Min,
             "sum" => Op::Sum,
             other => {
                 return Err(self.err(
                     Some(op_item),
-                    format!("unknown op `{other}`, expected value, mean, max, min or sum"),
+                    format!("unknown op `{other}`, expected value, mean, max or sum"),
                 ))
             }
         };
