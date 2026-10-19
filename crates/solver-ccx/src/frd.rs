@@ -3,13 +3,14 @@
 //! The reader keeps the last increment of each step (and of each mode of a frequency step).
 //! It renames the blocks `DISP`, `FORC`, `STRESS`, `TOSTRAIN` and `PE` to the keywords that
 //! a person writes (`U`, `RF`, `S`, `E`, `PEEQ`) and adds `MISES` after each `S`. `ccx` writes
-//! a shell or a beam as a solid element of the code 1 to 6, so these 6 codes are all it needs.
+//! the element codes 1 to 12. The reader skips any other code. A file with no cell gives no frame.
 
 use std::collections::HashMap;
 
 use fh_io::vtu::{
-    Field, Grid, VTK_HEXAHEDRON, VTK_QUADRATIC_HEXAHEDRON, VTK_QUADRATIC_TETRA,
-    VTK_QUADRATIC_WEDGE, VTK_TETRA, VTK_WEDGE,
+    Field, Grid, VTK_HEXAHEDRON, VTK_LINE, VTK_QUAD, VTK_QUADRATIC_EDGE, VTK_QUADRATIC_HEXAHEDRON,
+    VTK_QUADRATIC_QUAD, VTK_QUADRATIC_TETRA, VTK_QUADRATIC_TRIANGLE, VTK_QUADRATIC_WEDGE,
+    VTK_TETRA, VTK_TRIANGLE, VTK_WEDGE,
 };
 
 /// The VTK cell type, the node count and the order of the nodes of the `.frd` element codes
@@ -31,6 +32,12 @@ fn cell_kind(code: u32) -> Option<(u8, &'static [usize])> {
         4 => (VTK_QUADRATIC_HEXAHEDRON, &HEX20),
         5 => (VTK_QUADRATIC_WEDGE, &WEDGE15),
         6 => (VTK_QUADRATIC_TETRA, &TET10),
+        7 => (VTK_TRIANGLE, &[0, 1, 2]),
+        8 => (VTK_QUADRATIC_TRIANGLE, &[0, 1, 2, 3, 4, 5]),
+        9 => (VTK_QUAD, &[0, 1, 2, 3]),
+        10 => (VTK_QUADRATIC_QUAD, &[0, 1, 2, 3, 4, 5, 6, 7]),
+        11 => (VTK_LINE, &[0, 1]),
+        12 => (VTK_QUADRATIC_EDGE, &[0, 2, 1]),
         _ => return None,
     })
 }
@@ -247,7 +254,7 @@ pub fn read(text: &str) -> Result<Frd, String> {
         return Err("job.frd has no end line 9999".into());
     }
     if frd.cells.is_empty() {
-        return Err("job.frd has no element that the page can draw (codes 1 to 6)".into());
+        frd.frames.clear();
     }
     Ok(frd)
 }
@@ -339,6 +346,20 @@ mod tests {
         let s = grid.point_field("S").unwrap();
         assert_eq!((s.components, s.as_f64().unwrap()[0]), (6, 2.0));
         assert_eq!(grid.point_field("MISES").unwrap().as_f64().unwrap(), [2.0]);
+    }
+
+    #[test]
+    fn a_file_with_only_unknown_elements_is_read_with_no_frame() {
+        let mut text = String::from(
+            "    2C                             1                                     1\n",
+        );
+        text += &node(1, 1.0);
+        text += " -3\n    3C                             1                                     1\n -1         1   99    0    1\n";
+        text += &format!(" -2{:10}\n -3\n", 1);
+        text += "    1PSTEP                         1           1           1\n  100CL  101 1.00000E+00\n -4  DISP        4    1\n";
+        text += " -1         1 1.00000E+00 0.00000E+00 0.00000E+00\n -3\n 9999\n";
+        let frd = read(&text).unwrap();
+        assert!(frd.cells.is_empty() && frd.frames.is_empty());
     }
 
     #[test]

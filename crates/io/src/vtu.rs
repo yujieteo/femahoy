@@ -9,9 +9,15 @@ use std::fmt::{self, Write as _};
 use crate::code;
 
 /// VTK cell type numbers of the solid elements that CalculiX writes.
+pub const VTK_LINE: u8 = 3;
+pub const VTK_TRIANGLE: u8 = 5;
+pub const VTK_QUAD: u8 = 9;
 pub const VTK_TETRA: u8 = 10;
 pub const VTK_HEXAHEDRON: u8 = 12;
 pub const VTK_WEDGE: u8 = 13;
+pub const VTK_QUADRATIC_EDGE: u8 = 21;
+pub const VTK_QUADRATIC_TRIANGLE: u8 = 22;
+pub const VTK_QUADRATIC_QUAD: u8 = 23;
 pub const VTK_QUADRATIC_TETRA: u8 = 24;
 pub const VTK_QUADRATIC_HEXAHEDRON: u8 = 25;
 pub const VTK_QUADRATIC_WEDGE: u8 = 26;
