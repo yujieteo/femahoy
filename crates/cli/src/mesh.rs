@@ -490,7 +490,6 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
             output.display()
         ));
     }
-    rules::hex_needs_extrusion(model)?;
     rules::volumes_are_named(&mesh)?;
     rules::material_groups(&mesh, &materials)?;
     for r in &regions {

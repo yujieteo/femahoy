@@ -1,4 +1,4 @@
-//! `fh model`: refusals, hex8 output, and the path STEP, mesh, `.inp`, solve. The last test
+//! `fh model`: refusals, the C3D10 output, and the path STEP, mesh, `.inp`, solve. The last test
 //! skips when gmsh is missing.
 
 mod common;
@@ -199,15 +199,6 @@ fn the_inp_for_a_tet10_block_parses_with_the_sets_of_the_case() {
     }
     assert_eq!(inp.steps[0].name.as_deref(), Some("LOAD"));
     assert_eq!(inp.steps[0].boundaries.len(), 4);
-}
-
-#[test]
-fn an_extruded_hex_block_gives_c3d8i_elements() {
-    let dir = case("hex", |t| t.replace("at = 100.0", "at = 4.0"));
-    let out = model(&block("block-hex.msh"), &dir, &["--mesh-units", "SI-mm"]);
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    let inp = fh_inp::parse(&std::fs::read_to_string(dir.join("out.inp")).unwrap()).unwrap();
-    assert!(inp.elements.iter().all(|e| e.element_type == "C3D8I"));
 }
 
 /// The bar-tension case with the region TIP (the face x = 4 of the block fixture, a gmsh

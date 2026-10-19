@@ -166,9 +166,9 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
     // the mean of the two points, in the order xx, yy, zz, xy, yz, xz.
     let near = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-9);
     let s = grid.cell_field("S").unwrap().as_f64().unwrap();
-    assert!(near(&s, &[150.0, 0.0, 0.0, 10.0, 30.0, 20.0]), "{s:?}");
+    assert!(near(s, &[150.0, 0.0, 0.0, 10.0, 30.0, 20.0]), "{s:?}");
     let mises = grid.cell_field("MISES").unwrap().as_f64().unwrap();
-    assert!(near(&mises, &[26700f64.sqrt()]), "{mises:?}");
+    assert!(near(mises, &[26700f64.sqrt()]), "{mises:?}");
     let summary = std::fs::read_to_string(dir.join("run/summary.toon")).unwrap();
     assert!(summary.starts_with("schema: fh.run"), "{summary}");
     assert!(
@@ -474,7 +474,12 @@ fn real_ccx_matches_the_cantilever_and_bar_pressure_references() {
     };
     // Reference -0.01919619048 mm (case.toml). The C3D10 value of mesh-8 is 1.4 % soft, in
     // the 2 % tolerance of the case.
-    let tip = mean(&on_set(&solve("cantilever-c3d10/mesh-8.inp"), "U", "tip", 2));
+    let tip = mean(&on_set(
+        &solve("cantilever-c3d10/mesh-8.inp"),
+        "U",
+        "tip",
+        2,
+    ));
     assert!(
         (tip / -0.01919619048 - 1.0).abs() < 0.02,
         "cantilever tip {tip}"

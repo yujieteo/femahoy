@@ -66,21 +66,12 @@ fn write_inp(
     units: Units,
 ) -> Result<String, String> {
     let model = &mesh.model;
-    let mut types: Vec<&str> = model
-        .elements
-        .iter()
-        .map(|e| e.element_type.as_str())
-        .collect();
-    types.sort_unstable();
-    types.dedup();
-    let [element_type] = types[..] else {
-        return Err(if types.is_empty() {
-            "mesh.empty: the mesh has no solid element of a supported type (C3D10, C3D8I)".into()
-        } else {
-            format!("mesh.mixed: the mesh mixes element types {types:?}. Mesh one type")
-        });
-    };
-    crate::rules::hex_needs_extrusion(model)?;
+    // The mesh reader accepts only C3D10.
+    if model.elements.is_empty() {
+        return Err(
+            "mesh.empty: the mesh has no solid element of the supported type (C3D10)".into(),
+        );
+    }
     crate::rules::volumes_are_named(mesh)?;
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
@@ -103,7 +94,7 @@ fn write_inp(
             n.id, n.xyz[0], n.xyz[1], n.xyz[2]
         );
     }
-    let _ = writeln!(out, "*ELEMENT, TYPE={element_type}");
+    let _ = writeln!(out, "*ELEMENT, TYPE=C3D10");
     for e in &model.elements {
         let nodes: Vec<String> = e.nodes.iter().map(u32::to_string).collect();
         let _ = writeln!(out, "{}, {}", e.id, nodes.join(", "));

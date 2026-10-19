@@ -91,7 +91,11 @@ fn a_tag_of_zero_is_an_error() {
     let mut bad = Vec::new();
     for (from, to, line) in [
         ("3 1 0 10\n1\n", "3 1 0 10\n0\n", "line 17: "),
-        ("2 1 2 3 4 5 6 7 8 9 10", "0 1 2 3 4 5 6 7 8 9 10", "line 43: "),
+        (
+            "2 1 2 3 4 5 6 7 8 9 10",
+            "0 1 2 3 4 5 6 7 8 9 10",
+            "line 43: ",
+        ),
     ] {
         let text = TET10.replace(from, to);
         assert_ne!(text, TET10);

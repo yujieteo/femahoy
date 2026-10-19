@@ -162,67 +162,6 @@ fn the_case_units_are_used_and_checked_against_the_step_file() {
     says(&fh_raw(&args, no_gmsh()), "unit.case.conflict");
 }
 
-/// A box that gmsh fills with hexes: a 2D grid, extruded along z, or a recombined 3D grid.
-fn hex_geo(extruded: bool, taper: f64) -> String {
-    let mut geo = String::from("SetFactory(\"OpenCASCADE\");\n");
-    if extruded {
-        geo.push_str(
-            "Rectangle(1) = {0, 0, 0, 4, 1};\nTransfinite Curve {1, 3} = 5;\n\
-Transfinite Curve {2, 4} = 2;\nTransfinite Surface {1};\nRecombine Surface {1};\n\
-Extrude {0, 0, 1} { Surface{1}; Layers{2}; Recombine; }\n",
-        );
-    } else {
-        // The top face is wider than the bottom face, so the lateral edges are not parallel.
-        geo.push_str(&format!(
-            "Point(1) = {{0,0,0}};\nPoint(2) = {{1,0,0}};\nPoint(3) = {{1,1,0}};\nPoint(4) = {{0,1,0}};\n\
-Point(5) = {{0,0,1}};\nPoint(6) = {{{},0,1}};\nPoint(7) = {{{},1,1}};\nPoint(8) = {{0,1,1}};\n\
-Line(1)={{1,2}};Line(2)={{2,3}};Line(3)={{3,4}};Line(4)={{4,1}};\n\
-Line(5)={{5,6}};Line(6)={{6,7}};Line(7)={{7,8}};Line(8)={{8,5}};\n\
-Line(9)={{1,5}};Line(10)={{2,6}};Line(11)={{3,7}};Line(12)={{4,8}};\n\
-Curve Loop(1)={{1,2,3,4}};Curve Loop(2)={{5,6,7,8}};Curve Loop(3)={{1,10,-5,-9}};\n\
-Curve Loop(4)={{2,11,-6,-10}};Curve Loop(5)={{3,12,-7,-11}};Curve Loop(6)={{4,9,-8,-12}};\n\
-Plane Surface(1)={{1}};Plane Surface(2)={{2}};Plane Surface(3)={{3}};\n\
-Plane Surface(4)={{4}};Plane Surface(5)={{5}};Plane Surface(6)={{6}};\n\
-Surface Loop(1)={{1,2,3,4,5,6}};Volume(1)={{1}};\n\
-Transfinite Curve {{1,2,3,4,5,6,7,8,9,10,11,12}} = 2;\n\
-Transfinite Surface {{1,2,3,4,5,6}};Recombine Surface {{1,2,3,4,5,6}};\n\
-Transfinite Volume {{1}};\n",
-            1.0 + taper,
-            1.0 + taper
-        ));
-    }
-    geo.push_str("Physical Volume(\"BEAM\") = {1};\n");
-    geo
-}
-
-fn hex_run(name: &str, geo: &str) -> Option<Output> {
-    let gmsh = real_gmsh()?;
-    let path = scratch(name).join("hex.geo");
-    std::fs::write(&path, geo).unwrap();
-    // Order 1 makes hex8. The default order 2 would make hex20, which the reader rejects.
-    Some(mesh(&[p(&path), "--order", "1"], Some(&gmsh)))
-}
-
-#[test]
-fn an_extruded_hex_mesh_is_accepted() {
-    let Some(out) = hex_run("hex-ok", &hex_geo(true, 0.0)) else {
-        eprintln!("skipped: gmsh is not installed");
-        return;
-    };
-    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
-    assert!(stdout(&out).contains("type\tC3D8I\t"), "{}", stdout(&out));
-}
-
-#[test]
-fn a_hex_mesh_that_is_not_an_extrusion_is_refused() {
-    let Some(out) = hex_run("hex-bad", &hex_geo(false, 0.4)) else {
-        eprintln!("skipped: gmsh is not installed");
-        return;
-    };
-    assert_eq!(out.status.code(), Some(1), "stdout: {:?}", out.stdout);
-    says(&out, "mesh.hex.not_extruded");
-}
-
 #[test]
 fn bad_options_exit_2() {
     for args in [&[][..], &["a.geo", "--order", "3"], &["a.geo", "--bogus"]] {

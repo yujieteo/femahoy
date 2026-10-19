@@ -306,10 +306,7 @@ pub fn load(
         return fail(
             "results.mesh.unsupported",
             &steps[0].file,
-            format!(
-                "no C3D4, C3D8 or C3D10 cell to draw ({} cells)",
-                grid.cells.len()
-            ),
+            format!("no C3D10 cell to draw ({} cells)", grid.cells.len()),
         );
     }
     Ok(Results {
@@ -457,67 +454,12 @@ pub fn band_limits(lo: f64, hi: f64) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use std::path::PathBuf;
 
     use fh_io::vtu::{write_vtu, Field};
 
     fn fixture_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/results/cantilever-2step")
-    }
-
-    /// The text results of one step: node id to (U, RF), element id to (S, MISES).
-    struct Text {
-        nodes: HashMap<i32, [f64; 6]>,
-        elements: HashMap<i32, [f64; 7]>,
-    }
-
-    fn read_text(path: PathBuf) -> Text {
-        let text = std::fs::read_to_string(path).unwrap();
-        let mut nodes = HashMap::new();
-        let mut elements = HashMap::new();
-        let mut block = "";
-        for line in text.lines() {
-            if line.starts_with("node_id") {
-                block = "nodes";
-                continue;
-            }
-            if line.starts_with("element_id S11") {
-                block = "elements";
-                continue;
-            }
-            let cols: Vec<&str> = line.split_whitespace().collect();
-            let num = |s: &str| s.parse::<f64>().unwrap();
-            match (block, cols.len()) {
-                ("nodes", 7) => {
-                    nodes.insert(
-                        cols[0].parse().unwrap(),
-                        std::array::from_fn(|k| num(cols[k + 1])),
-                    );
-                }
-                ("elements", 8) => {
-                    elements.insert(
-                        cols[0].parse().unwrap(),
-                        std::array::from_fn(|k| num(cols[k + 1])),
-                    );
-                }
-                _ => block = if cols.is_empty() { "" } else { block },
-            }
-        }
-        Text { nodes, elements }
-    }
-
-    fn ids(dir: &std::path::Path, file: &str, name: &str, point: bool) -> Vec<i32> {
-        let grid = read_vtu(&std::fs::read(dir.join(file)).unwrap()).unwrap();
-        let f = if point {
-            grid.point_field(name)
-        } else {
-            grid.cell_field(name)
-        };
-        match &f.unwrap().values {
-            fh_io::vtu::Values::I32(v) => v.clone(),
-            _ => panic!("ids are integers"),
-        }
     }
 
     #[test]
@@ -527,7 +469,7 @@ mod tests {
         assert_eq!(r.steps.len(), 2);
         assert_eq!((r.steps[0].time, r.steps[1].time), (1.0, 2.0));
         assert_eq!(r.steps[1].file, "step-2.vtu");
-        assert_eq!((r.mesh.node_count, r.mesh.element_count), (20, 4));
+        assert_eq!((r.mesh.node_count, r.mesh.element_count), (81, 24));
         assert_eq!(r.mesh.skipped_elements, 0);
         let names: Vec<&str> = r.steps[0].fields.iter().map(|f| f.name.as_str()).collect();
         for want in [
@@ -543,41 +485,40 @@ mod tests {
         }
     }
 
-    /// Each displacement and each contour value matches the text results of the same
-    /// run, item by item.
+    /// Each displacement and each contour value matches the arrays of the VTU file of the
+    /// same step, item by item.
     #[test]
-    fn values_match_the_text_results() {
+    fn values_match_the_vtu_arrays() {
         let dir = fixture_dir();
         let r = crate::load_run(&dir).unwrap();
-        for (i, step) in r.steps.iter().enumerate() {
-            let text = read_text(dir.join(format!("step-{}.txt", i + 1)));
-            let node_ids = ids(&dir, &step.file, "NODE_ID", true);
-            let element_ids = ids(&dir, &step.file, "ELEMENT_ID", false);
-            assert_eq!(node_ids.len(), text.nodes.len());
+        for step in &r.steps {
+            let grid = read_vtu(&std::fs::read(dir.join(&step.file)).unwrap()).unwrap();
+            let array = |f: Option<&Field>| f.unwrap().as_f64().unwrap().to_vec();
+            let (u, rf) = (array(grid.point_field("U")), array(grid.point_field("RF")));
+            let (s, mises) = (array(grid.cell_field("S")), array(grid.cell_field("MISES")));
             let comp = |name: &str| &step.field(name).unwrap().values;
-            let mag = |a: f64, b: f64, c: f64| (a * a + b * b + c * c).sqrt();
+            let mag = |v: &[f64]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
             let close = |got: f64, want: f64, what: &str| {
                 assert!((got - want).abs() <= 1e-15 * want.abs().max(1.0), "{what}");
             };
-            for (n, id) in node_ids.iter().enumerate() {
-                let t = text.nodes[id];
-                assert_eq!(step.displacement[n], [t[0], t[1], t[2]], "U node {id}");
+            assert_eq!(step.displacement.len(), grid.points.len());
+            for n in 0..grid.points.len() {
+                let (u, rf) = (&u[3 * n..3 * n + 3], &rf[3 * n..3 * n + 3]);
+                assert_eq!(step.displacement[n], [u[0], u[1], u[2]], "U point {n}");
                 for (k, name) in ["U1", "U2", "U3", "RF1", "RF2", "RF3"].iter().enumerate() {
-                    assert_eq!(comp(name)[n], t[k], "{name} node {id}");
+                    let want = if k < 3 { u[k] } else { rf[k - 3] };
+                    assert_eq!(comp(name)[n], want, "{name} point {n}");
                 }
-                close(comp("U magnitude")[n], mag(t[0], t[1], t[2]), "U magnitude");
-                close(
-                    comp("RF magnitude")[n],
-                    mag(t[3], t[4], t[5]),
-                    "RF magnitude",
-                );
+                close(comp("U magnitude")[n], mag(u), "U magnitude");
+                close(comp("RF magnitude")[n], mag(rf), "RF magnitude");
             }
-            let names = ["S11", "S22", "S33", "S12", "S23", "S13", "MISES"];
-            for (e, id) in element_ids.iter().enumerate() {
+            // The VTU order of S is xx, yy, zz, xy, yz, xz.
+            let names = ["S11", "S22", "S33", "S12", "S23", "S13"];
+            for e in 0..mises.len() {
                 for (k, name) in names.iter().enumerate() {
-                    let v = step.field(name).unwrap().values[e];
-                    assert_eq!(v, text.elements[id][k], "{name} element {id}");
+                    assert_eq!(comp(name)[e], s[6 * e + k], "{name} cell {e}");
                 }
+                assert_eq!(comp("MISES")[e], mises[e], "MISES cell {e}");
             }
         }
         // The second step doubles the load of the linear model.
@@ -603,7 +544,7 @@ mod tests {
         // The tip (x = 10) moves down in z by 50 x the tip U3 of step 2.
         let tip = r.mesh.positions.iter().position(|p| p[0] == 10.0).unwrap();
         let u3 = step.displacement[r.mesh.source_node[tip] as usize][2];
-        assert!((u3 - -0.03685902950909793).abs() < 1e-6);
+        assert!((u3 - -0.0814817).abs() < 1e-6, "{u3}");
         assert!((f64::from(moved[tip][2] - r.mesh.positions[tip][2]) - scale * u3).abs() < 1e-5);
         // Scale 0 is the undeformed shape.
         assert_eq!(deformed_positions(&r.mesh, step, 0.0), r.mesh.positions);

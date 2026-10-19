@@ -655,22 +655,36 @@ mod tests {
         );
     }
 
-    /// 2 hex elements: x 0 to 2, y and z 0 to 1, the set FIXED at x = 0 and the surface TOP
-    /// (S2, z = 1).
-    const TWO_HEX: &str = "** units: SI-mm\n*NODE\n\
+    /// 12 C3D10 elements: the box x 0 to 2, y and z 0 to 1, as 2 cubes of 6 tets. The set
+    /// FIXED holds the nodes at x = 0, and the surface TOP the faces at z = 1. Nodes 1 to 12
+    /// are the corners of the cubes, nodes 13 to 45 the midside nodes.
+    const TWO_CUBES: &str = "** units: SI-mm\n*NODE\n\
         1, 0, 0, 0\n2, 1, 0, 0\n3, 1, 1, 0\n4, 0, 1, 0\n\
         5, 0, 0, 1\n6, 1, 0, 1\n7, 1, 1, 1\n8, 0, 1, 1\n\
         9, 2, 0, 0\n10, 2, 1, 0\n11, 2, 0, 1\n12, 2, 1, 1\n\
-        *ELEMENT, TYPE=C3D8\n1, 1, 2, 3, 4, 5, 6, 7, 8\n2, 2, 9, 10, 3, 6, 11, 12, 7\n\
-        *NSET, NSET=FIXED\n1, 4, 5, 8\n\
-        *SURFACE, TYPE=ELEMENT, NAME=TOP\n1, S2\n2, S2\n";
+        13, 0.5, 0, 0\n14, 1, 0.5, 0\n15, 0.5, 0.5, 0\n16, 0.5, 0.5, 0.5\n17, 1, 0.5, 0.5\n\
+        18, 1, 1, 0.5\n19, 0.5, 0, 0.5\n20, 1, 0, 0.5\n21, 1, 0.5, 1\n22, 0.5, 1, 0\n\
+        23, 0, 0.5, 0\n24, 0.5, 1, 0.5\n25, 0, 1, 0.5\n26, 0, 0.5, 0.5\n27, 0.5, 1, 1\n\
+        28, 0, 0, 0.5\n29, 0.5, 0, 1\n30, 0.5, 0.5, 1\n31, 0, 0.5, 1\n32, 1.5, 0, 0\n\
+        33, 2, 0.5, 0\n34, 1.5, 0.5, 0\n35, 1.5, 0.5, 0.5\n36, 2, 0.5, 0.5\n37, 2, 1, 0.5\n\
+        38, 1.5, 0, 0.5\n39, 2, 0, 0.5\n40, 2, 0.5, 1\n41, 1.5, 1, 0\n42, 1.5, 1, 0.5\n\
+        43, 1.5, 1, 1\n44, 1.5, 0, 1\n45, 1.5, 0.5, 1\n\
+        *ELEMENT, TYPE=C3D10\n\
+        1, 1, 2, 3, 7, 13, 14, 15, 16, 17, 18\n2, 1, 6, 2, 7, 19, 20, 13, 16, 21, 17\n\
+        3, 1, 3, 4, 7, 15, 22, 23, 16, 18, 24\n4, 1, 4, 8, 7, 23, 25, 26, 16, 24, 27\n\
+        5, 1, 5, 6, 7, 28, 29, 19, 16, 30, 21\n6, 1, 8, 5, 7, 26, 31, 28, 16, 27, 30\n\
+        7, 2, 9, 10, 12, 32, 33, 34, 35, 36, 37\n8, 2, 11, 9, 12, 38, 39, 32, 35, 40, 36\n\
+        9, 2, 10, 3, 12, 34, 41, 14, 35, 37, 42\n10, 2, 3, 7, 12, 14, 18, 17, 35, 42, 43\n\
+        11, 2, 6, 11, 12, 20, 44, 38, 35, 45, 40\n12, 2, 7, 6, 12, 17, 21, 20, 35, 43, 45\n\
+        *NSET, NSET=FIXED\n1, 4, 5, 8, 23, 25, 26, 28, 31\n\
+        *SURFACE, TYPE=ELEMENT, NAME=TOP\n5, S3\n6, S3\n11, S3\n12, S3\n";
 
     #[test]
     fn a_push_and_a_node_force_point_into_the_part() {
-        // 2 hex elements: x 0 to 2, y and z 0 to 1. A pressure of 3 on the top faces (S2,
-        // z = 1), a force of -5 in z on each node of the end x = 2, and a support at x = 0.
+        // The box x 0 to 2, y and z 0 to 1. A pressure of 3 on the top faces (z = 1), a force
+        // of -5 in z on each node of the end x = 2, and a support at x = 0.
         let text = format!(
-            "{TWO_HEX}*NSET, NSET=TIP\n9, 10, 11, 12\n\
+            "{TWO_CUBES}*NSET, NSET=TIP\n9, 10, 11, 12, 33, 36, 37, 39, 40\n\
             *STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n\
             *CLOAD\nTIP, 3, -5.0\n*DSLOAD\nTOP, P, 3.0\n*END STEP\n"
         );
@@ -683,11 +697,11 @@ mod tests {
         assert_eq!(fixed.triangles, on_plane(&p, 0, 0.0));
         assert_eq!(tip.triangles, on_plane(&p, 0, 2.0));
         assert_eq!(top.triangles, on_plane(&p, 2, 1.0));
-        assert_eq!(tip.actions, ["F3 = -5 N on each of 4 nodes"]);
+        assert_eq!(tip.actions, ["F3 = -5 N on each of 9 nodes"]);
         assert_eq!(fixed.label, "FIXED: ux uy uz");
-        assert_eq!(tip.label, "TIP: 20 N, -z");
+        assert_eq!(tip.label, "TIP: 45 N, -z");
         assert_eq!(top.label, "TOP: 3 MPa pressure");
-        assert!(close(tip.force, [0.0, 0.0, -20.0]), "{:?}", tip.force);
+        assert!(close(tip.force, [0.0, 0.0, -45.0]), "{:?}", tip.force);
         // 3 MPa pushes down on 2 mm2 of the top face.
         assert!(close(top.force, [0.0, 0.0, -6.0]), "{:?}", top.force);
         let (tail, head) = p.arrow(top).unwrap();
@@ -704,7 +718,7 @@ mod tests {
         // A pin, a set displacement of 1 node, a node force in -y, a node force at an angle,
         // a pressure and a temperature change.
         let text = format!(
-            "{TWO_HEX}*NSET, NSET=PIN\n9, 10\n*NSET, NSET=P1\n11, 12\n*NSET, NSET=P2\n11\n\
+            "{TWO_CUBES}*NSET, NSET=PIN\n9, 10\n*NSET, NSET=P1\n11, 12\n*NSET, NSET=P2\n11\n\
             *NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12\n\
             *INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 0.0\n\
             *STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\nPIN, 2, 3\n9, 1, 1, 0.1\n\
@@ -747,14 +761,15 @@ mod tests {
     #[test]
     fn the_outline_of_a_set_is_the_edge_of_its_faces() {
         let text = format!(
-            "{TWO_HEX}*STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n*DSLOAD\nTOP, P, 1.0\n*END STEP\n"
+            "{TWO_CUBES}*STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n*DSLOAD\nTOP, P, 1.0\n*END STEP\n"
         );
         let p = build(&fh_inp::parse(&text).unwrap(), &units(&text));
         let [fixed, top] = &p.items[..] else {
             panic!("{:?}", p.items);
         };
-        // The end x = 0 is 1 square: 4 edges. The top is 2 squares: 6 edges.
-        for (item, edges, normal) in [(fixed, 4, [-1.0, 0.0, 0.0]), (top, 6, [0.0, 0.0, 1.0])] {
+        // The end x = 0 is 1 square: 4 edges. The top is 2 squares: 6 edges. A midside node
+        // splits each edge in 2 segments.
+        for (item, edges, normal) in [(fixed, 8, [-1.0, 0.0, 0.0]), (top, 12, [0.0, 0.0, 1.0])] {
             assert_eq!(item.outline.len(), edges, "{}", item.name);
             for &(e, n) in &item.outline {
                 assert_eq!(n, normal, "{}", item.name);
@@ -789,12 +804,12 @@ mod tests {
             panic!("{:?}", p.items);
         };
         assert_eq!(fixed.label, "FIXED: ux uy uz");
-        assert_eq!(tip.label, "TIP: 2 N, -z");
+        assert_eq!(tip.label, "TIP: 4.5 N, -z");
         assert_eq!(
             tip.actions,
             [
-                "TIP-LOAD: F3 = -0.25 N on each of 4 nodes",
-                "DOUBLE-LOAD: F3 = -0.5 N on each of 4 nodes"
+                "TIP-LOAD: F3 = -0.25 N on each of 9 nodes",
+                "DOUBLE-LOAD: F3 = -0.5 N on each of 9 nodes"
             ]
         );
         let r = crate::load_run(&dir).unwrap();

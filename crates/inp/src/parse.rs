@@ -83,13 +83,16 @@ fn int(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<u32, ParseError>
 /// infinity, and these would change or remove a constraint without an error.
 fn real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<f64, ParseError> {
     let f = d.fields.get(i).map(String::as_str).unwrap_or("");
-    f.parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| {
-        b.error(
-            code::INVALID_VALUE,
-            d.line_of(i),
-            format!("{what} must be a finite number, found '{f}'"),
-        )
-    })
+    f.parse::<f64>()
+        .ok()
+        .filter(|x| x.is_finite())
+        .ok_or_else(|| {
+            b.error(
+                code::INVALID_VALUE,
+                d.line_of(i),
+                format!("{what} must be a finite number, found '{f}'"),
+            )
+        })
 }
 
 fn opt_real(b: &Block, d: &DataLine, i: usize, what: &str) -> Result<Option<f64>, ParseError> {
