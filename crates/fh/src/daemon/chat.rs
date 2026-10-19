@@ -24,8 +24,9 @@
 //! `~/.claude/CLAUDE.md` when the state folder is in the home folder. Thus each person gets the
 //! same agent, with the default model and the login of the person.
 //!
-//! The agent works in `STATE/chat`: it can make, change and delete the files there with any
-//! command (`--permission-mode acceptEdits`). Its other commands are `fh`, `fh-python` (the Python of
+//! The agent works in `STATE/chat`: it can make, change and delete the files there with the file
+//! tools and with file commands such as `mkdir`, `mv`, `rm` and an output redirect
+//! (`--permission-mode acceptEdits`). Its other commands are `fh`, `fh-python` (the Python of
 //! the CAD script), `pdflatex` and `ccx -v`. Solves go through `fh run`. `FH_AGENT` names
 //! another agent program, for example a fake agent that prints a recorded event stream in the
 //! tests.
