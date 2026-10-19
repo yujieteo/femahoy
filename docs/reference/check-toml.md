@@ -68,4 +68,3 @@ See [bar-pressure](../../validation/cases/bar-pressure/check.toml) for a complet
 ## Errors
 
 An error names the file and, when available, its line: `FILE:LINE: MESSAGE` or `FILE: MESSAGE`.
-See the [command reference](fh.md) for exit codes.
