@@ -34,7 +34,7 @@ use crate::vtu::{write_pvd, write_vtu};
 
 pub use sys::total_memory;
 
-const PVD_FILE: &str = "results.pvd";
+pub const PVD_FILE: &str = "results.pvd";
 /// A run puts this file in a run folder that it made. It clears only a folder that has the
 /// file.
 const RUN_MARKER: &str = ".fh-run";

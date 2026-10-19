@@ -63,7 +63,7 @@ const IO_TIMEOUT: Duration = Duration::from_secs(10);
 const PAGE: &str = include_str!("page.html");
 
 /// The files of the wasm viewer that the daemon serves, with their content types.
-const VIEWER_FILES: [(&str, &str); 2] = [
+pub(super) const VIEWER_FILES: [(&str, &str); 2] = [
     ("fh_viewer.js", "text/javascript"),
     ("fh_viewer_bg.wasm", "application/wasm"),
 ];
