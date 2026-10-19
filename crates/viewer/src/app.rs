@@ -1,5 +1,5 @@
 //! The eframe app of the model view on the page of `fh serve`: a viewport, a results panel,
-//! a status bar and the mouse controls. The page around it (`crates/daemon/src/page.html`)
+//! a status bar and the mouse controls. The page around it (`crates/fh/src/daemon/page.html`)
 //! has the chat and the list of the runs. Before a solve, the
 //! viewport shows the model with its supports and loads: the faces of each set in a colour,
 //! an arrow for each load and a label for each set.
@@ -507,7 +507,7 @@ fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64,
     ));
 }
 
-/// The look of the page (`crates/daemon/src/page.html`): the Inter font, and the colours
+/// The look of the page (`crates/fh/src/daemon/page.html`): the Inter font, and the colours
 /// `--bg`, `--raised` and `--line` of the page in the dark and the light theme.
 fn style(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();

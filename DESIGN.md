@@ -99,7 +99,7 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ## 6. Solver
 
-`fh run` and `fh validate` start `ccx` directly, as a separate program that the user installs. The crate `solver-ccx` gives the input to `ccx` as it is, runs `ccx` and writes the results. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
+`fh run` and `fh validate` start `ccx` directly, as a separate program that the user installs. The module `ccx` of the crate `fh` gives the input to `ccx` as it is, runs `ccx` and writes the results. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
 
 Reason: its input is closest to `.inp`, and no run needed another solver.
 
@@ -144,4 +144,4 @@ Each entry is a rule that is in force. The owner decided each of them.
 A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.
 
 ### D-32 The docs set
-The owner approved the docs set: `README.md`, `crates/daemon/src/agent.md`, `docs/reference` and this file.
+The owner approved the docs set: `README.md`, `crates/fh/src/daemon/agent.md`, `docs/reference` and this file.

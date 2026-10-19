@@ -1,0 +1,8 @@
+[package]
+name = "fh-core"
+description = "Mesh, result and input readers that `fh` and the 3D view share"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]

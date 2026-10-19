@@ -21,7 +21,7 @@ fh mesh FILE.step --units SI-mm|SI-m [-o OUT.inp] [--size H]
   [--refine NAME[,NAME]...=H]... [--shell]
 ```
 
-Source: [mesh.rs](../../crates/cli/src/mesh.rs).
+Source: [mesh.rs](../../crates/fh/src/mesh.rs).
 
 The command accepts `.step` and `.stp`, without regard to extension case.
 It runs external gmsh for a 3D mesh of order 2 (`C3D10`) in `msh41` format, then writes the nodes, the elements and the named sets as a CalculiX input.
@@ -62,24 +62,24 @@ The command replaces an existing output file only when the mesh succeeds.
 | Missing option value, invalid number, selection, units, or name | stderr: `fh mesh: MESSAGE` | 2 |
 | Unknown option, no input, or more than 1 input | Same prefix. Includes mesh usage. | 2 |
 | Input read, extension, path, or temporary-file error | `fh mesh: MESSAGE` | 1 |
-| No `--units` | `fh mesh: unit.missing: ...` | 1 |
-| No STEP length record | `fh mesh: unit.step.missing: ...` | 1 |
-| Multiple STEP length units | `fh mesh: unit.step.conflict: ...` | 1 |
-| STEP unit differs from `--units` | `fh mesh: unit.step.mismatch: ...` | 1 |
+| No `--units` | `fh mesh: the run has no units. Give --units SI-mm or --units SI-m` | 1 |
+| No STEP length record | `fh mesh: the STEP file has no length-unit record` | 1 |
+| Multiple STEP length units | `fh mesh: the STEP file has length units that differ: ...` | 1 |
+| STEP unit differs from `--units` | `fh mesh: the STEP file uses UNIT, but the units are ...` | 1 |
 | gmsh not found or cannot start | `fh mesh: gmsh is not installed. ...` or `cannot start gmsh (PATH): ERROR` | 1 |
 | Unreadable or old version | `fh mesh: cannot read the gmsh version from ...` or `gmsh VERSION is too old, ...` | 1 |
 | Child failure or a line that starts with `Error` | `fh mesh: gmsh failed (exit code N)` or `gmsh failed (stopped by a signal)`, with error text. | 1 |
 | Missing output, unreadable mesh, or no volume elements | `fh mesh: gmsh wrote no mesh file: PATH`, `the mesh is not readable (PATH): ERROR`, or `gmsh wrote a mesh with no volume elements: PATH`. For a file with only surfaces, the last one says to use `--shell`. With `--shell`, it is `no surface elements`. | 1 |
-| `--shell` with a file that has a volume | `fh mesh: mesh.shell.solid: ...` | 1 |
-| An element with a corner Jacobian of 0 or less | `fh mesh: mesh.jacobian.negative: ...` with the count and example element IDs | 1 |
-| A volume (a surface with `--shell`) with no physical group, in a file with physical groups | `fh mesh: mesh.volume.unnamed: ...` | 1 |
-| A `--face` that selects no whole face of the part | `fh mesh: mesh.face.missing: ...` | 1 |
-| A `--face` that is not on the outside of the solid | `fh mesh: mesh.face.inner: ...` | 1 |
-| A `--nodes` selection with no node | `fh mesh: mesh.set.empty: ...` | 1 |
-| A name used twice | `fh mesh: mesh.name.duplicate: ...` | 1 |
+| `--shell` with a file that has a volume | `fh mesh: the file has a volume, but --shell needs surfaces. ...` | 1 |
+| An element with a corner Jacobian of 0 or less | `fh mesh: N elements have a corner with a Jacobian of 0 or less, ...` with the count and example element IDs | 1 |
+| A volume (a surface with `--shell`) with no physical group, in a file with physical groups | `fh mesh: ... has no physical group, so gmsh wrote none of its elements. ...` | 1 |
+| A `--face` that selects no whole face of the part | `fh mesh: the mesh has no face group NAME. The selection holds no whole face of the part. ...` | 1 |
+| A `--face` that is not on the outside of the solid | `fh mesh: face NAME is not on the outside of the part. ...` | 1 |
+| A `--nodes` selection with no node | `fh mesh: --nodes NAME (...) holds no node` | 1 |
+| A name used twice | `fh mesh: the name NAME is used twice. Give each set its own name` | 1 |
 | A `--refine` name with no `--face`, with no `--size`, or with H not below `--size` | `fh mesh: --refine NAME: there is no --face NAME`, `it needs --size, ...` or `H must be below --size S` | 1 |
 | A `--refine` with no `=H`, a bad number, or a name used twice | `fh mesh: --refine needs NAME=H` or `--refine names NAME twice` | 2 |
-| A `--volume` box with no element, or an element in no box or in 2 boxes | `fh mesh: mesh.volume.empty: ...` or `mesh.volume.coverage: ...` | 1 |
+| A `--volume` box with no element, or an element in no box or in 2 boxes | `fh mesh: --volume NAME holds no element` or a message that names the element | 1 |
 
 The child exit code is diagnostic text. `fh mesh` returns 1 for a child failure.
 Some operating-system errors supply their own message after the command prefix.
@@ -90,8 +90,8 @@ Some operating-system errors supply their own message after the command prefix.
 fh validate [--root DIR]
 ```
 
-Sources: [validate.rs](../../crates/cli/src/validate.rs),
-[measure.rs](../../crates/cli/src/measure.rs), and [harness](../../crates/validation/src/run.rs).
+Sources: [validate.rs](../../crates/fh/src/validate.rs),
+[measure.rs](../../crates/fh/src/validation/measure.rs), and [harness](../../crates/fh/src/validation/run.rs).
 
 `--root` defaults to `.`. The normal run loads case directories under `DIR/validation/cases`, sorted by directory name.
 Each case folder holds a CalculiX input (`job.inp`) and a check file (`check.toml`). The case solves the input, then compares each quantity with its reference.
@@ -120,7 +120,7 @@ See the [check file reference](check-toml.md) for the fields and the pass rules.
 fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB]
 ```
 
-Source: [run.rs](../../crates/cli/src/run.rs).
+Source: [run.rs](../../crates/fh/src/run.rs).
 
 The command solves a model with `ccx` and prints the progress. It does not need `fh serve`. The page that `fh serve` opened reads the files of the run from the state folder, so it shows the model and the results.
 
@@ -157,8 +157,8 @@ When `fh run` ends for any reason, `ccx` stops. Ctrl+C, SIGTERM and SIGHUP stop 
 | `ccx` refused the input, the run hit a limit, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder. | 1 |
 | The preview or the run folder cannot be written | `fh run: the preview failed: MESSAGE` or `fh run: the run folder failed: MESSAGE` | 1 |
 | No input, unknown option, bad value (for example `--timeout needs a number above 0`) | `fh run: MESSAGE` and the usage | 2 |
-| The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
-| The input is not an `.inp` file | `fh run: PATH: fh run takes a CalculiX input file (.inp) (run.input.kind)` | 2 |
+| The input does not exist | `fh run: PATH: ERROR` | 2 |
+| The input is not an `.inp` file | `fh run: PATH: fh run takes a CalculiX input file (.inp)` | 2 |
 | Ctrl+C, SIGTERM or SIGHUP during the solve | stderr: `fh run: RUN was cancelled` | 130 |
 
 ## `fh serve`
@@ -167,7 +167,7 @@ When `fh run` ends for any reason, `ccx` stops. Ctrl+C, SIGTERM and SIGHUP stop 
 fh serve
 ```
 
-Source: [serve.rs](../../crates/daemon/src/serve.rs).
+Source: [serve.rs](../../crates/fh/src/daemon/serve.rs).
 
 The command runs the daemon on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
 `fh serve` takes no option. The state folder is `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default. The port is a free port.
@@ -183,5 +183,5 @@ A value of `FH_NO_OPEN` that is not empty and not `0` stops the open, for tests 
 |---|---|---:|
 | Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). | |
 | Stop signal | stdout: `fh serve: stopped`. | 0 |
-| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`. | 1 |
+| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE`. | 1 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |

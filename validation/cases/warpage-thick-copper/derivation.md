@@ -58,7 +58,7 @@ For the same inputs, the plate form of the bilayer curvature (Timoshenko) gives 
 It uses the plate moduli E/(1 - nu) of each layer.
 A free bilayer plate in linear theory bends to a spherical shape, so the plate moduli apply away from the free edges.
 The beam form with E gives 0.60445 µm/K. The paper gives 0.605 µm/K for it.
-`cargo test -p fh-cli --test cli` checks that the warpage of `fh validate` is within 1% of the plate value.
+`cargo test -p fh --test cli` checks that the warpage of `fh validate` is within 1% of the plate value.
 
 ## Measured result
 

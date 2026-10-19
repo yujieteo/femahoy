@@ -1,7 +1,7 @@
 //! eframe app, wgpu mesh and contour renderer.
 //!
 //! Built so far: the model view of the page of `fh serve`. The page itself, with the chat,
-//! is HTML (`crates/daemon/src/page.html`). `mesh`, `camera`, `results` and `view` are
+//! is HTML (`crates/fh/src/daemon/page.html`). `mesh`, `camera`, `results` and `view` are
 //! plain functions with no GPU types. `gpu` and `app` are the thin window layer. `web` is
 //! the browser entry point.
 

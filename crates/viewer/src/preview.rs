@@ -7,7 +7,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use fh_inp::{ElementTarget, Model, Target};
+use fh_core::inp::{ElementTarget, Model, Target};
 
 use crate::mesh::{self, RenderMesh};
 use crate::results::{unit, Quantity, BANDS};
@@ -551,7 +551,7 @@ mod tests {
     use super::*;
 
     fn from_text(text: &str) -> Preview {
-        build(&fh_inp::parse(text), &fh_inp::units(text))
+        build(&fh_core::inp::parse(text), &fh_core::inp::units(text))
     }
 
     fn bar() -> Preview {
@@ -559,7 +559,11 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../validation/cases/bar-pressure/job.inp"
         );
-        from_text(&fh_inp::flatten(std::path::Path::new(path)).unwrap().text)
+        from_text(
+            &fh_core::inp::flatten(std::path::Path::new(path))
+                .unwrap()
+                .text,
+        )
     }
 
     /// The surface triangles with each corner on the plane `x[axis] = at`.

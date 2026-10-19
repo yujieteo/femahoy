@@ -36,7 +36,7 @@ The run took 111 s and cost 0.50 USD.
 
 The chat run found 2 gaps:
 
-1. The first solve stopped: ccx refused `*FILM` with the surface name (`TIP, F, 20.0, 0.05`). The chat wrote a script that lists the element faces. `crates/daemon/src/agent.md` now has this fact.
+1. The first solve stopped: ccx refused `*FILM` with the surface name (`TIP, F, 20.0, 0.05`). The chat wrote a script that lists the element faces. `crates/fh/src/daemon/agent.md` now has this fact.
 2. The 3D view showed no temperature, because the reader of the `.frd` file kept the name `NDTEMP`. The reader now gives `NT`, and the view shows `NT` first when the step has no stress and no displacement.
 
 ## Files
