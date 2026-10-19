@@ -11,7 +11,7 @@ Physical Surface(\"LOAD\") = {2};\n\
 Mesh.MeshSizeMax = 0.5;\n\
 Mesh.MeshSizeMin = 0.5;\n";
 
-/// Run `fh mesh`. The units are required (D-18), so this adds `--units SI-mm`
+/// Run `fh mesh`. The units are required, so this adds `--units SI-mm`
 /// unless the arguments declare units.
 fn mesh(args: &[&str], gmsh: Option<&Path>) -> Output {
     let declared = args.contains(&"--units");

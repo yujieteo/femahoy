@@ -4,7 +4,7 @@ Usage: python bar.py OUT.step [mm|m]
 The STEP length unit is mm (the default) or m. The part is the same in both: in m, the STEP
 file holds 0.1 x 0.02 x 0.01. `fh mesh OUT.step --case DIR` refuses a unit that is not the case `units`.
 Install: scripts/install.sh, then run: fh-python bar.py OUT.step
-Decision D-17, see DESIGN.md: femahoy ships no CAD code. The agent writes a script like this.
+femahoy ships no CAD code. The agent writes a script like this.
 """
 import sys
 
