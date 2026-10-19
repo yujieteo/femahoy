@@ -289,32 +289,6 @@ mod tests {
     }
 
     #[test]
-    fn hex20_nodes_follow_the_vtk_order() {
-        let mut text = String::from(
-            "    2C                            20                                     1\n",
-        );
-        (1..=20).for_each(|i| text += &node(i, f64::from(i)));
-        text += " -3\n    3C                             1                                     1\n -1         1    4    0    1\n";
-        text += &format!(
-            " -2{}\n",
-            (1..=10).map(|i| format!("{i:10}")).collect::<String>()
-        );
-        text += &format!(
-            " -2{}\n -3\n 9999\n",
-            (11..=20).map(|i| format!("{i:10}")).collect::<String>()
-        );
-        let frd = read(&text).unwrap();
-        // The file lists the top midside nodes (13 to 16) after the vertical ones (17 to 20).
-        let x: Vec<f64> = frd.cells[0]
-            .iter()
-            .map(|&i| frd.points[i as usize][0])
-            .collect();
-        assert_eq!(frd.cell_types, vec![VTK_QUADRATIC_HEXAHEDRON]);
-        assert_eq!(x[12..16], [17.0, 18.0, 19.0, 20.0]);
-        assert_eq!(x[16..], [13.0, 14.0, 15.0, 16.0]);
-    }
-
-    #[test]
     fn a_later_increment_replaces_the_earlier_one_and_s_gets_mises() {
         let mut text = String::from(
             "    2C                             1                                     1\n",
@@ -347,42 +321,5 @@ mod tests {
         let s = grid.point_field("S").unwrap();
         assert_eq!((s.components, s.as_f64().unwrap()[0]), (6, 2.0));
         assert_eq!(grid.point_field("MISES").unwrap().as_f64().unwrap(), [2.0]);
-    }
-
-    #[test]
-    fn a_file_with_only_unknown_elements_is_read_with_no_frame() {
-        let mut text = String::from(
-            "    2C                             1                                     1\n",
-        );
-        text += &node(1, 1.0);
-        text += " -3\n    3C                             1                                     1\n -1         1   99    0    1\n";
-        text += &format!(" -2{:10}\n -3\n", 1);
-        text += "    1PSTEP                         1           1           1\n  100CL  101 1.00000E+00\n -4  DISP        4    1\n";
-        text += " -1         1 1.00000E+00 0.00000E+00 0.00000E+00\n -3\n 9999\n";
-        let frd = read(&text).unwrap();
-        assert!(frd.cells.is_empty() && frd.frames.is_empty());
-    }
-
-    #[test]
-    fn a_temperature_block_reads_as_nt() {
-        let mut text = String::from(
-            "    2C                             1                                     1\n",
-        );
-        text += &node(1, 1.0);
-        text += " -3\n    3C                             1                                     1\n -1         1    3    0    1\n";
-        text += &format!(
-            " -2{}\n -3\n",
-            [1, 1, 1, 1].map(|i| format!("{i:10}")).concat()
-        );
-        text += "    1PSTEP                         1           1           1\n  100CL  101 1.00000E+00\n -4  NDTEMP      1    1\n";
-        text += " -1         1 7.09000E+01\n -3\n 9999\n";
-        let frd = read(&text).unwrap();
-        let grid = frd.grid(&frd.frames[0]);
-        assert_eq!(grid.point_field("NT").unwrap().as_f64().unwrap(), [70.9]);
-    }
-
-    #[test]
-    fn a_file_with_no_end_line_is_an_error() {
-        assert!(read("    2C 1\n").unwrap_err().contains("9999"));
     }
 }

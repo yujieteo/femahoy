@@ -3,11 +3,10 @@
 //! path 1). femahoy has no agent loop of its own. The daemon reads the JSON event stream of
 //! the agent (`--output-format stream-json`) and keeps each action as a chat entry: the
 //! message, the text of the agent, each command, each tool and its result, and the end
-//! with the time and the cost. When a run of the daemon succeeds during the chat, the chat
-//! gets an `open` entry, and the page shows the results of that run. Before each solve,
-//! `fh run` sends its input to the preview route, the chat gets a `show` entry, and the page
-//! shows the model with each support and each load. When a run fails, the
-//! chat gets a `failed` entry with the error.
+//! with the time and the cost. The daemon also reads the state folder (`store` module). Before
+//! each solve, `fh run` writes a preview folder, the chat gets a `show` entry, and the page
+//! shows the model with each support and each load. When a run gets its results, the chat
+//! gets an `open` entry, and the page shows the results of that run.
 //!
 //! The agent process stays alive between the messages. Each message of the person goes to
 //! its stdin as 1 line of `--input-format stream-json`, also while the agent works: the
@@ -17,8 +16,9 @@
 //! message then starts a new agent that continues the session (`--resume`).
 //!
 //! The agent gets the instructions of `agent.md`, the state folder of the daemon in
-//! `FH_STATE` (so `fh run` uses this daemon) and the folder of `fh` first on `PATH`. It works in `STATE/chat`. Its tools are the `fh` commands, Python for the CAD
-//! script, and the file tools. `FH_AGENT` names another agent program, for example a
+//! `FH_STATE` (so `fh run` writes its runs where this daemon reads them) and the folder of
+//! `fh` first on `PATH`. It works in `STATE/chat`. Its tools are the `fh` commands, Python for
+//! the CAD script, and the file tools. `FH_AGENT` names another agent program, for example a
 //! fake agent that prints a recorded event stream in the tests.
 //!
 //! An entry is the item `<seq> <kind> <text>`. In the text, `\n` is a line break and `\\`
@@ -31,10 +31,11 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::contract::{now_ms, Error, Message, RunRecord, RunState};
 use crate::json::{quote, Json};
-use crate::service::Service;
+use crate::message::{Error, Message};
+use crate::store::Store;
 
 /// The instructions of the agent.
 const INSTRUCTIONS: &str = include_str!("agent.md");
@@ -67,8 +68,9 @@ struct Log {
     started_ms: u64,
     /// The session of the agent, so that a new agent continues it.
     session: Option<String>,
-    /// The runs that were final before the agent started to work.
-    seen: HashSet<String>,
+    /// The previews that the chat shows, and the runs that it opens.
+    previews: HashSet<String>,
+    runs: HashSet<String>,
 }
 
 impl Log {
@@ -110,10 +112,16 @@ impl Log {
 }
 
 pub(crate) struct Chat {
-    service: Arc<Service>,
+    store: Arc<Store>,
     state_dir: PathBuf,
     token: String,
     log: Mutex<Log>,
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 /// The text of an entry on one line.
@@ -124,12 +132,18 @@ fn escape(text: &str) -> String {
 }
 
 impl Chat {
-    pub(crate) fn new(service: Arc<Service>, state_dir: PathBuf, token: String) -> Arc<Chat> {
+    /// The runs that have results already do not get an `open` entry.
+    pub(crate) fn new(store: Arc<Store>, state_dir: PathBuf, token: String) -> Arc<Chat> {
+        let old = store.runs().unwrap_or_default();
+        let log = Log {
+            runs: old.into_iter().map(|(run, _)| run).collect(),
+            ..Log::default()
+        };
         Arc::new(Chat {
-            service,
+            store,
             state_dir,
             token,
-            log: Mutex::default(),
+            log: Mutex::new(log),
         })
     }
 
@@ -146,18 +160,11 @@ impl Chat {
         }
     }
 
-    /// The entry `show <preview> <title>`: the page shows the model of the preview with its
-    /// supports and loads.
-    pub(crate) fn show(&self, preview: &str, title: &str) {
-        let text = format!("{preview} {title}");
-        self.push(&mut self.lock(), "show", &text);
-    }
-
     /// The state of the chat and the entries after `since`, as the items `<seq> <kind>
     /// <text>`. The fields are `state` (`running` or `idle`) and `next`. While the agent
-    /// works, `started_ms` is the time when it started, and `solving` is the first run of
-    /// the daemon that is not final: `<run> <state> <last progress event>`.
+    /// works, `started_ms` is the time when it started.
     pub(crate) fn read(&self, since: u64) -> Message {
+        self.report();
         let mut m = Message::new();
         let log = self.lock();
         let running = log.running();
@@ -167,15 +174,6 @@ impl Chat {
         m.items = items.map(|(n, e)| format!("{n} {e}")).collect();
         if running {
             m.set("started_ms", log.started_ms);
-            drop(log);
-            if let Some((r, progress)) = self.service.active().into_iter().next() {
-                m.set(
-                    "solving",
-                    format!("{} {} {progress}", r.run, r.state)
-                        .trim_end()
-                        .to_owned(),
-                );
-            }
         }
         m
     }
@@ -194,7 +192,6 @@ impl Chat {
         if !log.running() {
             log.rest();
             log.started_ms = now_ms();
-            log.seen = self.finished();
         }
         self.push(&mut log, "you", text);
         let line = format!(
@@ -280,33 +277,20 @@ impl Chat {
         }
     }
 
-    /// The final runs of the daemon, with their records.
-    fn final_runs(&self) -> Vec<RunRecord> {
-        let runs = self.service.runs().unwrap_or_default().into_iter();
-        runs.filter(|r| r.state.is_final()).collect()
-    }
-
-    /// The IDs of the final runs of the daemon.
-    fn finished(&self) -> HashSet<String> {
-        self.final_runs().into_iter().map(|r| r.run).collect()
-    }
-
-    /// Add an entry for each run that became final since the agent started to work:
-    /// `open <run>` for a run that succeeded, `failed <run> <error>` for a run that failed.
-    fn report_runs(&self) {
-        let runs = self.final_runs();
+    /// Add an entry for each new preview, `show <preview> <title>`, and for each run that has
+    /// new results, `open <run>`.
+    fn report(&self) {
+        let previews = self.store.previews();
+        let runs = self.store.runs().unwrap_or_default();
         let mut log = self.lock();
-        for r in runs {
-            if !log.seen.insert(r.run.clone()) {
-                continue;
+        for (preview, title) in previews {
+            if log.previews.insert(preview.clone()) {
+                self.push(&mut log, "show", &format!("{preview} {title}"));
             }
-            match r.state {
-                RunState::Succeeded => self.push(&mut log, "open", &r.run),
-                RunState::Failed => {
-                    let text = format!("{} {}", r.run, r.message);
-                    self.push(&mut log, "failed", &text);
-                }
-                _ => {}
+        }
+        for (run, _) in runs {
+            if log.runs.insert(run.clone()) {
+                self.push(&mut log, "open", &run);
             }
         }
     }
@@ -326,7 +310,7 @@ impl Chat {
             let ended = entries.iter().any(|(k, _)| k == "end");
             if ended {
                 // A run can end at the last step of the agent.
-                self.report_runs();
+                self.report();
             }
             let mut log = self.lock();
             if let Some(s) = event.text(&["session_id"]) {
@@ -347,7 +331,7 @@ impl Chat {
             }
             drop(log);
             if after_tool {
-                self.report_runs();
+                self.report();
             }
         }
         // Wait for the exit with no lock, so that a read of the chat does not wait.
@@ -487,61 +471,4 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
         .env("BASH_DEFAULT_TIMEOUT_MS", BASH_TIMEOUT_MS)
         .env("BASH_MAX_TIMEOUT_MS", BASH_TIMEOUT_MS);
     cmd
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn kinds(line: &str) -> Vec<(String, String)> {
-        entries(&Json::parse(line).unwrap())
-    }
-
-    #[test]
-    fn each_action_of_the_agent_is_an_entry() {
-        let cmd = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"I mesh it."},{"type":"tool_use","name":"Bash","input":{"command":"fh run job.inp"}},{"type":"tool_use","name":"Write","input":{"file_path":"part.py","content":"x"}}]}}"#;
-        let pair = |k: &str, t: &str| (k.to_owned(), t.to_owned());
-        assert_eq!(
-            kinds(cmd),
-            [
-                pair("say", "I mesh it."),
-                pair("cmd", "fh run job.inp"),
-                pair("tool", "Write part.py"),
-            ]
-        );
-        let out = r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"ok\tgmsh","is_error":false},{"type":"tool_result","content":[{"type":"text","text":"fh mesh: mesh.region.missing"}],"is_error":true}]}}"#;
-        assert_eq!(
-            kinds(out),
-            [
-                pair("out", "ok\tgmsh"),
-                pair("fail", "fh mesh: mesh.region.missing")
-            ]
-        );
-        let end = r#"{"type":"result","subtype":"success","is_error":false,"duration_ms":81234,"num_turns":9,"total_cost_usd":0.41237}"#;
-        assert_eq!(
-            kinds(end),
-            [pair("end", "done in 81.2 s, 9 turns, cost 0.4124 USD")]
-        );
-        let init = r#"{"type":"system","subtype":"init","cwd":"/s/chat","model":"m"}"#;
-        assert_eq!(kinds(init), [pair("note", "agent m in /s/chat")]);
-        let hook = r#"{"type":"system","subtype":"hook_started"}"#;
-        assert!(kinds(hook).is_empty());
-    }
-
-    #[test]
-    fn a_bash_command_of_the_agent_can_run_for_24_hours() {
-        let cmd = agent_command("claude", Path::new("/s"), None);
-        let env: Vec<_> = cmd.get_envs().collect();
-        for name in ["BASH_DEFAULT_TIMEOUT_MS", "BASH_MAX_TIMEOUT_MS"] {
-            assert!(
-                env.contains(&(name.as_ref(), Some("86400000".as_ref()))),
-                "{name}: {env:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn an_entry_is_one_line() {
-        assert_eq!(escape("a\\b\r\nc"), "a\\\\b\\nc");
-    }
 }

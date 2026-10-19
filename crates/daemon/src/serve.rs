@@ -1,7 +1,7 @@
 //! `fh serve`: run the daemon until a stop signal. The daemon listens on 127.0.0.1 only, and
-//! no option changes the address. It makes a random token at each start and writes the port
-//! and the token to `DIR/daemon.info` (mode 0600). Each request must carry the token, and a
-//! request from a page of another `Origin` fails (`http` module).
+//! no option changes the address. It makes a random token at each start and prints it in the
+//! address of the page. Each request must carry the token, and a request from a page of
+//! another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
 //! At start, `fh serve` opens the page in the browser (`browser` module).
 //! The state folder `DIR` is `$FH_STATE` (see `default_state_dir`). Ctrl+C stops the daemon.
@@ -11,10 +11,8 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use fh_solver_ccx::Ccx;
-
 use crate::browser::{no_open, open_page};
-use crate::{Client, Config, Daemon, Options};
+use crate::{Daemon, Options};
 
 const USAGE: &str = "usage: fh serve";
 
@@ -32,29 +30,23 @@ pub fn serve(args: &[String]) -> Result<ExitCode, String> {
 /// Run the daemon on `state_dir` until `stop` is true. With `open`, it opens the page in the
 /// browser. A daemon that cannot start prints the cause and gives exit code 1.
 pub fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode {
-    let config = Config {
-        state_dir: state_dir.to_owned(),
-        solver: Ccx::new(),
-    };
     let options = Options {
         viewer: viewer_dir(),
     };
     let viewer = options.viewer.clone();
-    let daemon = match Daemon::start_with_options(config, options) {
+    let daemon = match Daemon::start_with_options(state_dir, options) {
         Ok(daemon) => daemon,
         Err(e) => {
             let dir = state_dir.display();
             eprintln!("fh serve: {dir}: {} ({})", e.message, e.code);
-            if let Some(c) = Client::discover(state_dir)
-                .ok()
-                .filter(|c| c.status().is_ok())
-            {
-                eprintln!("fh serve: its page is {}", c.page_url(""));
-            }
             return ExitCode::from(1);
         }
     };
-    let url = daemon.client().page_url("");
+    let url = format!(
+        "http://127.0.0.1:{}/?token={}",
+        daemon.port(),
+        daemon.token()
+    );
     println!("fh serve: {url}");
     match &viewer {
         Some(dir) => println!("fh serve: viewer {}", dir.display()),
@@ -76,7 +68,7 @@ pub fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode 
     while !stop.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_millis(100));
     }
-    // The drop removes daemon.info and ends the active runs as `interrupted`.
+    // The drop stops the server and the agent.
     drop(daemon);
     println!("fh serve: stopped");
     ExitCode::SUCCESS

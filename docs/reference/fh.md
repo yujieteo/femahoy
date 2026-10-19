@@ -122,43 +122,44 @@ fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB]
 
 Source: [run.rs](../../crates/cli/src/run.rs).
 
-The command solves a model on the daemon of [`fh serve`](#fh-serve) and shows the events of the run. The page that `fh serve` opened shows the model and the results.
+The command solves a model with `ccx` and prints the progress. It does not need `fh serve`. The page that `fh serve` opened reads the files of the run from the state folder, so it shows the model and the results.
 
 `MODEL.inp` is a CalculiX input file (the extension in any case). `fh run` gives it to `ccx` as it is, with each file that it includes (`*INCLUDE`). The run solves a copy, so a later edit of the file does not change the run.
+`ccx` is `$FH_CCX`, else `ccx` on `PATH`.
 
 | Option | Default or rule |
 |---|---|
-| `--timeout SECONDS` | No limit by default. A number above 0. At the limit, the daemon stops `ccx`. |
-| `--memory MIB` | No limit by default. A number above 0. At the limit, the daemon stops `ccx`. |
-| `--preview` | Show the model with its supports and loads in the page, then stop. No solve occurs. |
+| `--timeout SECONDS` | No limit by default. A number above 0. At the limit, `fh run` stops `ccx`. |
+| `--memory MIB` | 85 percent of the RAM of the machine by default. A number above 0. At the limit, `fh run` stops `ccx`. |
+| `--preview` | Write the preview for the page, then stop. No solve occurs. |
 
-`fh run` finds the daemon in the state folder (`$FH_STATE`, the same default as `fh serve`). It does not start a daemon. When no daemon answers, it exits with 3 and says to start `fh serve`. The daemon stays alive when `fh run` ends.
+The state folder is `$FH_STATE`, the same default as `fh serve`. Each run has its own folder `runs/RUN` in it:
 
-Before the solve, `fh run` sends the input to the preview route of the daemon.
+| Path | Content |
+|---|---|
+| `source` | The path of the input file. |
+| `in/input.inp` | The read-only copy of the input, with the copies of its `*INCLUDE` files. |
+| `out/` | The run folder of `ccx`: the `ccx` files in `ccx/`, `step-N.vtu` and `results.pvd`. |
+
+`results.pvd` is the last file that the run writes. The page lists a run when this file exists.
+
+Before the solve, `fh run` copies the input to `previews/N` in the state folder.
 The page then shows the model with the faces of each support and each load, the direction of each load, and the names of the sets.
-The line `fh run: preview: the page shows NAME (preview ID) with its supports and loads` tells this. NAME is the input file.
-The preview and the run each copy the input file, one directly after the other. Thus the page shows the bytes that the solver gets.
+The line `fh run: preview: the page shows NAME (preview N) with its supports and loads` tells this. NAME is the input file.
 With `--preview`, `fh run` prints `fh run: --preview: no solve` and stops.
-A daemon that has no preview route still solves: `fh run` prints `fh run: no preview (MESSAGE)` and continues.
 
-Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. The cancel stops `ccx` at once. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
-`fh run` checks the arguments and the input before it asks the daemon.
+When `fh run` ends for any reason, `ccx` stops. Ctrl+C, SIGTERM and SIGHUP stop `ccx` and end `fh run` with 130. If `fh run` gets SIGKILL, a guard process of the solver stops `ccx`. `Stop` in the chat sends SIGTERM to the process group of the agent, so `fh run` gets SIGTERM.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| `--preview`, and the page shows the model | stdout: the preview line and `fh run: --preview: no solve` | 0 |
-| The run succeeded | stdout: the preview line, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR` and the paths of `job.dat` and `job.sta`. When the solve wrote no field, a line says that the page has no field to show. | 0 |
-| `ccx` refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder. | 1 |
-| The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
-| `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
-| The daemon refused the run | `fh run: the daemon refused the run: MESSAGE (CODE)`, for example `queue.full` | 1 |
+| `--preview`, and the preview is written | stdout: the preview line and `fh run: --preview: no solve` | 0 |
+| The run succeeded | stdout: the preview line, `fh run: RUN solves FILE`, a line `  progress step S increment I` for each increment, `fh run: RUN succeeded in S s`, `results in DIR` and the paths of `job.dat` and `job.sta`. When the solve wrote no field, a line says that the page has no field to show. | 0 |
+| `ccx` refused the input, the run hit a limit, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder. | 1 |
+| The preview or the run folder cannot be written | `fh run: the preview failed: MESSAGE` or `fh run: the run folder failed: MESSAGE` | 1 |
 | No input, unknown option, bad value (for example `--timeout needs a number above 0`) | `fh run: MESSAGE` and the usage | 2 |
 | The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
 | The input is not an `.inp` file | `fh run: PATH: fh run takes a CalculiX input file (.inp) (run.input.kind)` | 2 |
-| No daemon answers | `fh run: no daemon: CAUSE. Start it with fh serve`, for example when `DIR/daemon.info` does not exist | 3 |
-| The daemon does not answer for 10 seconds during the run | `fh run: RUN: the daemon does not answer: ...` | 3 |
-| Ctrl+C, and the run ended as cancelled | stdout: `cancel: cancelling` (the state after the cancel). stderr: `fh run: RUN was cancelled` | 130 |
-| A second Ctrl+C | stdout: `fh run: Ctrl+C again: fh run ends. The cancel of RUN continues in the daemon.` | 130 |
+| Ctrl+C, SIGTERM or SIGHUP during the solve | stderr: `fh run: RUN was cancelled` | 130 |
 
 ## `fh serve`
 
@@ -169,7 +170,8 @@ fh serve
 Source: [serve.rs](../../crates/daemon/src/serve.rs).
 
 The command runs the daemon on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
-`fh serve` takes no option. The state folder is `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default. The port is a free port. The solver is `ccx` (`FH_CCX`, else `ccx` on `PATH`).
+`fh serve` takes no option. The state folder is `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default. The port is a free port.
+The daemon reads the run and preview folders that `fh run` writes. It does not start `ccx`.
 The page is the wasm viewer, from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 The page has the chat with the agent.
 
@@ -184,7 +186,7 @@ The address holds the token, so it does not go into the command line of a browse
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
-| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). `DIR/daemon.info` gets the port and the token. | |
-| Stop signal | stdout: `fh serve: stopped`. `daemon.info` is removed. | 0 |
-| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`. When another daemon answers: `its page is URL` | 1 |
+| Start | stdout: `fh serve: http://127.0.0.1:PORT/?token=TOKEN`, the viewer folder (or a line that says the wasm viewer is not built), the state folder, and `fh serve: opened the page in the browser` (or `no browser (CAUSE)`). | |
+| Stop signal | stdout: `fh serve: stopped`. | 0 |
+| The daemon cannot start | stderr: `fh serve: DIR: MESSAGE (CODE)`, for example `daemon.running`. | 1 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |

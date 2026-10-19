@@ -1,0 +1,264 @@
+//! The state folder on disk. `fh run` writes the run and preview folders. The daemon reads
+//! them for the page, and takes the lock of the folder.
+//!
+//! ```text
+//! <state>/daemon.lock                 exclusive lock of the one daemon
+//! <state>/runs/<run>/source           the path of the input file that the run solves
+//! <state>/runs/<run>/in/input.inp     the read-only copy of that input, with the copies of its
+//!                                     `*INCLUDE` files
+//! <state>/runs/<run>/out/             run folder of ccx. `results.pvd` is the last file that
+//!                                     ccx writes, so a run has results when it exists
+//! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
+//! <state>/previews/<n>/title          the name of the model in the page
+//! ```
+//!
+//! A run ID or a preview number belongs to the process that creates its folder first, so
+//! 2 `fh run` commands at the same time get 2 folders. A preview folder is built under a hidden
+//! name and renamed, so the daemon never sees a partial preview.
+
+use std::fs::{self, File, OpenOptions, TryLockError};
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+use fh_solver_ccx::{input_text, stage_input, PVD_FILE};
+
+use crate::message::Error;
+
+const LOCK_FILE: &str = "daemon.lock";
+const RUNS_DIR: &str = "runs";
+const PREVIEWS_DIR: &str = "previews";
+const SOURCE_FILE: &str = "source";
+const TITLE_FILE: &str = "title";
+const INPUT_FILE: &str = "input.inp";
+const IN_DIR: &str = "in";
+const OUT_DIR: &str = "out";
+
+/// A run ID: `run-` and 6 or more digits. Run IDs count up in each state folder.
+fn valid_run(id: &str) -> bool {
+    id.strip_prefix("run-")
+        .is_some_and(|n| n.len() >= 6 && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+fn run_id(number: u64) -> String {
+    format!("run-{number:06}")
+}
+
+/// The folders of a new run.
+pub struct Run {
+    pub id: String,
+    /// The read-only copy of the input. The run solves it.
+    pub input: PathBuf,
+    /// The run folder of ccx.
+    pub out: PathBuf,
+}
+
+/// The highest number in the names of the folders of `dir`, or 0. `number` reads the number
+/// of a name.
+fn last_number(dir: &Path, number: impl Fn(&str) -> Option<u64>) -> u64 {
+    let names = fs::read_dir(dir).into_iter().flatten().flatten();
+    let numbers = names.filter_map(|e| number(e.file_name().to_str()?));
+    numbers.max().unwrap_or(0)
+}
+
+/// Copy the input file and its `*INCLUDE` files into `dir`. A missing include file is a bad input.
+fn stage(input: &Path, dir: &Path) -> Result<(), Error> {
+    stage_input(input, dir, INPUT_FILE).map_err(|e| Error::bad("input.invalid", e.message))
+}
+
+/// Make the folder of a new run in `state` and copy `source` and its `*INCLUDE` files into it.
+/// A later change of a file does not change the run.
+pub fn new_run(state: &Path, source: &Path) -> Result<Run, Error> {
+    let runs = state.join(RUNS_DIR);
+    let err = |e| Error::io("run folder", e);
+    fs::create_dir_all(&runs).map_err(err)?;
+    let mut number = last_number(&runs, |n| n.strip_prefix("run-")?.parse().ok()) + 1;
+    let dir = loop {
+        let dir = runs.join(run_id(number));
+        match fs::create_dir(&dir) {
+            Ok(()) => break dir,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => number += 1,
+            Err(e) => return Err(err(e)),
+        }
+    };
+    stage(source, &dir.join(IN_DIR))?;
+    fs::write(
+        dir.join(SOURCE_FILE),
+        source.display().to_string().replace(char::is_control, " "),
+    )
+    .map_err(err)?;
+    Ok(Run {
+        id: run_id(number),
+        input: dir.join(IN_DIR).join(INPUT_FILE),
+        out: dir.join(OUT_DIR),
+    })
+}
+
+/// Copy the input file and its `*INCLUDE` files with no run, so that the page shows the model
+/// with its supports and loads before the solve. `title` is the name of the model in the
+/// page. The answer is the preview number.
+pub fn new_preview(state: &Path, input: &Path, title: &str) -> Result<String, Error> {
+    let previews = state.join(PREVIEWS_DIR);
+    let err = |e| Error::io("preview folder", e);
+    fs::create_dir_all(&previews).map_err(err)?;
+    let hidden = previews.join(format!(".new-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&hidden);
+    stage(input, &hidden)?;
+    fs::write(
+        hidden.join(TITLE_FILE),
+        title.replace(char::is_control, " "),
+    )
+    .map_err(err)?;
+    let mut number = last_number(&previews, |n| n.parse().ok()) + 1;
+    loop {
+        let dir = previews.join(number.to_string());
+        match fs::rename(&hidden, &dir) {
+            Ok(()) => return Ok(number.to_string()),
+            // Another `fh run` took this number first.
+            Err(_) if dir.exists() => number += 1,
+            Err(e) => return Err(err(e)),
+        }
+    }
+}
+
+/// The text of a copy of an input, with its include files.
+fn flat_text(path: &Path) -> Result<Vec<u8>, Error> {
+    input_text(path)
+        .map(String::into_bytes)
+        .map_err(|e| Error::new(500, "input.unreadable", e.message))
+}
+
+/// The folders of the state folder, for the daemon.
+pub(crate) struct Store {
+    dir: PathBuf,
+}
+
+impl Store {
+    /// Take the lock of the state folder and clear the previews of an earlier daemon. Only one
+    /// daemon at a time can use a state folder. The daemon keeps the lock file open as long
+    /// as it runs.
+    pub(crate) fn open(state_dir: &Path) -> Result<(Store, File), Error> {
+        let err = |e| Error::io("state folder", e);
+        fs::create_dir_all(state_dir.join(RUNS_DIR)).map_err(err)?;
+        let dir = fs::canonicalize(state_dir).map_err(err)?;
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(dir.join(LOCK_FILE))
+            .map_err(err)?;
+        // A child that another thread spawns gets a copy of each open file until its exec
+        // closes the copy, so the lock of a stopped daemon in this process can stay for some
+        // milliseconds. Try again for a short time before the refusal.
+        let end = Instant::now() + Duration::from_secs(1);
+        let mut locked = lock.try_lock();
+        while matches!(locked, Err(TryLockError::WouldBlock)) && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(10));
+            locked = lock.try_lock();
+        }
+        match locked {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => {
+                return Err(Error::new(
+                    409,
+                    "daemon.running",
+                    "another daemon uses this state folder",
+                ))
+            }
+            Err(TryLockError::Error(e)) => return Err(err(e)),
+        }
+        // Only the chat of this daemon shows a preview, so the previews of an earlier daemon go.
+        let _ = fs::remove_dir_all(dir.join(PREVIEWS_DIR));
+        fs::create_dir_all(dir.join(PREVIEWS_DIR)).map_err(err)?;
+        Ok((Store { dir }, lock))
+    }
+
+    fn run_dir(&self, run: &str) -> Result<PathBuf, Error> {
+        let dir = self.dir.join(RUNS_DIR).join(run);
+        if valid_run(run) && dir.is_dir() {
+            Ok(dir)
+        } else {
+            Err(Error::new(404, "run.unknown", format!("no run {run}")))
+        }
+    }
+
+    /// The runs that have results, in run order: the run and the path of its input file.
+    pub(crate) fn runs(&self) -> Result<Vec<(String, String)>, Error> {
+        let dir = self.dir.join(RUNS_DIR);
+        let entries = fs::read_dir(&dir).map_err(|e| Error::io("runs", e))?;
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| valid_run(n) && dir.join(n).join(OUT_DIR).join(PVD_FILE).is_file())
+            .collect();
+        names.sort();
+        Ok(names
+            .into_iter()
+            .map(|run| {
+                let input = fs::read_to_string(dir.join(&run).join(SOURCE_FILE));
+                (run, input.unwrap_or_default())
+            })
+            .collect())
+    }
+
+    /// The previews, in the order of their numbers: the number and the title.
+    pub(crate) fn previews(&self) -> Vec<(String, String)> {
+        let dir = self.dir.join(PREVIEWS_DIR);
+        let entries = fs::read_dir(&dir).into_iter().flatten().flatten();
+        let mut numbers: Vec<u64> = entries
+            .filter_map(|e| e.file_name().to_str()?.parse().ok())
+            .collect();
+        numbers.sort_unstable();
+        numbers
+            .into_iter()
+            .map(|n| {
+                let title = fs::read_to_string(dir.join(n.to_string()).join(TITLE_FILE));
+                (n.to_string(), title.unwrap_or_default())
+            })
+            .collect()
+    }
+
+    /// The text of the input of a preview, for the page. It holds the text of the include files.
+    pub(crate) fn preview_file(&self, id: &str) -> Result<Vec<u8>, Error> {
+        let unknown = || Error::new(404, "preview.unknown", format!("no preview {id:?}"));
+        let n: u64 = id.parse().map_err(|_| unknown())?;
+        let path = self
+            .dir
+            .join(PREVIEWS_DIR)
+            .join(n.to_string())
+            .join(INPUT_FILE);
+        if !path.is_file() {
+            return Err(unknown());
+        }
+        flat_text(&path)
+    }
+
+    /// The text of the copy of the input that a run solves, for the page. It holds the text of
+    /// the include files.
+    pub(crate) fn input_file(&self, run: &str) -> Result<Vec<u8>, Error> {
+        flat_text(&self.run_dir(run)?.join(IN_DIR).join(INPUT_FILE))
+    }
+
+    /// The bytes of one file in the run folder of a run, for the viewer. `name` is a plain
+    /// file name: letters, digits, `.`, `_` and `-`, with no `.` first.
+    pub(crate) fn result_file(&self, run: &str, name: &str) -> Result<Vec<u8>, Error> {
+        let plain = (1..=128).contains(&name.len())
+            && !name.starts_with('.')
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+        if !plain {
+            return Err(Error::bad(
+                "file.invalid",
+                format!("{name:?} is not a plain file name"),
+            ));
+        }
+        let path = self.run_dir(run)?.join(OUT_DIR).join(name);
+        fs::read(&path).map_err(|e| match e.kind() {
+            ErrorKind::NotFound => {
+                Error::new(404, "file.missing", format!("run {run} has no file {name}"))
+            }
+            _ => Error::io(name, e),
+        })
+    }
+}

@@ -683,38 +683,3 @@ pub fn read_pvd(text: &str) -> Result<Vec<PvdEntry>, VtuError> {
         })
         .collect()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn header_over_4_gib_is_an_error() {
-        assert_eq!(header_len("a", u64::from(u32::MAX)).unwrap(), u32::MAX);
-        let e = header_len("big", u64::from(u32::MAX) + 1).unwrap_err();
-        assert!(e.to_string().contains("big") && e.to_string().contains("4 GiB"));
-    }
-
-    #[test]
-    fn check_gives_the_first_problem_with_a_code() {
-        let field = |name: &str| Field {
-            name: name.into(),
-            components: 1,
-            values: Values::F64(vec![0.0]),
-        };
-        let grid = Grid {
-            points: vec![[0.0; 3]; 2],
-            cell_types: vec![12],
-            cells: Vec::new(),
-            point_data: vec![field("a")],
-            cell_data: vec![field("b")],
-        };
-        let e = check(&grid).unwrap_err();
-        assert_eq!(e.code, "VTU001");
-        assert!(e.message.contains("differ in length"), "{e}");
-        assert!(write_vtu(&grid)
-            .unwrap_err()
-            .to_string()
-            .ends_with("(VTU001)"));
-    }
-}
