@@ -1,6 +1,6 @@
 //! `fh mesh FILE.(geo|step) --units U [options]`: run the external gmsh program and write the
-//! mesh as the nodes, the C3D10 elements and the named sets of a CalculiX input. Decision D-02,
-//! see DESIGN.md: gmsh is a separate program. `fh` never links it.
+//! mesh as the nodes, the C3D10 elements (S6 shells with `--shell`) and the named sets of a
+//! CalculiX input. Decision D-02, see DESIGN.md: gmsh is a separate program. `fh` never links it.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -11,11 +11,13 @@ use crate::rules;
 
 const USAGE: &str = "usage: fh mesh FILE.(geo|step) --units SI-mm|SI-m [-o OUT.inp] [--size H] \
 [--scale S] [--set NAME=VALUE]... [--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
-[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--timeout SECONDS] [--gmsh PATH]\n\
+[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--shell] [--timeout SECONDS] [--gmsh PATH]\n\
 A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z (--nodes only).\n\
 --face makes a node set and a surface of the faces of the part in the selection. --nodes makes a \
 node set. --volume makes an element set (STEP only). Each name is used once.\n\
-The units are required (D-18). The mesh is order 2, C3D10 (D-19).\n\
+--shell meshes the surfaces of the file, not a solid: the elements are S6 shells, --face picks \
+edges (the surface is the edge of the shells) and --volume picks surfaces.\n\
+The units are required (D-18). The mesh is order 2, C3D10, or S6 with --shell (D-19).\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
 
@@ -117,6 +119,8 @@ struct Options {
     nodes: Vec<Named>,
     /// Boxes of volume: an element set each.
     volumes: Vec<Named>,
+    /// Mesh the surfaces as shells. Faces are edges and volumes are surfaces.
+    shell: bool,
     /// `None` means no limit: a large model can mesh for hours.
     timeout: Option<Duration>,
     gmsh: Option<PathBuf>,
@@ -164,6 +168,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         faces: Vec::new(),
         nodes: Vec::new(),
         volumes: Vec::new(),
+        shell: false,
         timeout: None,
         gmsh: None,
     };
@@ -210,6 +215,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 }
                 o.volumes.push(volume);
             }
+            "--shell" => o.shell = true,
             "--timeout" => {
                 let seconds = number("--timeout", it.next())?;
                 o.timeout = Some(
@@ -321,32 +327,40 @@ because gmsh would run a shell command or another file"
 /// Physical volume groups select the material boxes, or SOLID for the single body.
 /// Each face option has its own physical surface group. It holds the faces of the part that
 /// lie fully inside its plane or box, within a millionth of the diagonal of the part.
-fn groups_script(faces: &[Named], volumes: &[Named]) -> String {
+/// With `shell`, the body is a set of surfaces (group SHELL) and a face is a curve.
+fn groups_script(faces: &[Named], volumes: &[Named], shell: bool) -> String {
+    let (body, side, default) = if shell {
+        ("Surface", "Curve", "SHELL")
+    } else {
+        ("Volume", "Surface", "SOLID")
+    };
     let mut s = String::new();
     if volumes.is_empty() {
-        s.push_str("fh_v[] = Volume{:};\nPhysical Volume(\"SOLID\") = fh_v[];\n");
+        s.push_str(&format!(
+            "fh_v[] = {body}{{:}};\nPhysical {body}(\"{default}\") = fh_v[];\n"
+        ));
     } else {
         // Fragment the touching bodies so both layers share every interface node.
-        s.push_str("BooleanFragments{ Volume{:}; Delete; }{}\n");
+        s.push_str(&format!("BooleanFragments{{ {body}{{:}}; Delete; }}{{}}\n"));
         for (name, select) in volumes {
             if let Select::Box { min, max } = select {
                 let lo = min.iter().map(|x| format!("{x:?}-1e-7"));
                 let hi = max.iter().map(|x| format!("{x:?}+1e-7"));
                 let coords = lo.chain(hi).collect::<Vec<_>>().join(", ");
                 s.push_str(&format!(
-                    "fh_m[] = Volume In BoundingBox{{{coords}}};\nPhysical Volume(\"{name}\") = fh_m[];\n"
+                    "fh_m[] = {body} In BoundingBox{{{coords}}};\nPhysical {body}(\"{name}\") = fh_m[];\n"
                 ));
             }
         }
-        s.push_str("fh_v[] = Volume{:};\n");
+        s.push_str(&format!("fh_v[] = {body}{{:}};\n"));
     }
     if faces.is_empty() {
         return s;
     }
-    s.push_str(
-        "fh_b[] = BoundingBox Volume{fh_v[]};\n\
-fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh_b[2])^2);\n",
-    );
+    s.push_str(&format!(
+        "fh_b[] = BoundingBox {body}{{fh_v[]}};\n\
+fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh_b[2])^2);\n"
+    ));
     for (name, select) in faces {
         let (lo, hi) = match select {
             Select::Plane { axis, at } => {
@@ -363,7 +377,7 @@ fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh
             Select::Point(_) => continue,
         };
         s.push_str(&format!(
-            "fh_s[] = Surface In BoundingBox{{{}, {}, {}, {}, {}, {}}};\nPhysical Surface(\"{name}\") = fh_s[];\n",
+            "fh_s[] = {side} In BoundingBox{{{}, {}, {}, {}, {}, {}}};\nPhysical {side}(\"{name}\") = fh_s[];\n",
             lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]
         ));
     }
@@ -551,13 +565,14 @@ fn pick_sets(model: &fh_inp::Model, picks: &[Named]) -> Result<Vec<(String, Vec<
 }
 
 /// The text of the input. The nodes are in the set `NALL` and the elements in the set `ALL`.
-/// Then come the sets of the mesh, the surfaces, and the `picked` node sets.
+/// Then come the sets of the mesh, the surfaces, and the `picked` node sets. The sets named
+/// `hide` are not written: the default body group holds the same elements as ALL.
 fn write_inp(
     model: &fh_inp::Model,
     label: &str,
     units: Units,
     picked: &[(String, Vec<u32>)],
-    hide_solid: bool,
+    hide: Option<&str>,
 ) -> String {
     // The solver run reads the units line and writes the units into the results (D-18).
     let mut out = format!(
@@ -573,13 +588,16 @@ fn write_inp(
         let [x, y, z] = n.xyz.map(fit);
         let _ = writeln!(out, "{}, {x}, {y}, {z}", n.id);
     }
-    let _ = writeln!(out, "*ELEMENT, TYPE=C3D10, ELSET=ALL");
+    let element_type = model
+        .elements
+        .first()
+        .map_or("", |e| e.element_type.as_str());
+    let _ = writeln!(out, "*ELEMENT, TYPE={element_type}, ELSET=ALL");
     for e in &model.elements {
         let nodes: Vec<String> = e.nodes.iter().map(u32::to_string).collect();
         let _ = writeln!(out, "{}, {}", e.id, nodes.join(", "));
     }
-    // The default body group of a STEP file holds the same elements as ALL.
-    let shown = |name: &str| !(hide_solid && name == "SOLID");
+    let shown = |name: &str| Some(name) != hide;
     for s in model.nsets.iter().filter(|s| shown(&s.name)) {
         let _ = writeln!(out, "*NSET, NSET={}", s.name);
         id_lines(&mut out, &s.ids);
@@ -635,7 +653,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
                 "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
                 units.gmsh_length(),
                 quote_ok(&input)?,
-                groups_script(&o.faces, &o.volumes)
+                groups_script(&o.faces, &o.volumes, o.shell)
             );
             std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
             wrapper
@@ -668,9 +686,16 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
         _ => {}
     }
     let msh_file = dir.join("mesh.msh");
-    // Order 2 gives C3D10, the element that `fh mesh` writes (D-19).
+    // Order 2 gives C3D10 (S6 for a surface), the element that `fh mesh` writes (D-19).
     let mut args: Vec<String> = [
-        "-3", "-nopopup", "-format", "msh41", "-v", "2", "-order", "2",
+        if o.shell { "-2" } else { "-3" },
+        "-nopopup",
+        "-format",
+        "msh41",
+        "-v",
+        "2",
+        "-order",
+        "2",
     ]
     .map(String::from)
     .into();
@@ -701,11 +726,24 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
         return Err(message);
     }
     let msh = std::fs::read_to_string(&msh_file).map_err(|_| "gmsh wrote no mesh file")?;
-    let mesh = fh_io::read_msh_mesh(&msh)
+    let read = if o.shell {
+        fh_io::read_msh_shell
+    } else {
+        fh_io::read_msh_mesh
+    };
+    let mesh = read(&msh)
         .map_err(|e| format!("the mesh is not readable: {}", e.with_file("gmsh output")))?;
     let model = &mesh.model;
+    if o.shell {
+        rules::no_solid(&mesh)?;
+    }
     if model.elements.is_empty() {
-        return Err("gmsh wrote a mesh with no volume elements".into());
+        return Err(if o.shell {
+            "gmsh wrote a mesh with no surface elements".into()
+        } else {
+            "gmsh wrote a mesh with no volume elements. For a STEP file of surfaces, use --shell"
+                .into()
+        });
     }
     let stats = fh_io::mesh_stats(model)?;
     if stats.inverted > 0 {
@@ -715,19 +753,21 @@ for example {:?}",
             stats.inverted, stats.inverted_ids
         ));
     }
-    rules::volumes_are_named(&mesh)?;
+    rules::volumes_are_named(&mesh, o.shell)?;
     let volume_names: Vec<&str> = o.volumes.iter().map(|v| v.0.as_str()).collect();
     rules::volume_coverage(&mesh, &volume_names)?;
     for (name, _) in &o.faces {
-        rules::face_surface(&mesh, name)?;
+        rules::face_surface(&mesh, name, o.shell)?;
     }
 
     let label = input
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-    let hide_solid = extension.as_deref() != Some("geo") && o.volumes.is_empty();
+    // The default body group of a STEP file holds the same elements as ALL.
+    let hide = (extension.as_deref() != Some("geo") && o.volumes.is_empty())
+        .then_some(if o.shell { "SHELL" } else { "SOLID" });
     let picked = pick_sets(model, &o.nodes)?;
-    let inp = write_inp(model, &label, units, &picked, hide_solid);
+    let inp = write_inp(model, &label, units, &picked, hide);
     std::fs::write(&output, inp).map_err(|e| format!("{}: {e}", output.display()))?;
 
     let mut report = format!(
@@ -741,17 +781,13 @@ min_scaled_jacobian\t{:.4}\nnset\tNALL\t{}\nelset\tALL\t{}\n",
         model.nodes.len(),
         model.elements.len(),
     );
-    for s in model
-        .nsets
-        .iter()
-        .filter(|s| !(hide_solid && s.name == "SOLID"))
-    {
+    for s in model.nsets.iter().filter(|s| Some(s.name.as_str()) != hide) {
         report.push_str(&format!("nset\t{}\t{}\n", s.name, s.ids.len()));
     }
     for s in model
         .elsets
         .iter()
-        .filter(|s| !(hide_solid && s.name == "SOLID"))
+        .filter(|s| Some(s.name.as_str()) != hide)
     {
         report.push_str(&format!("elset\t{}\t{}\n", s.name, s.ids.len()));
     }
@@ -911,7 +947,7 @@ mod tests {
                 },
             ),
         ];
-        let one = groups_script(&faces, &[]);
+        let one = groups_script(&faces, &[], false);
         assert!(one.contains("Physical Volume(\"SOLID\")"), "{one}");
         assert!(one.contains("Physical Surface(\"TOP\")"), "{one}");
         assert!(
@@ -935,11 +971,26 @@ mod tests {
                 },
             ),
         ];
-        let two = groups_script(&[], &layers);
+        let two = groups_script(&[], &layers, false);
         assert!(two.contains("BooleanFragments"), "{two}");
         assert!(two.contains("Physical Volume(\"LOW\")"), "{two}");
         assert!(two.contains("Physical Volume(\"UP\")"), "{two}");
         assert!(!two.contains("SOLID"), "{two}");
+        // A shell has surfaces for volumes and curves for faces.
+        let shell = groups_script(&faces, &[], true);
+        assert!(shell.contains("Physical Surface(\"SHELL\")"), "{shell}");
+        assert!(shell.contains("Physical Curve(\"TOP\")"), "{shell}");
+        assert!(shell.contains("Curve In BoundingBox"), "{shell}");
+        let parts = groups_script(&[], &layers, true);
+        assert!(parts.contains("BooleanFragments{ Surface{:}"), "{parts}");
+        assert!(parts.contains("Surface In BoundingBox"), "{parts}");
+        assert!(parts.contains("Physical Surface(\"LOW\")"), "{parts}");
+    }
+
+    #[test]
+    fn the_shell_option_is_a_flag() {
+        assert!(!args(&["a.step"]).unwrap().shell);
+        assert!(args(&["a.step", "--shell"]).unwrap().shell);
     }
 
     fn block() -> fh_io::MshMesh {
@@ -961,7 +1012,7 @@ mod tests {
         let picked = pick_sets(model, &picks).unwrap();
         assert_eq!(picked[0].1.len(), 1);
         assert!(picked[1].1.len() > 4, "{picked:?}");
-        let text = write_inp(model, "block.step", Units::SiMm, &picked, false);
+        let text = write_inp(model, "block.step", Units::SiMm, &picked, None);
         assert!(
             text.contains("** units: SI-mm\n*NODE, NSET=NALL\n"),
             "{text}"
@@ -986,8 +1037,8 @@ mod tests {
         );
         // A line holds at most 16 ids, the limit of CalculiX.
         assert!(text.lines().all(|l| l.split(',').count() <= 16), "{text}");
-        let hidden = write_inp(model, "block.step", Units::SiMm, &[], true);
-        assert!(hidden.contains("*ELSET, ELSET=BLOCK"));
+        let hidden = write_inp(model, "block.step", Units::SiMm, &[], Some("BLOCK"));
+        assert!(!hidden.contains("*ELSET, ELSET=BLOCK"));
     }
 
     #[test]
@@ -1000,7 +1051,7 @@ mod tests {
             19.90369453344394,
         ];
         model.nodes[0].xyz = xyz;
-        let text = write_inp(&model, "block.step", Units::SiMm, &[], false);
+        let text = write_inp(&model, "block.step", Units::SiMm, &[], None);
         let line = text.lines().nth(3).unwrap();
         assert!(line.split(", ").all(|w| w.len() <= 20), "{line}");
         let back = fh_inp::parse(&text).nodes[0].xyz;

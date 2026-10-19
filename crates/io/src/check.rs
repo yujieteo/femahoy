@@ -1,4 +1,4 @@
-//! Mesh checks: counts, bounding box, volume and the signed-Jacobian gate.
+//! Mesh checks: counts, bounding box, volume or area, and the signed-Jacobian gate.
 //! Decision D-19, see DESIGN.md: every mesh passes a signed-Jacobian gate.
 
 use std::collections::HashMap;
@@ -13,8 +13,9 @@ pub struct MeshStats {
     pub types: Vec<(String, usize)>,
     pub bbox_min: [f64; 3],
     pub bbox_max: [f64; 3],
-    /// Volume from the corner nodes. Midside nodes do not count.
-    pub volume: f64,
+    /// Volume of a solid mesh, or area of a shell mesh, from the corner nodes. Midside nodes do
+    /// not count.
+    pub measure: f64,
     /// The smallest scaled Jacobian at any element corner. It is 1 for a cube corner.
     pub min_scaled_jacobian: f64,
     /// The number of elements with a corner at or below 0.
@@ -50,7 +51,33 @@ fn corner(p: &[P], at: usize, n: [usize; 3]) -> (f64, f64) {
     (d, if len > 0.0 { d / len } else { 0.0 })
 }
 
-/// The volume and the smallest scaled Jacobian of one element. `None` for an unknown type.
+fn cross(a: P, b: P) -> P {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+/// The area and the smallest scaled Jacobian of a shell triangle, from its 3 corners. At a corner
+/// the scaled Jacobian is the sine of the angle. A flat triangle gives 0.
+fn shell_metrics(p: &[P]) -> (f64, f64) {
+    let min = (0..3)
+        .map(|i| {
+            let (a, b) = (sub(p[(i + 1) % 3], p[i]), sub(p[(i + 2) % 3], p[i]));
+            let len = norm(a) * norm(b);
+            if len > 0.0 {
+                norm(cross(a, b)) / len
+            } else {
+                0.0
+            }
+        })
+        .fold(f64::INFINITY, f64::min);
+    (norm(cross(sub(p[1], p[0]), sub(p[2], p[0]))) / 2.0, min)
+}
+
+/// The volume (the area of a shell) and the smallest scaled Jacobian of one element. `None` for
+/// an unknown type.
 fn element_metrics(kind: &str, p: &[P]) -> Option<(f64, f64)> {
     match kind {
         "C3D10" => {
@@ -65,6 +92,7 @@ fn element_metrics(kind: &str, p: &[P]) -> Option<(f64, f64)> {
             .fold(f64::INFINITY, f64::min);
             Some((d / 6.0, min))
         }
+        "S6" => Some(shell_metrics(p)),
         _ => None,
     }
 }
@@ -81,7 +109,7 @@ pub fn mesh_stats(model: &Model) -> Result<MeshStats, String> {
         }
     }
     let mut counts: HashMap<&str, usize> = HashMap::new();
-    let (mut volume, mut min_sj) = (0.0, f64::INFINITY);
+    let (mut measure, mut min_sj) = (0.0, f64::INFINITY);
     let (mut inverted, mut inverted_ids) = (0, Vec::new());
     for e in &model.elements {
         let p: Vec<P> = e
@@ -98,7 +126,7 @@ pub fn mesh_stats(model: &Model) -> Result<MeshStats, String> {
         let (v, sj) = element_metrics(kind, &p)
             .ok_or_else(|| format!("element {} has the unchecked type {kind}", e.id))?;
         *counts.entry(kind).or_default() += 1;
-        volume += v;
+        measure += v;
         min_sj = min_sj.min(sj);
         if sj.is_nan() || sj <= 0.0 {
             inverted += 1;
@@ -115,7 +143,7 @@ pub fn mesh_stats(model: &Model) -> Result<MeshStats, String> {
         types,
         bbox_min,
         bbox_max,
-        volume,
+        measure,
         min_scaled_jacobian: min_sj,
         inverted,
         inverted_ids,

@@ -784,6 +784,21 @@ mod tests {
     }
 
     #[test]
+    fn a_load_on_the_edge_of_a_shell_is_at_the_edge() {
+        // S3 of an S6 is the edge from corner 1 to corner 2, with its midside node 4.
+        let text = "** units: SI-mm\n*NODE\n1, 0, 0, 0\n2, 2, 0, 0\n3, 0, 2, 0\n4, 1, 0, 0\n\
+            5, 1, 1, 0\n6, 0, 1, 0\n*ELEMENT, TYPE=S6\n1, 1, 2, 3, 4, 5, 6\n\
+            *SURFACE, TYPE=ELEMENT, NAME=EDGE\n1, S3\n\
+            *STEP\n*STATIC\n*DSLOAD\nEDGE, P, 1.0\n*END STEP\n";
+        let p = from_text(text);
+        let [load] = &p.items[..] else {
+            panic!("{:?}", p.items);
+        };
+        assert_eq!(load.nodes, 3);
+        assert!(close(load.center, [1.0, 0.0, 0.0]), "{:?}", load.center);
+    }
+
+    #[test]
     fn the_outline_of_a_set_is_the_edge_of_its_faces() {
         let text = format!(
             "{TWO_CUBES}*STEP\n*STATIC\n*BOUNDARY\nFIXED, 1, 3\n*DSLOAD\nTOP, P, 1.0\n*END STEP\n"

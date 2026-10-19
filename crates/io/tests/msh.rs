@@ -1,6 +1,7 @@
 use fh_io::read_msh;
 
 const TET10: &str = include_str!("data/tet10.msh");
+const SHELL6: &str = include_str!("data/shell6.msh");
 
 fn err(text: &str) -> String {
     read_msh(text).unwrap_err().to_string()
@@ -140,4 +141,36 @@ fn a_volume_with_no_physical_group_is_reported() {
         .unwrap()
         .unnamed_volumes
         .is_empty());
+}
+
+#[test]
+fn a_shell_mesh_has_s6_elements_and_edge_surfaces() {
+    // Two triangles on the unit square. The edge of a shell is face S3 to S5, in the order of
+    // its corners. The diagonal belongs to both triangles, so it is not on the outside.
+    let m = fh_io::read_msh_shell(SHELL6).unwrap();
+    let types: Vec<&str> = m
+        .model
+        .elements
+        .iter()
+        .map(|e| e.element_type.as_str())
+        .collect();
+    assert_eq!(types, ["S6", "S6"]);
+    assert_eq!(m.model.elements[1].nodes, [1, 3, 4, 7, 8, 9]);
+    assert_eq!(m.model.elset("plate").unwrap().ids, [4, 5]);
+    assert_eq!(m.model.nset("bottom").unwrap().ids, [1, 2, 5]);
+    assert_eq!(m.model.element_surface("bottom").unwrap().faces, [(4, 3)]);
+    assert_eq!(m.model.element_surface("left").unwrap().faces, [(5, 5)]);
+    assert!(m.model.element_surface("diag").is_none());
+    assert_eq!(m.inner_surfaces, ["diag"]);
+}
+
+#[test]
+fn a_solid_mesh_is_not_a_shell_mesh() {
+    let e = fh_io::read_msh_shell(TET10).unwrap_err().to_string();
+    assert_eq!(
+        e,
+        "line 40: element type 2 is not accepted in a shell mesh, use 9 (S6) (MSH002)"
+    );
+    let e = fh_io::read_msh_mesh(SHELL6).unwrap().model.elements;
+    assert!(e.is_empty(), "a solid reader makes no shell element");
 }

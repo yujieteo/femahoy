@@ -1,0 +1,14 @@
+# The reference is the published value of MacNeal and Harder 1985 (derivation.md).
+# On this mesh (S6, 6033 nodes) ccx gives a value 0.3 percent from it. A finer mesh (23809 nodes)
+# gives 0.2 percent. The tolerance holds this mesh error and the rounding of the published value
+# (4 digits), with a margin for a change of mesh or solver version.
+# Deflection in z of the middle of the free edge, in mm.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[tip_deflection_z]
+value = -302.4
+set = "TIP"
+field = "U"
+component = 3
+op = "value"

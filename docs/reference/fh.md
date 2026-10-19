@@ -20,13 +20,14 @@ The command sources define more `mesh` options than the top-level help text show
 ```text
 fh mesh FILE.(geo|step) --units SI-mm|SI-m [-o OUT.inp] [--size H] [--scale S] [--set NAME=VALUE]...
   [--face NAME=SEL]... [--nodes NAME=SEL]... [--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]...
-  [--timeout SECONDS] [--gmsh PATH]
+  [--shell] [--timeout SECONDS] [--gmsh PATH]
 ```
 
 Source: [mesh.rs](../../crates/cli/src/mesh.rs).
 
 The command accepts `.geo`, `.step`, and `.stp`, without regard to extension case.
 It runs external gmsh for a 3D mesh of order 2 (`C3D10`) in `msh41` format, then writes the nodes, the elements and the named sets as a CalculiX input.
+With `--shell` it runs gmsh for a 2D mesh of order 2 (`S6`, the 6-node shell triangle) of the surfaces of the file.
 The input has no material, no step and no load. The chat includes it with `*INCLUDE` in the input that it writes.
 
 | Option | Default or rule |
@@ -36,9 +37,10 @@ The input has no material, no step and no load. The chat includes it with `*INCL
 | `--scale` | No value by default. Positive finite number, sent as gmsh `-clscale`. |
 | `--set` | Repeatable. Name uses ASCII letters, digits, `_`, or `.`. Value is finite. Sent as `-setnumber`. |
 | `--units` | Required: `SI-mm` or `SI-m`. STEP units must match. The command writes `** units: SI-mm` (or `SI-m`) into the output. |
-| `--face NAME=SEL` | Repeatable. A node set `NAME` and a surface `NAME` of the faces of the part that lie fully inside the selection, within 1e-6 of the diagonal of the part. |
+| `--face NAME=SEL` | Repeatable. A node set `NAME` and a surface `NAME` of the faces of the part that lie fully inside the selection, within 1e-6 of the diagonal of the part. With `--shell`, the part has edges, not faces. The surface is the edges of the shells: `S3` and up in the `*DSLOAD` face number, with edge `k` from corner `k` to corner `k+1`. |
 | `--nodes NAME=SEL` | Repeatable. A node set of the nodes in the selection. |
-| `--volume NAME=box:...` | Repeatable. STEP only. An element set of the elements in the box. Each element must be in exactly 1 box. |
+| `--volume NAME=box:...` | Repeatable. STEP only. An element set of the elements in the box. Each element must be in exactly 1 box. With `--shell`, a box selects surfaces. |
+| `--shell` | Off by default. Mesh the surfaces of a STEP file as `S6` shells. The file must have no volume. The mid-surface is the work of the chat (build123d). |
 | `--timeout` | No limit by default. Positive finite duration. The version probe has a separate 30-second limit. |
 | `--gmsh` | Overrides discovery. Otherwise use non-empty `FH_GMSH`, then a file on `PATH`, then the macOS app path. |
 
@@ -50,6 +52,8 @@ For a STEP file, `fh mesh` writes the gmsh script (the fixed script contract of 
 The script sets the STEP target unit and uses `SOLID` for one material without a `--volume` box.
 For `--volume` boxes, it fragments the bodies and creates one physical volume group per box.
 It checks that each solid element belongs to exactly one box.
+With `--shell`, the script meshes in 2D, uses `SHELL` for one material without a `--volume` box, and fragments surfaces. `--face` selects curves.
+The output has no `*SHELL SECTION`. The chat writes the thickness and the material.
 
 The macOS fallback is `/Applications/Gmsh.app/Contents/MacOS/gmsh`.
 The minimum gmsh version is 4.8.
@@ -71,9 +75,10 @@ The command replaces an existing output file only when the mesh succeeds.
 | Unreadable or old version | `fh mesh: cannot read the gmsh version from ...` or `gmsh VERSION is too old, ...` | 1 |
 | Timeout | `fh mesh: gmsh timed out after N seconds and was stopped` | 1 |
 | Child failure or a line that starts with `Error` | `fh mesh: gmsh failed (exit code N)` or `gmsh failed (stopped by a signal)`, with error text. | 1 |
-| Missing output, unreadable mesh, or no volume elements | `fh mesh: gmsh wrote no mesh file: PATH`, `the mesh is not readable (PATH): ERROR`, or `gmsh wrote a mesh with no volume elements: PATH` | 1 |
+| Missing output, unreadable mesh, or no volume elements | `fh mesh: gmsh wrote no mesh file: PATH`, `the mesh is not readable (PATH): ERROR`, or `gmsh wrote a mesh with no volume elements: PATH`. For a file with only surfaces, the last one says to use `--shell`. With `--shell`, it is `no surface elements`. | 1 |
+| `--shell` with a file that has a volume | `fh mesh: mesh.shell.solid: ...` | 1 |
 | An element with a corner Jacobian of 0 or less | `fh mesh: mesh.jacobian.negative: ...` with the count and example element IDs | 1 |
-| A volume with no physical group, in a file with physical groups | `fh mesh: mesh.volume.unnamed: ...` | 1 |
+| A volume (a surface with `--shell`) with no physical group, in a file with physical groups | `fh mesh: mesh.volume.unnamed: ...` | 1 |
 | A `--face` that selects no whole face of the part | `fh mesh: mesh.face.missing: ...` | 1 |
 | A `--face` that is not on the outside of the solid | `fh mesh: mesh.face.inner: ...` | 1 |
 | A `--nodes` selection with no node | `fh mesh: mesh.set.empty: ...` | 1 |

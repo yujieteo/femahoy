@@ -233,6 +233,7 @@ fn the_shipped_cases_load_and_have_their_inputs() {
             "frequency-cantilever",
             "heat-fin",
             "plasticity-sphere",
+            "scordelis-lo-roof",
             "warpage-thick-copper",
         ]
     );

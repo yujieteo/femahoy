@@ -272,3 +272,121 @@ mod fake_gmsh {
         }
     }
 }
+
+const STRIP: &str = "SetFactory(\"OpenCASCADE\");\n\
+Rectangle(1) = {0, 0, 0, 4, 1};\n\
+Physical Surface(\"PLATE\") = {1};\n\
+Physical Curve(\"FIXED\") = {4};\n\
+Mesh.MeshSizeMax = 0.5;\n\
+Mesh.MeshSizeMin = 0.5;\n";
+
+fn fixture(name: &str) -> PathBuf {
+    root().join("fixtures/step").join(name)
+}
+
+#[test]
+fn real_gmsh_makes_an_s6_mesh_with_shell_edges_from_a_geo_file() {
+    let Some(gmsh) = real_gmsh() else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let dir = scratch("shell-geo");
+    let geo = dir.join("strip.geo");
+    std::fs::write(&geo, STRIP).unwrap();
+    let out = mesh(&[p(&geo), "--shell"], Some(&gmsh));
+    assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
+    let inp = std::fs::read_to_string(dir.join("strip.inp")).unwrap();
+    assert!(inp.contains("*ELEMENT, TYPE=S6, ELSET=ALL"), "{inp}");
+    assert!(inp.contains("*ELSET, ELSET=PLATE"), "{inp}");
+    assert!(inp.contains("*NSET, NSET=FIXED"), "{inp}");
+    assert!(inp.contains("*SURFACE, TYPE=ELEMENT, NAME=FIXED"), "{inp}");
+    // The edge of a shell is face S3 to S5. The fixed edge is the left edge x=0.
+    let faces: Vec<&str> = inp
+        .lines()
+        .skip_while(|l| !l.starts_with("*SURFACE, TYPE=ELEMENT, NAME=FIXED"))
+        .skip(1)
+        .take_while(|l| !l.starts_with('*'))
+        .collect();
+    assert!(faces.len() >= 2, "{faces:?}");
+    assert!(faces
+        .iter()
+        .all(|l| l.ends_with("S3") || l.ends_with("S4") || l.ends_with("S5")));
+    let stdout = stdout(&out);
+    assert!(stdout.contains("surface\tFIXED\t"), "{stdout}");
+    assert!(stdout.contains("min_scaled_jacobian\t0."), "{stdout}");
+}
+
+#[test]
+fn real_gmsh_names_the_parts_edges_and_nodes_of_a_surface_step() {
+    let Some(gmsh) = real_gmsh() else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let dir = scratch("shell-step");
+    let out = dir.join("strip.inp");
+    let step = fixture("strip-shell.step");
+    let base = [
+        p(&step),
+        "--shell",
+        "--size",
+        "0.5",
+        "-o",
+        p(&out),
+        "--face",
+        "FIXED=x:0",
+        "--nodes",
+        "TIP=point:4,0.5,0",
+    ];
+    // Two thicknesses need two element sets: --volume names a surface in a box.
+    let mut args = base.to_vec();
+    args.extend([
+        "--volume",
+        "LEFT=box:0,0,0,2,1,0",
+        "--volume",
+        "RIGHT=box:2,0,0,4,1,0",
+    ]);
+    let run = mesh(&args, Some(&gmsh));
+    assert_eq!(run.status.code(), Some(0), "stderr: {}", stderr(&run));
+    let inp = std::fs::read_to_string(&out).unwrap();
+    for needle in [
+        "TYPE=S6",
+        "*ELSET, ELSET=LEFT",
+        "*ELSET, ELSET=RIGHT",
+        "*NSET, NSET=FIXED",
+        "*NSET, NSET=TIP",
+        "*SURFACE, TYPE=ELEMENT, NAME=FIXED",
+    ] {
+        assert!(inp.contains(needle), "{needle}\n{inp}");
+    }
+    // No --volume: the default group SHELL holds every surface, and it is not written.
+    let one = mesh(&base, Some(&gmsh));
+    assert_eq!(one.status.code(), Some(0), "stderr: {}", stderr(&one));
+    let inp = std::fs::read_to_string(&out).unwrap();
+    assert!(inp.contains("TYPE=S6") && !inp.contains("SHELL"), "{inp}");
+    // A part with no box is lost, so the run is refused.
+    let mut lost = base.to_vec();
+    lost.extend(["--volume", "LEFT=box:0,0,0,2,1,0"]);
+    fails(&mesh(&lost, Some(&gmsh)), 1, "mesh.volume.unnamed");
+}
+
+#[test]
+fn a_shell_run_refuses_a_solid_and_a_solid_run_refuses_a_surface() {
+    let Some(gmsh) = real_gmsh() else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let dir = scratch("shell-refusals");
+    let (block, strip) = (fixture("block.step"), fixture("strip-shell.step"));
+    let out = dir.join("a.inp");
+    fails(
+        &mesh(&[p(&block), "--shell", "-o", p(&out)], Some(&gmsh)),
+        1,
+        "mesh.shell.solid",
+    );
+    fails(
+        &mesh(&[p(&strip), "-o", p(&out)], Some(&gmsh)),
+        1,
+        "use --shell",
+    );
+    assert!(!out.exists());
+}

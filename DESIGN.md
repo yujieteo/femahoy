@@ -89,8 +89,8 @@ Reason: a web page on another origin must not use the daemon, and a key in the b
 ## 5. Input and meshes
 
 - `.inp` is the native input format. CalculiX reads and checks it. The small reader of `fh` takes only the keywords for the preview (`docs/reference/inp.md`) and never refuses a keyword.
-- `fh mesh` calls gmsh as an external program and writes the nodes, the `C3D10` elements and the named sets as CalculiX input. Users install gmsh themselves (D-02).
-- The `.msh` reader takes only `C3D10` (type 11) volumes. Another volume type is an error.
+- `fh mesh` calls gmsh as an external program and writes the nodes, the `C3D10` elements (the `S6` elements with `--shell`) and the named sets as CalculiX input. Users install gmsh themselves (D-02).
+- The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel and no STEP reader (D-17).
 
 Reason of the last rule: Python CAD libraries exist, a chat can write the script, and gmsh already includes OpenCASCADE.
@@ -103,9 +103,9 @@ Reason: a wrong unit gives wrong results without any warning. There is no defaul
 
 ### 5.2 Element (D-19)
 
-`C3D10` (tet10) is the element that `fh mesh` writes. The chat can write another element type in its CalculiX input, for example a shell (`S8R`), and the page shows each element type that CalculiX writes to the result file.
+`C3D10` (tet10) is the element that `fh mesh` writes. With `--shell` it writes `S6` (the 6-node shell triangle) for a part drawn as a mid-surface. The chat can write another element type in its CalculiX input, for example `S8R`, and the page shows each element type that CalculiX writes to the result file.
 
-Reason: tetrahedra mesh any shape, and quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case, plain hex8 (`C3D8`) gave 0.35 to 2.07 times the beam deflection. One element type keeps `fh mesh` and the cases small.
+Reason: tetrahedra mesh any shape, and quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case, plain hex8 (`C3D8`) gave 0.35 to 2.07 times the beam deflection. One element type keeps `fh mesh` and the cases small. `S6`, not `S8R`, is the shell element: on the roof case `S6` gives -301.5 mm (reference -302.4 mm) at every mesh size, but gmsh gives no reliable all-quad mesh of a curved surface (mixed meshes, or an element with 2 nodes at one point).
 
 ---
 
