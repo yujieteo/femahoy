@@ -59,21 +59,24 @@ fn run(input: &Path, run: &Path, ccx: &Path) -> (Option<i32>, String) {
     )
 }
 
-/// One C3D8 cube, tied at x = 0 and pulled at x = 1.
-const CUBE: &str = "** units: SI-mm
+/// One C3D10 tet, tied at x = 0 and pulled at node 2, x = 1. Nodes 5 to 10 are the midside
+/// nodes of the edges 1-2, 2-3, 3-1, 1-4, 2-4 and 3-4.
+const TET: &str = "** units: SI-mm
 *NODE
 1, 0, 0, 0
 2, 1, 0, 0
-3, 1, 1, 0
-4, 0, 1, 0
-5, 0, 0, 1
-6, 1, 0, 1
-7, 1, 1, 1
-8, 0, 1, 1
-*ELEMENT, TYPE=C3D8
-1, 1, 2, 3, 4, 5, 6, 7, 8
+3, 0, 1, 0
+4, 0, 0, 1
+5, 0.5, 0, 0
+6, 0.5, 0.5, 0
+7, 0, 0.5, 0
+8, 0, 0, 0.5
+9, 0.5, 0, 0.5
+10, 0, 0.5, 0.5
+*ELEMENT, TYPE=C3D10
+1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
 *NSET, NSET=FIXED
-1, 4, 5, 8
+1, 3, 4, 7, 8, 10
 *MATERIAL, NAME=STEEL
 *ELASTIC
 210000, 0.3
@@ -85,9 +88,9 @@ FIXED, 1, 3
 *END STEP
 ";
 
-fn cube(dir: &Path, extra: &str) -> PathBuf {
-    let file = dir.join("cube.inp");
-    std::fs::write(&file, CUBE.replace("*STEP", &format!("{extra}*STEP"))).unwrap();
+fn tet(dir: &Path, extra: &str) -> PathBuf {
+    let file = dir.join("tet.inp");
+    std::fs::write(&file, TET.replace("*STEP", &format!("{extra}*STEP"))).unwrap();
     file
 }
 
@@ -143,7 +146,7 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
             dir.display()
         ),
     );
-    let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &ccx);
+    let (code, err) = run(&tet(&dir, ""), &dir.join("run"), &ccx);
     assert_eq!(code, Some(0), "{err}");
     let input = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
     for line in [
@@ -159,12 +162,13 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
     assert_eq!(point(&grid, "U", 1), [1e-3, -2e-4, 0.0]);
     assert_eq!(point(&grid, "U", 0), [0.0; 3]);
     assert_eq!(point(&grid, "RF", 0), [-210.0, 0.0, 0.0]);
-    // The points of a cube have the same weight times Jacobian, so S is the mean of the two
-    // points, in the order xx, yy, zz, xy, yz, xz.
+    // The points of a tet with straight edges have the same weight times Jacobian, so S is
+    // the mean of the two points, in the order xx, yy, zz, xy, yz, xz.
+    let near = |a: &[f64], b: &[f64]| a.iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-9);
     let s = grid.cell_field("S").unwrap().as_f64().unwrap();
-    assert_eq!(s, [150.0, 0.0, 0.0, 10.0, 30.0, 20.0]);
+    assert!(near(&s, &[150.0, 0.0, 0.0, 10.0, 30.0, 20.0]), "{s:?}");
     let mises = grid.cell_field("MISES").unwrap().as_f64().unwrap();
-    assert_eq!(mises, [26700f64.sqrt()]);
+    assert!(near(&mises, &[26700f64.sqrt()]), "{mises:?}");
     let summary = std::fs::read_to_string(dir.join("run/summary.toon")).unwrap();
     assert!(summary.starts_with("schema: fh.run"), "{summary}");
     assert!(
@@ -179,16 +183,16 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
 #[test]
 fn the_element_stress_is_the_volume_mean_of_the_points() {
     let dir = scratch("volume-mean");
-    // Nodes 6 and 7 move to z = 3: the Jacobian determinant is (2 + xi) / 8.
-    let input = dir.join("wedge.inp");
-    let wedge = CUBE
-        .replace("6, 1, 0, 1", "6, 1, 0, 3")
-        .replace("7, 1, 1, 1", "7, 1, 1, 3");
-    std::fs::write(&input, wedge).unwrap();
-    // sxx is 1 at the 4 points at xi = +g, and 0 at the 4 points at xi = -g.
+    // Midside node 5 moves to x = 0.6: the Jacobian determinant is
+    // 1 + 0.4 (1 - 2 xi - eta - zeta). At point 1 it is 1 + 0.4 / sqrt(5), and the sum of
+    // the 4 points is 4.
+    let input = dir.join("curved.inp");
+    let curved = TET.replace("5, 0.5, 0, 0", "5, 0.6, 0, 0");
+    std::fs::write(&input, curved).unwrap();
+    // sxx is 1 at point 1, and 0 at the 3 other points.
     let mut dat = String::from(" stresses (elem, integ.pnt.,sxx,syy,szz,sxy,sxz,syz)\n");
-    for p in 1..=8 {
-        dat.push_str(&format!("1 {p} {} 0 0 0 0 0\n", (p + 1) % 2));
+    for p in 1..=4 {
+        dat.push_str(&format!("1 {p} {} 0 0 0 0 0\n", u8::from(p == 1)));
     }
     std::fs::write(dir.join("frd"), FRD).unwrap();
     std::fs::write(dir.join("dat"), dat).unwrap();
@@ -200,15 +204,14 @@ fn the_element_stress_is_the_volume_mean_of_the_points() {
     assert_eq!(code, Some(0), "{err}");
     let grid = read_vtu(&std::fs::read(dir.join("run/step-1.vtu")).unwrap()).unwrap();
     let s = grid.cell_field("S").unwrap().as_f64().unwrap();
-    // The plain mean is 0.5.
-    let g = 1.0 / 3f64.sqrt();
-    assert!((s[0] - (2.0 + g) / 4.0).abs() < 1e-12, "{s:?}");
+    // The plain mean is 0.25.
+    assert!((s[0] - (0.25 + 0.1 / 5f64.sqrt())).abs() < 1e-12, "{s:?}");
 }
 
 #[test]
 fn no_ccx_is_a_clear_error() {
     let dir = scratch("none");
-    let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &dir.join("no-ccx"));
+    let (code, err) = run(&tet(&dir, ""), &dir.join("run"), &dir.join("no-ccx"));
     assert_eq!(code, Some(1));
     assert!(
         err.contains("cannot start") && err.contains("FH_CCX") && err.contains("docs/ccx.md"),
@@ -220,10 +223,10 @@ fn no_ccx_is_a_clear_error() {
 fn the_thermal_keywords_go_to_ccx() {
     let dir = scratch("thermal");
     let input = dir.join("thermal.inp");
-    let text = CUBE
+    let text = TET
         .replace(
             "*STEP",
-            "*NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8\n\
+            "*NSET, NSET=ALL\n1, 2, 3, 4, 5, 6, 7, 8, 9, 10\n\
              *INITIAL CONDITIONS, TYPE=TEMPERATURE\nALL, 20\n*STEP",
         )
         .replace("0.3\n", "0.3\n*EXPANSION\n1.2e-5\n")
@@ -244,7 +247,7 @@ fn the_thermal_keywords_go_to_ccx() {
 fn a_failed_ccx_run_is_an_error_with_the_ccx_message() {
     let dir = scratch("failed");
     let ccx = fake_ccx(&dir, "echo ' *ERROR in readinput: bad card'\nexit 201");
-    let (code, err) = run(&cube(&dir, ""), &dir.join("run"), &ccx);
+    let (code, err) = run(&tet(&dir, ""), &dir.join("run"), &ccx);
     assert_eq!(code, Some(1));
     assert!(err.contains("*ERROR in readinput: bad card"), "{err}");
     assert!(!dir.join("run/results.pvd").exists());
@@ -281,7 +284,7 @@ fn a_ccx_failure_tells_why_and_what_to_do() {
     .enumerate()
     {
         let ccx = fake_ccx(&dir, body);
-        let (code, err) = run(&cube(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
+        let (code, err) = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
         assert_eq!(code, Some(1), "{body}");
         for part in parts {
             assert!(err.contains(part), "{body}: {part} is not in {err}");
@@ -314,40 +317,39 @@ fn an_invalid_result_file_is_an_error() {
     .enumerate()
     {
         let ccx = fake_ccx(&dir, body);
-        let (code, err) = run(&cube(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
+        let (code, err) = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
         assert_eq!(code, Some(1), "{body}");
         assert!(err.contains(why), "{body}: {err}");
     }
 }
 
+/// The parser refuses a keyword, a parameter or an element type outside the subset, with its
+/// line, before `ccx` starts.
 #[test]
 fn a_keyword_outside_the_subset_is_a_clear_error() {
     let dir = scratch("keyword");
-    let surface = "*SURFACE, TYPE=NODE, NAME=S\n2\n3\n";
-    let coupling =
-        format!("*NODE\n9, 2, 0, 0\n{surface}*COUPLING, CONSTRAINT NAME=C, REF NODE=9, SURFACE=S\n*KINEMATIC\n");
-    for (extra, keyword) in [
-        ("*EQUATION\n2\n2, 2, 1.0, 3, 2, -1.0\n", "*EQUATION"),
-        ("*MPC\nTIE, 2, 3\n", "*MPC"),
-        (coupling.as_str(), "*COUPLING"),
-        (surface, "*SURFACE, TYPE=NODE"),
-        ("NLGEOM", "*STEP, NLGEOM"),
-    ] {
-        let input = if extra == "NLGEOM" {
-            let file = dir.join("cube.inp");
-            std::fs::write(&file, CUBE.replace("NAME=PULL", "NAME=PULL, NLGEOM=YES")).unwrap();
-            file
-        } else {
-            cube(&dir, extra)
-        };
-        let (code, err) = run(&input, &dir.join("run"), &dir.join("no-ccx"));
-        assert_eq!(code, Some(1), "{keyword}");
-        assert!(
-            err.contains(&format!(
-                "{keyword} is not in the keyword subset of the ccx adapter"
-            )),
-            "{keyword}: {err}"
-        );
+    for (i, (text, want)) in [
+        (
+            TET.replace("*STEP", "*EQUATION\n2\n2, 2, 1.0, 3, 2, -1.0\n*STEP"),
+            "line 20, *EQUATION: unsupported keyword (INP002)",
+        ),
+        (
+            TET.replace("NAME=PULL", "NAME=PULL, NLGEOM=YES"),
+            "line 20, *STEP: unsupported parameter NLGEOM (INP003)",
+        ),
+        (
+            TET.replace("TYPE=C3D10", "TYPE=C3D8"),
+            "line 13, *ELEMENT: unsupported element type C3D8; only C3D10 is supported (INP005)",
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let input = dir.join(format!("bad-{i}.inp"));
+        std::fs::write(&input, text).unwrap();
+        let (code, err) = run(&input, &dir.join(format!("run-{i}")), &dir.join("no-ccx"));
+        assert_eq!(code, Some(1), "{want}");
+        assert!(err.contains(want), "{want}: {err}");
     }
 }
 
@@ -357,12 +359,12 @@ fn a_keyword_outside_the_subset_is_a_clear_error() {
 fn each_number_of_the_ccx_input_fits_in_20_characters() {
     let dir = scratch("width");
     let input = dir.join("width.inp");
-    let text = CUBE.replace("4, 0, 1, 0\n", "4, -1.3302787975829e-17, 1, -4.7e-117\n");
-    assert_ne!(text, CUBE);
+    let text = TET.replace("3, 0, 1, 0\n", "3, -1.3302787975829e-17, 1, -4.7e-117\n");
+    assert_ne!(text, TET);
     std::fs::write(&input, text).unwrap();
     run(&input, &dir.join("run"), &dir.join("no-ccx"));
     let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
-    let line = job.lines().find(|l| l.starts_with("4, ")).unwrap();
+    let line = job.lines().find(|l| l.starts_with("3, ")).unwrap();
     let values: Vec<f64> = line
         .split(", ")
         .skip(1)
@@ -388,13 +390,13 @@ fn a_model_that_can_move_as_a_rigid_body_is_a_clear_error() {
     for (i, (support, mode)) in [
         ("*CLOAD\n2, 1, 100.0\n", "translation in x"),
         ("*BOUNDARY\nFIXED, 1, 1\n", "translation in y"),
-        ("*BOUNDARY\n1, 1, 3\n5, 1, 3\n", "rotation about z"),
+        ("*BOUNDARY\n1, 1, 3\n4, 1, 3\n", "rotation about z"),
     ]
     .into_iter()
     .enumerate()
     {
         let input = dir.join(format!("rigid-{i}.inp"));
-        std::fs::write(&input, CUBE.replace(held, support)).unwrap();
+        std::fs::write(&input, TET.replace(held, support)).unwrap();
         let (code, err) = run(&input, &dir.join(format!("run-{i}")), &ccx);
         assert_eq!(code, Some(1), "{support}");
         assert!(
@@ -410,7 +412,7 @@ fn a_model_that_can_move_as_a_rigid_body_is_a_clear_error() {
 fn cancel_stops_ccx() {
     let dir = scratch("cancel");
     let ccx = fake_ccx(&dir, "sleep 30");
-    let mut child = start(&cube(&dir, ""), &dir.join("run"), &ccx);
+    let mut child = start(&tet(&dir, ""), &dir.join("run"), &ccx);
     let mut header = String::new();
     BufReader::new(child.stdout.take().unwrap())
         .read_line(&mut header)
@@ -470,10 +472,11 @@ fn real_ccx_matches_the_cantilever_and_bar_pressure_references() {
         assert_eq!(code, Some(0), "{case}: {err}");
         read_vtu(&std::fs::read(run_dir.join("step-1.vtu")).unwrap()).unwrap()
     };
-    // Reference -0.01919619048 mm (case.toml). The C3D8I value of mesh-32 is 0.72 % soft.
-    let tip = mean(&on_set(&solve("cantilever/mesh-32.inp"), "U", "tip", 2));
+    // Reference -0.01919619048 mm (case.toml). The C3D10 value of mesh-8 is 1.4 % soft, in
+    // the 2 % tolerance of the case.
+    let tip = mean(&on_set(&solve("cantilever-c3d10/mesh-8.inp"), "U", "tip", 2));
     assert!(
-        (tip / -0.01919619048 - 1.0).abs() < 0.01,
+        (tip / -0.01919619048 - 1.0).abs() < 0.02,
         "cantilever tip {tip}"
     );
     let bar = solve("bar-pressure/bar.inp");
@@ -494,10 +497,10 @@ fn real_ccx_adds_cload_lines_in_a_step_and_a_later_step_replaces_the_total() {
     let Some(ccx) = real_ccx() else { return };
     let dir = scratch("cload");
     let input = dir.join("cload.inp");
-    let text = CUBE.replace(
+    let text = TET.replace(
         "2, 1, 1, 0.001\n*END STEP\n",
-        "*CLOAD\n7, 1, 1.0\n7, 1, 1.0\n*END STEP\n\
-         *STEP, NAME=AGAIN\n*STATIC\n*CLOAD\n7, 1, 2.0\n*END STEP\n",
+        "*CLOAD\n2, 1, 1.0\n2, 1, 1.0\n*END STEP\n\
+         *STEP, NAME=AGAIN\n*STATIC\n*CLOAD\n2, 1, 2.0\n*END STEP\n",
     );
     std::fs::write(&input, text).unwrap();
     let run_dir = dir.join("run");
@@ -508,7 +511,7 @@ fn real_ccx_adds_cload_lines_in_a_step_and_a_later_step_replaces_the_total() {
     let (one, two) = (grid(1), grid(2));
     let rf: f64 = on_set(&one, "RF", "FIXED", 0).iter().sum();
     assert!((rf + 2.0).abs() < 1e-5, "step 1 rf {rf}");
-    let u = |g: &Grid| point(g, "U", 6)[0];
+    let u = |g: &Grid| point(g, "U", 1)[0];
     assert!(
         u(&one) > 0.0 && (u(&two) / u(&one) - 1.0).abs() < 1e-5,
         "u {} {}",

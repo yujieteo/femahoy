@@ -50,28 +50,6 @@ fn corner(p: &[P], at: usize, n: [usize; 3]) -> (f64, f64) {
     (d, if len > 0.0 { d / len } else { 0.0 })
 }
 
-/// For each hex corner: the three neighbours that make a right-handed triple.
-const HEX_CORNERS: [(usize, [usize; 3]); 8] = [
-    (0, [1, 3, 4]),
-    (1, [2, 0, 5]),
-    (2, [3, 1, 6]),
-    (3, [0, 2, 7]),
-    (4, [5, 0, 7]),
-    (5, [6, 1, 4]),
-    (6, [7, 2, 5]),
-    (7, [4, 3, 6]),
-];
-
-/// The 6 tets of a hex around the diagonal 0-6.
-const HEX_TETS: [[usize; 4]; 6] = [
-    [0, 1, 2, 6],
-    [0, 2, 3, 6],
-    [0, 3, 7, 6],
-    [0, 7, 4, 6],
-    [0, 4, 5, 6],
-    [0, 5, 1, 6],
-];
-
 /// The volume and the smallest scaled Jacobian of one element. `None` for an unknown type.
 fn element_metrics(kind: &str, p: &[P]) -> Option<(f64, f64)> {
     match kind {
@@ -86,17 +64,6 @@ fn element_metrics(kind: &str, p: &[P]) -> Option<(f64, f64)> {
             .into_iter()
             .fold(f64::INFINITY, f64::min);
             Some((d / 6.0, min))
-        }
-        "C3D8I" | "C3D8" => {
-            let min = HEX_CORNERS
-                .iter()
-                .map(|(at, n)| corner(p, *at, *n).1)
-                .fold(f64::INFINITY, f64::min);
-            let volume = HEX_TETS
-                .iter()
-                .map(|t| corner(p, t[0], [t[1], t[2], t[3]]).0 / 6.0)
-                .sum();
-            Some((volume, min))
         }
         _ => None,
     }

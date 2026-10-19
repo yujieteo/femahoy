@@ -7,7 +7,7 @@ Read gmsh meshes, scan STEP units, check mesh quality, and read or write result 
 ## Inputs and outputs
 
 - `read_msh` accepts MSH 4.1 ASCII and returns `fh_inp::Model`.
-- Imported volume types are gmsh 5 (`C3D8I`) and 11 (`C3D10`).
+- The only imported volume type is gmsh 11 (`C3D10`). Another volume type is an error.
 - `step_length_unit` scans text. `mesh_stats` reports bounds, volume, element counts and corner Jacobian quality.
 - `vtu` reads and writes VTU/PVD.
 
@@ -30,4 +30,4 @@ Run `cargo check -p fh-io` and `cargo test -p fh-io`. Use `fh info` to check uni
 
 ## Examples
 
-`fh info part.msh` reports mesh quality. `fh info part.step --case validation/cases/cantilever` checks declared units.
+`fh info part.msh` reports mesh quality. `fh info part.step --case validation/cases/cantilever-c3d10` checks declared units.

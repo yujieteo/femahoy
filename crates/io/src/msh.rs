@@ -68,26 +68,14 @@ fn type_info(t: u32) -> Option<(usize, u8)> {
     })
 }
 
-/// Corner positions (in `inp` node order) of each face, face 1 first. The numbering is the
-/// `*SURFACE, TYPE=ELEMENT` numbering of the solver (`S1` to `S4` for a tet, `S1` to `S6` for a hex).
-fn faces_of(element_type: &str) -> &'static [&'static [usize]] {
-    match element_type {
-        "C3D10" => &[&[0, 1, 2], &[0, 3, 1], &[1, 3, 2], &[2, 3, 0]],
-        _ => &[
-            &[0, 1, 2, 3],
-            &[4, 7, 6, 5],
-            &[0, 4, 5, 1],
-            &[1, 5, 6, 2],
-            &[2, 6, 7, 3],
-            &[3, 7, 4, 0],
-        ],
-    }
-}
+/// Corner positions (in `inp` node order) of each face of a `C3D10`, face 1 first. The
+/// numbering is the `*SURFACE, TYPE=ELEMENT` numbering of the solver (`S1` to `S4`).
+const TET_FACES: [[usize; 3]; 4] = [[0, 1, 2], [0, 3, 1], [1, 3, 2], [2, 3, 0]];
 
-/// The `inp` element type and the gmsh position of each `inp` node.
+/// The `inp` element type and the gmsh position of each `inp` node. Only the 10-node tet
+/// (gmsh type 11) is accepted.
 fn inp_type(t: u32) -> Option<(&'static str, &'static [usize])> {
     match t {
-        5 => Some(("C3D8I", &[0, 1, 2, 3, 4, 5, 6, 7])),
         // gmsh puts the last two midside nodes in the other order.
         11 => Some(("C3D10", &[0, 1, 2, 3, 4, 5, 6, 7, 9, 8])),
         _ => None,
@@ -373,7 +361,7 @@ impl Reader {
                 return fail(
                     code::MSH_UNSUPPORTED,
                     line,
-                    format!("element type {ty} is not accepted, use 5 or 11"),
+                    format!("element type {ty} is not accepted, use 11 (C3D10)"),
                 );
             }
             for _ in 0..n {
@@ -464,7 +452,7 @@ impl Reader {
         let mut on: HashMap<Vec<u32>, Vec<(u32, u8)>> = HashMap::new();
         if self.groups.iter().any(|g| !g.faces.is_empty()) {
             for e in &self.model.elements {
-                for (f, corners) in faces_of(&e.element_type).iter().enumerate() {
+                for (f, corners) in TET_FACES.iter().enumerate() {
                     let mut key: Vec<u32> = corners.iter().map(|&c| e.nodes[c]).collect();
                     key.sort_unstable();
                     on.entry(key).or_default().push((e.id, f as u8 + 1));
