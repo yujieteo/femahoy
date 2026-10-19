@@ -40,7 +40,7 @@ use crate::store::Store;
 /// The instructions of the agent.
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
-const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep";
+const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,Glob,Grep,WebSearch,WebFetch";
 /// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
 /// 2 minutes by default, and a solve of a large model can take hours.
 const BASH_TIMEOUT_MS: &str = "86400000";
