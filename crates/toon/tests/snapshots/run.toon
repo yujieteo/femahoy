@@ -23,4 +23,4 @@ increments_more: 7
 diagnostics[0]:
 diagnostics_note: no diagnostics
 next[1]{cmd,why}:
-  fh results,see extremes and reactions
+  fh validate,check the solver against the validation cases

@@ -1,5 +1,5 @@
 //! Mesh checks: counts, bounding box, volume and the signed-Jacobian gate.
-//! Decision D-14, see DESIGN.md: every mesh passes a signed-Jacobian gate.
+//! Decision D-19, see DESIGN.md: every mesh passes a signed-Jacobian gate.
 
 use std::collections::HashMap;
 

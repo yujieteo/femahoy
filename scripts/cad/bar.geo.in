@@ -1,6 +1,6 @@
-// Mesh recipe for a bar along x: STEP in, C3D10 `.msh` out (decision D-14).
+// Mesh recipe for a bar along x: STEP in, C3D10 `.msh` out (decision D-17).
 // Replace @STEP@, @UNIT@ (MM or M, from `fh info --case`), @SIZE@ and @OUT@, then run
-// `gmsh FILE.geo -0 -nopopup`. Always set the unit here. Never rely on earlier gmsh state (D-12).
+// `gmsh FILE.geo -0 -nopopup`. Always set the unit here. Never rely on earlier gmsh state (D-18).
 Geometry.OCCTargetUnit = "@UNIT@";
 SetFactory("OpenCASCADE");
 Merge "@STEP@";

@@ -9,7 +9,7 @@
 //! 2. print events on stdout while it works (see below),
 //! 3. write `results.pvd`, one VTU file for each step that the PVD lists, and
 //!    `summary.toon` in `run-dir`. The summary is an `fh.run` document of the
-//!    TOON schema (`toon-schema.md`, sections 3.5 and 3.8),
+//!    TOON schema (`toon-schema.md`, sections 3.5 and 3.7),
 //! 4. exit with code 0 on success. On failure it exits with a non-zero code
 //!    and prints the reason on stderr.
 //!
@@ -37,7 +37,7 @@
 //! The runner starts the solver as the leader of its own process tree. It kills
 //! the whole tree at the time limit or at the memory limit. The memory limit
 //! counts the physical footprint on macOS and resident memory elsewhere.
-//! Linux and Windows give the solver a hard limit that the kernel enforces.
+//! Linux gives the solver a hard limit that the kernel enforces.
 //! If the runner cannot read the memory, it stops the solver and reports this.
 //! The default memory limit is 85 % of the machine RAM.
 //!

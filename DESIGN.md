@@ -2,7 +2,6 @@
 
 Status: agreed design. The status of each milestone is in `docs/milestones.md`.
 Scope: this file describes the product only. The rules for the agents that build femahoy are in `AGENTS.md`.
-Working name: "femahoy" stays provisional until the trademark, package-name, and domain checks are done (section 15).
 
 ---
 
@@ -12,26 +11,21 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
-- The **chat is the leader**. It plans the work and gives tasks to teammates. The UI shows each teammate while it runs.
+- The **chat is the leader**: 1 focused agent that plans and does the work.
 - The **input** is Abaqus-shaped `.inp` text.
 - **Agent-facing output** is TOON.
 - **Results** are VTU files, so ParaView can open them.
 - The **solver** is CalculiX (`ccx`). The `fh-solve-ccx` adapter runs it (D-13). Each validation case passes against its reference.
-- Users and their agents can build their own solvers and input templates on the same crates.
+- Users and their agents can build their own solvers on the same crates.
 
 Description rule: say the product is "heavily inspired by Abaqus input conventions". Never use "Abaqus" as a product name or in a product name.
 
 ---
 
-## 2. Licence and income
+## 2. Licence
 
-- **Licence:** AGPL-3.0 for all code. A commercial licence is for sale to companies that cannot accept AGPL.
-- **Contributions:** contributors sign a CLA that lets the owner relicense their code (for example, through CLA Assistant). A lawyer must check the CLA text.
-- **Income:**
-  1. Donations (GitHub Sponsors or similar).
-  2. Commercial licences.
-  3. A managed LLM tier, after the second user test (section 13). Users without their own API key pay a subscription, and femahoy supplies the model access through a hosted proxy at a margin over API cost. This tier must use API keys. A personal Claude or ChatGPT subscription cannot be resold.
-- **Portfolio:** a static, read-only web demo of the viewer with stored results. It has no solver and no agents.
+- **Licence:** AGPL-3.0 for all code.
+- CalculiX and gmsh stay separate programs. femahoy never links or bundles them, so that a later sale stays possible.
 
 ---
 
@@ -40,12 +34,10 @@ Description rule: say the product is "heavily inspired by Abaqus input conventio
 | Interface | Purpose |
 |---|---|
 | Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the `fh` command it ran. The text box is always available: a message during the work reaches the leader at its next step. A status shows the current action, the solve and its progress, and each failure. |
-| Teammate tree | Shows each teammate, its state (working, blocked, done, idle), and its pane. |
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector (first milestone). |
 | `fh` CLI | Works alone over SSH and tmux, with no GUI. |
-| Custom panels | Buttons for frequent commands. Each button runs an `fh` command. |
 
-Rule: the keyboard is the main input. The mouse is for the viewport and the custom panels.
+Rule: the keyboard is the main input. The mouse is for the viewport.
 
 Rule: the page shows only what helps the work: the chat, the run in the viewport and its controls (D-28).
 
@@ -60,16 +52,15 @@ Rule: the page shows only what helps the work: the chat, the run in the viewport
                                 |
                          fh serve (daemon)
              +-----------+-----------+-----------+
-             |  solver   |  agents   |  files    |
+             |  solver   |  agent    |  files    |
              | (sub-     | (Claude   | (project, |
-             |  process) |  Code,    |  results) |
-             |           |  Codex)   |           |
+             |  process) |  Code)    |  results) |
              +-----------+-----------+-----------+
 ```
 
 ### 4.1 Daemon (`fh serve`)
 
-- Owns the solver runs, the agent processes, the API keys, and the project files.
+- Owns the solver runs, the agent process, and the project files.
 - Binds to 127.0.0.1 only.
 - Makes a random token at start, as Jupyter does. Every HTTP request must carry the token.
 - Rejects any request whose `Origin` is not the daemon's own page.
@@ -84,46 +75,17 @@ Rule: the page shows only what helps the work: the chat, the run in the viewport
 
 ### 4.3 Pane backend
 
-The daemon has no pane backend. The chat replaced the terminal sidebar, so the sidebar and its plain PTY backend are removed. herdr is removed (D-27). The teammate tree (section 3) will define how the daemon runs teammates.
+The daemon has no pane backend. The chat replaced the terminal sidebar, so the sidebar and its plain PTY backend are removed. herdr is removed (D-27).
 
 ---
 
-## 5. Agents in the product
+## 5. Agent in the product
 
 ### 5.1 Runtime
 
-- Every agent is a CLI harness process: Claude Code or Codex. femahoy has no agent loop of its own.
-- Two connection paths in v1:
-  1. **User's CLI login:** the harness uses the user's own Claude Code or Codex login.
-  2. **User's API key:** the daemon passes the key in the process environment (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
-- The **leader** runs in headless mode with a JSON event stream (for example, `claude -p --output-format stream-json` or `codex exec --json`). The chat renders this stream. Check the exact flags against the current harness docs during M4, because they change between versions.
+- The agent is a CLI harness process: Claude Code, with the user's own Claude Code login. femahoy has no agent loop of its own.
+- The **leader** runs in headless mode with a JSON event stream (`claude -p --output-format stream-json`). The chat renders this stream. Check the exact flags against the current harness docs, because they change between versions.
 - The leader process stays alive between the messages, and each message goes to its stdin (`claude -p --input-format stream-json`). Thus a message during the work reaches the leader at its next step (`docs/chat.md`).
-- **Teammates** are not built. Section 4.3 has the status.
-- The leader starts teammates with `fh team spawn`, so each start is a visible command.
-
-### 5.2 Roles
-
-| Role | Job | Default model |
-|---|---|---|
-| Leader | Plans, delegates, merges accepted work. Writes no solver code. | Strongest model the user has |
-| Modeler | Builds and checks `.inp` models (preprocessing). | Mid tier |
-| Solver developer | Writes and changes user solver code. | Mid tier |
-| Postprocessor | Results queries, TOON summaries, plots. | Mid tier |
-| Validator | Runs the validation suite, reviews changes. | Strongest model the user has |
-
-Rules:
-- `femahoy.toml` in each project sets the harness and model for each role.
-- The validator always runs as a separate process from the leader.
-- When both vendors are available, the validator uses the other vendor. Codex checks Claude's work, and Claude checks Codex's work.
-- A failed validation blocks the merge. The leader cannot override it. The leader can re-plan, re-assign, or make the task smaller.
-- Each teammate works in its own git worktree and returns a structured report.
-
-### 5.3 Skills
-
-- Source: `.femahoy/skills/<role>/SKILL.md` in each project.
-- `fh init` creates the harness wiring: entries in `.claude/skills/` for Claude Code, and an `AGENTS.md` that points Codex to the same files.
-- Skills are versioned with the `fh` binary. `fh skills update` refreshes them.
-- Each `SKILL.md` must have these sections: **purpose**, **inputs and outputs**, **invariants the code must keep**, **forbidden actions**, **validation hooks it must pass**, **examples**. Other content is free-form.
 
 ---
 
@@ -140,12 +102,6 @@ Rules:
 - v1 imports meshes from `.inp` files made by other tools, and from gmsh `.msh` files.
 - The daemon can call gmsh as an external program, so agents can mesh geometry. Users install gmsh themselves. femahoy never links gmsh, because gmsh is GPL.
 - gmsh is the mesher now. A mesher of our own is a main advantage for later. It has no milestone yet (D-15).
-
-### 6.3 User templates
-
-- A user can define an input syntax of their own.
-- A template is a mapping file from that syntax onto the Abaqus-shaped model, with its own validation cases.
-- The mapping format is an open item (section 14).
 
 ---
 
@@ -194,16 +150,13 @@ Starting list:
 
 ## 8. Results and postprocessing
 
-- **Results files:** the solver writes one VTU file for each step (`step-N.vtu`) and a PVD collection. `fh-solve-ccx` writes VTU only. The `fh-io` crate can also write plain text and legacy VTK, for solvers that need them.
-  - **Plain text** (`step-N.txt`): first line `fh-results 1`, a header (units note, step, step name, time, stress order), then three tables: one row for each node (`U1 U2 U3 RF1 RF2 RF3`, and `UR1 UR2 UR3` when the model has rotations), one row for each element (`S11 S22 S33 S12 S23 S13 MISES`, volume average), and one row for each integration point (`element_id ip S11 ... MISES`). Reals use the shortest text that reads back to the same value. The model has no unit system, so the units line says that all values are in the units of the input file.
+- **Results files:** the solver writes one VTU file for each step (`step-N.vtu`) and a PVD collection.
   - **VTU** (`step-N.vtu`): binary data appended raw. Sets are integer arrays. femahoy writes and reads these files in Rust, with no C library. There is no compression, because that needs a new dependency and costs time on a slow CPU.
-  - **Legacy VTK** (`step-N.vtk`): ASCII `UNSTRUCTURED_GRID`, version 3.0. It has the same mesh and fields as the VTU file.
-  - The PVD collection file lists the grid files. The text file is for people and scripts, and ParaView cannot read it.
+  - The PVD collection file lists the grid files.
   - Every writer takes one array at a time from a buffered file and makes no copy of a field.
 - ParaView opens the PVD file directly.
-- The wasm viewer and the submodel interpolation read the same files.
+- The wasm viewer reads the same files.
 - **TOON** is used only for summaries and queries that agents ask for (for example, "maximum Mises stress in set X, step 2"). Full field data never goes into TOON.
-- **Commands:** `fh results` prints TOON summaries. `fh plot` writes images. The viewer shows the same data in 3D.
 - Weak point: very large models (millions of elements). A binary format of our own can come later if this becomes a problem.
 
 ---
@@ -214,7 +167,7 @@ Starting list:
 
 | Interface | For | How it works |
 |---|---|---|
-| Subprocess protocol | Every solver: `fh-solve-ccx`, and agent-written or untrusted solvers | An executable takes an `.inp` file path and a run folder, and writes result files plus a TOON summary. The protocol is versioned (version 2, section 9.3). |
+| Subprocess protocol | Every solver: `fh-solve-ccx`, and other solvers | An executable takes an `.inp` file path and a run folder, and writes result files plus a TOON summary. The protocol is versioned (version 2, section 9.3). |
 
 Users can use the open `inp`, `io`, and `toon` crates in their own solvers.
 
@@ -223,13 +176,12 @@ Users can use the open `inp`, `io`, and `toon` crates in their own solvers.
 - Each run has its own working folder.
 - Each run has a memory limit. A time limit applies only when the case or an option sets one.
 - Results from a solver that has not passed the validation suite are marked **unvalidated**.
-- Later: an OS sandbox (Landlock on Linux, `sandbox-exec` on macOS) with no network access and write access to the run folder only.
 
-The agents themselves run under the harness's own permission system.
+The agent itself runs under the permission system of its harness.
 
 ### 9.3 Subprocess protocol, version 2
 
-Command line: `<solver> <input.inp> <run-dir> [--formats LIST]`. `fh-solve-ccx` accepts only `--formats vtu`. The protocol text is in `docs/solver-protocol.md`.
+Command line: `<solver> <input.inp> <run-dir>`. The protocol text is in `docs/solver-protocol.md`.
 
 - **stdout** is line based. The first line is `fh-solver-protocol 2`. Then these event lines:
   - `estimate bytes=N`: the memory estimate of the solver, before the work starts.
@@ -237,8 +189,8 @@ Command line: `<solver> <input.inp> <run-dir> [--formats LIST]`. `fh-solve-ccx` 
   - The runner keeps any other line as a log line.
 - **stdin**: the line `cancel` stops the run. The end of stdin also stops it when `FH_CANCEL_ON_EOF` is `1`, which the runner sets. The exit code is 130. The runner keeps the pipe open while the solver runs.
 - **Run folder**: `step-N.vtu` for the last increment of step N, the PVD collection and `summary.toon`. `fh-solve-ccx` also keeps the `ccx` files in `ccx/`.
-- **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.8). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics.
-- **Limits**: the runner stops the whole process group at the memory limit, and at the time limit when the case or an option sets one. It reads the memory use of the group with an operating system probe (Linux, macOS and Windows). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
+- **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.7). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics.
+- **Limits**: the runner stops the whole process group at the memory limit, and at the time limit when the case or an option sets one. It reads the memory use of the group with an operating system probe (Linux and macOS). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
 
 
 ---
@@ -293,15 +245,14 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 
 | Crate | Scope | Licence role |
 |---|---|---|
-| `inp` | `.inp` reader and writer, Abaqus-shaped model, template mapping | open API |
+| `inp` | `.inp` reader, Abaqus-shaped model | open API |
 | `io` | gmsh `.msh` import, VTU and PVD write and read | open API |
 | `toon` | agent-facing summaries and queries | open API |
 | `solver-api` | subprocess protocol v2 and its runner | open API |
 | `validation` | harness, tolerance classes, manufactured solutions | validated core |
 | `daemon` | HTTP server, token auth, process supervision, chat agent, the page (HTML chat) | app |
-| `agents` | harness start, JSON stream parsing, skills install, role config | app |
 | `cli` | `fh` commands | app |
-| `viewer` | eframe app, wgpu mesh and contour renderer, teammate tree | app |
+| `viewer` | eframe app, wgpu mesh and contour renderer | app |
 | `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app |
 
 ### 11.1 Key dependencies
@@ -320,16 +271,13 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 **Target machine:** 16 GB RAM, 4 to 6 cores, a hard disk or a slow SSD (D-06). Input files are small. Results files are not: write them in pieces.
 
 - The default memory limit of a run is 85 percent of the RAM of the machine. The runner stops a solver at this limit (section 9.3).
-- The native solver solved a model of 1M `C3D8` elements in 5.9 GiB. Section 11.2 of `DESIGN.md` at main commit `08a97c2` has the measurements. The workflow benchmark records (B1) will measure `ccx` on this machine.
+- The native solver solved a model of 1M `C3D8` elements in 5.9 GiB. Section 11.2 of `DESIGN.md` at main commit `08a97c2` has the measurements.
 
 ---
 
 ## 12. Platforms and distribution
 
-1. **Web (wasm) first.** The user installs `fh`, runs `fh serve`, and the UI opens in the browser.
-2. **Windows second.**
-
-Distribution: a single `fh` binary (Homebrew and a direct download). The static demo is published on a separate web page.
+The platforms are macOS and Linux. The user installs `fh` with `scripts/install.sh`, runs `fh serve`, and the UI opens in the browser.
 
 ---
 
@@ -339,10 +287,8 @@ Distribution: a single `fh` binary (Homebrew and a direct download). The static 
 
 Order of the work (D-27):
 
-1. **Now: the basic LLM workflow (M4).** The user asks the chat for a model. The leader builds the CAD, meshes it, solves it and shows the results. The user sees each step in the page of `fh serve`. One focused agent is the default. The user can add more agents later. Every action shows as an `fh` command.
+1. **Now: the basic LLM workflow (M4).** The user asks the chat for a model. The leader builds the CAD, meshes it, solves it and shows the results. The user sees each step in the page of `fh serve`. One focused agent does the work. Every action shows as an `fh` command.
 2. **Now: CalculiX for thermal strain, several materials and warpage (C3).**
-3. **Now: the workflow benchmark records (B1).** They measure the workflow from the request to the results.
-4. **Later:** an own solver (D-29), the other CalculiX capabilities (C2), the Windows platform (M11) and the second user test.
 
 Rules:
 
@@ -350,48 +296,21 @@ Rules:
 - A milestone with stages is done only when all its stages pass.
 - The captain can change the order at any time.
 
-Later, with no milestone yet: a mesher of our own (D-15). The managed LLM tier starts after the second user test.
+Later, with no milestone yet: a mesher of our own (D-15) and an own solver (D-29).
 
 ---
 
-## 14. Open items
-
-| Item | Decide in |
-|---|---|
-| TOON summary and query schema | M1 |
-| Validation fixture schema | M1 |
-| Subprocess protocol schema | M2 |
-| Daemon HTTP API | M3 |
-| Template mapping format | After the second user test |
-| Friction in contact | After M6 |
-| OS sandbox for subprocess solvers | After M4 |
-| Managed LLM tier (proxy, accounts, billing) | After the second user test |
-| NAFEMS cases | After the legal check |
-
----
-
-## 15. Checks before public launch
-
-- A lawyer checks: the "heavily inspired by Abaqus" wording, use of Abaqus element and keyword names, the CLA text, and the NAFEMS use.
-- Trademark, package-name (crates.io, npm, PyPI), GitHub org, and domain checks for "femahoy".
-- Check the Anthropic and OpenAI terms for the managed tier.
-
----
-
-## 16. Glossary
+## 14. Glossary
 
 | Term | Meaning |
 |---|---|
-| Leader | The chat. Plans and delegates. Writes no solver code. |
-| Teammate | An agent that the leader starts, with its own role and skills. |
-| Validator | The teammate that runs the suite and gates merges. Separate from the leader. |
+| Leader | The agent of the chat. Plans and does the work. Writes no solver code. |
 | Fixture | One validation case: inputs, reference values, tolerance class, justification. |
-| Template | A user input syntax with a mapping onto the Abaqus-shaped model. |
 | Unvalidated | A result from a solver that has not passed the validation suite. |
 
 ---
 
-## 17. Decision log
+## 15. Decision log
 
 Each entry has an ID, the choice, the reason, the rejected options, and what would reverse it. All entries below are decided by the captain. Code that shows a decision has a comment `// Decision D-xx, see DESIGN.md`. A decision with no such comment is not built yet.
 
@@ -406,7 +325,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 ### D-02 gmsh stays external, `fh mesh` is approved
 - **Decided by:** the captain.
 - **Choice:** femahoy calls gmsh as an external program and never links it. The command `fh mesh` is approved. A mesher of our own comes later (D-15).
-- **Reason:** gmsh is GPL, and the commercial licence (section 2) forbids linking GPL code.
+- **Reason:** gmsh is GPL. Section 2 keeps it a separate program.
 - **Rejected:** link gmsh, bundle gmsh.
 - **Reverse if:** gmsh changes its licence.
 - **Built:** `.msh` import and `fh mesh` (`cli` crate). `fh mesh` runs gmsh as a subprocess. v1 refuses a `.geo` file that can run other programs or files.
@@ -419,22 +338,20 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reverse if:** agents need more digits to make correct decisions.
 - **Built:** yes (`toon` crate, `--precision`).
 
-### D-04 Result formats are plain text, VTU and legacy VTK
+### D-04 Results are VTU with PVD
 - **Decided by:** the captain.
-- **Choice:** The solver supports plain text, VTU (with PVD) and legacy VTK. It does not write HDF5 or Exodus. From 2026-10-18 only VTU with PVD is on by default. Text and legacy VTK are options (`--formats`).
-- **Reason:** These formats need no large library. HDF5 and Exodus need C libraries that are hard to build on all platforms.
+- **Choice:** Results are VTU with PVD. femahoy does not write HDF5 or Exodus.
+- **Reason:** VTU needs no large library, and ParaView opens it. HDF5 and Exodus need C libraries that are hard to build.
 - **Rejected:** HDF5, Exodus.
-- **Reverse if:** a model is too big for these formats, or a customer needs one of the rejected formats.
-- **Update:** the captain decided on 2026-10-18 to change the default. A run of 1M `C3D8` elements wrote 2.28 GB with all 3 formats, and the text file was about 1.5 GB of that. The text writer also kept about 384 bytes for each element in memory. The 3 formats stay (decided 2026-10-13, for compatibility).
-- **Built:** M2 (PR 10). `fh-solve --formats` selected a subset. The default was VTU with PVD (2026-10-18).
-- **Update:** D-29 removed `fh-solve` on 2026-10-19. `fh-solve-ccx` writes VTU with PVD only. The `fh-io` writers for plain text and legacy VTK stay.
+- **Reverse if:** a real model is too big for VTU.
+- **Built:** yes. `fh-solve-ccx` writes VTU with PVD. D-30 removed the plain text and legacy VTK writers on 2026-10-19, because no solver wrote these files after D-29.
 
 ### D-05 Model input stays Abaqus-style `.inp`, TOML holds only case metadata
 - **Decided by:** the captain.
 - **Choice:** The model is an Abaqus-style `.inp` file. TOML files hold case metadata only, such as references and tolerances. TOML never holds model data.
 - **Reason:** One model format keeps the parser small and keeps Abaqus users at home.
 - **Rejected:** a TOML model format, a second model format next to `.inp`.
-- **Reverse if:** the template mapping (section 14) shows that a second format is needed.
+- **Reverse if:** a real run shows that a second format is needed.
 - **Built:** yes (`inp` and `validation` crates).
 
 ### D-06 Target machine
@@ -443,7 +360,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** This is the machine of the expected user.
 - **Rejected:** solvers that need more than 16 GB or fast disk swap.
 - **Reverse if:** the captain changes the target machine.
-- **Built:** M2 (PR 10) built the memory estimate, the solver switch rule and the parallel PCG in the native solver. D-29 removed them on 2026-10-19. The runner keeps the default memory limit (section 11.2). The workflow benchmark records (B1) will measure `ccx` on the target machine.
+- **Built:** M2 (PR 10) built the memory estimate, the solver switch rule and the parallel PCG in the native solver. D-29 removed them on 2026-10-19. The runner keeps the default memory limit (section 11.2).
 
 ### D-07 Code builds and passes on aarch64
 - **Decided by:** the captain.
@@ -453,41 +370,13 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reverse if:** the captain changes the test machine.
 - **Built:** a rule for all crates. The M2 gate passes on an Apple M5 (aarch64). CI builds and tests each change on aarch64 macOS (P1, docs/milestones.md).
 
-### D-08 GPU later, with neutral interfaces
-- **Removed:** by the captain, 2026-10-18. The GPU backend is not on the roadmap.
+### D-09 No reader sees a partial file
 - **Decided by:** the captain.
-- **Choice:** The solver must work on a GPU later. Interfaces stay neutral. Metal is the GPU API on the Mac. CUDA alone is not enough.
-- **Reason:** The test machine has a Metal GPU.
-- **Rejected:** CUDA-only design.
-- **Reverse if:** no GPU backend is ever needed.
-- **Built:** no GPU code exists. D-29 removed the M2 interfaces with the native solver.
-
-### D-09 Restart is safe against partial files
-- **Decided by:** the captain.
-- **Choice:** A run can die part way. A restart must not read a partial file. Writers write to a temporary file and rename it when complete.
+- **Choice:** A run can die part way. A reader must never see a partial file. Writers write to a temporary file and rename it when complete.
 - **Reason:** Long runs on a slow disk can die at any time.
 - **Rejected:** write in place, trust any file that exists.
 - **Reverse if:** a better atomic method exists on all target platforms.
-- **Built:** M2 (PR 10). Every result file and the restart file are written to a temporary name and renamed. The restart file has a version and the hash of the input. A test kills the solver at 3 random restart points and checks that the resumed files are equal to the files of a run with no kill.
-- **Update:** D-29 removed restart with the native solver on 2026-10-19. `fh-solve-ccx` writes each result file to a temporary name and renames it.
-
-### D-10 Element and step design stays open to later analysis types
-- **Decided by:** the captain.
-- **Choice:** The element and step design must stay compatible with parallel assembly, nonlinear analysis (with a linear fallback), plasticity, contact and large displacement. Material is separate from element properties.
-- **Reason:** A change of these interfaces later costs more than a careful design now.
-- **Rejected:** element code that holds material laws, a design for linear analysis only.
-- **Reverse if:** a later milestone shows that the interfaces cannot carry one of these analysis types.
-- **Built:** M2 (PR 10): the `Material` trait, the `Contribution` trait, the state store, and one increment loop with the linear fallback and the Newton path.
-- **Update:** D-29 removed this code on 2026-10-19. Main commit `08a97c2` has it. An own solver later must keep this decision.
-
-### D-11 Results are the same bits for any thread count
-- **Decided by:** the captain.
-- **Choice:** Parallel work must scale. The parallel solver gives the same bits for any thread count. Assembly uses a reduction in a fixed order.
-- **Reason:** Results must not depend on the machine. Byte-equal results make crash-resume and tests exact.
-- **Rejected:** results that change with the thread count.
-- **Reverse if:** a measured conflict with D-06 makes the captain choose speed over exact equality.
-- **Built:** M2 (PR 10). `crates/core-solver/tests/threads.rs` compared the result files and the restart files of 1, 2, 4 and all threads.
-- **Update:** D-29 removed the native solver and this test on 2026-10-19. An own solver later must keep this decision.
+- **Built:** `fh-solve-ccx` writes each result file to a temporary name and renames it. D-29 removed restart with the native solver on 2026-10-19.
 
 ### D-12 Own solver, and other solvers as separate programs
 - **Decided by:** the captain. Changed by D-27 and D-29.
@@ -499,25 +388,16 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-13 CalculiX is the first external solver
 - **Decided by:** the captain.
-- **Choice:** CalculiX (`ccx`) is the first external solver. It runs as a separate program from a new crate, `solver-ccx`. The user installs `ccx`. Contact in `ccx` uses the penalty method. A rule sets the penalty value, and a sweep in the validation case tests it. Our own Rust reader reads the `ccx` `.frd` result files.
-- **Reason:** Its input is closest to our `.inp`. It passed all 6 capability tests (linear, plasticity, contact, large movement, model change, submodel). It is GPL, so it stays a separate program. `ccx` supports only penalty contact, and a bad penalty value gave a 10 percent error.
-- **Rejected:** link or bundle `ccx`, contact with no rule for the penalty value.
+- **Choice:** CalculiX (`ccx`) is the first external solver. It runs as a separate program from a new crate, `solver-ccx`. The user installs `ccx`. Our own Rust reader reads the `ccx` `.frd` result files.
+- **Reason:** Its input is closest to our `.inp`. It passed all 6 capability tests (linear, plasticity, contact, large movement, model change, submodel). It is GPL, so it stays a separate program.
+- **Rejected:** link or bundle `ccx`.
 - **Reverse if:** `ccx` cannot pass the C1 stage, or its licence or input format changes.
-- **Built:** in part. Stage C1 built `solver-ccx` for linear static (`docs/ccx.md`). Contact and the penalty rule come in stage C2.
-
-### D-14 `ccx` serves M6 and M7 first
-- **Decided by:** the captain.
-- **Choice:** The built-in solver gets the M5 Newton work. `ccx` gives the M6 and M7 capabilities first (stage C2) and cross-checks the built-in results. The built-in M6 and M7 milestones stay on the roadmap.
-- **Reason:** Nonlinear features arrive early, and `ccx` cross-checks the built-in results.
-- **Rejected:** M6 and M7 in the built-in solver before users get these capabilities.
-- **Reverse if:** `ccx` fails the C2 case of a capability. Then the built-in milestone for that capability comes first.
-- **Built:** not yet. Stage C1 does not wait for the workflow lock (D-21).
-- **Changed:** D-29 removed the built-in solver on 2026-10-19. `ccx` gives the M5, M6 and M7 capabilities (stage C2). No built-in results exist to cross-check.
+- **Built:** yes. Stage C1 built `solver-ccx` for linear static (`docs/ccx.md`). C3 added thermal strain and several materials.
 
 ### D-15 gmsh now, a mesher of our own later
 - **Decided by:** the captain. Changed by D-27.
 - **Choice:** gmsh is the mesher now. Users install gmsh and other tools. These tools run as separate programs and are never bundled or linked. A mesher of our own is a main advantage of the product for later. It has no milestone yet.
-- **Reason:** The basic LLM workflow comes first, and gmsh already works in it. gmsh is GPL, and the commercial licence rules out GPL code in the product (D-02).
+- **Reason:** The basic LLM workflow comes first, and gmsh already works in it. gmsh is GPL, so it stays a separate program (section 2).
 - **Rejected:** link or bundle gmsh.
 - **Reverse if:** the captain gives the mesher of our own a milestone.
 - **Built:** no mesher code exists. The mesh path is the `.msh` import (D-02).
@@ -572,7 +452,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-22 No gates for the 2010 machine
 - **Decided by:** the captain, 2026-10-18.
-- **Choice:** Remove the no-AVX x86-64 target (SSE4.2, no AVX, 2010 workstation) and its gates: item E3, `scripts/check-no-avx.sh`, a run on a real CPU with no AVX, the repeat of the 1M `C3D8` run on x86-64 under an emulator, and the "no swap" proof for the 1M run. The 16 GB target of D-06 and its evidence stay. The thread-count test and the same-bits rule (D-11) stay.
+- **Choice:** Remove the no-AVX x86-64 target (SSE4.2, no AVX, 2010 workstation) and its gates: item E3, `scripts/check-no-avx.sh`, a run on a real CPU with no AVX, the repeat of the 1M `C3D8` run on x86-64 under an emulator, and the "no swap" proof for the 1M run. The 16 GB target of D-06 and its evidence stay.
 - **Reason:** The gates cost much and add little.
 - **Built:** the text of D-06, M2.6, section 11.2 and the workflow lock changed. No build flag or config existed only for this target.
 
@@ -609,15 +489,15 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Decided by:** the captain, 2026-10-18. The captain said: "biggest problem is getting the basic workflow to work?", "make requirements less dumb", "Delete herdr, I just want to talk" and "1 focused agent focusing on the right thing with the option to add more agents is OK".
 - **Choice:**
   1. M4 starts now. The two tracks and the workflow lock are removed (this replaces D-16). `scripts/check-workflow.sh` stays the proof of the CLI workflow.
-  2. The M4 exit test is the basic LLM workflow: one chat request gives a solved cantilever, and the page of `fh serve` shows each step. M4 needs one connection path, the user's CLI login. The API key path comes after the M4 exit test.
+  2. The M4 exit test is the basic LLM workflow: one chat request gives a solved cantilever, and the page of `fh serve` shows each step. M4 needs one connection path, the user's CLI login.
   3. New item C3: thermal strain, several materials and warpage through CalculiX, now.
-  4. New item B1 replaces E2: benchmark records measure the workflow, from the request to the results.
-  5. The native nonlinear solver stays on the roadmap, later. N1 and N2 are no longer separate items before M5 and M6. Their checks are in the exit tests of M5, M6 and M7.
+  4. New item B1 replaces E2: benchmark records measure the workflow, from the request to the results. D-30 removed B1.
+  5. The native nonlinear solver stays on the roadmap, later. D-29 removed the native solver, and D-30 removed M5, M6 and M7.
   6. gmsh is the mesher now. A mesher of our own is a main advantage for later, with no milestone yet (D-15). The native solver is a main advantage (D-12).
-  7. `docs/milestones.md` is the one roadmap. Section 13 holds the order and the rules only. The second user test does not need the static demo.
+  7. `docs/milestones.md` is the one roadmap. Section 13 holds the order and the rules only.
   8. A crate `SKILL.md` does not repeat a rule of `AGENTS.md`. `README.md` does not repeat the decision log.
   9. herdr is removed. The terminal sidebar uses the plain PTY backend. A separate PR removes the herdr code.
-  10. M4 uses 1 focused agent by default, with the option to add more agents later.
+  10. M4 uses 1 focused agent.
   11. The GPU backend is removed from the roadmap (D-08).
 - **Reason:** The captain will ask an LLM to do the workflow steps (U1). Thus the workflow from the chat to the results in the page of `fh serve` is the most important problem. Requirements that do not serve it, C3 or B1 wait.
 - **Rejected:** the workflow lock as a gate for M4. An own mesher or the native nonlinear solver before M4.
@@ -633,7 +513,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
   5. While the leader works, the chat shows the current action, the solve and its progress, the time, and each failure.
 - **Reason:** A chat needs normal text: scrolling, selection and copy. egui draws its text on a canvas. The 3D viewport needs the GPU, and egui hosts it well.
 - **Rejected:** a script framework or a package manager for the page. A new renderer.
-- **Reverse if:** the teammate tree or the custom panels need widgets that the page cannot give.
+- **Reverse if:** a real run needs a widget that the page cannot give.
 
 ### D-29 Native solver removed
 - **Decided by:** the owner, 2026-10-19. The owner said: "It is a main advantage but not now, besides it is recorded in git?"
@@ -641,4 +521,24 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** An own solver is a main advantage later, but not now. Git keeps the code: main commit `08a97c2` has the full native solver. CalculiX through `fh-solve-ccx` passes the validation suite.
 - **Rejected:** keep the native solver beside `fh-solve-ccx`.
 - **Reverse if:** the owner gives an own solver a milestone. Start from commit `08a97c2`.
-- **Built:** yes. This changes D-12, D-14 and item 5 of D-27. Restart (D-09) and the native solver work of D-04, D-06, D-08, D-10 and D-11 are removed.
+- **Built:** yes. This changes D-12 and item 5 of D-27. Restart (D-09) and the native solver work of D-04 and D-06 are removed.
+
+### D-30 Remove the plans that no real run asked for
+- **Decided by:** the owner, 2026-10-19. The owner said: "yeah these requirements are stupid delete them".
+- **Choice:** A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. The real runs are the chat cantilever, the owner's plate, the 2 warpage papers and the first user test. Remove these plans and their text:
+  1. The team of 5 agent roles, the reviewer agent from another vendor, the teammate tree, `fh team spawn` and `femahoy.toml`. The chat uses 1 focused agent.
+  2. The skills system: `fh init`, `fh skills update` and the required skill sections.
+  3. The API key path and Codex. The chat uses the user's Claude Code login.
+  4. User templates (own input formats) and custom panels.
+  5. The rules for an own solver later: D-08, D-10, D-11, D-14, M5, M6 and M7. Main commit `08a97c2` keeps them with the code of the native solver.
+  6. C2 (CalculiX plasticity, contact and large displacement). Add each capability when a paper or a real problem needs it.
+  7. `fh results`, `fh plot`, the submodel results and the sandbox for solvers that agents write.
+  8. Windows (M11) and Homebrew. The platforms are macOS and Linux.
+  9. The income plans: donations, the commercial licence sale, the managed LLM tier, the web demo, the CLA, the lawyer and trademark checks and the rights review (R1). Section 2 keeps 1 rule: CalculiX and gmsh stay separate programs.
+  10. The second user test and the workflow benchmark records (B1).
+  11. The plain text and legacy VTK result writers (`crates/io/src/vtk.rs`) and the `--formats` option of `fh-solve-ccx`. No solver writes these files.
+  12. The Windows code of the runner (`crates/solver-api/src/sys.rs`).
+- **Reason:** The owner's goal is a FEM solver for arbitrarily large models, without paid software, that the owner can use with an LLM. The owner does not sell femahoy now. Each worker reads the design and the roadmap and builds toward them, so a plan with no need costs work.
+- **Rejected:** keep the plans as "later" items.
+- **Reverse if:** a real run shows the need for one of these items. Then add it as a new item with an exit test.
+- **Built:** yes. This changes D-02, D-04, D-05, D-09, D-13, D-15, D-22, D-27 and D-28.

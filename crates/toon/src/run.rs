@@ -1,4 +1,4 @@
-//! `fh.run` (schema section 3.5). The subprocess solver summary (section 3.8)
+//! `fh.run` (schema section 3.5). The subprocess solver summary (section 3.7)
 //! uses the same type.
 
 use crate::common::{finish, start, tbl, Diag, Header, Next};

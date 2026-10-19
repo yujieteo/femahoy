@@ -6,7 +6,7 @@ Run CalculiX (`ccx`) as a protocol v2 solver: the executable `fh-solve-ccx` (D-1
 
 ## Inputs and outputs
 
-- `fh-solve-ccx INPUT.inp RUN_DIR [--formats vtu]`. `ccx` is `$FH_CCX`, else `ccx` on PATH.
+- `fh-solve-ccx INPUT.inp RUN_DIR`. `ccx` is `$FH_CCX`, else `ccx` on PATH.
 - The adapter writes `RUN_DIR/ccx/job.inp`, runs `ccx -i job` there, and reads `job.frd` and `job.dat`.
 - U and RF come from `job.frd`. The stress comes from the integration points in `job.dat`.
 - It writes `step-N.vtu`, `results.pvd` and `summary.toon` in `RUN_DIR`.

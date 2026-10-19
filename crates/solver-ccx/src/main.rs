@@ -1,4 +1,4 @@
-//! CalculiX (`ccx`) as a protocol v2 solver: `fh-solve-ccx <input.inp> <run-dir> [--formats vtu]`.
+//! CalculiX (`ccx`) as a protocol v2 solver: `fh-solve-ccx <input.inp> <run-dir>`.
 //! Decision D-13, see DESIGN.md.
 //!
 //! The adapter writes the model as `ccx` input in `<run-dir>/ccx`, runs the user's `ccx`
@@ -738,12 +738,10 @@ fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    // `fh validate` asks for VTU only, which is all that the adapter writes.
     let (inp, run_dir) = match args.as_slice() {
         [i, r] => (i, r),
-        [i, r, f, v] if f == "--formats" && v == "vtu" => (i, r),
         _ => {
-            eprintln!("usage: fh-solve-ccx <input.inp> <run-dir> [--formats vtu]");
+            eprintln!("usage: fh-solve-ccx <input.inp> <run-dir>");
             return ExitCode::from(2);
         }
     };
