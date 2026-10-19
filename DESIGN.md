@@ -119,30 +119,23 @@ Not now: element birth and death (`*MODEL CHANGE`, M8) and submodelling (M9).
 
 | Element type | Use |
 |---|---|
-| `C3D8I` | Default hex8. Incompatible modes for good bending results. |
-| `C3D8` | Hex8 with selective reduced integration (B-bar), for plasticity and near-incompressible flow. |
-| `C3D10` | Default tet10. |
-| `C3D10M` | Modified tet10 for contact surfaces. Corner-node forces stay correct under pressure. |
+| `C3D10` | Tet10, the only element (D-19). |
 
-For imported input, the `TYPE=` on `*ELEMENT` sets the element. For models that femahoy agents create, use `C3D10` (D-19). Use `C3D8I` only for extruded parts, and the others only when the task needs them.
+The parser refuses every other `TYPE=` on `*ELEMENT` with a clear error. A gmsh `.msh` file must hold type 11 (`C3D10`) volumes.
 
 ### 7.3 Keywords
 
-Scope: every keyword the validation cases need, in priority order. Any other keyword fails with a clear error that names the keyword and the line number.
+Scope: the keywords that the validation cases need. Any other keyword fails with a clear error that names the keyword and the line number. `docs/reference/inp.md` gives the parameters and the limits.
 
-Starting list:
-- **Structure:** `*HEADING`, `*INCLUDE`. The model is flat. `*PART`, `*ASSEMBLY` and `*INSTANCE` fail with a clear error.
-- **Mesh and sets:** `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*SURFACE`
-- **Material and section:** `*MATERIAL`, `*ELASTIC`, `*PLASTIC`, `*DENSITY`, `*SOLID SECTION`
-- **Steps and loads:** `*STEP` (with `NLGEOM`), `*STATIC`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*END STEP`
-- **Constraints:** `*COUPLING` with `*KINEMATIC` (RBE2 behaviour), `*COUPLING` with `*DISTRIBUTING` (RBE3 behaviour), `*EQUATION` (general linear MPC), `*MPC` (a subset of types)
-- **Contact:** `*SURFACE INTERACTION`, `*SURFACE BEHAVIOR` (with `AUGMENTED LAGRANGE`), `*CONTACT PAIR`
-- **Special:** `*MODEL CHANGE`, `*SUBMODEL`, `*BOUNDARY, SUBMODEL`
-- **Output:** `*OUTPUT`, `*NODE OUTPUT`, `*ELEMENT OUTPUT`, `*NODE PRINT`, `*EL PRINT`
+- **Structure:** The model is flat. `*PART`, `*ASSEMBLY` and `*INSTANCE` fail with a clear error.
+- **Mesh and sets:** `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`
+- **Material and section:** `*MATERIAL`, `*ELASTIC`, `*EXPANSION`, `*SOLID SECTION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE`
+- **Steps and loads:** `*STEP`, `*STATIC`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*TEMPERATURE`, `*END STEP`
 
 ### 7.4 Compatibility
 
 - Keyword names and meanings match Abaqus for the supported subset.
+- The subset has no constraints (`*COUPLING`, `*EQUATION`, `*MPC`), no `NLGEOM` and no element other than `C3D10`. Each of them fails with a clear error.
 - `docs/compatibility.md` lists every difference. A test covers each difference.
 - Tests use our own `.inp` files. No Abaqus manual files go in the repo (section 10.1).
 
@@ -199,7 +192,7 @@ Command line: `<solver> <input.inp> <run-dir>`. The protocol text is in `docs/so
 
 ### 10.1 References
 
-- Analytical solutions, manufactured solutions, and fine-model comparisons.
+- Analytical solutions, measured values and fine-model comparisons.
 - No Abaqus licence is available, so there are no Abaqus runs.
 - The Abaqus verification manual can be used as a list of problem ideas, cited by number. Never copy its text, `.inp` files, figures, or numbers into the repo.
 - NAFEMS benchmarks: add them only after a legal check. If you add them, use our own input files and cite the target values with the source.
@@ -208,33 +201,31 @@ Command line: `<solver> <input.inp> <run-dir>`. The protocol text is in `docs/so
 
 | Capability | Cases |
 |---|---|
-| Linear, `C3D8I`, `C3D8`, `C3D10` | Patch test, cantilever (beam theory), Lamé thick cylinder, plate with a hole (Kirsch) |
+| Linear, `C3D10` | Bar in tension and in pressure, cantilever (beam theory), Lamé thick cylinder, plate with a hole (Kirsch), plate on its edge (fine model) |
+| Thermal strain, `C3D10` | Bilayer strip (Lubarda), measured warpage of a wafer slice |
 | Contact | Hertz: sphere on flat, cylinder on flat |
 | Plasticity | Elastic-plastic thick cylinder (Hill), uniaxial bar |
 | Large displacement | Cantilever large deflection (elastica), rigid rotation (zero stress) |
 | Birth and death | Statically determinate structures where removing a member gives a reaction change you can calculate by hand |
-| All elements | Method of manufactured solutions, to check the convergence rate |
 
-### 10.3 Tolerance classes
+### 10.3 Tolerances
 
-| Class | Applies to | Rule |
-|---|---|---|
-| L | Linear cases | Richardson extrapolation over at least three mesh refinements. Tolerance = estimated discretisation error + the reference's own stated error. |
-| N | Nonlinear and contact cases | A fixed tolerance per case, written and justified in the fixture file, checked on a named reference mesh. |
-| R | Manufactured solutions | The fixture states the expected convergence rate and the allowed band. |
+Each case has 1 mesh and a fixed tolerance, written and justified in the fixture file.
+A quantity passes if `|computed - reference| <= rel_tol * |reference| + abs_tol`.
+The tolerance holds the error of that mesh and the stated error of the reference.
 
 Contact cases compare integrated values: total contact force, contact area or radius, and peak pressure. They never compare node-by-node contact status.
 
 ### 10.4 Fixtures
 
-- Each case is a folder in `validation/cases/<id>/` with the input files, the reference values, the tolerance class, and the justification.
+- Each case is a folder in `validation/cases/<id>/` with its mesh file, the reference values, the tolerances and the justification.
 - Fixtures are data files, not prose.
-- The exact fixture schema is decided in M1.
+- The fixture schema is in `crates/validation/SCHEMA.md` (schema 3).
 
 ### 10.5 Gate
 
 - `fh validate` runs the suite and reports pass or fail per case.
-- A change to a solver or its adapter merges only if the full suite passes, and a convergence check passes for each changed element or contact path.
+- A change to a solver or its adapter merges only if the full suite passes.
 - A failure blocks the merge. There is no override.
 
 ---
@@ -427,13 +418,13 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reverse if:** the captain allows a run with unknown units.
 - **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh info` refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`), no units (`unit.case.missing`) and the STEP unit faults of `fh info`. `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). `fh model` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve-ccx` writes those units into `summary.toon` and the PVD file.
 
-### D-19 C3D10 is the default element
+### D-19 C3D10 is the only element
 - **Decided by:** the captain.
-- **Choice:** `C3D10` (tet10) is the default element. Hex8 (`C3D8I`, `C3D8`) is only for extruded parts.
-- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the `cantilever` validation case (length 10 mm, 1 x 1 mm section, nu 0.3) with 1 element through the section and the element type changed to `C3D8`, plain hex8 (`C3D8`, B-bar) gave 0.35 times the beam deflection with 4 elements along the beam, and 2.07 times with 32 elements. The mesh rule is in `docs/compatibility.md`.
-- **Rejected:** hex8 as the default element.
+- **Choice:** `C3D10` (tet10) is the only element (2026-10-19). Before that, hex8 (`C3D8I`, `C3D8`) was allowed for extruded parts.
+- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case (1 x 1 mm section, 1 element through it), plain hex8 (`C3D8`, B-bar) gave 0.35 to 2.07 times the beam deflection. `docs/compatibility.md` at main commit `50dded8` has the data. 1 element type keeps the parser, the adapter, the viewer and the cases small.
+- **Rejected:** hex8 as the default element, and hex8 for extruded parts.
 - **Reverse if:** the workflow benchmark records (B1) show that typical tet10 models do not fit D-06.
-- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). `fh info` and `fh mesh` refuse a hex8 mesh that is not one extrusion (`crates/cli/src/rules.rs`).
+- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh info` refuses a mesh with an inverted element (`mesh.jacobian.negative`). The parser, the `.msh` reader and the viewer accept only `C3D10`.
 
 ### D-20 Early mesh-only viewer
 - **Decided by:** the captain.

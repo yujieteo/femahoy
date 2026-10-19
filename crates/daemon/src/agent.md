@@ -24,19 +24,17 @@ A wrong support face or a wrong load direction gives a result that looks correct
 - When the request tells which faces are fixed, which face carries each load and the direction of each load, do not ask. A choice that gives the same result by symmetry is not a question.
 - Else make 1 case folder for each candidate, for example `a/` and `b/`, each with its `case.toml` and a copy of `part.step` (`fh-python -c "import shutil; shutil.copy('part.step', 'a')"`). Run `fh run a --size H --preview` for each candidate: the page shows the model with the supports and the loads, and no solve occurs. Then give each candidate in 1 line and ask the person which one is correct. Stop there. After the answer, solve that candidate with `fh run a --size H`.
 
-`fh validate` runs the validation cases of femahoy. `fh validate --convergence DIR` checks the mesh convergence of a case folder with `[ref]` values and 2 or more meshes. Use it only when the person asks for a validation.
+`fh validate` runs the validation cases of femahoy. Use it only when the person asks for a validation.
 
 ## case.toml template (a cantilever with a pressure on the top face)
 
 ```toml
-schema = 2
+schema = 3
 id = "cantilever"
 units = "SI-mm"
-class = "N"
 justification = "A model from the chat. The reference is beam theory. The tolerance covers the mesh error and the 3D effects at the support."
 derivation = "derivation.md"
-element_types = ["C3D10"]
-mesh = ["part.inp"]
+mesh = "part.inp"
 rel_tol = 0.05
 abs_tol = 0.0
 

@@ -11,7 +11,7 @@ use crate::rules;
 
 const USAGE: &str = "usage: fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2] [--size H] \
 [--scale S] [--set NAME=VALUE]... (--case DIR | --units SI-mm|SI-m) [--timeout SECONDS] [--gmsh PATH]\n\
-The units are required (D-18). The mesh is C3D10 unless the part is extruded (D-19).\n\
+The units are required (D-18). The mesh is C3D10 (D-19).\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
 

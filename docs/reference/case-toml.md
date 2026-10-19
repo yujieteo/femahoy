@@ -1,10 +1,10 @@
 # Case TOML fields
 
-`Case::load(DIR)` reads `DIR/case.toml`. The reader accepts schema version `2`.
-All fields below are required for their applicable class. There are no defaults for these fields.
+`Case::load(DIR)` reads `DIR/case.toml`. The reader accepts schema version `3`.
+All fields below are required. There are no defaults for these fields.
 
 Sources: [fixture reader](../../crates/validation/src/fixture.rs),
-[tolerance rules](../../crates/validation/src/tolerance.rs),
+[pass rule](../../crates/validation/src/run.rs),
 [CLI validation checks](../../crates/cli/src/validate.rs), and
 [result measurements](../../crates/cli/src/measure.rs).
 
@@ -12,16 +12,16 @@ Sources: [fixture reader](../../crates/validation/src/fixture.rs),
 
 | Field | Type | Accepted value or rule |
 |---|---|---|
-| `schema` | Integer | Exactly `2`. |
+| `schema` | Integer | Exactly `3`. |
 | `id` | Non-empty string | The case name. |
 | `units` | Non-empty string | Exactly `SI-mm` or `SI-m`. |
-| `class` | Non-empty string | Exactly `L`, `N`, or `R`. |
-| `justification` | Non-empty string | The reason for the class and tolerances. |
+| `justification` | Non-empty string | The reason for the tolerances. |
 | `derivation` | Non-empty string | Path to an existing file with the reference derivation. |
-| `element_types` | Non-empty array of strings | Each entry is `C3D8`, `C3D8I` or `C3D10`. Parser acceptance does not establish solver support. |
-| `mesh` | Array of strings | Paths to existing input files, coarse to fine. Class L needs at least 3. N needs exactly 1. R needs at least 2. |
+| `mesh` | Non-empty string | Path to 1 existing input file. It holds only `C3D10` elements. |
 | `[ref]` | Non-empty table | Each entry maps a reference name to a finite number. |
 | `[quantity.<name>]` | Table for each reference name | Defines the measurement for the matching entry in `[ref]`. |
+| `rel_tol` | Number | Relative tolerance, 0 or more. |
+| `abs_tol` | Number | Absolute tolerance, 0 or more. |
 
 Relative `derivation` and `mesh` paths start at the case directory. Absolute paths remain absolute.
 
@@ -34,39 +34,12 @@ These fields are optional. They set the limits of each solve of the case in `fh 
 
 At a limit, the runner stops the solver, and the case row is `cannot run: REASON` with the limit.
 `SI-mm` uses mm, N, MPa, tonne, and s. `SI-m` uses m, N, Pa, kg, and s.
-The reader rejects unknown top-level keys and class fields that belong to another class.
+The reader rejects unknown top-level keys.
 
-## Class fields
+## Pass rule
 
 Numbers can be TOML integers or floats. All numbers must be finite.
-
-| Class | Field | Rule |
-|---|---|---|
-| L | `ratio` | Mesh size ratio above 1. |
-| L | `reference_error` | Relative reference error, 0 or more. |
-| L | `order_min` | Observed order bound above 0. Must be below `order_max`. |
-| L | `order_max` | Observed order bound above 0. |
-| N | `rel_tol` | Relative tolerance, 0 or more. |
-| N | `abs_tol` | Absolute tolerance, 0 or more. |
-| R | `rate` | Expected convergence rate. Any finite number. |
-| R | `band` | Allowed difference from the expected rate, 0 or more. |
-| R | `mesh_size` | Array of positive numbers, one for each mesh, falling from coarse to fine. |
-| R | `boundary_set` | Name of the node set that gets the boundary values. Each mesh must hold it. |
-| R | `[exact]` | Table with `u1`, `u2` and `u3`: the exact displacement as text, see below. |
-
-Class L uses the last 3 mesh values for Richardson extrapolation.
-Its observed order must lie in the inclusive interval from `order_min` to `order_max`.
-Its comparison is `abs(limit - reference) <= estimate + reference_error * abs(reference)`.
-Class N uses `abs(computed - reference) <= rel_tol * abs(reference) + abs_tol`.
-The `check_r` function compares the slope of `log(error)` against `log(h)` with `rate`, within `band`.
-
-A class R case has no `[ref]` table and no `[quantity]` table. It needs at least 2 meshes.
-The meshes hold no step. The harness adds one step with a `*BOUNDARY` value for each node of `boundary_set`,
-taken from the exact field. The error of a mesh is the root mean square, over all nodes, of the distance between
-the computed displacement and the exact field. The observed rate is the slope of `log(error)` against `log(mesh_size)`.
-
-The exact field uses `x`, `y`, `z`, `pi`, numbers, `+ - * / ^`, brackets, and the functions
-`sin`, `cos`, `sinh`, `cosh`, `exp` and `sqrt`. The field must solve the elasticity equations with no body force.
+Each quantity passes if `abs(computed - reference) <= rel_tol * abs(reference) + abs_tol`.
 
 ## Quantity fields
 
@@ -83,35 +56,33 @@ Each quantity table permits exactly these 5 fields. All 5 are required.
 A reference without a quantity fails. A quantity without a reference fails.
 The reader rejects unknown keys inside a quantity table.
 The measurement refuses an empty set. `value` requires exactly 1 entity.
-`fh validate` checks mesh element types, sets, and step names before the normal suite run.
+`fh validate` checks that the mesh parses and holds each set and step before the suite run.
 Step and result-set lookup ignore letter case.
 
 ## Example
 
-This example uses 1 displacement reference from the [patch-test case](../../validation/cases/patch-test/case.toml).
-Paths below are relative to that case directory.
+This example uses 1 reaction force reference from the [bar-tension case](../../validation/cases/bar-tension/case.toml).
+The real case also has a `[model]` table and a stress reference.
 
 ```toml
-schema = 2
-id = "patch-test"
+schema = 3
+id = "bar-tension"
 units = "SI-mm"
-class = "N"
-justification = "Linear field, so no discretisation error."
+justification = "Linear field, so C3D10 has no discretisation error."
 derivation = "derivation.md"
-element_types = ["C3D8"]
-mesh = ["../../../fixtures/inp/patch-test.inp"]
-rel_tol = 1e-8
-abs_tol = 1e-12
+mesh = "bar.inp"
+rel_tol = 1e-6
+abs_tol = 1e-6
 
 [ref]
-u9_x = 0.000325
+rf_x = -42000.0
 
-[quantity.u9_x]
-set = "N9"
-field = "U"
+[quantity.rf_x]
+set = "FIXED"
+field = "RF"
 component = 1
 step = "LOAD"
-op = "value"
+op = "sum"
 ```
 
 ## Model and thermal materials
