@@ -1,32 +1,23 @@
-/// The Abaqus-shaped model for the linear static subset.
+/// The parts of a CalculiX input that the preview draws: the mesh, the sets, the surfaces,
+/// the supports and the loads.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Model {
     pub nodes: Vec<Node>,
     pub elements: Vec<Element>,
     pub nsets: Vec<NodeSet>,
     pub elsets: Vec<ElementSet>,
-    pub materials: Vec<Material>,
     /// `*BOUNDARY` data given before the first step.
     pub boundaries: Vec<Boundary>,
-    pub sections: Vec<SolidSection>,
     pub element_surfaces: Vec<ElementSurface>,
-    /// `*INITIAL CONDITIONS, TYPE=TEMPERATURE`: the start temperature of nodes.
-    pub initial_temperatures: Vec<Temperature>,
     pub steps: Vec<Step>,
 }
 
-/// `*SOLID SECTION`: a material for an element set.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SolidSection {
-    pub elset: String,
-    pub material: String,
-}
-
-/// `*SURFACE, TYPE=ELEMENT`: a named list of element faces. A face number is 1 to 4.
+/// `*SURFACE`: a named list of element faces.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElementSurface {
     pub name: String,
-    /// `(element id, face number)`, in input order.
+    /// `(element id, face number)`, in input order. A shell has the faces 1 (`SPOS`) and 2
+    /// (`SNEG`).
     pub faces: Vec<(u32, u8)>,
 }
 
@@ -39,36 +30,20 @@ pub struct Node {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Element {
     pub id: u32,
+    /// The upper case type, for example `C3D10` or `S8R`.
     pub element_type: String,
     pub nodes: Vec<u32>,
 }
 
+/// A named list of node ids or element ids.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NodeSet {
+pub struct IdSet {
     pub name: String,
     pub ids: Vec<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ElementSet {
-    pub name: String,
-    pub ids: Vec<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Material {
-    pub name: String,
-    pub elastic: Option<Elastic>,
-    /// `*EXPANSION`: the isotropic thermal expansion coefficient.
-    pub expansion: Option<f64>,
-}
-
-/// Isotropic elasticity.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Elastic {
-    pub youngs_modulus: f64,
-    pub poissons_ratio: f64,
-}
+pub type NodeSet = IdSet;
+pub type ElementSet = IdSet;
 
 /// A node number or a node set name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,13 +58,6 @@ pub struct Boundary {
     pub target: Target,
     pub first_dof: u8,
     pub last_dof: u8,
-    pub value: f64,
-}
-
-/// One data line of `*INITIAL CONDITIONS, TYPE=TEMPERATURE` or `*TEMPERATURE`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Temperature {
-    pub target: Target,
     pub value: f64,
 }
 
@@ -108,7 +76,8 @@ pub enum ElementTarget {
     Set(String),
 }
 
-/// One `*DLOAD` data line: a pressure on face `face` (1 to 4) of the elements.
+/// One `*DLOAD` data line: a pressure on face `face` (1 to 6) of the elements. A shell has
+/// the load type `P` with no number, and `face` is 0.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Dload {
     pub target: ElementTarget,
@@ -123,7 +92,7 @@ pub struct Dsload {
     pub pressure: f64,
 }
 
-/// A `*STEP` with its `*STATIC` procedure. `*STATIC` takes no data line.
+/// A `*STEP` with its supports and loads.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Step {
     pub name: Option<String>,
@@ -131,8 +100,6 @@ pub struct Step {
     pub cloads: Vec<Cload>,
     pub dloads: Vec<Dload>,
     pub dsloads: Vec<Dsload>,
-    /// `*TEMPERATURE`: the temperature of nodes at the end of the step.
-    pub temperatures: Vec<Temperature>,
 }
 
 impl Model {
@@ -152,11 +119,5 @@ impl Model {
         self.element_surfaces
             .iter()
             .find(|s| s.name.eq_ignore_ascii_case(name))
-    }
-
-    pub fn material(&self, name: &str) -> Option<&Material> {
-        self.materials
-            .iter()
-            .find(|m| m.name.eq_ignore_ascii_case(name))
     }
 }

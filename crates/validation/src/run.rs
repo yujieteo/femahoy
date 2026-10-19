@@ -4,10 +4,10 @@ use std::path::Path;
 
 use crate::Case;
 
-/// A solver that measures the quantities of a case on its mesh.
+/// A solver that measures the quantities of a case on its input.
 pub trait Solve {
     /// The value of each reference of `case`, in the order of `case.references`.
-    fn measure(&self, case: &Case, mesh: &Path) -> Result<Vec<f64>, String>;
+    fn measure(&self, case: &Case, input: &Path) -> Result<Vec<f64>, String>;
 }
 
 /// The result of one case.
@@ -61,21 +61,24 @@ pub fn check(computed: f64, reference: f64, rel_tol: f64, abs_tol: f64) -> Resul
     }
 }
 
-/// Run the mesh of the case and compare. A solver error is a failure ("cannot run").
+/// Run the input of the case and compare. A solver error is a failure ("cannot run").
 pub fn run_case_with(case: &Case, solver: &dyn Solve) -> Report {
     let fail = |why: String, rows| Report {
         outcome: Outcome::Fail(why),
         rows,
     };
-    let values = match solver.measure(case, &case.mesh) {
+    let values = match solver.measure(case, &case.input) {
         Ok(v) if v.len() == case.references.len() => v,
         Ok(_) => {
             return fail(
-                format!("cannot run {}: wrong number of values", case.mesh.display()),
+                format!(
+                    "cannot run {}: wrong number of values",
+                    case.input.display()
+                ),
                 vec![],
             )
         }
-        Err(e) => return fail(format!("cannot run {}: {e}", case.mesh.display()), vec![]),
+        Err(e) => return fail(format!("cannot run {}: {e}", case.input.display()), vec![]),
     };
     let mut rows = Vec::new();
     let mut problems = Vec::new();

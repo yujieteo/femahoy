@@ -1,16 +1,20 @@
-//! `fh mesh FILE.(geo|step) [options]`: run the external gmsh program and check the `.msh` file.
-//! Decision D-02, see DESIGN.md: gmsh is a separate program. `fh` never links it.
+//! `fh mesh FILE.(geo|step) --units U [options]`: run the external gmsh program and write the
+//! mesh as the nodes, the C3D10 elements and the named sets of a CalculiX input. Decision D-02,
+//! see DESIGN.md: gmsh is a separate program. `fh` never links it.
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 
-use fh_validation::{Case, MaterialSpec, RegionSpec, Select, Units};
-
 use crate::rules;
 
-const USAGE: &str = "usage: fh mesh FILE.(geo|step) [-o OUT.msh] [--size H] \
-[--scale S] [--set NAME=VALUE]... (--case DIR | --units SI-mm|SI-m) [--timeout SECONDS] [--gmsh PATH]\n\
+const USAGE: &str = "usage: fh mesh FILE.(geo|step) --units SI-mm|SI-m [-o OUT.inp] [--size H] \
+[--scale S] [--set NAME=VALUE]... [--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
+[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--timeout SECONDS] [--gmsh PATH]\n\
+A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z (--nodes only).\n\
+--face makes a node set and a surface of the faces of the part in the selection. --nodes makes a \
+node set. --volume makes an element set (STEP only). Each name is used once.\n\
 The units are required (D-18). The mesh is order 2, C3D10 (D-19).\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
@@ -19,14 +23,101 @@ or Merge of a file that is not .msh.";
 const TESTED: (u32, u32) = (4, 15);
 const OLDEST: (u32, u32) = (4, 8);
 
+/// The unit system of the input (D-18). There is no default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Units {
+    /// Length mm, force N, stress MPa, mass tonne, time s.
+    SiMm,
+    /// Length m, force N, stress Pa, mass kg, time s.
+    SiM,
+}
+
+impl Units {
+    fn parse(text: &str) -> Option<Units> {
+        match text {
+            "SI-mm" => Some(Units::SiMm),
+            "SI-m" => Some(Units::SiM),
+            _ => None,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Units::SiMm => "SI-mm",
+            Units::SiM => "SI-m",
+        }
+    }
+
+    /// The length unit as gmsh names it (`Geometry.OCCTargetUnit`).
+    fn gmsh_length(self) -> &'static str {
+        match self {
+            Units::SiMm => "MM",
+            Units::SiM => "M",
+        }
+    }
+}
+
+/// Where a set is: a plane, a box or a point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Select {
+    Plane { axis: usize, at: f64 },
+    Box { min: [f64; 3], max: [f64; 3] },
+    Point([f64; 3]),
+}
+
+fn numbers<const N: usize>(text: &str) -> Option<[f64; N]> {
+    let values: Vec<f64> = text
+        .split(',')
+        .map(|t| t.trim().parse().ok().filter(|v: &f64| v.is_finite()))
+        .collect::<Option<_>>()?;
+    values.try_into().ok()
+}
+
+fn parse_select(text: &str) -> Result<Select, String> {
+    let bad = || {
+        format!("bad selection `{text}`. Use x:V, y:V, z:V, box:X0,Y0,Z0,X1,Y1,Z1 or point:X,Y,Z")
+    };
+    let (kind, rest) = text.split_once(':').ok_or_else(bad)?;
+    match kind {
+        "x" | "y" | "z" => {
+            let [at] = numbers::<1>(rest).ok_or_else(bad)?;
+            let axis = ["x", "y", "z"].iter().position(|a| *a == kind);
+            Ok(Select::Plane {
+                axis: axis.unwrap_or(0),
+                at,
+            })
+        }
+        "box" => {
+            let b = numbers::<6>(rest).ok_or_else(bad)?;
+            let (min, max) = ([b[0], b[1], b[2]], [b[3], b[4], b[5]]);
+            if (0..3).any(|k| min[k] > max[k]) {
+                return Err(format!(
+                    "bad selection `{text}`: a minimum is above its maximum"
+                ));
+            }
+            Ok(Select::Box { min, max })
+        }
+        "point" => Ok(Select::Point(numbers::<3>(rest).ok_or_else(bad)?)),
+        _ => Err(bad()),
+    }
+}
+
+/// A set name and where it is.
+type Named = (String, Select);
+
 struct Options {
     input: PathBuf,
     output: PathBuf,
     size: Option<f64>,
     scale: Option<f64>,
     numbers: Vec<(String, f64)>,
-    case: Option<PathBuf>,
     units: Option<Units>,
+    /// Faces of the part, from gmsh: a node set and a surface each.
+    faces: Vec<Named>,
+    /// Nodes, picked after the mesh: a node set each.
+    nodes: Vec<Named>,
+    /// Boxes of volume: an element set each.
+    volumes: Vec<Named>,
     /// `None` means no limit: a large model can mesh for hours.
     timeout: Option<Duration>,
     gmsh: Option<PathBuf>,
@@ -44,6 +135,24 @@ fn number(flag: &str, text: Option<&String>) -> Result<f64, String> {
     }
 }
 
+/// `NAME=SELECTION` of a set option.
+fn named(flag: &str, text: Option<&String>) -> Result<Named, String> {
+    let text = text.ok_or(format!("{flag} needs NAME=SELECTION"))?;
+    let (name, select) = text
+        .split_once('=')
+        .ok_or(format!("{flag} needs NAME=SELECTION"))?;
+    let name_ok = !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if !name_ok || name.eq_ignore_ascii_case("ALL") || name.eq_ignore_ascii_case("NALL") {
+        return Err(format!(
+            "{flag}: bad name `{name}`. Use letters, digits and _, and not ALL or NALL"
+        ));
+    }
+    Ok((
+        name.to_owned(),
+        parse_select(select).map_err(|e| format!("{flag} {name}: {e}"))?,
+    ))
+}
+
 fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut input: Option<PathBuf> = None;
     let mut o = Options {
@@ -52,8 +161,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         size: None,
         scale: None,
         numbers: Vec::new(),
-        case: None,
         units: None,
+        faces: Vec::new(),
+        nodes: Vec::new(),
+        volumes: Vec::new(),
         timeout: None,
         gmsh: None,
     };
@@ -85,7 +196,21 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 let units = it.next().and_then(|t| Units::parse(t));
                 o.units = Some(units.ok_or("--units needs SI-mm or SI-m")?);
             }
-            "--case" => o.case = Some(it.next().ok_or("--case needs a directory")?.into()),
+            "--face" => {
+                let face = named("--face", it.next())?;
+                if matches!(face.1, Select::Point(_)) {
+                    return Err("--face needs x:V, y:V, z:V or box:X0,Y0,Z0,X1,Y1,Z1".into());
+                }
+                o.faces.push(face);
+            }
+            "--nodes" => o.nodes.push(named("--nodes", it.next())?),
+            "--volume" => {
+                let volume = named("--volume", it.next())?;
+                if !matches!(volume.1, Select::Box { .. }) {
+                    return Err("--volume needs box:X0,Y0,Z0,X1,Y1,Z1".into());
+                }
+                o.volumes.push(volume);
+            }
             "--timeout" => {
                 let seconds = number("--timeout", it.next())?;
                 o.timeout = Some(
@@ -103,7 +228,17 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         }
     }
     o.input = input.ok_or(format!("no input file\n{USAGE}"))?;
-    o.output = output.unwrap_or_else(|| o.input.with_extension("msh"));
+    o.output = output.unwrap_or_else(|| o.input.with_extension("inp"));
+    let mut seen: Vec<String> = Vec::new();
+    for (name, _) in o.faces.iter().chain(&o.nodes).chain(&o.volumes) {
+        let upper = name.to_ascii_uppercase();
+        if seen.contains(&upper) {
+            return Err(format!(
+                "the name {name} is used twice. Give each set its own name"
+            ));
+        }
+        seen.push(upper);
+    }
     Ok(o)
 }
 
@@ -184,76 +319,53 @@ because gmsh would run a shell command or another file"
     Ok(())
 }
 
-/// The units of the run and the regions of the case. D-18: the case or `--units` declares
-/// the units, and there is no default. `Err` holds a refusal code and text.
-fn declared(o: &Options) -> Result<(Units, Vec<RegionSpec>, Vec<MaterialSpec>), String> {
-    let case = o.case.as_deref().map(Case::load_before_mesh).transpose();
-    let case = case.map_err(|e| e.to_string())?;
-    let from_case = case.as_ref().map(|c| c.units);
-    let (regions, materials) = case
-        .and_then(|c| c.model)
-        .map_or_else(|| (Vec::new(), Vec::new()), |m| (m.regions, m.materials));
-    let units = match (from_case, o.units) {
-        (Some(c), Some(u)) if c != u => Err(format!(
-            "unit.case.conflict: the case declares {}, but --units says {}",
-            c.name(),
-            u.name()
-        )),
-        (Some(u), _) | (None, Some(u)) => Ok(u),
-        (None, None) => Err(
-            "unit.case.missing: the run has no units. Give --case DIR or --units SI-mm|SI-m".into(),
-        ),
-    }?;
-    Ok((units, regions, materials))
-}
-
-/// Physical volume groups select the material boxes, or SOLID for the single material.
-/// Each surface region has its own group. A region holds the
-/// faces of the part that lie fully inside its plane or box, within a millionth of the
-/// diagonal of the part.
-fn groups_script(regions: &[RegionSpec], materials: &[MaterialSpec]) -> String {
+/// Physical volume groups select the material boxes, or SOLID for the single body.
+/// Each face option has its own physical surface group. It holds the faces of the part that
+/// lie fully inside its plane or box, within a millionth of the diagonal of the part.
+fn groups_script(faces: &[Named], volumes: &[Named]) -> String {
     let mut s = String::new();
-    let selected = materials.iter().any(|m| m.bounds.is_some());
-    if selected {
+    if volumes.is_empty() {
+        s.push_str("fh_v[] = Volume{:};\nPhysical Volume(\"SOLID\") = fh_v[];\n");
+    } else {
         // Fragment the touching bodies so both layers share every interface node.
         s.push_str("BooleanFragments{ Volume{:}; Delete; }{}\n");
-        for m in materials {
-            if let Some(b) = m.bounds {
-                let bounds = b.map(|x| format!("{x:?}"));
-                let lo = bounds[..3].iter().map(|x| format!("{x}-1e-7"));
-                let hi = bounds[3..].iter().map(|x| format!("{x}+1e-7"));
+        for (name, select) in volumes {
+            if let Select::Box { min, max } = select {
+                let lo = min.iter().map(|x| format!("{x:?}-1e-7"));
+                let hi = max.iter().map(|x| format!("{x:?}+1e-7"));
                 let coords = lo.chain(hi).collect::<Vec<_>>().join(", ");
-                s.push_str(&format!("fh_m[] = Volume In BoundingBox{{{coords}}};\nPhysical Volume(\"{}\") = fh_m[];\n", m.name));
+                s.push_str(&format!(
+                    "fh_m[] = Volume In BoundingBox{{{coords}}};\nPhysical Volume(\"{name}\") = fh_m[];\n"
+                ));
             }
         }
         s.push_str("fh_v[] = Volume{:};\n");
-    } else {
-        s.push_str("fh_v[] = Volume{:};\nPhysical Volume(\"SOLID\") = fh_v[];\n");
     }
-    if regions.is_empty() {
+    if faces.is_empty() {
         return s;
     }
     s.push_str(
         "fh_b[] = BoundingBox Volume{fh_v[]};\n\
 fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh_b[2])^2);\n",
     );
-    for r in regions {
-        let (lo, hi) = match r.select {
+    for (name, select) in faces {
+        let (lo, hi) = match select {
             Select::Plane { axis, at } => {
                 let mut lo = ["-1e30".to_string(), "-1e30".into(), "-1e30".into()];
                 let mut hi = ["1e30".to_string(), "1e30".into(), "1e30".into()];
-                lo[axis] = format!("{at:?} - fh_e");
-                hi[axis] = format!("{at:?} + fh_e");
+                lo[*axis] = format!("{at:?} - fh_e");
+                hi[*axis] = format!("{at:?} + fh_e");
                 (lo, hi)
             }
             Select::Box { min, max } => (
                 min.map(|v| format!("{v:?} - fh_e")),
                 max.map(|v| format!("{v:?} + fh_e")),
             ),
+            Select::Point(_) => continue,
         };
         s.push_str(&format!(
-            "fh_s[] = Surface In BoundingBox{{{}, {}, {}, {}, {}, {}}};\nPhysical Surface(\"{}\") = fh_s[];\n",
-            lo[0], lo[1], lo[2], hi[0], hi[1], hi[2], r.name
+            "fh_s[] = Surface In BoundingBox{{{}, {}, {}, {}, {}, {}}};\nPhysical Surface(\"{name}\") = fh_s[];\n",
+            lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]
         ));
     }
     s
@@ -380,11 +492,124 @@ fn run_dir() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Write one id list with at most 16 ids on a line.
+fn id_lines(out: &mut String, ids: &[u32]) {
+    for chunk in ids.chunks(16) {
+        let line: Vec<String> = chunk.iter().map(u32::to_string).collect();
+        let _ = writeln!(out, "{}", line.join(", "));
+    }
+}
+
+/// The ids of the nodes in a selection, within `tol`.
+fn pick_nodes(model: &fh_inp::Model, select: &Select, tol: f64) -> Vec<u32> {
+    let inside = |xyz: &[f64; 3]| match select {
+        Select::Plane { axis, at } => (xyz[*axis] - at).abs() <= tol,
+        Select::Box { min, max } => {
+            (0..3).all(|k| xyz[k] >= min[k] - tol && xyz[k] <= max[k] + tol)
+        }
+        Select::Point(p) => (0..3).all(|k| (xyz[k] - p[k]).abs() <= tol),
+    };
+    model
+        .nodes
+        .iter()
+        .filter(|n| inside(&n.xyz))
+        .map(|n| n.id)
+        .collect()
+}
+
+/// The node sets of the `--nodes` options, as ids. Refuse a name that the mesh uses, and a
+/// selection with no node.
+fn pick_sets(model: &fh_inp::Model, picks: &[Named]) -> Result<Vec<(String, Vec<u32>)>, String> {
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for n in &model.nodes {
+        for k in 0..3 {
+            lo[k] = lo[k].min(n.xyz[k]);
+            hi[k] = hi[k].max(n.xyz[k]);
+        }
+    }
+    let tol = 1e-6 * (0..3).map(|k| hi[k] - lo[k]).fold(0.0, f64::max);
+    let mut sets = Vec::new();
+    for (name, select) in picks {
+        if model
+            .nsets
+            .iter()
+            .any(|s| s.name.eq_ignore_ascii_case(name))
+        {
+            return Err(format!(
+                "mesh.name.duplicate: the mesh has a node set {name} already. Give --nodes {name} another name"
+            ));
+        }
+        let ids = pick_nodes(model, select, tol);
+        if ids.is_empty() {
+            return Err(format!(
+                "mesh.set.empty: --nodes {name} ({select:?}, tolerance {tol:e}) holds no node"
+            ));
+        }
+        sets.push((name.clone(), ids));
+    }
+    Ok(sets)
+}
+
+/// The text of the input. The nodes are in the set `NALL` and the elements in the set `ALL`.
+/// Then come the sets of the mesh, the surfaces, and the `picked` node sets.
+fn write_inp(
+    model: &fh_inp::Model,
+    label: &str,
+    units: Units,
+    picked: &[(String, Vec<u32>)],
+    hide_solid: bool,
+) -> String {
+    // The solver run reads the units line and writes the units into the results (D-18).
+    let mut out = format!(
+        "** Made by fh mesh from {label}. Include it in the job file.\n** units: {}\n*NODE, NSET=NALL\n",
+        units.name()
+    );
+    for n in &model.nodes {
+        let _ = writeln!(
+            out,
+            "{}, {:?}, {:?}, {:?}",
+            n.id, n.xyz[0], n.xyz[1], n.xyz[2]
+        );
+    }
+    let _ = writeln!(out, "*ELEMENT, TYPE=C3D10, ELSET=ALL");
+    for e in &model.elements {
+        let nodes: Vec<String> = e.nodes.iter().map(u32::to_string).collect();
+        let _ = writeln!(out, "{}, {}", e.id, nodes.join(", "));
+    }
+    // The default body group of a STEP file holds the same elements as ALL.
+    let shown = |name: &str| !(hide_solid && name == "SOLID");
+    for s in model.nsets.iter().filter(|s| shown(&s.name)) {
+        let _ = writeln!(out, "*NSET, NSET={}", s.name);
+        id_lines(&mut out, &s.ids);
+    }
+    for s in model.elsets.iter().filter(|s| shown(&s.name)) {
+        let _ = writeln!(out, "*ELSET, ELSET={}", s.name);
+        id_lines(&mut out, &s.ids);
+    }
+    for s in &model.element_surfaces {
+        let _ = writeln!(out, "*SURFACE, TYPE=ELEMENT, NAME={}", s.name);
+        for (element, face) in &s.faces {
+            let _ = writeln!(out, "{element}, S{face}");
+        }
+    }
+    for (name, ids) in picked {
+        let _ = writeln!(out, "*NSET, NSET={name}");
+        id_lines(&mut out, ids);
+    }
+    out
+}
+
 /// What a run makes, or a failure text.
 fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
-    let (units, regions, materials) = declared(o)?;
+    let units = o
+        .units
+        .ok_or("unit.missing: the run has no units. Give --units SI-mm or --units SI-m")?;
     let input = std::path::absolute(&o.input).map_err(|e| e.to_string())?;
     let output = std::path::absolute(&o.output).map_err(|e| e.to_string())?;
+    if input == output {
+        return Err("the output file is the input file".into());
+    }
     let extension = input
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase());
@@ -392,6 +617,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     let text = String::from_utf8_lossy(&bytes);
     let script = match extension.as_deref() {
         Some("geo") => {
+            if !o.faces.is_empty() || !o.volumes.is_empty() {
+                return Err(
+                    "--face and --volume need a .step file. A .geo file names its own groups"
+                        .into(),
+                );
+            }
             check_geo(&text)?;
             input.clone()
         }
@@ -403,7 +634,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
                 "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
                 units.gmsh_length(),
                 quote_ok(&input)?,
-                groups_script(&regions, &materials)
+                groups_script(&o.faces, &o.volumes)
             );
             std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
             wrapper
@@ -429,14 +660,14 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
 
     // A stale file must not pass as a new result.
-    let _ = std::fs::remove_file(crate::model::units_file(&output));
     match std::fs::remove_file(&output) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
             return Err(format!("cannot replace {}: {e}", output.display()))
         }
         _ => {}
     }
-    // Order 2 gives C3D10, the only element (D-19).
+    let msh_file = dir.join("mesh.msh");
+    // Order 2 gives C3D10, the element that `fh mesh` writes (D-19).
     let mut args: Vec<String> = [
         "-3", "-nopopup", "-format", "msh41", "-v", "2", "-order", "2",
     ]
@@ -450,7 +681,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     for (name, value) in &o.numbers {
         args.extend(["-setnumber".into(), name.clone(), value.to_string()]);
     }
-    args.extend(["-o".into(), output.to_string_lossy().into_owned()]);
+    args.extend(["-o".into(), msh_file.to_string_lossy().into_owned()]);
     args.push(script.to_string_lossy().into_owned());
     let run = run_limited(&gmsh, &args, dir, o.timeout)?;
 
@@ -468,20 +699,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
         }
         return Err(message);
     }
-    let msh = std::fs::read_to_string(&output)
-        .map_err(|_| format!("gmsh wrote no mesh file: {}", output.display()))?;
-    let mesh = fh_io::read_msh_mesh(&msh).map_err(|e| {
-        format!(
-            "the mesh is not readable: {}",
-            e.with_file(output.display().to_string())
-        )
-    })?;
+    let msh = std::fs::read_to_string(&msh_file).map_err(|_| "gmsh wrote no mesh file")?;
+    let mesh = fh_io::read_msh_mesh(&msh)
+        .map_err(|e| format!("the mesh is not readable: {}", e.with_file("gmsh output")))?;
     let model = &mesh.model;
     if model.elements.is_empty() {
-        return Err(format!(
-            "gmsh wrote a mesh with no volume elements: {}",
-            output.display()
-        ));
+        return Err("gmsh wrote a mesh with no volume elements".into());
     }
     let stats = fh_io::mesh_stats(model)?;
     if stats.inverted > 0 {
@@ -492,44 +715,50 @@ for example {:?}",
         ));
     }
     rules::volumes_are_named(&mesh)?;
-    rules::material_groups(&mesh, &materials)?;
-    for r in &regions {
-        rules::region_surface(&mesh, &r.name)?;
+    let volume_names: Vec<&str> = o.volumes.iter().map(|v| v.0.as_str()).collect();
+    rules::volume_coverage(&mesh, &volume_names)?;
+    for (name, _) in &o.faces {
+        rules::face_surface(&mesh, name)?;
     }
 
-    // `fh model` reads this record and refuses a mesh with other units than its case.
-    std::fs::write(
-        crate::model::units_file(&output),
-        format!("{}\n", units.name()),
-    )
-    .map_err(|e| format!("cannot write the unit record: {e}"))?;
+    let label = input
+        .file_name()
+        .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+    let hide_solid = extension.as_deref() != Some("geo") && o.volumes.is_empty();
+    let picked = pick_sets(model, &o.nodes)?;
+    let inp = write_inp(model, &label, units, &picked, hide_solid);
+    std::fs::write(&output, inp).map_err(|e| format!("{}: {e}", output.display()))?;
+
     let mut report = format!(
-        "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t2\nnodes\t{}\nelements\t{}\n\
-min_scaled_jacobian\t{:.4}\n",
+        "ok\t{}\ngmsh\t{version}\nunits\t{}\nnodes\t{}\nelements\t{}\n\
+min_scaled_jacobian\t{:.4}\nnset\tNALL\t{}\nelset\tALL\t{}\n",
         output.display(),
         units.name(),
         model.nodes.len(),
         model.elements.len(),
-        stats.min_scaled_jacobian
+        stats.min_scaled_jacobian,
+        model.nodes.len(),
+        model.elements.len(),
     );
-    let mut types: Vec<(&str, usize)> = Vec::new();
-    for e in &model.elements {
-        match types.iter_mut().find(|(t, _)| *t == e.element_type) {
-            Some(entry) => entry.1 += 1,
-            None => types.push((&e.element_type, 1)),
-        }
-    }
-    for (t, n) in types {
-        report.push_str(&format!("type\t{t}\t{n}\n"));
-    }
-    for s in &model.nsets {
+    for s in model
+        .nsets
+        .iter()
+        .filter(|s| !(hide_solid && s.name == "SOLID"))
+    {
         report.push_str(&format!("nset\t{}\t{}\n", s.name, s.ids.len()));
     }
-    for s in &model.elsets {
+    for s in model
+        .elsets
+        .iter()
+        .filter(|s| !(hide_solid && s.name == "SOLID"))
+    {
         report.push_str(&format!("elset\t{}\t{}\n", s.name, s.ids.len()));
     }
     for s in &model.element_surfaces {
         report.push_str(&format!("surface\t{}\t{}\n", s.name, s.faces.len()));
+    }
+    for (name, ids) in &picked {
+        report.push_str(&format!("nset\t{name}\t{}\n", ids.len()));
     }
     if (parsed.0, parsed.1) != TESTED {
         report.push_str(&format!(
@@ -570,6 +799,10 @@ mod tests {
         )
     }
 
+    fn args(a: &[&str]) -> Result<Options, String> {
+        parse_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+    }
+
     #[test]
     fn step_units_are_checked_against_the_declared_units() {
         let mm = step("LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT(.MILLI.,.METRE.)");
@@ -588,7 +821,6 @@ mod tests {
 
     #[test]
     fn gmsh_has_a_time_limit_only_with_the_timeout_option() {
-        let args = |a: &[&str]| parse_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         assert_eq!(args(&["a.geo"]).unwrap().timeout, None);
         assert_eq!(
             args(&["a.geo", "--timeout", "2"]).unwrap().timeout,
@@ -601,5 +833,178 @@ mod tests {
         assert_eq!(version_of("4.15.2\n"), Some((4, 15)));
         assert_eq!(version_of("4.15.2-git"), Some((4, 15)));
         assert_eq!(version_of("x"), None);
+    }
+
+    #[test]
+    fn selections_are_parsed() {
+        assert_eq!(
+            parse_select("x:20"),
+            Ok(Select::Plane { axis: 0, at: 20.0 })
+        );
+        assert_eq!(
+            parse_select("z:-1.5e-3"),
+            Ok(Select::Plane {
+                axis: 2,
+                at: -0.0015
+            })
+        );
+        assert_eq!(
+            parse_select("box:0,1,2,3,4,5"),
+            Ok(Select::Box {
+                min: [0.0, 1.0, 2.0],
+                max: [3.0, 4.0, 5.0]
+            })
+        );
+        assert_eq!(
+            parse_select("point: 1, 2, 3"),
+            Ok(Select::Point([1.0, 2.0, 3.0]))
+        );
+        for bad in [
+            "",
+            "x",
+            "x:a",
+            "x:1,2",
+            "w:1",
+            "box:1,2,3",
+            "box:5,0,0,1,1,1",
+            "point:1,2",
+            "x:inf",
+        ] {
+            assert!(parse_select(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn set_options_are_checked() {
+        let o = args(&[
+            "a.step",
+            "--face",
+            "TOP=z:1",
+            "--face",
+            "P=box:0,0,0,1,1,1",
+            "--nodes",
+            "PIN=point:0,0,0",
+            "--volume",
+            "UPPER=box:0,0,1,2,2,2",
+        ])
+        .unwrap();
+        assert_eq!((o.faces.len(), o.nodes.len(), o.volumes.len()), (2, 1, 1));
+        assert_eq!(o.output, PathBuf::from("a.inp"));
+        for bad in [
+            &["a.step", "--face", "TOP"][..],
+            &["a.step", "--face", "TOP=point:0,0,0"],
+            &["a.step", "--volume", "V=z:1"],
+            &["a.step", "--face", "ALL=z:1"],
+            &["a.step", "--nodes", "nall=z:1"],
+            &["a.step", "--nodes", "A B=z:1"],
+            &["a.step", "--face", "TOP=z:1", "--nodes", "top=z:0"],
+            &["a.step", "--face"],
+        ] {
+            assert!(args(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_gmsh_script_names_the_groups() {
+        let faces = vec![
+            ("TOP".to_owned(), Select::Plane { axis: 2, at: 5.0 }),
+            (
+                "BOX".to_owned(),
+                Select::Box {
+                    min: [0.0; 3],
+                    max: [1.0; 3],
+                },
+            ),
+        ];
+        let one = groups_script(&faces, &[]);
+        assert!(one.contains("Physical Volume(\"SOLID\")"), "{one}");
+        assert!(one.contains("Physical Surface(\"TOP\")"), "{one}");
+        assert!(
+            one.contains("-1e30, -1e30, 5.0 - fh_e, 1e30, 1e30, 5.0 + fh_e"),
+            "{one}"
+        );
+        assert!(one.contains("Physical Surface(\"BOX\")"), "{one}");
+        let layers = vec![
+            (
+                "LOW".to_owned(),
+                Select::Box {
+                    min: [0.0; 3],
+                    max: [2.0, 2.0, 1.0],
+                },
+            ),
+            (
+                "UP".to_owned(),
+                Select::Box {
+                    min: [0.0, 0.0, 1.0],
+                    max: [2.0; 3],
+                },
+            ),
+        ];
+        let two = groups_script(&[], &layers);
+        assert!(two.contains("BooleanFragments"), "{two}");
+        assert!(two.contains("Physical Volume(\"LOW\")"), "{two}");
+        assert!(two.contains("Physical Volume(\"UP\")"), "{two}");
+        assert!(!two.contains("SOLID"), "{two}");
+    }
+
+    fn block() -> fh_io::MshMesh {
+        let text = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/msh/block-tet10.msh"),
+        )
+        .unwrap();
+        fh_io::read_msh_mesh(&text).unwrap()
+    }
+
+    #[test]
+    fn the_input_holds_the_mesh_the_units_and_the_sets() {
+        let mesh = block();
+        let model = &mesh.model;
+        let picks = [
+            ("ORIGIN".to_owned(), Select::Point([0.0, 0.0, 0.0])),
+            ("MID".to_owned(), Select::Plane { axis: 0, at: 2.0 }),
+        ];
+        let picked = pick_sets(model, &picks).unwrap();
+        assert_eq!(picked[0].1.len(), 1);
+        assert!(picked[1].1.len() > 4, "{picked:?}");
+        let text = write_inp(model, "block.step", Units::SiMm, &picked, false);
+        assert!(
+            text.contains("** units: SI-mm\n*NODE, NSET=NALL\n"),
+            "{text}"
+        );
+        assert!(text.contains("*ELEMENT, TYPE=C3D10, ELSET=ALL\n"), "{text}");
+        for set in [
+            "*NSET, NSET=FIX",
+            "*NSET, NSET=ORIGIN",
+            "*ELSET, ELSET=BLOCK",
+            "*SURFACE, TYPE=ELEMENT, NAME=TIP",
+        ] {
+            assert!(text.contains(set), "{set}");
+        }
+        // The reader of the preview sees the same mesh.
+        let back = fh_inp::parse(&text);
+        assert_eq!(back.nodes.len(), model.nodes.len());
+        assert_eq!(back.elements.len(), model.elements.len());
+        assert_eq!(back.nset("ORIGIN").unwrap().ids, picked[0].1);
+        assert_eq!(
+            back.element_surface("TIP").unwrap().faces,
+            model.element_surface("TIP").unwrap().faces
+        );
+        // A line holds at most 16 ids, the limit of CalculiX.
+        assert!(text.lines().all(|l| l.split(',').count() <= 16), "{text}");
+        let hidden = write_inp(model, "block.step", Units::SiMm, &[], true);
+        assert!(hidden.contains("*ELSET, ELSET=BLOCK"));
+    }
+
+    #[test]
+    fn a_node_set_with_no_node_or_a_used_name_is_refused() {
+        let mesh = block();
+        let far = [("FAR".to_owned(), Select::Point([9.0, 9.0, 9.0]))];
+        assert!(pick_sets(&mesh.model, &far)
+            .unwrap_err()
+            .starts_with("mesh.set.empty"));
+        let used = [("fix".to_owned(), Select::Plane { axis: 0, at: 0.0 })];
+        assert!(pick_sets(&mesh.model, &used)
+            .unwrap_err()
+            .starts_with("mesh.name.duplicate"));
     }
 }

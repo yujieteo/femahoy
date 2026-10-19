@@ -5,6 +5,10 @@
 use std::collections::HashMap;
 
 use fh_inp::Model;
+use fh_io::vtu::{
+    VTK_HEXAHEDRON, VTK_QUADRATIC_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_QUADRATIC_WEDGE, VTK_TETRA,
+    VTK_WEDGE,
+};
 
 /// Angle in degrees between two surface normals above which an edge is a feature edge.
 pub const FEATURE_ANGLE_DEG: f64 = 30.0;
@@ -60,29 +64,103 @@ pub(crate) struct Face {
     pub(crate) mids: Option<Vec<u32>>,
 }
 
-/// Local corner indices of each tet face, and the local indices of the mid-side nodes
-/// (C3D10 order: 4 to 9 are the mids of edges 0-1, 1-2, 2-0, 0-3, 1-3, 2-3).
-const TET_FACES: [([usize; 3], [usize; 3]); 4] = [
-    ([0, 1, 2], [4, 5, 6]),
-    ([0, 1, 3], [4, 8, 7]),
-    ([1, 2, 3], [5, 9, 8]),
-    ([2, 0, 3], [6, 7, 9]),
+/// The faces of an element shape: for each face, the local indices of its corner nodes and of
+/// the mid-side node of each corner edge (`mids[k]` is on the edge from `corners[k]` to the next
+/// corner). A shape with 1 face is a shell. The node order is the CalculiX order.
+type Faces = &'static [(&'static [usize], &'static [usize])];
+
+const TET4: Faces = &[
+    (&[0, 1, 2], &[]),
+    (&[0, 1, 3], &[]),
+    (&[1, 2, 3], &[]),
+    (&[2, 0, 3], &[]),
 ];
+const TET10: Faces = &[
+    (&[0, 1, 2], &[4, 5, 6]),
+    (&[0, 1, 3], &[4, 8, 7]),
+    (&[1, 2, 3], &[5, 9, 8]),
+    (&[2, 0, 3], &[6, 7, 9]),
+];
+const HEX8: Faces = &[
+    (&[0, 1, 2, 3], &[]),
+    (&[4, 7, 6, 5], &[]),
+    (&[0, 4, 5, 1], &[]),
+    (&[1, 5, 6, 2], &[]),
+    (&[2, 6, 7, 3], &[]),
+    (&[3, 7, 4, 0], &[]),
+];
+const HEX20: Faces = &[
+    (&[0, 1, 2, 3], &[8, 9, 10, 11]),
+    (&[4, 7, 6, 5], &[15, 14, 13, 12]),
+    (&[0, 4, 5, 1], &[16, 12, 17, 8]),
+    (&[1, 5, 6, 2], &[17, 13, 18, 9]),
+    (&[2, 6, 7, 3], &[18, 14, 19, 10]),
+    (&[3, 7, 4, 0], &[19, 15, 16, 11]),
+];
+const WEDGE6: Faces = &[
+    (&[0, 1, 2], &[]),
+    (&[3, 4, 5], &[]),
+    (&[0, 1, 4, 3], &[]),
+    (&[1, 2, 5, 4], &[]),
+    (&[2, 0, 3, 5], &[]),
+];
+const WEDGE15: Faces = &[
+    (&[0, 1, 2], &[6, 7, 8]),
+    (&[3, 4, 5], &[9, 10, 11]),
+    (&[0, 1, 4, 3], &[6, 13, 9, 12]),
+    (&[1, 2, 5, 4], &[7, 14, 10, 13]),
+    (&[2, 0, 3, 5], &[8, 12, 11, 14]),
+];
+const TRI3: Faces = &[(&[0, 1, 2], &[])];
+const TRI6: Faces = &[(&[0, 1, 2], &[3, 4, 5])];
+const QUAD4: Faces = &[(&[0, 1, 2, 3], &[])];
+const QUAD8: Faces = &[(&[0, 1, 2, 3], &[4, 5, 6, 7])];
+
+/// The number of nodes and the faces of the element types of CalculiX that the viewer draws
+/// (solids, heat transfer solids and shells), or `None` for another type. A letter at the end
+/// of the name (`C3D8R`, `S8R`) is an option of the type and does not change the shape.
+fn shape(element_type: &str) -> Option<(usize, Faces)> {
+    let upper = element_type.to_ascii_uppercase();
+    let name = (upper.strip_prefix('D')).filter(|n| n.starts_with("C3D"));
+    let name = name.unwrap_or(&upper).trim_end_matches(['R', 'I', 'T']);
+    Some(match name {
+        "C3D4" => (4, TET4),
+        "C3D10" => (10, TET10),
+        "C3D8" => (8, HEX8),
+        "C3D20" => (20, HEX20),
+        "C3D6" => (6, WEDGE6),
+        "C3D15" => (15, WEDGE15),
+        "S3" => (3, TRI3),
+        "S6" => (6, TRI6),
+        "S4" => (4, QUAD4),
+        "S8" | "S9" => (8, QUAD8),
+        _ => return None,
+    })
+}
 
 /// Face list of an element type, or `None` when the viewer cannot draw the type. Face `k`
 /// of the list is the face `S<k+1>` of a `*SURFACE` or a `*DLOAD` in the input.
 pub(crate) fn element_faces(element_type: &str, nodes: &[u32]) -> Option<Vec<Face>> {
-    let t = element_type.to_ascii_uppercase();
-    match t.as_str() {
-        "C3D10" if nodes.len() >= 10 => Some(
-            TET_FACES
-                .iter()
-                .map(|(c, m)| Face {
-                    corners: c.iter().map(|&i| nodes[i]).collect(),
-                    mids: Some(m.iter().map(|&i| nodes[i]).collect()),
-                })
-                .collect(),
-        ),
+    let (count, faces) = shape(element_type)?;
+    (nodes.len() >= count).then(|| {
+        let at = |list: &[usize]| list.iter().map(|&i| nodes[i]).collect::<Vec<_>>();
+        faces
+            .iter()
+            .map(|(c, m)| Face {
+                corners: at(c),
+                mids: Some(at(m)).filter(|m| !m.is_empty()),
+            })
+            .collect()
+    })
+}
+
+/// The face `S<number>` of an element. A shell has 1 drawn face for its faces `S1` and `S2`.
+pub(crate) fn surface_face(element_type: &str, nodes: &[u32], number: u8) -> Option<Face> {
+    let mut faces = element_faces(element_type, nodes)?;
+    let k = usize::from(number).checked_sub(1)?;
+    match faces.len() {
+        1 if k <= 1 => faces.pop(),
+        _ if k < faces.len() => Some(faces.swap_remove(k)),
         _ => None,
     }
 }
@@ -115,7 +193,8 @@ fn normalize(a: [f64; 3]) -> Option<[f64; 3]> {
 }
 
 /// Outward unit normal of a face, or `None` for a degenerate face. `inside` is any
-/// point in the element; the normal is flipped when it points toward that point.
+/// point in the element; the normal is flipped when it points toward that point. A point in
+/// the plane of the face (a shell) does not flip the normal.
 fn face_normal(pts: &[[f64; 3]], inside: [f64; 3]) -> Option<[f64; 3]> {
     let n = if pts.len() == 4 {
         cross(sub(pts[2], pts[0]), sub(pts[3], pts[1]))
@@ -124,11 +203,13 @@ fn face_normal(pts: &[[f64; 3]], inside: [f64; 3]) -> Option<[f64; 3]> {
     };
     let n = normalize(n)?;
     let to_inside = sub(inside, pts[0]);
-    Some(if dot(n, to_inside) > 0.0 {
-        [-n[0], -n[1], -n[2]]
-    } else {
-        n
-    })
+    Some(
+        if dot(n, to_inside) > 1e-9 * dot(to_inside, to_inside).sqrt() {
+            [-n[0], -n[1], -n[2]]
+        } else {
+            n
+        },
+    )
 }
 
 /// Build the render data for a model.
@@ -158,11 +239,16 @@ pub fn build(model: &Model) -> RenderMesh {
     build_indexed(&points, &elements)
 }
 
-/// The element type name of a VTK cell type, or `None` when the viewer cannot draw it.
+/// The element type name of a VTK cell type, or `None` when the viewer cannot draw it. The
+/// results file has the node order of CalculiX for each type that it writes.
 pub fn vtk_element_type(cell_type: u8) -> Option<&'static str> {
     match cell_type {
-        // VTK quadratic tetra has the C3D10 node order.
-        24 => Some("C3D10"),
+        VTK_TETRA => Some("C3D4"),
+        VTK_HEXAHEDRON => Some("C3D8"),
+        VTK_WEDGE => Some("C3D6"),
+        VTK_QUADRATIC_TETRA => Some("C3D10"),
+        VTK_QUADRATIC_HEXAHEDRON => Some("C3D20"),
+        VTK_QUADRATIC_WEDGE => Some("C3D15"),
         _ => None,
     }
 }
@@ -270,6 +356,15 @@ fn build_indexed(points: &[[f64; 3]], elements: &[Option<(&str, Vec<u32>)>]) -> 
                 triangles.push([mi[0], ci[1], mi[1]]);
                 triangles.push([mi[2], mi[1], ci[2]]);
                 triangles.push([mi[0], mi[1], mi[2]]);
+            }
+            (Some(m), _) => {
+                let mi: Vec<u32> = m.iter().map(|&id| slot(id, &mut positions)).collect();
+                triangles.push([ci[0], mi[0], mi[3]]);
+                triangles.push([ci[1], mi[1], mi[0]]);
+                triangles.push([ci[2], mi[2], mi[1]]);
+                triangles.push([ci[3], mi[3], mi[2]]);
+                triangles.push([mi[0], mi[1], mi[2]]);
+                triangles.push([mi[0], mi[2], mi[3]]);
             }
             (_, 3) => triangles.push([ci[0], ci[1], ci[2]]),
             _ => {
@@ -439,8 +534,8 @@ mod tests {
         let tet = m.elements[0].clone();
         m.elements.push(Element {
             id: 2,
-            element_type: "S4".into(),
-            nodes: vec![1, 2, 3, 4],
+            element_type: "B31".into(),
+            nodes: vec![1, 2],
         });
         let mut missing = Element { id: 3, ..tet };
         missing.nodes[9] = 99;
@@ -467,14 +562,153 @@ mod tests {
         assert!(m.triangles.is_empty());
     }
 
+    const CUBE: [[f64; 3]; 8] = [
+        [0., 0., 0.],
+        [1., 0., 0.],
+        [1., 1., 0.],
+        [0., 1., 0.],
+        [0., 0., 1.],
+        [1., 0., 1.],
+        [1., 1., 1.],
+        [0., 1., 1.],
+    ];
+    const HEX_EDGES: [(usize, usize); 12] = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ];
+
+    /// One element of a type: the corners, then 1 mid-side node for each edge in the list.
+    fn element(element_type: &str, corners: &[[f64; 3]], edges: &[(usize, usize)]) -> Model {
+        let mut nodes: Vec<Node> = (corners.iter().enumerate())
+            .map(|(i, p)| node(i as u32 + 1, p[0], p[1], p[2]))
+            .collect();
+        for &(a, b) in edges {
+            let m: [f64; 3] = std::array::from_fn(|k| 0.5 * (corners[a][k] + corners[b][k]));
+            nodes.push(node(nodes.len() as u32 + 1, m[0], m[1], m[2]));
+        }
+        let ids = nodes.iter().map(|n| n.id).collect();
+        let element = Element {
+            id: 1,
+            element_type: element_type.into(),
+            nodes: ids,
+        };
+        model(nodes, vec![element])
+    }
+
+    #[test]
+    fn hexahedra_draw_2_triangles_or_6_triangles_for_each_face() {
+        let m = build(&element("C3D8", &CUBE, &[]));
+        assert_eq!((m.triangles.len(), m.edges.len()), (12, 12));
+        assert_eq!(m.feature_edges.len(), 12);
+        let m = build(&element("C3D20R", &CUBE, &HEX_EDGES));
+        assert_eq!((m.triangles.len(), m.edges.len()), (36, 24));
+        assert_eq!(m.feature_edges.len(), 24);
+        assert_eq!(m.skipped_elements, 0);
+    }
+
+    #[test]
+    fn wedges_draw_2_triangle_faces_and_3_quad_faces() {
+        let corners = [
+            [0., 0., 0.],
+            [1., 0., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+            [1., 0., 1.],
+            [0., 1., 1.],
+        ];
+        let m = build(&element("C3D6", &corners, &[]));
+        assert_eq!((m.triangles.len(), m.edges.len()), (2 + 3 * 2, 9));
+        let edges = [(0, 1), (1, 2), (2, 0), (3, 4), (4, 5), (5, 3)];
+        let edges = [edges.as_slice(), &[(0, 3), (1, 4), (2, 5)]].concat();
+        let m = build(&element("C3D15", &corners, &edges));
+        assert_eq!((m.triangles.len(), m.edges.len()), (2 * 4 + 3 * 6, 18));
+    }
+
+    #[test]
+    fn a_quadratic_face_is_drawn_through_its_midside_nodes() {
+        let m = build(&element("C3D20", &CUBE, &HEX_EDGES));
+        // The 8 corners and the 12 midside nodes are all on the surface.
+        assert_eq!(m.positions.len(), 20);
+        let mut used: Vec<u32> = m.triangles.iter().flatten().copied().collect();
+        used.sort_unstable();
+        used.dedup();
+        assert_eq!(used.len(), 20);
+    }
+
+    #[test]
+    fn shell_elements_draw_1_face() {
+        let square = [[0., 0., 0.], [1., 0., 0.], [1., 1., 0.], [0., 1., 0.]];
+        let m = build(&element("S4R", &square, &[]));
+        assert_eq!((m.triangles.len(), m.edges.len()), (2, 4));
+        let m = build(&element("S8R", &square, &[(0, 1), (1, 2), (2, 3), (3, 0)]));
+        assert_eq!((m.triangles.len(), m.edges.len()), (6, 8));
+        // Both sides of a shell are the same face.
+        let nodes: Vec<u32> = (0..8).collect();
+        let face = |number| surface_face("S8R", &nodes, number).map(|f| f.corners);
+        assert_eq!(face(1), face(2));
+        assert!(face(1).is_some());
+        assert!(face(3).is_none());
+    }
+
+    #[test]
+    fn a_flat_shell_mesh_has_no_feature_edge_inside() {
+        let corners = [
+            [0., 0., 0.],
+            [1., 0., 0.],
+            [2., 0., 0.],
+            [0., 1., 0.],
+            [1., 1., 0.],
+            [2., 1., 0.],
+        ];
+        let nodes: Vec<Node> = (corners.iter().enumerate())
+            .map(|(i, p)| node(i as u32 + 1, p[0], p[1], p[2]))
+            .collect();
+        let quad = |id, nodes: [u32; 4]| Element {
+            id,
+            element_type: "S4".into(),
+            nodes: nodes.to_vec(),
+        };
+        let elements = vec![quad(1, [1, 2, 5, 4]), quad(2, [2, 3, 6, 5])];
+        let m = build(&model(nodes, elements));
+        assert_eq!(m.edges.len(), 7);
+        assert_eq!(m.feature_edges.len(), 6);
+    }
+
+    #[test]
+    fn every_vtk_cell_type_of_the_results_has_an_element_type() {
+        for (cell, name) in [
+            (VTK_TETRA, "C3D4"),
+            (VTK_HEXAHEDRON, "C3D8"),
+            (VTK_WEDGE, "C3D6"),
+            (VTK_QUADRATIC_TETRA, "C3D10"),
+            (VTK_QUADRATIC_HEXAHEDRON, "C3D20"),
+            (VTK_QUADRATIC_WEDGE, "C3D15"),
+        ] {
+            assert_eq!(vtk_element_type(cell), Some(name));
+            assert!(shape(name).is_some());
+        }
+        assert_eq!(vtk_element_type(5), None);
+    }
+
     fn fixture(name: &str) -> Model {
         let path = format!("{}/../../{name}", env!("CARGO_MANIFEST_DIR"));
-        fh_inp::parse(&std::fs::read_to_string(path).unwrap()).unwrap()
+        let flat = fh_inp::flatten(std::path::Path::new(&path)).unwrap();
+        fh_inp::parse(&flat.text)
     }
 
     #[test]
     fn cantilever_fixture_is_a_closed_box() {
-        let m = build(&fixture("validation/cases/cantilever-c3d10/mesh-8.inp"));
+        let m = build(&fixture("validation/cases/cantilever-c3d10/job.inp"));
         assert_eq!(m.skipped_elements, 0);
         assert!(!m.triangles.is_empty());
         let b = m.bounds.unwrap();
@@ -485,12 +719,5 @@ mod tests {
         // A box has 12 sharp edges, each split into segments by the mesh.
         assert!(m.feature_edges.len() >= 12);
         assert!(m.feature_edges.len() < m.edges.len());
-    }
-
-    #[test]
-    fn c3d10_fixture_draws_without_skips() {
-        let m = build(&fixture("fixtures/inp/m2-keywords.inp"));
-        assert!(m.triangles.len() >= 16);
-        assert!(m.element_count > m.skipped_elements);
     }
 }

@@ -14,7 +14,7 @@ Mesh.MeshSizeMin = 0.5;\n";
 /// Run `fh mesh`. The units are required (D-18), so this adds `--units SI-mm`
 /// unless the arguments declare units.
 fn mesh(args: &[&str], gmsh: Option<&Path>) -> Output {
-    let declared = args.iter().any(|a| matches!(*a, "--units" | "--case"));
+    let declared = args.contains(&"--units");
     let mut all = args.to_vec();
     if !declared {
         all.extend(["--units", "SI-mm"]);
@@ -49,12 +49,20 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
     let out = mesh(&[p(&geo)], Some(&gmsh));
     let stdout = stdout(&out);
     assert_eq!(out.status.code(), Some(0), "stderr: {}", stderr(&out));
-    assert!(dir.join("beam.msh").is_file());
-    assert!(stdout.contains("type\tC3D10\t"), "{stdout}");
+    let inp = std::fs::read_to_string(dir.join("beam.inp")).unwrap();
+    assert!(inp.contains("*ELEMENT, TYPE=C3D10, ELSET=ALL"), "{inp}");
+    assert!(inp.contains("*NSET, NSET=FIXED"), "no FIXED set");
+    assert!(inp.contains("*ELSET, ELSET=BEAM"), "no BEAM set");
+    assert!(inp.contains("** units: SI-mm"), "{inp}");
+    assert!(stdout.contains("ok\t"), "{stdout}");
     assert!(stdout.contains("elset\tBEAM\t"), "{stdout}");
     assert!(stdout.contains("nset\tFIXED\t"), "{stdout}");
-    assert!(stdout.contains("order\t2"), "{stdout}");
     assert!(stdout.contains("min_scaled_jacobian\t0."), "{stdout}");
+    // The input holds the mesh and nothing else. The chat adds the model.
+    assert!(
+        !inp.contains("*STEP") && !inp.contains("*MATERIAL"),
+        "{inp}"
+    );
 }
 
 #[test]
@@ -141,31 +149,32 @@ fn a_run_with_no_units_is_refused() {
     let dir = scratch("nounits");
     let geo = dir.join("a.geo");
     std::fs::write(&geo, BEAM).unwrap();
-    fails(&fh_raw(&[p(&geo)], no_gmsh()), 1, "unit.case.missing");
+    fails(&fh_raw(&[p(&geo)], no_gmsh()), 1, "unit.missing");
 }
 
 #[test]
-fn the_case_units_are_used_and_checked_against_the_step_file() {
-    let dir = scratch("case");
+fn the_units_are_checked_against_the_step_file() {
+    let dir = scratch("units");
     let step = dir.join("a.step");
     std::fs::write(&step, METRE_STEP).unwrap();
-    let (mm, m) = (unit_case("SI-mm"), unit_case("SI-m"));
     says(
-        &fh_raw(&[p(&step), "--case", p(&mm)], no_gmsh()),
+        &fh_raw(&[p(&step), "--units", "SI-mm"], no_gmsh()),
         "unit.step.mismatch",
     );
     says(
-        &fh_raw(&[p(&step), "--case", p(&m)], no_gmsh()),
+        &fh_raw(&[p(&step), "--units", "SI-m"], no_gmsh()),
         "cannot start gmsh",
     );
-    // `--units` that differs from the case is a conflict, even for a .geo file.
-    let args = [p(&step), "--case", p(&m), "--units", "SI-mm"];
-    says(&fh_raw(&args, no_gmsh()), "unit.case.conflict");
 }
 
 #[test]
 fn bad_options_exit_2() {
-    for args in [&[][..], &["a.geo", "--order", "2"], &["a.geo", "--bogus"]] {
+    for args in [
+        &[][..],
+        &["a.geo", "--order", "2"],
+        &["a.geo", "--bogus"],
+        &["a.geo", "--case", "x"],
+    ] {
         let out = mesh(args, None);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
     }

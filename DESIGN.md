@@ -118,23 +118,21 @@ Not now: element birth and death (`*MODEL CHANGE`, M8) and submodelling (M9).
 
 | Element type | Use |
 |---|---|
-| `C3D10` | Tet10, the only element (D-19). |
+| `C3D10` | Tet10, the default element of `fh mesh` (D-19). |
 
-The parser refuses every other `TYPE=` on `*ELEMENT` with a clear error. A gmsh `.msh` file must hold type 11 (`C3D10`) volumes.
+CalculiX reads every element type that it has. The chat can write any of them. The page shows each element type that CalculiX writes to the result file. A gmsh `.msh` file must hold type 11 (`C3D10`) volumes.
 
 ### 7.3 Keywords
 
-Scope: the keywords that the validation cases need. Any other keyword fails with a clear error that names the keyword and the line number. `docs/reference/inp.md` gives the parameters and the limits.
+Scope: CalculiX reads and checks the input, and it takes every keyword that it has. The small reader of `fh` takes only the keywords below, for the preview of the supports and the loads. It skips every other keyword with no error. `docs/reference/inp.md` gives the parameters.
 
-- **Structure:** The model is flat. `*PART`, `*ASSEMBLY` and `*INSTANCE` fail with a clear error.
 - **Mesh and sets:** `*NODE`, `*ELEMENT`, `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`
-- **Material and section:** `*MATERIAL`, `*ELASTIC`, `*EXPANSION`, `*SOLID SECTION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE`
-- **Steps and loads:** `*STEP`, `*STATIC`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*TEMPERATURE`, `*END STEP`
+- **Steps and loads:** `*STEP`, `*END STEP`, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD`, `*INCLUDE`
 
 ### 7.4 Compatibility
 
 - Keyword names and meanings match Abaqus for the supported subset.
-- The subset has no constraints (`*COUPLING`, `*EQUATION`, `*MPC`), no `NLGEOM` and no element other than `C3D10`. Each of them fails with a clear error.
+- CalculiX defines the meaning of each keyword. The small reader gives no error for a keyword that it skips.
 - `docs/compatibility.md` lists every difference. A test covers each difference.
 - Tests use our own `.inp` files. No Abaqus manual files go in the repo (section 10.1).
 
@@ -290,7 +288,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 
 ### D-01 Fixture schema is TOML
 - **Decided by:** the captain.
-- **Choice:** Each validation case has a `case.toml` file.
+- **Choice:** Each validation case has a `check.toml` file.
 - **Reason:** TOML is easy for people and agents to read and edit. It has comments.
 - **Rejected:** JSON (no comments), YAML (many parse traps).
 - **Reverse if:** the harness needs a structure that TOML cannot express.
@@ -391,23 +389,23 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Python CAD libraries exist, and a chat can write the script. gmsh already includes OpenCASCADE, so STEP goes through gmsh.
 - **Rejected:** a CAD kernel or a STEP reader inside `fh`.
 - **Reverse if:** build123d or gmsh cannot write or read STEP on a supported platform.
-- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, and `fh mesh` for gmsh and the checks. `fh model` turns the `.msh` file and the `[model]` table of the case into a solver input (case `bar-tension`). Named regions are built: `fh mesh` makes a gmsh physical surface for each `[[model.region]]` of the case, and `fh model` writes it as a node set and an element-face surface (cases `bar-pressure` and `bar-pressure-m`). `fh mesh` is built (D-18, D-19).
+- **Built:** the first path, for a bar (M2b, `docs/cad-recipe.md`): a build123d script, and `fh mesh` for gmsh and the checks. `fh mesh` writes the nodes, the elements and the named node, element and face sets into an input file. The chat or the case writes the rest of the CalculiX input and includes the mesh (`*INCLUDE`). `fh mesh` is built (D-18, D-19).
 
-### D-18 The case declares units, `fh` refuses a mismatch
+### D-18 The mesh declares units, `fh` refuses a mismatch
 - **Decided by:** the captain.
-- **Choice:** The case TOML declares the units. `fh` refuses to run when the units do not match, when the case has no unit, and when a STEP file has no unit record.
+- **Choice:** `fh mesh` declares the units. `fh` refuses to mesh when the units do not match, when `--units` is missing, and when a STEP file has no unit record.
 - **Reason:** A wrong unit gives wrong results without any warning.
 - **Rejected:** a default unit, a guessed unit, a warning in place of the refusal.
 - **Reverse if:** the captain allows a run with unknown units.
-- **Built:** in part (M2b). The case TOML has a required `units` key (`SI-mm` or `SI-m`). `fh mesh` takes the units from `--case DIR` or `--units`, has no default, and refuses a conflict (`unit.case.conflict`) and no units (`unit.case.missing`). It refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than the case (`unit.step.mismatch`). `fh mesh` writes a unit record beside the mesh (`OUT.msh.units`). `fh model` refuses a mesh with no record (`unit.mesh.missing`), with another unit than the case (`unit.mesh.mismatch`) or with a record that conflicts with `--mesh-units` (`unit.mesh.conflict`). `fh model` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve-ccx` writes those units into `summary.toon` and the PVD file.
+- **Built:** in part (M2b). `fh mesh` takes the units from `--units`, has no default, and refuses no units (`unit.missing`). It refuses a STEP file with no unit record (`unit.step.missing`), with different unit records (`unit.step.conflict`) or with another unit than `--units` (`unit.step.mismatch`). `fh mesh` writes the line `** units: SI-mm` (or `SI-m`) into the input, and `fh-solve-ccx` writes those units into the PVD file.
 
-### D-19 C3D10 is the only element
+### D-19 C3D10 is the default element
 - **Decided by:** the captain.
-- **Choice:** `C3D10` (tet10) is the only element (2026-10-19). Before that, hex8 (`C3D8I`, `C3D8`) was allowed for extruded parts.
-- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case (1 x 1 mm section, 1 element through it), plain hex8 (`C3D8`, B-bar) gave 0.35 to 2.07 times the beam deflection. `docs/compatibility.md` at main commit `50dded8` has the data. 1 element type keeps the parser, the adapter, the viewer and the cases small.
+- **Choice:** `C3D10` (tet10) is the element that `fh mesh` writes (2026-10-19). Before that, hex8 (`C3D8I`, `C3D8`) was allowed for extruded parts. The chat can write another element type in its CalculiX input, for example a shell (`S8R`), and the page shows it (this change).
+- **Reason:** Tetrahedra mesh any shape. Quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case (1 x 1 mm section, 1 element through it), plain hex8 (`C3D8`, B-bar) gave 0.35 to 2.07 times the beam deflection. `docs/compatibility.md` at main commit `50dded8` has the data. 1 element type for the mesher keeps `fh mesh` and the cases small.
 - **Rejected:** hex8 as the default element, and hex8 for extruded parts.
 - **Reverse if:** the workflow benchmark records (B1) show that typical tet10 models do not fit D-06.
-- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`). The parser, the `.msh` reader and the viewer accept only `C3D10`.
+- **Built:** the M2b recipe makes `C3D10` meshes from CAD, and `ccx` solves them. The native `C3D10` element (M2, PR 10) left with D-29. `fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`). The `.msh` reader accepts only `C3D10`.
 
 ### D-20 Early mesh-only viewer
 - **Decided by:** the captain.

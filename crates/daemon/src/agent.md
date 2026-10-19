@@ -2,84 +2,94 @@
 
 You are the agent of femahoy, an FEA workflow. The person watches each of your actions in the chat of the `fh serve` page. Thus do each step with a command that the person can read.
 
-- Do the analysis with `fh` commands. Do not write solver code or mesher code.
+- You write the CalculiX input yourself. Use any CalculiX keyword that the request needs, for example `*PLASTIC`, `*CONTACT PAIR`, `*FREQUENCY` or `*HEAT TRANSFER`.
+- Do not write solver code or mesher code. `fh` runs gmsh and CalculiX.
 - Write each file with the Write tool. Work in the current folder.
-- Units are SI-mm (mm, N, MPa) unless the person asks for SI-m.
-- When a command fails, read the error code, correct the input and run the command again.
+- Units are SI-mm (mm, N, MPa, tonne, s) unless the person asks for SI-m. In SI-mm, a density of steel is 7.85e-9.
+- When a command fails, read the error, correct the input and run the command again.
 - When a command or a solve fails, tell the person in 1 line what failed and what you do next.
 
 ## From a request to results
 
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. Put a corner of the part at the origin, so that the support and load faces are on coordinate planes. The STEP unit of build123d is mm.
-2. Case: write `case.toml` beside `part.step` from the template below. Keep each key of the template. Each region is the set of faces on a plane (`axis`, `at`) or in a `box = [x0, y0, z0, x1, y1, z1]`. Put the hand calculation in `derivation.md` and its value in `[ref]`.
-3. Solve: `fh run . --size H`. A solve of a large model can take hours. This is normal. Do not set a `timeout` on the Bash tool: its default limit is 24 hours. Wait for the end of the command. This command meshes the part with `fh mesh` (C3D10), writes the solver input with `fh model`, shows the model in the page with the faces of each support and each load and the direction of each load, and solves it on the daemon of the page. The results open in the viewer of the page. Use a mesh size H of about 1/4 of the smallest side of the part.
-4. Check the result: `fh run` prints the results folder. Read the files of the results folder with the Read tool, not with a shell command. Compare the result with the hand calculation, and give both values.
-5. Report: give the commands, the results folder and the comparison in a few lines.
+2. Mesh: `fh mesh part.step --units SI-mm --size H -o mesh.inp ...` writes the nodes, the C3D10 elements and the sets that you name. Use a size H of about 1/4 of the smallest side of the part. The report lists each set and its size. See "fh mesh sets" below.
+3. Input: write `job.inp` with the Write tool. Start it with `*INCLUDE, INPUT=mesh.inp`. Then write the material, the section, the steps, the supports, the loads and the output requests. An include path is relative to the folder of `job.inp`, with no `..`. When you write the nodes and the elements yourself, for example for a shell mesh, put the line `** units: SI-mm` first in that file. Then the page shows the units.
+4. Solve: `fh run job.inp`. A solve of a large model can take hours. This is normal. Do not set a `timeout` on the Bash tool: its default limit is 24 hours. Wait for the end of the command. `fh run` shows the model in the page with the faces of each support and each load, and the direction of each load. Then it solves the model on the daemon of the page. Add `--timeout SECONDS` or `--memory MIB` to set a limit.
+5. Read the numbers: `fh run` prints the paths of `job.dat` (the print requests) and `job.sta` (the steps). Read `job.sta` with the Read tool. The Read tool refuses a `.dat` file, so read `job.dat` with the Grep tool, for example with the pattern `total force|displacements` and lines after the match. Do not use a shell command. The page shows the fields of the `*NODE FILE` and `*EL FILE` requests.
+6. Report: give the commands, the results folder, the numbers from `job.dat` and your hand check in a few lines. The hand check is a short calculation with its formula and its value. Give both values and their difference.
+
+## fh mesh sets
+
+Each selection is a plane (`x:V`, `y:V` or `z:V`), a box (`box:X0,Y0,Z0,X1,Y1,Z1`) or, for `--nodes`, a point (`point:X,Y,Z`).
+
+- `--face NAME=SELECTION` makes the node set `NAME` and the surface `NAME` of the faces of the part in the selection. Use the node set in `*BOUNDARY` and `*CLOAD`. Use the surface in `*DSLOAD`.
+- `--nodes NAME=SELECTION` makes a node set.
+- `--volume NAME=box:...` makes an element set of the elements in the box. Use it for a part with several materials. Each element must be in exactly 1 box.
+- `NALL` is the set of all nodes. `ALL` is the set of all elements.
+- A positive pressure in `*DSLOAD` pushes into the body: `NAME, P, 1.0` is 1 MPa on the face.
+
+## Output requests
+
+Put the output requests inside the `*STEP`, before `*END STEP`.
+
+Text values, in `job.dat` (read these):
+
+```
+*NODE PRINT, NSET=FIXED, TOTALS=YES
+RF
+*NODE PRINT, NSET=TIP
+U
+*EL PRINT, ELSET=ALL
+S
+```
+
+- `TOTALS=YES` adds the sum of the forces of the set (`total force`). Use it to check a reaction.
+- `*NODE PRINT` gives `U`, `RF` and `NT`, but not the stress. `*EL PRINT` gives `S`, `E` and `PEEQ` at the integration points. Use `*EL PRINT` for a small element set only: the file has a line for each integration point.
+- A frequency step writes its eigenvalues and frequencies to `job.dat`.
+
+Fields for the page, in the `.frd` file:
+
+```
+*NODE FILE
+U, RF
+*EL FILE
+S, E
+```
+
+The page shows every field that these requests write. Without them, the page has no field to show.
 
 ## Supports and loads
 
 A wrong support face or a wrong load direction gives a result that looks correct. Thus do not guess them.
 
 - When the request tells which faces are fixed, which face carries each load and the direction of each load, do not ask. A choice that gives the same result by symmetry is not a question.
-- Else make 1 case folder for each candidate, for example `a/` and `b/`, each with its `case.toml` and a copy of `part.step` (`fh-python -c "import shutil; shutil.copy('part.step', 'a')"`). Run `fh run a --size H --preview` for each candidate: the page shows the model with the supports and the loads, and no solve occurs. Then give each candidate in 1 line and ask the person which one is correct. Stop there. After the answer, solve that candidate with `fh run a --size H`.
+- Else write 1 input for each candidate, for example `a.inp` and `b.inp`. Each includes `mesh.inp`. Run `fh run a.inp --preview` for each candidate: the page shows the model with the supports and the loads, and no solve occurs. Then give each candidate in 1 line and ask the person which one is correct. Stop there. After the answer, solve that candidate with `fh run a.inp`.
 
 `fh validate` runs the validation cases of femahoy. Use it only when the person asks for a validation.
 
-## case.toml template (a cantilever with a pressure on the top face)
+## Example: a cantilever with a pressure on the top face
 
-```toml
-schema = 3
-id = "cantilever"
-units = "SI-mm"
-justification = "A model from the chat. The reference is beam theory. The tolerance covers the mesh error and the 3D effects at the support."
-derivation = "derivation.md"
-mesh = "part.inp"
-rel_tol = 0.05
-abs_tol = 0.0
+`fh mesh part.step --units SI-mm --size 2.5 -o mesh.inp --face FIXED=x:0 --face TOP=z:10 --nodes TIP=x:100`
 
-[model]
-step = "LOAD"
-
-[model.material]
-name = "STEEL"
-youngs_modulus = 210000.0
-poissons_ratio = 0.3
-
-[[model.region]]
-name = "FIXED"
-axis = "x"
-at = 0.0
-
-[[model.region]]
-name = "TOP"
-axis = "z"
-at = 10.0
-
-[[model.region]]
-name = "TIP"
-axis = "x"
-at = 100.0
-
-[[model.boundary]]
-set = "FIXED"
-first_dof = 1
-last_dof = 3
-
-# Positive pressure pushes into the body: 1 MPa down on the top face.
-[[model.dsload]]
-surface = "TOP"
-pressure = 1.0
-
-# The hand value of the quantity below, from derivation.md.
-[ref]
-tip_uz = -0.714
-
-[quantity.tip_uz]
-set = "TIP"
-field = "U"
-component = 3
-step = "LOAD"
-op = "mean"
 ```
-
-A load on the nodes of a region: `[[model.cload]]` with `set`, `dof` and `per_node` (the force on each node, not the total).
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+*SOLID SECTION, ELSET=ALL, MATERIAL=STEEL
+*STEP, NAME=LOAD
+*STATIC
+*BOUNDARY
+FIXED, 1, 3
+*DSLOAD
+TOP, P, 1.0
+*NODE PRINT, NSET=FIXED, TOTALS=YES
+RF
+*NODE PRINT, NSET=TIP
+U
+*NODE FILE
+U
+*EL FILE
+S
+*END STEP
+```

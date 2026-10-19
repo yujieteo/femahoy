@@ -8,7 +8,7 @@ use std::net::{Ipv4Addr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use fh_daemon::{Config, Daemon, Options, RunState};
+use fh_daemon::{Config, Daemon, Limits, Options, RunState};
 use fh_solver_ccx::Ccx;
 
 fn fixture(name: &str) -> PathBuf {
@@ -80,7 +80,7 @@ impl Lab {
         let c = self.daemon.client();
         let input = self.dir.join("project/model.inp");
         fs::copy(fixture("tet.inp"), &input).unwrap();
-        let run = c.submit(&input).unwrap().run;
+        let run = c.submit(&input, &Limits::default()).unwrap().run;
         let deadline = Instant::now() + Duration::from_secs(30);
         while c.record(&run).unwrap().state != RunState::Succeeded {
             assert!(Instant::now() < deadline, "the run does not succeed");
@@ -325,4 +325,42 @@ fn the_page_shows_a_copy_of_the_model_before_the_solve() {
     }
     let relative = c.preview(Path::new("model.inp"), "x").unwrap_err();
     assert_eq!(relative.code, "input.invalid");
+}
+
+#[test]
+fn a_preview_and_a_run_serve_the_model_with_its_include_files() {
+    let lab = Lab::new("include", false);
+    let c = lab.daemon.client();
+    let project = lab.dir.join("project");
+    let tet = fs::read_to_string(fixture("tet.inp")).unwrap();
+    let (mesh, rest) = tet.split_at(tet.find("*MATERIAL").unwrap());
+    fs::write(project.join("mesh.inp"), mesh).unwrap();
+    let file = project.join("job.inp");
+    fs::write(&file, format!("*INCLUDE, INPUT=mesh.inp\n{rest}")).unwrap();
+    let bearer = lab.bearer();
+    let auth = [("Authorization", bearer.as_str())];
+    let flat = format!("{mesh}{rest}");
+
+    // The page reads one text, with the lines of the include file in place.
+    let preview = c.preview(&file, "job").unwrap();
+    let shown = lab.get(&format!("/api/v1/previews/{preview}"), &auth);
+    assert_eq!((shown.status, shown.text()), (200, flat.clone()));
+
+    let run = c.submit(&file, &Limits::default()).unwrap().run;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while c.record(&run).unwrap().state != RunState::Succeeded {
+        assert!(Instant::now() < deadline, "the run does not succeed");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let copy = lab.get(&format!("/api/v1/runs/{run}/input"), &auth);
+    assert_eq!((copy.status, copy.text()), (200, flat));
+    let kept = lab.dir.join("state/runs").join(&run).join("in/mesh.inp");
+    assert_eq!(fs::read_to_string(kept).unwrap(), mesh);
+
+    // An include path that leaves the folder is refused.
+    fs::write(&file, "*INCLUDE, INPUT=../mesh.inp\n").unwrap();
+    assert_eq!(
+        c.submit(&file, &Limits::default()).unwrap_err().code,
+        "input.invalid"
+    );
 }

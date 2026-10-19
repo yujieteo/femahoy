@@ -12,9 +12,9 @@ fh serve
 ```
 
 1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, [docs/ccx.md](docs/ccx.md)).
-2. `fh serve` starts a local daemon and opens the page in the browser. Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`) and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login ([docs/chat.md](docs/chat.md)). Stop the daemon with `fh serve --stop`.
+2. `fh serve` starts a local daemon and opens the page in the browser. Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login ([docs/chat.md](docs/chat.md)). Stop the daemon with `fh serve --stop`.
 
-For your own model, give `fh run` an `.inp` file or a case folder (`case.toml` and one STEP file). The [quickstart](docs/quickstart.md) shows each step, and [`fh` commands](docs/reference/fh.md) gives the options and the exit codes.
+For your own model, give `fh run` a CalculiX `.inp` file. `fh mesh` makes the mesh and the sets from a STEP file. The [quickstart](docs/quickstart.md) shows each step, and [`fh` commands](docs/reference/fh.md) gives the options and the exit codes.
 
 ## Product
 
@@ -39,6 +39,6 @@ The code is licensed under AGPL-3.0.
 - [Quickstart](docs/quickstart.md): the install, `fh run`, and the STEP, mesh, solver and validation commands, with output from actual runs.
 - `DESIGN.md`: product design, architecture, crates, solver scope and the decision log (section 15).
 - `AGENTS.md`: rules for the agents that build femahoy.
-- [Input keywords and element types](docs/reference/inp.md): accepted input and solver limits.
+- [Input keywords and element types](docs/reference/inp.md): the input of the preview and the element types of the page.
 - [`fh` commands](docs/reference/fh.md): diagnostics and exit codes.
-- [Case TOML fields](docs/reference/case-toml.md): schema, measurements, and tolerances.
+- [Check file fields](docs/reference/check-toml.md): measurements and tolerances of a validation case.

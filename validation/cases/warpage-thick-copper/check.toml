@@ -1,0 +1,11 @@
+# See derivation.md. 0.700 um/K x 40 K. The end moves to -z, because the copper face becomes
+# convex on heating.
+rel_tol = 0.12
+abs_tol = 0.0
+
+[warpage]
+value = -0.028
+set = "END"
+field = "U"
+component = 3
+op = "value"

@@ -6,11 +6,12 @@
 //! ```text
 //! <state>/daemon.lock                 exclusive lock of the one daemon
 //! <state>/daemon.info                 port and token for clients (mode 0600)
-//! <state>/runs/<run>/input.inp        the read-only copy of the input that the run solves
+//! <state>/runs/<run>/in/input.inp     the read-only copy of the input that the run solves, with
+//!                                     the copies of its `*INCLUDE` files
 //! <state>/runs/<run>/record           the run record
 //! <state>/runs/<run>/events.log       bounded event log
 //! <state>/runs/<run>/out/             run folder of ccx
-//! <state>/previews/<n>.inp            the copy of the input of a preview
+//! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
 //! ```
 //!
 //! Each record is written to a temporary file and then renamed, so a reader never sees a
@@ -24,7 +25,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use fh_solver_ccx::{CancelToken, Ccx};
+use fh_solver_ccx::{input_text, stage_input, CancelToken, Ccx};
 
 use crate::contract::{
     now_ms, parse_event, run_id, valid_run, Error, Event, Events, Message, RunRecord, RunState,
@@ -51,6 +52,7 @@ const PREVIEWS_DIR: &str = "previews";
 const RECORD_FILE: &str = "record";
 const EVENTS_FILE: &str = "events.log";
 const INPUT_FILE: &str = "input.inp";
+const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
 const STOPPED: &str = "the daemon stopped before the run ended";
 
@@ -60,6 +62,14 @@ pub struct Config {
     pub state_dir: PathBuf,
     /// The `ccx` program, with its limits.
     pub solver: Ccx,
+}
+
+/// The limits of one run. A field that is `None` keeps the limit of the daemon.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Limits {
+    pub timeout: Option<Duration>,
+    /// The memory limit in bytes.
+    pub memory: Option<u64>,
 }
 
 /// The run service. It owns every run. Clients only send commands and read records.
@@ -95,6 +105,8 @@ struct Live {
     log_bytes: u64,
     log_full: bool,
     cancel: CancelToken,
+    /// The solver with the limits of this run.
+    solver: Ccx,
 }
 
 impl Live {
@@ -210,15 +222,6 @@ fn read_message(path: &Path) -> Result<Option<Message>, Error> {
     }
 }
 
-/// Copy `src` to `dst` and make the copy read-only.
-fn copy_input(src: &Path, dst: &Path) -> Result<(), Error> {
-    let err = |e| Error::io("input copy", e);
-    fs::copy(src, dst).map_err(err)?;
-    let mut perms = fs::metadata(dst).map_err(err)?.permissions();
-    perms.set_readonly(true);
-    fs::set_permissions(dst, perms).map_err(err)
-}
-
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
@@ -314,7 +317,7 @@ impl Shared {
 
     /// Run one queued run to its end.
     fn run(&self, run: &str) {
-        let cancel = {
+        let (cancel, solver) = {
             let mut inner = self.lock();
             let Some(live) = inner.live.get_mut(run) else {
                 return;
@@ -323,12 +326,12 @@ impl Shared {
                 return;
             }
             self.change(live, RunState::Running, "");
-            live.cancel.clone()
+            (live.cancel.clone(), live.solver.clone())
         };
         self.wake.notify_all();
         let dir = self.run_dir(run);
-        let result = self.solver.run_with(
-            &dir.join(INPUT_FILE),
+        let result = solver.run_with(
+            &dir.join(IN_DIR).join(INPUT_FILE),
             &dir.join(OUT_DIR),
             &cancel,
             &mut |p| {
@@ -381,6 +384,18 @@ fn stopping(inner: &Inner) -> Result<(), Error> {
         return Err(Error::new(503, "daemon.stopping", "the daemon is stopping"));
     }
     Ok(())
+}
+
+/// Copy the input file and its include files into `dir`. A missing include file is a bad input.
+fn stage(input: &Path, dir: &Path) -> Result<(), Error> {
+    stage_input(input, dir, INPUT_FILE).map_err(|e| Error::bad("input.invalid", e.message))
+}
+
+/// The text of a copy of an input, with its include files.
+fn flat_text(path: &Path) -> Result<Vec<u8>, Error> {
+    input_text(path)
+        .map(String::into_bytes)
+        .map_err(|e| Error::new(500, "input.unreadable", e.message))
 }
 
 /// The input file of a submit or a preview: the absolute path of a file.
@@ -460,9 +475,9 @@ impl Service {
         })
     }
 
-    /// Copy the input file and queue a run of the copy. `input` is the absolute path of
-    /// the file. A later change of the file does not change the run.
-    pub fn submit(&self, input: &str) -> Result<RunRecord, Error> {
+    /// Copy the input file and its `*INCLUDE` files, and queue a run of the copy. `input` is
+    /// the absolute path of the file. A later change of a file does not change the run.
+    pub fn submit(&self, input: &str, limits: Limits) -> Result<RunRecord, Error> {
         let sh = &self.shared;
         let mut inner = sh.lock();
         stopping(&inner)?;
@@ -478,7 +493,7 @@ impl Service {
         let dir = sh.run_dir(&run);
         fs::create_dir_all(&dir).map_err(|e| Error::io("run folder", e))?;
         inner.next_run += 1;
-        copy_input(path, &dir.join(INPUT_FILE))?;
+        stage(path, &dir.join(IN_DIR))?;
         let record = RunRecord {
             run: run.clone(),
             input: input.to_owned(),
@@ -501,6 +516,11 @@ impl Service {
             log_bytes: 0,
             log_full: false,
             cancel: CancelToken::new(),
+            solver: Ccx {
+                timeout: limits.timeout.or(sh.solver.timeout),
+                memory_limit: limits.memory.unwrap_or(sh.solver.memory_limit),
+                ..sh.solver.clone()
+            },
         };
         live.push("state queued");
         inner.live.insert(run.clone(), live);
@@ -509,33 +529,44 @@ impl Service {
         Ok(record)
     }
 
-    /// Copy the input file with no run, so that the page can show the model before the
-    /// solve. The answer is the preview ID.
+    /// Copy the input file and its `*INCLUDE` files with no run, so that the page can show the
+    /// model before the solve. The answer is the preview ID.
     pub fn preview(&self, input: &str) -> Result<String, Error> {
         let sh = &self.shared;
         let mut inner = sh.lock();
         stopping(&inner)?;
         let path = resolve_input(input)?;
         let id = inner.next_preview.to_string();
-        copy_input(path, &sh.dir.join(PREVIEWS_DIR).join(format!("{id}.inp")))?;
+        stage(path, &sh.dir.join(PREVIEWS_DIR).join(&id))?;
         inner.next_preview += 1;
         Ok(id)
     }
 
-    /// The bytes of the input of a preview, for the page.
+    /// The text of the input of a preview, for the page. It holds the text of the include files.
     pub fn preview_file(&self, id: &str) -> Result<Vec<u8>, Error> {
         let unknown = || Error::new(404, "preview.unknown", format!("no preview {id:?}"));
         let n: u64 = id.parse().map_err(|_| unknown())?;
-        let path = self.shared.dir.join(PREVIEWS_DIR).join(format!("{n}.inp"));
-        fs::read(&path).map_err(|e| match e.kind() {
-            ErrorKind::NotFound => unknown(),
-            _ => Error::io("preview", e),
-        })
+        let path = self
+            .shared
+            .dir
+            .join(PREVIEWS_DIR)
+            .join(n.to_string())
+            .join(INPUT_FILE);
+        if !path.is_file() {
+            return Err(unknown());
+        }
+        flat_text(&path)
     }
 
-    /// The bytes of the copy of the input that a run solves, for the page.
+    /// The text of the copy of the input that a run solves, for the page. It holds the text of
+    /// the include files.
     pub fn input_file(&self, run: &str) -> Result<Vec<u8>, Error> {
-        self.shared.run_file(run, Path::new(INPUT_FILE))
+        let path = {
+            let inner = self.shared.lock();
+            self.shared.record_of(&inner, run)?;
+            self.shared.run_dir(run).join(IN_DIR).join(INPUT_FILE)
+        };
+        flat_text(&path)
     }
 
     /// Stop a run. A queued run ends at once. A running run gets `cancelling`, and the

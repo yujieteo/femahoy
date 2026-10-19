@@ -15,12 +15,13 @@ If `ccx` does not start, each solve and `fh validate` stop with an error that re
 ## Run
 
 ```
-fh run model.inp    # one run through the daemon
+fh run job.inp      # one run through the daemon: CalculiX reads job.inp unchanged
 fh validate         # the validation suite through ccx
 ```
 
-The run folder gets `results.pvd` and `step-N.vtu`. There is no summary file: the run record has the state and the time. The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.log`) are in `run-dir/ccx`.
-U and RF come from `job.frd`. The stress comes from the integration points in `job.dat` (`*EL PRINT`).
+The chat writes `job.inp` and gives it to CalculiX with each file that it includes (`*INCLUDE`). The adapter copies them into `run-dir/ccx` and starts `ccx -i job` there, so an include path is relative to the folder of `job.inp`. It does not change the text.
+The run folder gets `results.pvd` and `step-N.vtu`. There is no summary file: the run record has the state and the time. The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.sta`, `job.log`) are in `run-dir/ccx`.
+The text results are in `job.dat` and `job.sta`. The input asks for them with `*NODE PRINT` and `*EL PRINT`. The page shows the fields of `job.frd`, which the input asks for with `*NODE FILE` and `*EL FILE`.
 
 ## Run folder
 
@@ -31,19 +32,18 @@ U and RF come from `job.frd`. The stress comes from the integration points in `j
 
 ## Result contract
 
-`fh validate` reads these arrays in each VTU file. The adapter uses the shared code in `fh_io::result` for the ids, the set flags and the rule for `S`.
+The adapter converts each nodal field in `job.frd` to a point array in `step-N.vtu`, for the last increment of each step. A frequency step gives one frame for each mode.
 
-- `NODE_ID` on the points and `ELEMENT_ID` on the cells, in model order.
-- `NSET_<name>` on the points and `ELSET_<name>` on the cells, one for each set of the model. The value is 1 for a member of the set and 0 for all other entries.
-- `U` and `RF` on the points.
-- `S` on the cells, in the order `[xx, yy, zz, xy, yz, xz]`. `S` is the volume mean of the integration point stress. The weight of each point is its integration weight times its Jacobian determinant.
-- `MISES` on the cells, from `S`.
+- `DISP` is `U`, `FORC` is `RF`, `STRESS` is `S` (order `[xx, yy, zz, xy, yz, xz]`), `TOSTRAIN` is `E` and `PE` is `PEEQ`. Each other block keeps its `ccx` name.
+- `MISES` comes from `S`.
+- A shell or a beam is a solid element in `job.frd` (code 1 to 6), so the page draws each element type that `ccx` writes.
+- An input with no `*NODE FILE` and no `*EL FILE` gives no frame and no field. `fh run` then says that the page has no field to show.
 
 ## Process limits
 
 - There is no default time limit, because a large model can solve for hours. A cancel stops a run.
 - The default memory limit is 85% of the machine RAM. If the RAM is not known, there is no limit.
-- A validation case can set its own limits with `time_limit_s` and `memory_limit_mib`.
+- `fh run --timeout SECONDS --memory MIB` sets the limits of one run. `fh validate` uses a time limit of 300 s.
 - The error at a limit tells the user to use a coarser mesh.
 - `ccx` runs in its own process group. A cancel, the time limit and the memory limit kill the whole group at once.
 - A guard process in the group reads a pipe from `fh`. If `fh` stops, also on SIGKILL, the pipe closes and the guard kills the group. Thus `ccx` never runs longer than `fh`.
@@ -52,21 +52,13 @@ U and RF come from `job.frd`. The stress comes from the integration points in `j
 - macOS has no hard limit that the kernel enforces. Only the memory check applies.
 - If the memory check fails, the run stops `ccx` with an error.
 
-## Keyword subset
+## Input
 
-`*NODE`, `*ELEMENT` (`C3D10` only), `*NSET`, `*ELSET`, `*SURFACE, TYPE=ELEMENT`, `*MATERIAL`, `*ELASTIC`, `*EXPANSION`, `*SOLID SECTION`, `*INITIAL CONDITIONS, TYPE=TEMPERATURE`, `*BOUNDARY`, `*STEP`, `*STATIC`, `*CLOAD`, `*DLOAD`, `*DSLOAD` and `*TEMPERATURE`.
-The parser refuses each other keyword, parameter and element type with a clear error ([inp.md](reference/inp.md)).
+CalculiX reads and checks the input. femahoy does not limit the keywords, the elements or the solver of `*STATIC, SOLVER=...`. A small reader takes the mesh, the sets, `*SURFACE`, `*BOUNDARY`, `*CLOAD`, `*DLOAD` and `*DSLOAD` for the preview and skips each other keyword ([inp.md](reference/inp.md)).
 
-Changes for `ccx`:
-
-- A model with no `*SOLID SECTION` gets one section for all elements with its only material.
-- Each step is one linear increment. The parser does not read the `*STATIC` data lines.
-- The element stress `S` is the volume mean of the `ccx` integration point stress ("Result contract" above).
-- Each number in `job.inp` has 20 characters or fewer, because `ccx` reads only the first 20 characters of a number.
-  A longer number lost the end of its exponent with no error. For example, `-1.33027879758290e-17` became -0.133.
-- Before `ccx` starts, the adapter checks the supports of each step. They must hold the 6 rigid motions of each connected part of the mesh.
-  `ccx` solves a model that can move as a rigid body with no error, and its result is wrong.
-  Thus the adapter stops with an error that names a node of the part and the free motion.
+- `ccx` reads only the first 20 characters of a number. A longer number loses the end of its exponent with no error. For example, `-1.33027879758290e-17` became -0.133. `fh mesh` writes short numbers.
+- `ccx` solves a model that can move as a rigid body with no error, and its result is wrong. The input must hold the supports.
+- `fh mesh` writes `** units: SI-mm` (or `SI-m`) as the first comment. The run copies that unit into `results.pvd`, or writes `unspecified` when the line is missing.
 
 ## Errors
 
@@ -81,23 +73,14 @@ Each failure of `ccx` gives a message that tells why and what to do:
 Each message ends with the path of `job.log`.
 The time limit and the memory limit give their own errors ("Process limits" above).
 
-## Thermal strain
-
-The adapter writes these keywords to `job.inp` with the same data, so `ccx` gives them the CalculiX meaning:
-
-- `*EXPANSION`: the thermal strain is alpha (T - T0), with T0 the initial temperature of the node.
-- `*INITIAL CONDITIONS, TYPE=TEMPERATURE`: the start temperature. Give a value to each node. Else `ccx` stops with `no initial temperature`.
-- `*TEMPERATURE`: the temperature at the end of the step. A node with no value in a step keeps its last temperature.
-
-A model with several materials needs one `*SOLID SECTION` for each element set.
-`fh validate` runs each case with `ccx`. If `ccx` does not start, `fh validate` stops with exit code 1 before the first case. A run where no case ran does not pass.
+If `ccx` does not start, `fh validate` stops with exit code 1 before the first case. A run where no case ran does not pass.
 If `ccx` does not start in `fh run`, the run fails with an error that refers to this page.
 
 ## Limits
 
-- The `.frd` file has 6 significant digits, so U and RF have 6 digits. The `.dat` stress has 7.
+- The `.frd` file has 6 significant digits, so U and RF have 6 digits. The `.dat` file has 7.
 - Thus a displacement with a small tolerance can fail on rounding. `bar-pressure` u_x tip passes with a margin of only 3e-17 mm.
-- `ccx` extrapolates the stress to the nodes in `.frd` with an error of about 1e-5. Thus the adapter does not use the `.frd` stress.
+- `ccx` extrapolates the stress to the nodes in `.frd` with an error of about 1e-5. A check that needs the stress of the integration points uses `*EL PRINT` and `job.dat`.
 
 ## Record of the case cut (2026-10-19)
 
@@ -107,7 +90,7 @@ The earlier records of this file, with the deleted cases, are in the Git history
 
 ## Public warpage workflow
 
-`validation/cases/warpage-strip` uses build123d bodies, STEP, gmsh physical volume groups, `fh model` and `fh run`.
+`validation/cases/warpage-strip` uses build123d bodies, STEP, `fh mesh --volume` boxes and `fh run`.
 The case has 2 materials, thermal expansion, and a uniform temperature change of 100 K.
 The reference is the published bilayer solution of Lubarda and Lubarda, equations 2.5 to 2.7.
 The [derivation](../validation/cases/warpage-strip/derivation.md) gives the source, inputs and measured results at 2 mesh sizes.

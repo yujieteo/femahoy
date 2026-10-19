@@ -7,7 +7,7 @@
 
 use crate::measure::Subprocess;
 use fh_solver_ccx::Ccx;
-use fh_validation::{load_all, run_case_with, Case, Field, Outcome, Report};
+use fh_validation::{load_all, run_case_with, Case, Outcome, Report};
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 
@@ -50,22 +50,20 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     if !solver_ready() {
         return Ok(ExitCode::from(1));
     }
+    let solve = Subprocess::new();
     let reports: Vec<(&Case, Report)> = cases
         .iter()
-        .map(|case| (case, run_case_with(case, &Subprocess::for_case(case))))
+        .map(|case| (case, run_case_with(case, &solve)))
         .collect();
     Ok(print_reports(&reports))
 }
 
-/// Print each problem of the fixtures of the cases. True when there is none.
+/// Print each problem of the inputs of the cases: a missing `*INCLUDE` file. True when there is none.
 fn fixtures_ok(cases: &[Case]) -> bool {
     let mut ok = true;
     for case in cases {
-        for problem in spec_problems(case) {
-            eprintln!(
-                "fh validate: {}: {problem}",
-                case.dir.join("case.toml").display()
-            );
+        if let Err(problem) = fh_inp::flatten(&case.input) {
+            eprintln!("fh validate: {}: {problem}", case.input.display());
             ok = false;
         }
     }
@@ -107,43 +105,4 @@ fn print_reports(reports: &[(&Case, Report)]) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
-}
-
-/// The problems between the quantities of a case and its mesh file: a mesh that does not parse,
-/// and a set or step that the mesh lacks.
-fn spec_problems(case: &Case) -> Vec<String> {
-    let name = case.mesh.display();
-    let model = match std::fs::read_to_string(&case.mesh)
-        .map_err(|e| e.to_string())
-        .and_then(|t| {
-            fh_inp::parse_file(&name.to_string(), &t).map_err(|e| fh_inp::join_errors(&e))
-        }) {
-        Ok(m) => m,
-        Err(e) => return vec![format!("mesh {name}: {e}")],
-    };
-    let mut out = Vec::new();
-    for r in &case.references {
-        let q = &r.quantity;
-        let (kind, found) = match q.field {
-            Field::S => ("element", model.elset(&q.set).is_some()),
-            _ => ("node", model.nset(&q.set).is_some()),
-        };
-        if !found {
-            out.push(format!(
-                "mesh {name} has no {kind} set `{}` for `{}`",
-                q.set, r.name
-            ));
-        }
-        if !model.steps.iter().any(|s| {
-            s.name
-                .as_deref()
-                .is_some_and(|n| n.eq_ignore_ascii_case(&q.step))
-        }) {
-            out.push(format!(
-                "mesh {name} has no step `{}` for `{}`",
-                q.step, r.name
-            ));
-        }
-    }
-    out
 }

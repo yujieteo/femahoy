@@ -28,7 +28,7 @@ The inputs are the values of the paper (Table 1, section 4.2). The case changes 
 The paper models the same 2 layers. It leaves out the TiW layer and the seed copper layer because they are thin.
 Both materials are linear elastic and isotropic, with properties that do not change with temperature, as in the paper.
 The temperature change is 40 K, the range of the measured rate.
-`fh model` starts at 0 and ends at 40. For a linear model with constant properties, only the change has an effect.
+The input starts at 0 and ends at 40. For a linear model with constant properties, only the change has an effect.
 
 The quarter model uses x = 0 to 25, y = 0 to 5 and z = 0 to 0.75 mm.
 Symmetry gives u1 = 0 at x = 0 and u2 = 0 at y = 0. The node `ORIGIN` at (0, 0, 0) has u3 = 0.
@@ -90,8 +90,7 @@ Thus the 20 µm copper layer gets flat tetrahedra. All Jacobians are positive, a
 
 ## Reproduce
 
-Run `fh run validation/cases/warpage-thick-copper --size H` with H = 1, 0.5 or 0.25.
-The committed `slice.inp` is the coarse mesh from `fh mesh --size 1` and `fh model`. The STEP file comes from `scripts/cad/thick_copper_slice.py`.
+Make a mesh with H = 1, 0.5 or 0.25, and replace the mesh in a copy of `job.inp`. The mesh in `job.inp` is the coarse mesh from `fh mesh slice.step --units SI-mm --size 1 --volume SI=box:0,0,0,25,5,0.73 --volume CU=box:0,0,0.73,25,5,0.75 --face SYM_X=x:0 --face SYM_Y=y:0 --nodes ORIGIN=point:0,0,0 --nodes END=point:25,0,0`. The STEP file comes from `scripts/cad/thick_copper_slice.py`.
 
 ## Choice of the case
 

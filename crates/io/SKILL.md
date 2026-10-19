@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Read gmsh meshes, scan STEP units, check mesh quality, and read or write result files.
+Read gmsh meshes, scan STEP units, check mesh quality, and read or write VTU result files.
 
 ## Inputs and outputs
 
 - `read_msh` accepts MSH 4.1 ASCII and returns `fh_inp::Model`.
-- The only imported volume type is gmsh 11 (`C3D10`). Another volume type is an error.
+- The only imported volume type is gmsh 11 (`C3D10`), because `fh mesh` always writes order 2 (D-19). Another volume type is an error.
 - `step_length_unit` scans text. `mesh_stats` reports bounds, volume, element counts and corner Jacobian quality.
-- `vtu` reads and writes VTU/PVD.
+- `vtu` reads and writes VTU/PVD. It takes each cell type that CalculiX writes (tetra, wedge and hexahedron, linear and quadratic).
 
 ## Invariants the code must keep
 
@@ -30,4 +30,4 @@ Run `cargo check -p fh-io` and `cargo test -p fh-io`. `fh mesh` checks the units
 
 ## Examples
 
-`fh mesh part.step --case validation/cases/bar-tension` checks the declared units and reports the minimum scaled Jacobian.
+`fh mesh part.step --units SI-mm` checks the declared units and reports the minimum scaled Jacobian.

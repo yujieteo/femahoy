@@ -1,77 +1,25 @@
 //! Split the text into keyword blocks. A block is one keyword line and its data lines.
 
-use crate::error::code;
-use crate::ParseError;
-
-/// A keyword parameter. Names and values are upper case.
-#[derive(Debug, Clone)]
-pub(crate) struct Param {
-    pub name: String,
-    pub value: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct DataLine {
-    /// Line number of the first physical line.
-    pub line: usize,
-    pub fields: Vec<String>,
-    /// The physical line of each field. A record continues on the next line after a
-    /// line that ends in a comma.
-    pub field_lines: Vec<usize>,
-}
-
-impl DataLine {
-    /// The physical line of field `i`. The first line of the record for a missing field.
-    pub fn line_of(&self, i: usize) -> usize {
-        self.field_lines.get(i).copied().unwrap_or(self.line)
-    }
-}
-
+/// A keyword line with its data lines. The reader does not fail on a bad line. CalculiX checks
+/// the input.
 #[derive(Debug, Clone)]
 pub(crate) struct Block {
     /// Upper case keyword name without `*`, with single spaces.
     pub keyword: String,
-    pub line: usize,
-    pub params: Vec<Param>,
-    pub data: Vec<DataLine>,
+    /// Parameters with upper case names and values.
+    pub params: Vec<(String, Option<String>)>,
+    /// The fields of each data line. A line that ends in a comma continues on the next line.
+    pub data: Vec<Vec<String>>,
 }
 
 impl Block {
-    pub fn param(&self, name: &str) -> Option<&Param> {
-        self.params.iter().find(|p| p.name == name)
+    pub fn value(&self, name: &str) -> Option<&str> {
+        let (_, v) = self.params.iter().find(|(n, _)| n == name)?;
+        v.as_deref()
     }
 
-    /// The value of a parameter that needs a value.
-    pub fn value(&self, name: &str) -> Result<Option<&str>, ParseError> {
-        match self.param(name) {
-            None => Ok(None),
-            Some(Param { value: Some(v), .. }) => Ok(Some(v)),
-            Some(_) => Err(self.error(
-                code::MISSING_PARAMETER,
-                self.line,
-                format!("parameter {name} needs a value"),
-            )),
-        }
-    }
-
-    /// Fail on a parameter outside `allowed`.
-    pub fn allow(&self, allowed: &[&str]) -> Result<(), ParseError> {
-        match self
-            .params
-            .iter()
-            .find(|p| !allowed.contains(&p.name.as_str()))
-        {
-            Some(p) => Err(self.error(
-                code::UNSUPPORTED_PARAMETER,
-                self.line,
-                format!("unsupported parameter {}", p.name),
-            )),
-            None => Ok(()),
-        }
-    }
-
-    pub fn error(&self, code: &'static str, line: usize, message: impl Into<String>) -> ParseError {
-        ParseError::new(code, line, Some(&self.keyword), message)
+    pub fn has(&self, name: &str) -> bool {
+        self.params.iter().any(|(n, _)| n == name)
     }
 }
 
@@ -80,153 +28,80 @@ fn is_comment(line: &str) -> bool {
     line.trim_start().starts_with("**")
 }
 
-fn split_fields(text: &str) -> Vec<String> {
+fn fields(text: &str) -> Vec<String> {
     text.split(',').map(|f| f.trim().to_owned()).collect()
 }
 
-/// Split the text into blocks. A bad line gives an error and the lexer goes on, so that
-/// one run reports many errors.
-pub(crate) fn lex(text: &str) -> (Vec<Block>, Vec<ParseError>) {
-    let lines: Vec<(usize, &str)> = text
+pub(crate) fn lex(text: &str) -> Vec<Block> {
+    let lines: Vec<&str> = text
         .lines()
-        .enumerate()
-        .map(|(i, l)| (i + 1, l))
-        .filter(|(_, l)| !is_comment(l) && !l.trim().is_empty())
+        .filter(|l| !is_comment(l) && !l.trim().is_empty())
         .collect();
     let mut blocks: Vec<Block> = Vec::new();
-    let mut errors = Vec::new();
-    // The data lines of a keyword line without a name have no block.
-    let mut skip_data = false;
     let mut i = 0;
     while i < lines.len() {
-        let (no, raw) = lines[i];
-        let trimmed = raw.trim();
+        let mut joined = lines[i].trim().to_owned();
         i += 1;
-        // A line that ends in a comma continues on the next line.
-        let mut joined = trimmed.to_owned();
-        let mut parts = vec![(no, trimmed)];
-        while joined.ends_with(',') && i < lines.len() && !lines[i].1.trim_start().starts_with('*')
-        {
-            joined.push_str(lines[i].1.trim());
-            parts.push((lines[i].0, lines[i].1.trim()));
+        while joined.ends_with(',') && i < lines.len() && !lines[i].trim_start().starts_with('*') {
+            joined.push_str(lines[i].trim());
             i += 1;
         }
         if let Some(rest) = joined.strip_prefix('*') {
-            let mut parts = split_fields(rest).into_iter();
+            let mut parts = fields(rest).into_iter();
             let name = parts.next().unwrap_or_default();
-            let keyword = name
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ")
-                .to_uppercase();
-            if keyword.is_empty() {
-                errors.push(ParseError::new(
-                    code::SYNTAX,
-                    no,
-                    None,
-                    "keyword line has no name",
-                ));
-                skip_data = true;
-                continue;
-            }
-            skip_data = false;
-            let mut params = Vec::new();
-            for p in parts.filter(|p| !p.is_empty()) {
-                let (n, v) = match p.split_once('=') {
-                    Some((n, v)) => (n.trim(), Some(v.trim().to_uppercase())),
-                    None => (p.trim(), None),
-                };
-                params.push(Param {
-                    name: n.to_uppercase(),
-                    value: v,
-                });
-            }
+            let keyword = name.split_whitespace().collect::<Vec<_>>().join(" ");
+            let params = parts
+                .filter(|p| !p.is_empty())
+                .map(|p| match p.split_once('=') {
+                    Some((n, v)) => (n.trim().to_uppercase(), Some(v.trim().to_uppercase())),
+                    None => (p.to_uppercase(), None),
+                })
+                .collect();
             blocks.push(Block {
-                keyword,
-                line: no,
+                keyword: keyword.to_uppercase(),
                 params,
                 data: Vec::new(),
             });
-        } else {
-            if skip_data {
-                continue;
+        } else if let Some(block) = blocks.last_mut() {
+            let mut f = fields(&joined);
+            if joined.ends_with(',') {
+                f.pop();
             }
-            let Some(block) = blocks.last_mut() else {
-                errors.push(ParseError::new(
-                    code::SYNTAX,
-                    no,
-                    None,
-                    "data line before the first keyword",
-                ));
-                skip_data = true;
-                continue;
-            };
-            let mut fields = split_fields(&joined);
-            if fields.last().is_some_and(String::is_empty) && joined.ends_with(',') {
-                fields.pop();
-            }
-            // The empty field after the comma at the end of a part joins the first field of
-            // the next part.
-            let mut field_lines = Vec::with_capacity(fields.len());
-            for (k, (line, part)) in parts.iter().enumerate() {
-                let count = part.split(',').count() - usize::from(k + 1 < parts.len());
-                field_lines.extend(std::iter::repeat_n(*line, count));
-            }
-            field_lines.truncate(fields.len());
-            block.data.push(DataLine {
-                line: no,
-                fields,
-                field_lines,
-            });
+            block.data.push(f);
         }
     }
-    (blocks, errors)
+    blocks
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn lex_ok(text: &str) -> Vec<Block> {
-        let (blocks, errors) = lex(text);
-        assert!(errors.is_empty(), "{errors:?}");
-        blocks
-    }
-
     #[test]
     fn keywords_are_case_insensitive_and_params_split() {
-        let b = lex_ok("*Node, nset=Top\n1, 0, 0, 0\n");
+        let b = lex("*Node, nset=Top\n1, 0, 0, 0\n");
         assert_eq!(b[0].keyword, "NODE");
-        assert_eq!(b[0].value("NSET").unwrap(), Some("TOP"));
-        assert_eq!(b[0].data[0].fields, ["1", "0", "0", "0"]);
+        assert_eq!(b[0].value("NSET"), Some("TOP"));
+        assert_eq!(b[0].data, vec![vec!["1", "0", "0", "0"]]);
     }
 
     #[test]
     fn comments_and_blank_lines_are_skipped() {
-        let b = lex_ok("** note\n\n*NODE\n** inside\n1, 0, 0, 0\n");
-        assert_eq!(b[0].data.len(), 1);
-        assert_eq!(b[0].data[0].line, 5);
+        let b = lex("** a\n\n*NSET, NSET=A, GENERATE\n** b\n1, 9, 2\n");
+        assert_eq!(b.len(), 1);
+        assert!(b[0].has("GENERATE"));
+        assert_eq!(b[0].data, vec![vec!["1", "9", "2"]]);
     }
 
     #[test]
-    fn trailing_comma_joins_the_next_line() {
-        let b = lex_ok("*ELEMENT, TYPE=C3D8\n1, 1, 2, 3,\n  4, 5\n");
-        assert_eq!(b[0].data.len(), 1);
-        assert_eq!(b[0].data[0].fields, ["1", "1", "2", "3", "4", "5"]);
+    fn a_line_that_ends_in_a_comma_continues() {
+        let b = lex("*ELEMENT, TYPE=C3D20\n1, 1, 2, 3,\n 4, 5\n2, 6\n");
+        assert_eq!(b[0].data[0], vec!["1", "1", "2", "3", "4", "5"]);
+        assert_eq!(b[0].data[1], vec!["2", "6"]);
     }
 
     #[test]
-    fn keyword_line_continues_and_names_collapse_spaces() {
-        let b = lex_ok("*end   step\n*STEP, NAME=A,\n  NLGEOM=YES\n");
-        assert_eq!(b[0].keyword, "END STEP");
-        assert_eq!(b[1].value("NLGEOM").unwrap(), Some("YES"));
-    }
-
-    #[test]
-    fn data_before_keyword_fails_with_line() {
-        let (_, errors) = lex("\n1, 2\n");
-        assert_eq!(errors.len(), 1);
-        assert_eq!(errors[0].line, 2);
-        assert_eq!(errors[0].code, code::SYNTAX);
+    fn a_data_line_before_a_keyword_is_dropped() {
+        assert!(lex("1, 2, 3\n").is_empty());
     }
 }

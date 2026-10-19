@@ -8,9 +8,13 @@ use std::fmt::{self, Write as _};
 
 use crate::code;
 
-/// VTK cell type numbers used by femahoy.
+/// VTK cell type numbers of the solid elements that CalculiX writes.
+pub const VTK_TETRA: u8 = 10;
 pub const VTK_HEXAHEDRON: u8 = 12;
+pub const VTK_WEDGE: u8 = 13;
 pub const VTK_QUADRATIC_TETRA: u8 = 24;
+pub const VTK_QUADRATIC_HEXAHEDRON: u8 = 25;
+pub const VTK_QUADRATIC_WEDGE: u8 = 26;
 
 /// An error while reading a VTU or PVD file.
 #[derive(Debug, Clone, PartialEq, Eq)]

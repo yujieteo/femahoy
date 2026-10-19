@@ -501,13 +501,13 @@ mod tests {
 
     #[test]
     fn each_action_of_the_agent_is_an_entry() {
-        let cmd = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"I mesh it."},{"type":"tool_use","name":"Bash","input":{"command":"fh run . --size 2.5"}},{"type":"tool_use","name":"Write","input":{"file_path":"part.py","content":"x"}}]}}"#;
+        let cmd = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":""},{"type":"text","text":"I mesh it."},{"type":"tool_use","name":"Bash","input":{"command":"fh run job.inp"}},{"type":"tool_use","name":"Write","input":{"file_path":"part.py","content":"x"}}]}}"#;
         let pair = |k: &str, t: &str| (k.to_owned(), t.to_owned());
         assert_eq!(
             kinds(cmd),
             [
                 pair("say", "I mesh it."),
-                pair("cmd", "fh run . --size 2.5"),
+                pair("cmd", "fh run job.inp"),
                 pair("tool", "Write part.py"),
             ]
         );

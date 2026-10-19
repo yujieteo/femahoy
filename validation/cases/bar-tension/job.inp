@@ -1,4 +1,4 @@
-** Made by fh model from bar.msh. Do not edit; change the case.
+** units: SI-mm
 *NODE
 1, 0.0, 0.0, 0.0
 2, 0.0, 0.0, 10.0
@@ -1288,4 +1288,8 @@ FIXED, 1, 1, 0.0
 SYM_Y, 2, 2, 0.0
 SYM_Z, 3, 3, 0.0
 TIP, 1, 1, 0.1
+*NODE PRINT, NSET=FIXED
+RF
+*EL PRINT, ELSET=ALL
+S
 *END STEP

@@ -1,0 +1,12 @@
+# The reference is Timoshenko beam theory (derivation.md). It ignores the 3D stress state at the
+# clamp, so it has an error of 2 percent. On this mesh, ccx gives a value 1.4 percent below it.
+# Tip deflection in z (mean of the tip nodes), in mm.
+rel_tol = 0.02
+abs_tol = 0.0
+
+[tip_deflection_z]
+value = -0.01919619048
+set = "tip"
+field = "U"
+component = 3
+op = "mean"

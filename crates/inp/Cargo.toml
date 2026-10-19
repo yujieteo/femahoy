@@ -1,6 +1,6 @@
 [package]
 name = "fh-inp"
-description = "`.inp` reader and Abaqus-shaped model"
+description = "Small CalculiX `.inp` reader for the preview, and the files of an input"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -34,15 +34,19 @@ The fixed ends hold all rigid motions of the plate, so the model needs no other 
 ## Mesh of the case
 
 The STEP file comes from `part.py` (build123d through `fh-python`).
-The input `part.inp` comes from these commands in this folder:
+The mesh file `part.inp` comes from these commands in this folder. `job.inp` includes it.
 
 ```
 fh-python part.py
-fh mesh part.step --case . --size 20
-fh model part.msh --case .
+fh mesh part.step --units SI-mm --size 20 -o part.inp \
+  --face END_L=x:-1878 --face END_R=x:1878 \
+  --face PIN_L=box:-1311,-501,-2,-1289,-499,2 --face PIN_R=box:1289,-501,-2,1311,-499,2 \
+  --face UP_1500=box:-1551,499,-2,-1449,501,2 --face UP_1200=box:-1251,499,-2,-1149,501,2 \
+  --face DN_1200_L=box:1149,499,-2,1201,501,2 --face DN_1200_R=box:1199,499,-2,1251,501,2 \
+  --face DN_1500_L=box:1449,499,-2,1501,501,2 --face DN_1500_R=box:1499,499,-2,1551,501,2
 ```
 
-The result is the input of the second chat solve, without change.
+The mesh has the nodes and elements of the second chat solve.
 It has 139395 nodes and 69045 C3D10 elements, with 1 element through the thickness.
 
 ## Reference

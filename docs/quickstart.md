@@ -1,8 +1,8 @@
 # Quickstart
 
-The workflow goes from a STEP file to a mesh, a solver input and results.
-`fh model` converts the mesh and the case TOML into the solver input.
-`fh run` does all of these steps in one command and shows the results in the browser.
+The workflow goes from a STEP file to a mesh, a CalculiX input and results.
+`fh mesh` writes the mesh and the named sets. You write the rest of the CalculiX input.
+`fh run` solves the input and shows the results in the browser.
 
 ## Start
 
@@ -36,7 +36,7 @@ Before the build, the script checks these tools:
 
 If a tool is missing, the script shows all the missing tools with their install commands, and builds nothing.
 The script installs no tool itself. uv downloads Python 3.12 and build123d.
-It also tells you when gmsh is missing (`brew install gmsh`), because `fh run` needs gmsh for a STEP file.
+It also tells you when gmsh is missing (`brew install gmsh`), because `fh mesh` needs gmsh.
 It also tells you when CalculiX (`ccx`) is missing. Each solve needs `ccx`: see [the CalculiX adapter](ccx.md).
 At the end, it shows the installed files and the next command.
 If the folder is not on `PATH`, the next command has the full path, and the script shows the line to add to your shell start file.
@@ -45,59 +45,22 @@ If the folder is not on `PATH`, the next command has the full path, and the scri
 
 `fh serve` opens the page in the browser. Write a request in the chat of the page. The agent makes the part, meshes it and solves it, and the viewer of the page shows the results ([chat](chat.md)).
 
-### A case folder
+### Your own input
 
-`fh run validation/cases/bar-pressure --size 8` solves a case of the repository.
-The case is a steel bar of 100 × 20 × 10 mm. A pressure of 100 MPa pulls one end face.
-The exact von Mises stress is 100 MPa in all of the bar ([derivation](../validation/cases/bar-pressure/derivation.md)).
+`fh run job.inp` solves a CalculiX input file. CalculiX reads the file as it is, with each file that it includes (`*INCLUDE`).
 
 1. `fh run` uses the daemon of the state folder. `STATE` is the state folder, `~/.local/state/femahoy` by default. If no daemon answers, it starts `fh serve --no-open` in the background.
-2. It runs `fh mesh` (gmsh) and `fh model` in a work folder, `STATE/cases/bar-pressure-HASH`.
+2. It shows the supports and the loads of the input in the browser (`--preview` stops here).
 3. It submits the input to the daemon and shows the events of the run.
-4. It shows the result folder and opens the run in the browser.
+4. It shows the result folder and the paths of the text results, and opens the run in the browser.
 
-Output excerpt (paths cut, `STATE` for the state folder):
-
-```text
-fh run: started a daemon for STATE (log STATE/daemon.log)
-fh run: mesh: fh mesh validation/cases/bar-pressure/bar.step --case validation/cases/bar-pressure -o STATE/cases/bar-pressure-f069ef66a99460ee/bar.msh --size 8
-nodes	844
-elements	373
-min_scaled_jacobian	0.1990
-fh run: preview: the page shows bar-pressure (preview 1) with its supports and loads
-fh run: run-000001 solves STATE/cases/bar-pressure-f069ef66a99460ee/bar.inp
-  queued
-  running
-  succeeded
-fh run: run-000001 succeeded in 0.19 s
-fh run: results in STATE/runs/run-000001/out
-fh run: page http://127.0.0.1:53513/?token=TOKEN&run=run-000001
-fh run: opened run-000001 in the browser
-fh run: the daemon stays alive for the browser. Stop it with: fh serve --stop
-```
-
-The browser shows the bar with the contour of `MISES`.
-The legend shows `MISES (MPa), per element` and one band, `constant 100.0`, because the stress is the same in all of the bar.
-Drag to turn the bar, and scroll to zoom ([viewer](viewer.md)).
-
+`--timeout SECONDS` and `--memory MIB` set the limits of the run. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
 The daemon stays alive after `fh run`, so the page keeps the results, and the next `fh run` uses the same daemon.
 Stop it with `fh serve --stop`.
 Ctrl+C during a run cancels the run. A second Ctrl+C ends `fh run` at once.
-
-### Your own model
-
-`fh run` also takes these inputs:
-
-| Command | What it solves |
-|---|---|
-| `fh run model.inp` | The `.inp` file as it is. |
-| `fh run CASE_DIR` | A case folder with `case.toml` and one STEP file: `fh mesh`, `fh model`, then the solve. `CASE_DIR/case.toml` and `CASE_DIR/PART.step` do the same. |
-
-`fh run` does not change the case folder. Its mesh and input go to the work folder.
-`--size H` goes to `fh mesh`. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
 [`fh` commands](reference/fh.md#fh-run) gives the exit codes and the messages.
 
-The sections below do the same steps one at a time.
+The sections below do the steps one at a time.
 
 ## 1. Prepare the programs
 
@@ -124,18 +87,7 @@ It exports a STEP file with a millimetre unit record.
 fh-python scripts/cad/bar.py "$WORK/bar.step"
 ```
 
-Use the existing [bar-tension case TOML](../validation/cases/bar-tension/case.toml) for the unit declaration.
-Its first keys include these values.
-
-```toml
-schema = 3
-id = "bar-tension"
-units = "SI-mm"
-```
-
-This is an excerpt, not a complete case file.
-`--case` needs the full case and its derivation file.
-The [case schema](../crates/validation/SCHEMA.md) defines all required keys.
+You tell `fh mesh` the unit system with `--units`. There is no default.
 
 | System | Length | Force | Stress | Mass | Time |
 |---|---|---|---|---|---|
@@ -143,146 +95,152 @@ The [case schema](../crates/validation/SCHEMA.md) defines all required keys.
 | `SI-m` | m | N | Pa | kg | s |
 
 `fh mesh` (section 3) reads the unit record of the STEP file.
-It refuses a STEP file with no unit record (`unit.step.missing`) or with other units than the run (`unit.step.mismatch`).
+It refuses a STEP file with no unit record (`unit.step.missing`) or with other units than `--units` (`unit.step.mismatch`).
 
 ## 3. Mesh the STEP file with gmsh
 
-Use the same unit system as the case TOML.
-This `fh mesh` command takes `--units` and does not read the case TOML. Section 6 gives `fh mesh` the case with `--case`.
+`fh mesh` writes the nodes, the `C3D10` elements and the sets that you name. The sets are selections on the part:
+a plane (`x:V`, `y:V`, `z:V`), a box (`box:X0,Y0,Z0,X1,Y1,Z1`) or, for `--nodes`, a point (`point:X,Y,Z`).
 If gmsh is outside `PATH`, add `--gmsh /path/to/gmsh`.
 
 ```sh
-fh mesh "$WORK/bar.step" -o "$WORK/bar.msh" --units SI-mm --size 5
+fh mesh "$WORK/bar.step" --units SI-mm --size 5 -o "$WORK/mesh.inp" \
+  --face FIXED=x:0 --face LOAD=x:100 --face YSYM=y:0 --face ZSYM=z:0 --nodes TIP=point:100,0,0
 ```
 
 The command returned exit code 0. Output excerpt:
 
 ```text
 units	SI-mm
-order	2
 nodes	2038
 elements	1015
 min_scaled_jacobian	0.1971
-type	C3D10	1015
+nset	NALL	2038
+elset	ALL	1015
+nset	FIXED	57
+nset	LOAD	57
+nset	YSYM	217
+nset	ZSYM	465
+surface	FIXED	22
+surface	LOAD	22
+surface	YSYM	86
+surface	ZSYM	208
+nset	TIP	1
 ```
 
-`fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`).
+Each `--face` makes a node set and an element surface of the same name. `NALL` is the set of all nodes. `ALL` is the set of all elements.
+The first lines of `mesh.inp` are comments, and the second comment is `** units: SI-mm`.
+`fh mesh` refuses a mesh with an inverted element (`mesh.jacobian.negative`), a set that selects nothing (`mesh.set.empty`) and a name that it uses twice (`mesh.name.duplicate`).
 
-## 4. Write the solver input and run the solver
+## 4. Write the CalculiX input and run the solver
 
-The solver reads `.inp`, not `.msh` or case TOML.
-`fh model` writes the `.inp` file from the mesh and the `[model]` table of a case.
-The [bar-tension case](../validation/cases/bar-tension/case.toml) has that table.
-It holds the material, node sets on coordinate planes, boundary conditions and loads.
-`fh mesh` records the mesh units in `bar.msh.units`.
-`fh model` refuses a mesh with no record, or with other units than the case.
+Write `job.inp` next to `mesh.inp`. It includes the mesh and holds the material, the section, the step, the supports, the loads and the output requests.
+Use any CalculiX keyword ([the CalculiX adapter](ccx.md)).
+This input pulls the bar with a pressure of 100 MPa on the face `LOAD`. A negative pressure in `*DSLOAD` pulls the face, and a positive pressure pushes into the body.
+The 3 symmetry faces and the face `FIXED` keep the bar from moving as a rigid body.
 
-```toml
-[[model.set]]
-name = "TIP"
-axis = "x"
-at = 100.0
-
-[[model.boundary]]
-set = "TIP"
-first_dof = 1
-value = 0.1
+```text
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+*SOLID SECTION, ELSET=ALL, MATERIAL=STEEL
+*STEP, NAME=PULL
+*STATIC
+*BOUNDARY
+FIXED, 1, 1
+YSYM, 2, 2
+ZSYM, 3, 3
+*DSLOAD
+LOAD, P, -100.0
+*NODE PRINT, NSET=TIP
+U
+*NODE PRINT, NSET=FIXED, TOTALS=YES
+RF
+*NODE FILE
+U, RF
+*EL FILE
+S
+*END STEP
 ```
 
-A `[[model.cload]]` table applies a force to each node of a set. It is not a total force.
-The command keeps `C3D10` as the element. It refuses another element type.
-`fh model` writes the line `** units: SI-mm` into the input. Section 6 shows named regions and a pressure load.
+`*NODE PRINT` and `*EL PRINT` write text values to `job.dat`. `*NODE FILE` and `*EL FILE` write the fields that the page shows.
 
-```sh
-fh model "$WORK/bar.msh" --case validation/cases/bar-tension -o "$WORK/bar.inp"
-```
-
-`fh run` gives the input to the daemon, which starts `ccx`. Ctrl+C stops the solve.
+`fh run` shows the supports and the loads in the page, gives the input to the daemon, which starts `ccx`, and shows the results. Ctrl+C stops the solve.
 You can run this command from a script or an agent shell.
 
 ```sh
-fh run "$WORK/bar.inp" --no-open
+cd "$WORK" && fh run job.inp --no-open
 ```
 
-The bar has a prescribed end displacement of 0.1 mm. The exact von Mises stress is 210 MPa.
-`fh run` prints the results folder, for example `fh run: results in STATE/runs/run-000001/out`.
-Set `OUT` to that folder. Section 5 reads the results. The `ccx` files are in `$OUT/ccx`.
+Output excerpt (paths cut, `STATE` for the state folder):
+
+```text
+fh run: preview: the page shows job.inp (preview 1) with its supports and loads
+fh run: run-000001 solves job.inp
+  queued
+  running
+  succeeded
+fh run: run-000001 succeeded in 0.28 s
+fh run: results in STATE/runs/run-000001/out
+fh run: text results STATE/runs/run-000001/out/ccx/job.dat (print requests), STATE/runs/run-000001/out/ccx/job.sta (steps)
+fh run: page http://127.0.0.1:PORT/?token=TOKEN&run=run-000001
+```
+
+Set `OUT` to the results folder. Section 5 reads the results. The `ccx` files are in `$OUT/ccx`.
 
 ## 5. Read the results
 
+The numbers that you asked for are in the text files of `ccx`:
+
 ```sh
-cat "$OUT/results.pvd"
-head -n 25 "$OUT/step-1.vtu"
+grep -A2 displacements "$OUT/ccx/job.dat"
+cat "$OUT/ccx/job.sta"
 ```
 
-The PVD file states the units and names the VTU result. The VTU file keeps full precision.
+```text
+ displacements (vx,vy,vz) for set TIP and time  0.1000000E+01
+
+         5  4.761905E-02  0.000000E+00  0.000000E+00
+```
+
+The tip displacement is 100 MPa × 100 mm / 210000 MPa = 0.047619 mm, as the hand calculation gives.
+The line `total force` in `job.dat` gives the reaction of the face `FIXED`: −2.000000E+04 N, which is 100 MPa × 200 mm².
+`job.sta` has 1 line for each increment of each step.
+
+The page reads the result file of `ccx` (`job.frd`). The run also writes it as VTU files:
+
+```sh
+cat "$OUT/results.pvd"
+```
 
 ```xml
 <Collection units="SI-mm">
 <DataSet timestep="1" part="0" file="step-1.vtu"/>
 ```
 
-The VTU file contains point fields `U` and `RF`, and cell fields `S` and `MISES`.
-The last command reads the XML header before the binary result arrays.
-`U` is displacement. `RF` is reaction force. `S` is stress. `MISES` is von Mises stress.
-The stress components are `S11 S22 S33 S12 S23 S13`.
-The solver reads the units from the `** units:` line of the input. It uses them only as a label.
+The PVD file states the units and names a VTU file for each frame of the result. The VTU files keep full precision.
+Each field of the `.frd` file is in the VTU file: here `U`, `RF` and `S`, and `MISES` (the von Mises stress that `fh` adds) and `ERROR` (that `ccx` writes).
+`U` is displacement. `RF` is reaction force. `S` is stress, with the components `S11 S22 S33 S12 S23 S13`.
+A step with no `*NODE FILE` or `*EL FILE` request has no field to show.
+The units come from the `** units:` line of the input, or of a file that it includes. They are only a label.
 An input with no such line gives `units="unspecified"` in the PVD file.
 Interpret the numbers in the declared unit system: mm, N and MPa for `SI-mm`.
 
-## 6. Name regions and apply a pressure
+## 6. Use more of CalculiX
 
-The [bar-pressure case](../validation/cases/bar-pressure/case.toml) names 4 faces of the bar as regions.
-A region selects the faces of the part on a plane, or the faces inside a box.
-A `[[model.dsload]]` table applies a pressure to a region. A negative pressure pulls the face.
+`job.inp` is a CalculiX input, so it can use any keyword that `ccx` knows: for example `*PLASTIC`, `*CONTACT PAIR`, `*FREQUENCY` or `*HEAT TRANSFER`, and the element types `S8R` or `B32`.
+For a part with several materials, `--volume NAME=box:...` makes an element set for each material.
+`fh run job.inp --preview` shows the supports and the loads and does not solve. Use it to check a model before a long solve.
 
-```toml
-[[model.region]]
-name = "LOAD"
-axis = "x"
-at = 100.0
-
-[[model.dsload]]
-surface = "LOAD"
-pressure = -100.0
-```
-
-Give `fh mesh` the case with `--case`, so that it makes a gmsh physical surface for each region.
-
-```sh
-fh mesh "$WORK/bar.step" --case validation/cases/bar-pressure --size 8 -o "$WORK/press.msh"
-fh model "$WORK/press.msh" --case validation/cases/bar-pressure -o "$WORK/press.inp"
-fh run "$WORK/press.inp" --no-open
-```
-
-Output excerpt of `fh mesh` (element-face counts of each region):
-
-```text
-elset	SOLID	373
-surface	SUPPORT	14
-surface	LOAD	14
-surface	SYM_Y	54
-surface	SYM_Z	88
-```
-
-`fh model` writes each region as `*NSET` and `*SURFACE, TYPE=ELEMENT`, and the pressure as `*DSLOAD`:
-
-```text
-*DSLOAD
-LOAD, P, -100.0
-```
-
-The exact stress is 100 MPa. `fh validate` checks it (section 7).
-
-`fh run validation/cases/bar-pressure --size 8` does these 3 steps in one command (see [Your own model](#your-own-model)).
-
-`fh` refuses a region that selects no face, and a region that the mesh does not hold (`mesh.region.missing`).
-The [bar-pressure-m case](../validation/cases/bar-pressure-m/case.toml) is the same model in m, N and Pa.
+The page shows each frame that `ccx` writes. A frequency step gives 1 frame for each mode, and `job.dat` has the frequencies.
+The page draws a shell or a beam element as the solid element that `ccx` writes to the result file.
 
 ## 7. Run validation
 
 Run this command from the repository root.
-`fh validate` starts `ccx` (`FH_CCX`, else `ccx` on `PATH`).
+Each case in `validation/cases` is a CalculiX input (`job.inp`) and a small file `check.toml` with the reference values, the measures and the tolerances ([check file](reference/check-toml.md)).
+`fh validate` solves each case with `ccx` (`FH_CCX`, else `ccx` on `PATH`).
 If `ccx` does not start, `fh validate` stops with exit code 1 and tells how to install it.
 
 ```sh

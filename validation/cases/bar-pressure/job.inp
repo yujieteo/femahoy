@@ -1,4 +1,3 @@
-** Made by fh model from bar.msh. Do not edit; change the case.
 ** units: SI-mm
 *NODE
 1, 0.0, 0.0, 0.0
@@ -1440,4 +1439,10 @@ SYM_Y, 2, 2, 0.0
 SYM_Z, 3, 3, 0.0
 *DSLOAD
 LOAD, P, -100.0
+*NODE PRINT, NSET=SUPPORT
+RF
+*NODE PRINT, NSET=LOAD
+U
+*EL PRINT, ELSET=ALL
+S
 *END STEP

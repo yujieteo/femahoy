@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::contract::{Error, Events, Message, RunRecord, RunState};
-use crate::INFO_FILE;
+use crate::{Limits, INFO_FILE};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const READ_TIMEOUT: Duration = Duration::from_secs(30);
@@ -134,10 +134,16 @@ impl Client {
         self.get("/api/v1/status")
     }
 
-    /// Queue a run of the input file at the absolute path `input`.
-    pub fn submit(&self, input: &Path) -> Result<RunRecord, Error> {
-        let input = utf8(input)?;
-        RunRecord::from_message(&self.post("/api/v1/runs", &[("input", input)])?)
+    /// Queue a run of the input file at the absolute path `input`, with the given limits.
+    pub fn submit(&self, input: &Path, limits: &Limits) -> Result<RunRecord, Error> {
+        let (timeout, memory) = (
+            limits.timeout.map(|t| t.as_secs_f64().to_string()),
+            limits.memory.map(|m| (m >> 20).to_string()),
+        );
+        let mut fields = vec![("input", utf8(input)?)];
+        fields.extend(timeout.as_deref().map(|t| ("timeout", t)));
+        fields.extend(memory.as_deref().map(|m| ("memory", m)));
+        RunRecord::from_message(&self.post("/api/v1/runs", &fields)?)
     }
 
     /// Show the model of the input file at the absolute path `input` with its supports and

@@ -12,4 +12,4 @@ It is linear, so C3D10 (quadratic) reproduces it exactly.
 - Area = 20 x 10 = 200 mm2. The reaction on x = 0 is -210 x 200 = -42000 N.
 
 `bar.step` came from gmsh (OpenCASCADE `Box`), because build123d was not available. Its unit record is millimetre.
-`scripts/cad/bar.py` makes the same box. Run `fh mesh` and `fh model` again to remake `bar.inp`.
+`scripts/cad/bar.py` makes the same box. Run `fh mesh` again to remake the mesh in `job.inp`.

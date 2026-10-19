@@ -6,29 +6,28 @@ Tested with Python 3.12.13, build123d 0.13.0 and gmsh 4.15.2 on macOS 27.0.1 arm
 
 ## Steps
 
-1. Declare the units in `case.toml`: `units = "SI-mm"` or `units = "SI-m"`. There is no default.
-2. Write the part with build123d and run it with `fh-python part.py`. `scripts/cad/bar.py` is an example. It writes a STEP file in mm, or in m when the second argument is `m`.
-3. Mesh the part: `fh mesh part.step --case <case folder> --size H -o part.msh`.
+1. Write the part with build123d and run it with `fh-python part.py`. `scripts/cad/bar.py` is an example. It writes a STEP file in mm, or in m when the second argument is `m`.
+2. Mesh the part: `fh mesh part.step --units SI-mm --size H -o mesh.inp`. The units are required. There is no default.
    `fh` refuses the STEP file with `unit.step.missing`, `unit.step.conflict` or `unit.step.mismatch`, and the mesh with `mesh.jacobian.negative`.
+   `mesh.inp` holds the nodes (`NALL`), the `C3D10` elements (`ALL`) and the line `** units: SI-mm`.
 
-## Named regions
+## Named sets
 
-Do these steps when the case names support and load faces.
+Do these steps when the model needs support faces, load faces or several materials.
 
-1. Declare each region in `case.toml` as a `[[model.region]]` table, by plane (`axis`, `at`) or by `box`. `crates/validation/SCHEMA.md` has the fields.
-2. Mesh the part: `fh mesh part.step --case <case folder> --size H -o part.msh`.
-   `fh mesh` puts every volume in the physical group `SOLID` and makes a gmsh physical surface for each region.
-   `fh` refuses a region that selects no face (`mesh.region.missing`) and a region that is not on the outside of the solid (`mesh.region.inner`).
-3. Write the solver input: `fh model part.msh --case <case folder> -o part.inp`.
-   `fh model` writes each region as `*NSET` and `*SURFACE, TYPE=ELEMENT`, and each `[[model.dsload]]` as `*DSLOAD`.
-   `fh` refuses a region that the mesh does not hold (`mesh.region.missing`) and a volume with no physical group (`mesh.volume.unnamed`).
+1. Name each set on the command line, by plane (`x:V`, `y:V`, `z:V`) or by box (`box:X0,Y0,Z0,X1,Y1,Z1`):
+   `fh mesh part.step --units SI-mm --size H --face FIXED=x:0 --face TOP=z:10 --nodes TIP=point:100,5,5 -o mesh.inp`.
+   `--face` makes a node set and a surface of the same name. `--nodes` makes a node set. `--volume NAME=box:...` makes an element set.
+   `fh` refuses a set that selects nothing (`mesh.set.empty`), a face that is not on the outside of the solid (`mesh.face.inner`) and a volume with no physical group (`mesh.volume.unnamed`).
+2. Write `job.inp` with `*INCLUDE, INPUT=mesh.inp`, the material, the section, the step, the supports and the loads. The sets of step 1 are the names in `*BOUNDARY`, `*CLOAD`, `*DSLOAD` and `*SOLID SECTION`.
+3. Solve with `fh run job.inp`.
 
-Each new mesh selects the region faces again from the case, so a change of the mesh size keeps the regions.
-The cases `validation/cases/bar-pressure` (mm) and `validation/cases/bar-pressure-m` (m) are examples.
+Each new mesh selects the faces again, so a change of the mesh size keeps the sets.
+The case `validation/cases/bar-pressure` (mm) is an example of the sets and the loads in an input. `validation/cases/bar-pressure-m` uses m.
 
 ## Rules
 
-- The mesh is C3D10 (D-19). C3D10 is the only element.
+- `fh mesh` writes C3D10 (D-19). The input of the chat can use any other element type that CalculiX has, with a mesh from another source.
 - `fh mesh` sets `Geometry.OCCTargetUnit` in every run. gmsh keeps this option as state, and `.msh` has no unit.
 - A part with more than 1 body needs a material box for each body. `fh mesh` then fragments the bodies, so they share nodes.
 - STEP keeps no face names. `fh mesh` selects faces by plane or by box with `Surface In BoundingBox`.
@@ -36,5 +35,5 @@ The cases `validation/cases/bar-pressure` (mm) and `validation/cases/bar-pressur
 
 ## Tests
 
-`cargo test -p fh-cli --test mesh --test model` runs `fh mesh` and `fh model` with gmsh, and skips those tests when gmsh is not found.
+`cargo test -p fh-cli --test mesh` runs `fh mesh` with gmsh, and skips those tests when gmsh is not found.
 Set `FH_GMSH` to use another gmsh program. The tests use STEP files from gmsh or from the repository, so they need no Python.

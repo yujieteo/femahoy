@@ -1,0 +1,19 @@
+# The reference is the closed-form Lame solution (derivation.md). On this mesh, ccx gives values
+# 0.7 and 0.5 percent below it. This mesh error includes the chord approximation of the arc.
+# Radial displacement at the inner radius r = 100 mm and at the outer radius r = 200 mm, in mm.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[ur_inner]
+value = 0.09079365079
+set = "inner0"
+field = "U"
+component = 1
+op = "mean"
+
+[ur_outer]
+value = 0.05777777778
+set = "outer0"
+field = "U"
+component = 1
+op = "mean"

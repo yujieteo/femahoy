@@ -1,0 +1,19 @@
+# The reference is the converged value of a separate graded hex model in CalculiX (derivation.md).
+# The 20 mm tetrahedral mesh is 3.8 percent from it. The tolerance holds this mesh error and the
+# 0.2 percent error of the reference. The values are in N, and + is up.
+rel_tol = 0.05
+abs_tol = 0.0
+
+[pin_r_ry]
+value = 2279.2
+set = "PIN_R"
+field = "RF"
+component = 2
+op = "sum"
+
+[pin_l_ry]
+value = -1274.6
+set = "PIN_L"
+field = "RF"
+component = 2
+op = "sum"
