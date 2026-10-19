@@ -155,11 +155,20 @@ pub(crate) fn element_faces(element_type: &str, nodes: &[u32]) -> Option<Vec<Fac
 }
 
 /// The face `S<number>` of an element. A shell has 1 drawn face for its faces `S1` and `S2`.
+/// Its faces `S3` and up are its edges: edge `S3` joins corner 1 and corner 2.
 pub(crate) fn surface_face(element_type: &str, nodes: &[u32], number: u8) -> Option<Face> {
     let mut faces = element_faces(element_type, nodes)?;
     let k = usize::from(number).checked_sub(1)?;
     match faces.len() {
         1 if k <= 1 => faces.pop(),
+        1 => {
+            let face = faces.pop()?;
+            let (j, n) = (k - 2, face.corners.len());
+            (j < n).then(|| Face {
+                corners: vec![face.corners[j], face.corners[(j + 1) % n]],
+                mids: face.mids.map(|m| vec![m[j]]),
+            })
+        }
         _ if k < faces.len() => Some(faces.swap_remove(k)),
         _ => None,
     }
@@ -657,7 +666,10 @@ mod tests {
         let face = |number| surface_face("S8R", &nodes, number).map(|f| f.corners);
         assert_eq!(face(1), face(2));
         assert!(face(1).is_some());
-        assert!(face(3).is_none());
+        // The edges S3 to S6 join the corners in turn. A quadrangle has no S7.
+        assert_eq!(face(3), Some(vec![0, 1]));
+        assert_eq!(face(6), Some(vec![3, 0]));
+        assert!(face(7).is_none());
     }
 
     #[test]
