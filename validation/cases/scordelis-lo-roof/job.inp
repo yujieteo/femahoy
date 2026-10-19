@@ -1,0 +1,23 @@
+** units: SI-mm
+*INCLUDE, INPUT=part.inp
+*MATERIAL, NAME=CONCRETE
+*ELASTIC
+432.0, 0.0
+*DENSITY
+3.6e-7
+*SHELL SECTION, ELSET=ALL, MATERIAL=CONCRETE
+250.0
+*STEP
+*STATIC
+** Each end is a rigid diaphragm in its plane: uy = uz = 0. The curved edges can turn and move in x.
+** ux = 0 at TIP blocks the motion along x. By the symmetry about mid-length, ux is 0 there.
+*BOUNDARY
+END0, 2, 3
+END1, 2, 3
+TIP, 1, 1
+** Self weight: density x 1 mm/s2 x 250 mm = 9.0E-5 MPa of the shell area, in -z.
+*DLOAD
+ALL, GRAV, 1.0, 0.0, 0.0, -1.0
+*NODE PRINT, NSET=TIP
+U
+*END STEP
