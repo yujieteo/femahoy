@@ -384,7 +384,8 @@ mod limit_tests {
     fn a_child_starts_under_a_lower_inherited_hard_limit() {
         use std::os::unix::process::CommandExt;
         use std::process::Command;
-        const NAME: &str = "ccx::sys::limit_tests::a_child_starts_under_a_lower_inherited_hard_limit";
+        const NAME: &str =
+            "ccx::sys::limit_tests::a_child_starts_under_a_lower_inherited_hard_limit";
         const INNER: &str = "FH_TEST_INHERITED_HARD_LIMIT";
         extern "C" {
             fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
