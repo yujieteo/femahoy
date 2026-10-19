@@ -59,37 +59,21 @@ fn cross(a: P, b: P) -> P {
     ]
 }
 
-/// The area and the smallest scaled Jacobian of a shell with 3 or 4 corners. At a corner the
-/// scaled Jacobian is the sine of the angle, with the sign of the turn along the mean normal.
-/// A flat corner gives 0, a concave corner is below 0.
+/// The area and the smallest scaled Jacobian of a shell triangle, from its 3 corners. At a corner
+/// the scaled Jacobian is the sine of the angle. A flat triangle gives 0.
 fn shell_metrics(p: &[P]) -> (f64, f64) {
-    let k = if p.len() == 6 { 3 } else { 4 };
-    let turns: Vec<(P, f64)> = (0..k)
+    let min = (0..3)
         .map(|i| {
-            let (a, b) = (sub(p[(i + 1) % k], p[i]), sub(p[(i + k - 1) % k], p[i]));
-            (cross(a, b), norm(a) * norm(b))
+            let (a, b) = (sub(p[(i + 1) % 3], p[i]), sub(p[(i + 2) % 3], p[i]));
+            let len = norm(a) * norm(b);
+            if len > 0.0 {
+                norm(cross(a, b)) / len
+            } else {
+                0.0
+            }
         })
-        .collect();
-    let mut normal = [0.0; 3];
-    for (c, _) in &turns {
-        (0..3).for_each(|i| normal[i] += c[i]);
-    }
-    let len = norm(normal);
-    let scaled = |(c, l): &(P, f64)| {
-        let dot = c[0] * normal[0] + c[1] * normal[1] + c[2] * normal[2];
-        if l * len > 0.0 {
-            dot / (l * len)
-        } else {
-            0.0
-        }
-    };
-    let min = turns.iter().map(scaled).fold(f64::INFINITY, f64::min);
-    let area = if k == 3 {
-        norm(cross(sub(p[1], p[0]), sub(p[2], p[0])))
-    } else {
-        norm(cross(sub(p[2], p[0]), sub(p[3], p[1])))
-    };
-    (area / 2.0, min)
+        .fold(f64::INFINITY, f64::min);
+    (norm(cross(sub(p[1], p[0]), sub(p[2], p[0]))) / 2.0, min)
 }
 
 /// The volume (the area of a shell) and the smallest scaled Jacobian of one element. `None` for
@@ -108,7 +92,7 @@ fn element_metrics(kind: &str, p: &[P]) -> Option<(f64, f64)> {
             .fold(f64::INFINITY, f64::min);
             Some((d / 6.0, min))
         }
-        "S6" | "S8R" => Some(shell_metrics(p)),
+        "S6" => Some(shell_metrics(p)),
         _ => None,
     }
 }

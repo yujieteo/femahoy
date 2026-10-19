@@ -1,4 +1,3 @@
-use fh_inp::{Element, Model, Node};
 use fh_io::{mesh_stats, read_msh, read_msh_shell};
 
 const TET10: &str = include_str!("data/tet10.msh");
@@ -47,33 +46,4 @@ fn a_flat_s6_is_inverted() {
     // Put corner 3 on the line through corners 1 and 2.
     m.nodes[2].xyz = [2.0, 0.0, 0.0];
     assert_eq!(mesh_stats(&m).unwrap().inverted, 1);
-}
-
-/// One S8R from its 4 corners. The midside nodes are halfway.
-fn s8r(corners: [[f64; 3]; 4]) -> Model {
-    let mut xyz = corners.to_vec();
-    for i in 0..4 {
-        let (a, b) = (corners[i], corners[(i + 1) % 4]);
-        xyz.push([0, 1, 2].map(|k| (a[k] + b[k]) / 2.0));
-    }
-    Model {
-        nodes: (1..=8).zip(xyz).map(|(id, xyz)| Node { id, xyz }).collect(),
-        elements: vec![Element {
-            id: 1,
-            element_type: "S8R".into(),
-            nodes: (1..=8).collect(),
-        }],
-        ..Model::default()
-    }
-}
-
-#[test]
-fn s8r_has_an_area_and_a_concave_corner_is_inverted() {
-    let square = s8r([[0.0; 3], [2.0, 0.0, 0.0], [2.0, 2.0, 0.0], [0.0, 2.0, 0.0]]);
-    let s = mesh_stats(&square).unwrap();
-    assert!((s.measure - 4.0).abs() < 1e-12 && (s.min_scaled_jacobian - 1.0).abs() < 1e-12);
-    assert_eq!(s.inverted, 0);
-    // The corner at (0.5, 0.5) points into the element.
-    let dart = s8r([[0.0; 3], [2.0, 0.0, 0.0], [0.5, 0.5, 0.0], [0.0, 2.0, 0.0]]);
-    assert_eq!(mesh_stats(&dart).unwrap().inverted, 1);
 }

@@ -80,20 +80,17 @@ fn sides(element_type: &str) -> &'static [(u8, &'static [usize])] {
             (4, &[2, 3, 0]),
         ],
         "S6" => &[(3, &[0, 1]), (4, &[1, 2]), (5, &[2, 0])],
-        "S8R" => &[(3, &[0, 1]), (4, &[1, 2]), (5, &[2, 3]), (6, &[3, 0])],
         _ => &[],
     }
 }
 
 /// The `inp` element type and the gmsh position of each `inp` node. A solid mesh accepts the
-/// 10-node tet (gmsh type 11). A shell mesh accepts the 6-node triangle (type 9) and the
-/// 8-node quadrangle (type 16).
+/// 10-node tet (gmsh type 11). A shell mesh accepts the 6-node triangle (type 9).
 fn inp_type(t: u32, shell: bool) -> Option<(&'static str, &'static [usize])> {
     match (t, shell) {
         // gmsh puts the last two midside nodes in the other order.
         (11, false) => Some(("C3D10", &[0, 1, 2, 3, 4, 5, 6, 7, 9, 8])),
         (9, true) => Some(("S6", &[0, 1, 2, 3, 4, 5])),
-        (16, true) => Some(("S8R", &[0, 1, 2, 3, 4, 5, 6, 7])),
         _ => None,
     }
 }
