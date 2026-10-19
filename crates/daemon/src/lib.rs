@@ -14,8 +14,8 @@
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
 //!   its actions as chat entries for the page (`chat`, `docs/chat.md`).
 //!
-//! The solve path stays the existing subprocess protocol v2 (`fh-solve-ccx`, DESIGN.md
-//! section 9.3). The contract only starts it, cancels it and keeps the record.
+//! A run starts `ccx` through `fh_solver_ccx` in the daemon process (DESIGN.md section 9).
+//! The contract only starts it, cancels it and keeps the record.
 //!
 //! # Which process stays alive
 //!
@@ -25,7 +25,7 @@
 //!    reads the same record when it connects again.
 //! 2. Only a cancel command stops a run on purpose.
 //! 3. The solver never lives longer than the daemon. A daemon that stops cancels its runs.
-//!    A daemon that fails closes the stdin of the solver, and protocol v2 then stops it.
+//!    When a daemon fails, a guard process kills the process group of `ccx`.
 //! 4. A later daemon shows a run that an earlier daemon did not end as `interrupted`. It
 //!    never starts such a run again.
 //! 5. One daemon at a time uses a state folder. A lock file makes this sure.
@@ -49,10 +49,7 @@ pub use client::Client;
 pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
-pub use service::{
-    find_solver, missing_solver, solver_dirs, Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT,
-    MAX_QUEUED, SOLVER,
-};
+pub use service::{Config, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";

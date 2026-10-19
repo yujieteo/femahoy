@@ -9,7 +9,7 @@
 //! <state>/runs/<run>/input.inp        the read-only copy of the input that the run solves
 //! <state>/runs/<run>/record           the run record
 //! <state>/runs/<run>/events.log       bounded event log
-//! <state>/runs/<run>/out/             protocol v2 run folder
+//! <state>/runs/<run>/out/             run folder of ccx
 //! <state>/previews/<n>.inp            the copy of the input of a preview
 //! ```
 //!
@@ -24,7 +24,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use fh_solver_api::{CancelToken, Event as SolverEvent, SubprocessSolver};
+use fh_solver_ccx::{CancelToken, Ccx};
 
 use crate::contract::{
     now_ms, parse_event, run_id, valid_run, Error, Event, Events, Message, RunRecord, RunState,
@@ -54,40 +54,12 @@ const INPUT_FILE: &str = "input.inp";
 const OUT_DIR: &str = "out";
 const STOPPED: &str = "the daemon stopped before the run ended";
 
-/// The solver of the daemon when `FH_SOLVE` is not set.
-pub const SOLVER: &str = "fh-solve-ccx";
-
 /// The settings of a run service.
 pub struct Config {
     /// The folder of the store. One daemon at a time uses it.
     pub state_dir: PathBuf,
-    /// The protocol v2 solver, for example `fh-solve-ccx`, with its limits.
-    pub solver: SubprocessSolver,
-}
-
-/// The folder of the running program (`fh`), then each folder of `PATH`.
-pub fn solver_dirs() -> Vec<PathBuf> {
-    let exe = std::env::current_exe().ok();
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    exe.as_deref()
-        .and_then(Path::parent)
-        .map(Path::to_path_buf)
-        .into_iter()
-        .chain(std::env::split_paths(&path))
-        .collect()
-}
-
-/// The program `name` in the first folder of `dirs` that has it.
-pub fn find_solver(dirs: &[PathBuf], name: &str) -> Option<PathBuf> {
-    dirs.iter().map(|d| d.join(name)).find(|p| p.is_file())
-}
-
-/// The message for a solver that [`find_solver`] does not find.
-pub fn missing_solver(name: &str) -> String {
-    format!(
-        "the solver {name} is not beside fh or on PATH. To install it, see docs/ccx.md \
-         (run.solver.missing)"
-    )
+    /// The `ccx` program, with its limits.
+    pub solver: Ccx,
 }
 
 /// The run service. It owns every run. Clients only send commands and read records.
@@ -99,7 +71,7 @@ pub struct Service {
 
 struct Shared {
     dir: PathBuf,
-    solver: SubprocessSolver,
+    solver: Ccx,
     inner: Mutex<Inner>,
     /// Wakes the worker for a new run, and the readers for a new event.
     wake: Condvar,
@@ -219,19 +191,6 @@ fn clip(text: &str, max: usize) -> String {
     text[..end].to_owned()
 }
 
-fn solver_text(event: &SolverEvent) -> String {
-    match event {
-        SolverEvent::Progress {
-            step,
-            steps,
-            phase,
-            fraction,
-        } => format!("progress step={step}/{steps} phase={phase} fraction={fraction}"),
-        SolverEvent::Estimate { bytes } => format!("estimate bytes={bytes}"),
-        SolverEvent::Log(line) => format!("log {line}"),
-    }
-}
-
 fn write_atomic(path: &Path, text: &str) -> Result<(), Error> {
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     let tmp = path.with_file_name(format!(".{name}.tmp"));
@@ -311,13 +270,6 @@ impl Shared {
         self.wake.notify_all();
     }
 
-    fn event(&self, run: &str, text: &str) {
-        if let Some(live) = self.lock().live.get_mut(run) {
-            live.push(text);
-        }
-        self.wake.notify_all();
-    }
-
     /// The record of a run. A run of an earlier daemon that did not end shows as
     /// `interrupted`, because no daemon runs it now.
     fn record_of(&self, inner: &Inner, run: &str) -> Result<RunRecord, Error> {
@@ -368,12 +320,9 @@ impl Shared {
         };
         self.wake.notify_all();
         let dir = self.run_dir(run);
-        let result = self.solver.run_with(
-            &dir.join(INPUT_FILE),
-            &dir.join(OUT_DIR),
-            &cancel,
-            &mut |e| self.event(run, &solver_text(e)),
-        );
+        let result = self
+            .solver
+            .run_with(&dir.join(INPUT_FILE), &dir.join(OUT_DIR), &cancel);
         let mut inner = self.lock();
         let Some(state) = inner.live.get(run).map(|l| l.record.state) else {
             return;
@@ -574,8 +523,8 @@ impl Service {
         self.shared.run_file(run, Path::new(INPUT_FILE))
     }
 
-    /// Stop a run. A queued run ends at once. A running run gets `cancelling`, and its
-    /// solver gets the protocol v2 `cancel`. A cancel of a final run changes nothing. The
+    /// Stop a run. A queued run ends at once. A running run gets `cancelling`, and the
+    /// run kills `ccx`. A cancel of a final run changes nothing. The
     /// answer is the record after the cancel.
     pub fn cancel(&self, run: &str) -> Result<RunRecord, Error> {
         let sh = &self.shared;
@@ -618,20 +567,14 @@ impl Service {
         Ok(records.filter_map(Result::ok).collect())
     }
 
-    /// The runs of this daemon that are not final, in run order, each with the text of its
-    /// last `progress` event (or an empty text).
-    pub fn active(&self) -> Vec<(RunRecord, String)> {
+    /// The runs of this daemon that are not final, in run order.
+    pub fn active(&self) -> Vec<RunRecord> {
         let inner = self.shared.lock();
         let live = inner.live.values().filter(|l| !l.record.state.is_final());
-        live.map(|l| {
-            let items = l.events.items.iter().rev();
-            let progress = items.map(|e| &e.text).find(|t| t.starts_with("progress "));
-            (l.record.clone(), progress.cloned().unwrap_or_default())
-        })
-        .collect()
+        live.map(|l| l.record.clone()).collect()
     }
 
-    /// The bytes of one file in the protocol v2 run folder of a run, for the viewer. `name`
+    /// The bytes of one file in the run folder of a run, for the viewer. `name`
     /// is a plain file name: letters, digits, `.`, `_` and `-`, with no `.` first.
     pub fn result_file(&self, run: &str, name: &str) -> Result<Vec<u8>, Error> {
         let plain = (1..=128).contains(&name.len())

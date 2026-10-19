@@ -1,8 +1,8 @@
 # Input keywords and element types
 
 This reference lists the input that `fh_inp::parse` accepts.
-The solver is `fh-solve-ccx`, the CalculiX adapter ([ccx.md](../ccx.md)).
-“Solved” means that `fh-solve-ccx` gives the parsed data to `ccx`, subject to the limits below.
+The solver is CalculiX (`ccx`), through the adapter crate `solver-ccx` ([ccx.md](../ccx.md)).
+“Solved” means that the adapter gives the parsed data to `ccx`, subject to the limits below.
 The native solver `fh-solve` solved more of this input. The owner removed it on 2026-10-19. Main commit `08a97c2` has it.
 
 Sources: [parser](../../crates/inp/src/parse.rs), [lexer](../../crates/inp/src/lexer.rs) and
@@ -43,9 +43,9 @@ Repeated definitions of a node or element ID fail. Repeated definitions of a set
 
 ## Element types
 
-The only element type is `C3D10` (10 nodes, D-19). `fh-solve-ccx` solves it as the `ccx` tet10.
+The only element type is `C3D10` (10 nodes, D-19). `ccx` solves it as its tet10.
 The parser rejects every other element type with `unsupported element type TYPE; only C3D10 is supported`.
-`fh validate` uses the separate `fh-solve-ccx` binary. See the [command reference](fh.md).
+`fh validate` starts the separate `ccx` program. See the [command reference](fh.md).
 
 ## Text rules and errors
 

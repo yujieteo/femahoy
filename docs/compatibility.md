@@ -23,7 +23,7 @@ This file lists how femahoy differs from Abaqus input conventions.
 | `*DLOAD` | Only pressure on an element face (`P1` to `P4`). | `crates/inp/tests/m2_keywords.rs` `dload_pressure_on_face` |
 | `*EXPANSION` | Only `TYPE=ISO` with 1 value. No `ZERO` parameter and no temperature table. The thermal strain is alpha (T - T0), with T0 the initial temperature of the node. | `crates/inp/src/parse.rs` `thermal_keyword_rules` |
 | `*INITIAL CONDITIONS` | Only `TYPE=TEMPERATURE`, with 1 temperature for each node or node set. | `crates/inp/src/parse.rs` `thermal_keyword_rules` |
-| `*TEMPERATURE` | No parameters. Each line gives 1 temperature for a node or a node set. `fh-solve-ccx` gives it to CalculiX. | `crates/inp/src/parse.rs` `thermal_keyword_rules`, `crates/solver-ccx/tests/adapter.rs` `the_thermal_keywords_go_to_ccx` |
+| `*TEMPERATURE` | No parameters. Each line gives 1 temperature for a node or a node set. The adapter gives it to CalculiX. | `crates/inp/src/parse.rs` `thermal_keyword_rules`, `crates/solver-ccx/tests/adapter.rs` `the_thermal_keywords_go_to_ccx` |
 
 ## Keywords for M1
 

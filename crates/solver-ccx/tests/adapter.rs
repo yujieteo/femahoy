@@ -1,14 +1,11 @@
-//! `fh-solve-ccx` with small fake `ccx` scripts, and with the real `ccx` when it is installed.
-#![cfg(unix)]
+//! The `ccx` run with small fake `ccx` scripts, and with the real `ccx` when it is installed.
 
-use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::Command;
 use std::time::{Duration, Instant};
 
 use fh_io::vtu::{read_vtu, Grid};
-
-const EXE: &str = env!("CARGO_BIN_EXE_fh-solve-ccx");
+use fh_solver_ccx::{code, CancelToken, Ccx};
 
 fn repo(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -33,30 +30,17 @@ fn fake_ccx(dir: &Path, body: &str) -> PathBuf {
     exe
 }
 
-/// Start the adapter. The stdin pipe can send a `cancel` line.
-fn start(input: &Path, run: &Path, ccx: &Path) -> Child {
-    Command::new(EXE)
-        .arg(input)
-        .arg(run)
-        .env("FH_CCX", ccx)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap()
+/// `ccx` at `exe` with the default limits.
+fn ccx(exe: &Path) -> Ccx {
+    Ccx {
+        exe: exe.into(),
+        ..Ccx::new()
+    }
 }
 
-/// Run the adapter to the end: the exit code and stderr.
-fn run(input: &Path, run: &Path, ccx: &Path) -> (Option<i32>, String) {
-    let mut child = start(input, run, ccx);
-    let _stdin = child.stdin.take();
-    let out = child.wait_with_output().unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(stdout.lines().next(), Some("fh-solver-protocol 2"));
-    (
-        out.status.code(),
-        String::from_utf8_lossy(&out.stderr).into(),
-    )
+/// Solve to the end: the error text, or an empty text on success.
+fn run(input: &Path, run: &Path, exe: &Path) -> Result<(), String> {
+    ccx(exe).run(input, run).map_err(|e| e.to_string())
 }
 
 /// One C3D10 tet, tied at x = 0 and pulled at node 2, x = 1. Nodes 5 to 10 are the midside
@@ -135,7 +119,7 @@ fn point(grid: &Grid, field: &str, point: usize) -> Vec<f64> {
 }
 
 #[test]
-fn the_frd_results_become_vtu_pvd_and_a_summary() {
+fn the_frd_results_become_vtu_and_pvd() {
     let dir = scratch("frd");
     std::fs::write(dir.join("frd"), FRD).unwrap();
     std::fs::write(dir.join("dat"), DAT).unwrap();
@@ -146,8 +130,9 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
             dir.display()
         ),
     );
-    let (code, err) = run(&tet(&dir, ""), &dir.join("run"), &ccx);
-    assert_eq!(code, Some(0), "{err}");
+    if let Err(err) = run(&tet(&dir, ""), &dir.join("run"), &ccx) {
+        panic!("{err}");
+    }
     let input = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
     for line in [
         "*SOLID SECTION, ELSET=FH_ALL, MATERIAL=STEEL",
@@ -169,13 +154,6 @@ fn the_frd_results_become_vtu_pvd_and_a_summary() {
     assert!(near(s, &[150.0, 0.0, 0.0, 10.0, 30.0, 20.0]), "{s:?}");
     let mises = grid.cell_field("MISES").unwrap().as_f64().unwrap();
     assert!(near(mises, &[26700f64.sqrt()]), "{mises:?}");
-    let summary = std::fs::read_to_string(dir.join("run/summary.toon")).unwrap();
-    assert!(summary.starts_with("schema: fh.run"), "{summary}");
-    assert!(
-        summary.contains("solver: \"ccx 9.9, unvalidated\""),
-        "{summary}"
-    );
-    assert!(summary.contains("PULL,converged,1,2"), "{summary}");
 }
 
 /// In a distorted element the points have different weights times Jacobian, so `S` is the
@@ -200,8 +178,9 @@ fn the_element_stress_is_the_volume_mean_of_the_points() {
         &dir,
         &format!("cp {0}/frd job.frd\ncp {0}/dat job.dat", dir.display()),
     );
-    let (code, err) = run(&input, &dir.join("run"), &ccx);
-    assert_eq!(code, Some(0), "{err}");
+    if let Err(err) = run(&input, &dir.join("run"), &ccx) {
+        panic!("{err}");
+    }
     let grid = read_vtu(&std::fs::read(dir.join("run/step-1.vtu")).unwrap()).unwrap();
     let s = grid.cell_field("S").unwrap().as_f64().unwrap();
     // The plain mean is 0.25.
@@ -211,8 +190,7 @@ fn the_element_stress_is_the_volume_mean_of_the_points() {
 #[test]
 fn no_ccx_is_a_clear_error() {
     let dir = scratch("none");
-    let (code, err) = run(&tet(&dir, ""), &dir.join("run"), &dir.join("no-ccx"));
-    assert_eq!(code, Some(1));
+    let err = run(&tet(&dir, ""), &dir.join("run"), &dir.join("no-ccx")).unwrap_err();
     assert!(
         err.contains("cannot start") && err.contains("FH_CCX") && err.contains("docs/ccx.md"),
         "{err}"
@@ -232,7 +210,7 @@ fn the_thermal_keywords_go_to_ccx() {
         .replace("0.3\n", "0.3\n*EXPANSION\n1.2e-5\n")
         .replace("*END STEP", "*TEMPERATURE\nALL, 120\n8, 100\n*END STEP");
     std::fs::write(&input, text).unwrap();
-    run(&input, &dir.join("run"), &dir.join("no-ccx"));
+    let _ = run(&input, &dir.join("run"), &dir.join("no-ccx"));
     let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
     for part in [
         "*ELASTIC\n2.10000000000000e5, 3.00000000000000e-1\n*EXPANSION\n1.20000000000000e-5\n",
@@ -247,8 +225,7 @@ fn the_thermal_keywords_go_to_ccx() {
 fn a_failed_ccx_run_is_an_error_with_the_ccx_message() {
     let dir = scratch("failed");
     let ccx = fake_ccx(&dir, "echo ' *ERROR in readinput: bad card'\nexit 201");
-    let (code, err) = run(&tet(&dir, ""), &dir.join("run"), &ccx);
-    assert_eq!(code, Some(1));
+    let err = run(&tet(&dir, ""), &dir.join("run"), &ccx).unwrap_err();
     assert!(err.contains("*ERROR in readinput: bad card"), "{err}");
     assert!(!dir.join("run/results.pvd").exists());
 }
@@ -284,8 +261,7 @@ fn a_ccx_failure_tells_why_and_what_to_do() {
     .enumerate()
     {
         let ccx = fake_ccx(&dir, body);
-        let (code, err) = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
-        assert_eq!(code, Some(1), "{body}");
+        let err = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx).unwrap_err();
         for part in parts {
             assert!(err.contains(part), "{body}: {part} is not in {err}");
         }
@@ -317,8 +293,7 @@ fn an_invalid_result_file_is_an_error() {
     .enumerate()
     {
         let ccx = fake_ccx(&dir, body);
-        let (code, err) = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx);
-        assert_eq!(code, Some(1), "{body}");
+        let err = run(&tet(&dir, ""), &dir.join(format!("run-{i}")), &ccx).unwrap_err();
         assert!(err.contains(why), "{body}: {err}");
     }
 }
@@ -347,8 +322,7 @@ fn a_keyword_outside_the_subset_is_a_clear_error() {
     {
         let input = dir.join(format!("bad-{i}.inp"));
         std::fs::write(&input, text).unwrap();
-        let (code, err) = run(&input, &dir.join(format!("run-{i}")), &dir.join("no-ccx"));
-        assert_eq!(code, Some(1), "{want}");
+        let err = run(&input, &dir.join(format!("run-{i}")), &dir.join("no-ccx")).unwrap_err();
         assert!(err.contains(want), "{want}: {err}");
     }
 }
@@ -362,7 +336,7 @@ fn each_number_of_the_ccx_input_fits_in_20_characters() {
     let text = TET.replace("3, 0, 1, 0\n", "3, -1.3302787975829e-17, 1, -4.7e-117\n");
     assert_ne!(text, TET);
     std::fs::write(&input, text).unwrap();
-    run(&input, &dir.join("run"), &dir.join("no-ccx"));
+    let _ = run(&input, &dir.join("run"), &dir.join("no-ccx"));
     let job = std::fs::read_to_string(dir.join("run/ccx/job.inp")).unwrap();
     let line = job.lines().find(|l| l.starts_with("3, ")).unwrap();
     let values: Vec<f64> = line
@@ -397,8 +371,7 @@ fn a_model_that_can_move_as_a_rigid_body_is_a_clear_error() {
     {
         let input = dir.join(format!("rigid-{i}.inp"));
         std::fs::write(&input, TET.replace(held, support)).unwrap();
-        let (code, err) = run(&input, &dir.join(format!("run-{i}")), &ccx);
-        assert_eq!(code, Some(1), "{support}");
+        let err = run(&input, &dir.join(format!("run-{i}")), &ccx).unwrap_err();
         assert!(
             err.contains("can move as a rigid body") && err.contains(mode),
             "{support}: {err}"
@@ -411,18 +384,91 @@ fn a_model_that_can_move_as_a_rigid_body_is_a_clear_error() {
 #[test]
 fn cancel_stops_ccx() {
     let dir = scratch("cancel");
-    let ccx = fake_ccx(&dir, "sleep 30");
-    let mut child = start(&tet(&dir, ""), &dir.join("run"), &ccx);
-    let mut header = String::new();
-    BufReader::new(child.stdout.take().unwrap())
-        .read_line(&mut header)
-        .unwrap();
-    assert_eq!(header.trim(), "fh-solver-protocol 2");
+    let exe = fake_ccx(&dir, "sleep 30");
+    let token = CancelToken::new();
+    let stop = token.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(300));
+        stop.cancel();
+    });
     let clock = Instant::now();
-    child.stdin.take().unwrap().write_all(b"cancel\n").unwrap();
-    let status = child.wait().unwrap();
-    assert_eq!(status.code(), Some(130));
+    let e = ccx(&exe)
+        .run_with(&tet(&dir, ""), &dir.join("run"), &token)
+        .unwrap_err();
+    assert!(e.is_cancelled(), "{e}");
     assert!(clock.elapsed() < Duration::from_secs(10));
+}
+
+fn alive(pid: &str) -> bool {
+    Command::new("kill")
+        .args(["-0", pid])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+#[test]
+fn the_time_limit_kills_the_whole_process_group() {
+    let dir = scratch("tree");
+    // The child of the fake ccx is in its group. Its pid goes to a file.
+    let exe = fake_ccx(
+        &dir,
+        &format!("sleep 30 &\necho $! > {}/child.pid\nwait", dir.display()),
+    );
+    let mut s = ccx(&exe);
+    // The script must write the pid file before the time limit.
+    s.timeout = Some(Duration::from_secs(2));
+    let e = s.run(&tet(&dir, ""), &dir.join("run")).unwrap_err();
+    assert_eq!(e.code, code::TIME_LIMIT);
+    assert!(e.message.contains("time limit of 2 s"), "{e}");
+    assert!(e.message.contains("coarser mesh"), "{e}");
+    let pid = std::fs::read_to_string(dir.join("child.pid")).unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(!alive(pid.trim()), "child {pid} is still alive");
+}
+
+#[test]
+fn the_memory_limit_kills_ccx() {
+    // awk builds a string of about 134 MB and then loops.
+    let dir = scratch("memory");
+    let exe = fake_ccx(
+        &dir,
+        r#"exec awk 'BEGIN { s = "x"; for (i = 0; i < 27; i++) s = s s; while (1) { } }'"#,
+    );
+    let mut s = ccx(&exe);
+    s.memory_limit = 50 << 20;
+    let e = s.run(&tet(&dir, ""), &dir.join("run")).unwrap_err();
+    assert_eq!(e.code, code::MEMORY);
+    assert!(e.message.contains("memory limit of 50 MiB"), "{e}");
+    assert!(e.message.contains("coarser mesh"), "{e}");
+}
+
+#[test]
+fn a_new_ccx_has_no_time_limit_and_85_percent_of_the_ram() {
+    let s = Ccx::new();
+    assert_eq!(s.timeout, None);
+    match fh_solver_ccx::total_memory() {
+        Some(ram) => assert!(s.memory_limit > ram / 2 && s.memory_limit < ram),
+        None => assert_eq!(s.memory_limit, u64::MAX),
+    }
+}
+
+#[test]
+fn a_run_folder_with_foreign_files_is_not_cleared() {
+    let dir = scratch("foreign");
+    let run_dir = dir.join("run");
+    std::fs::create_dir_all(&run_dir).unwrap();
+    std::fs::write(run_dir.join("precious.txt"), "keep").unwrap();
+    let e = run(&tet(&dir, ""), &run_dir, &dir.join("no-ccx")).unwrap_err();
+    assert!(e.contains("not a run folder"), "{e}");
+    assert!(run_dir.join("precious.txt").is_file());
+    // An input inside a run folder is refused, because a run clears the folder.
+    let inside = dir.join("inside");
+    let _ = run(&tet(&dir, ""), &inside, &dir.join("no-ccx"));
+    std::fs::write(inside.join("tet.inp"), TET).unwrap();
+    let e = run(&inside.join("tet.inp"), &inside, &dir.join("no-ccx")).unwrap_err();
+    assert!(e.contains("inside the run folder"), "{e}");
+    assert!(inside.join("tet.inp").is_file());
 }
 
 /// The real `ccx` from `FH_CCX` or PATH, or `None` with a message when it is absent. With
@@ -468,8 +514,9 @@ fn real_ccx_matches_the_cantilever_and_bar_pressure_references() {
     let dir = scratch("real");
     let solve = |case: &str| {
         let run_dir = dir.join(case.replace('/', "-"));
-        let (code, err) = run(&repo(&format!("validation/cases/{case}")), &run_dir, &ccx);
-        assert_eq!(code, Some(0), "{case}: {err}");
+        if let Err(err) = run(&repo(&format!("validation/cases/{case}")), &run_dir, &ccx) {
+            panic!("{case}: {err}");
+        }
         read_vtu(&std::fs::read(run_dir.join("step-1.vtu")).unwrap()).unwrap()
     };
     // Reference -0.01919619048 mm (case.toml). The C3D10 value of mesh-8 is 1.4 % soft, in
@@ -509,8 +556,9 @@ fn real_ccx_adds_cload_lines_in_a_step_and_a_later_step_replaces_the_total() {
     );
     std::fs::write(&input, text).unwrap();
     let run_dir = dir.join("run");
-    let (code, err) = run(&input, &run_dir, &ccx);
-    assert_eq!(code, Some(0), "{err}");
+    if let Err(err) = run(&input, &run_dir, &ccx) {
+        panic!("{err}");
+    }
     let grid =
         |n: u32| read_vtu(&std::fs::read(run_dir.join(format!("step-{n}.vtu"))).unwrap()).unwrap();
     let (one, two) = (grid(1), grid(2));

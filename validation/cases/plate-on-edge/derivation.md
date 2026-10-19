@@ -1,7 +1,7 @@
 # Steel plate on its edge, through CalculiX
 
 This case is the plate model from a chat with the owner.
-The first 2 chat solves failed with the own solver, thus this case runs the model through `fh-solve-ccx`.
+The first 2 chat solves failed with the own solver, thus this case runs the model through `ccx`.
 The reference is the converged value of a separate graded hex model in CalculiX.
 The 20 mm tetrahedral mesh of the chat is 3.8 percent from it.
 

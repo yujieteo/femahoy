@@ -13,9 +13,9 @@ femahoy is a finite element workflow in Rust. LLM agents and humans use it toget
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the leader**: 1 focused agent that plans and does the work.
 - The **input** is Abaqus-shaped `.inp` text.
-- **Agent-facing output** is TOON.
+- **Agent-facing output** is plain text lines (D-31).
 - **Results** are VTU files, so ParaView can open them.
-- The **solver** is CalculiX (`ccx`). The `fh-solve-ccx` adapter runs it (D-13). Each validation case passes against its reference.
+- The **solver** is CalculiX (`ccx`). `fh` starts it directly (D-13, D-31). Each validation case passes against its reference.
 - Users and their agents can build their own solvers on the same crates.
 
 Description rule: say the product is "heavily inspired by Abaqus input conventions". Never use "Abaqus" as a product name or in a product name.
@@ -108,7 +108,7 @@ The daemon has no pane backend. The chat replaced the terminal sidebar, so the s
 
 ### 7.1 Solver now
 
-The solver is CalculiX (`ccx`). The `fh-solve-ccx` adapter runs it as a separate program (D-12, D-13). The user installs `ccx` (`docs/ccx.md`). Each solve and `fh validate` stop with an error that tells how to install it when `ccx` is not there.
+The solver is CalculiX (`ccx`). `fh` starts it directly as a separate program (D-12, D-13, D-31). The user installs `ccx` (`docs/ccx.md`). Each solve and `fh validate` stop with an error that tells how to install it when `ccx` is not there.
 
 The owner removed the native solver `fh-solve` on 2026-10-19 (D-29). An own solver is a main advantage later, but not now. Main commit `08a97c2` has its code and its design: the linear static solver, the Newton nonlinear path, restart, the sparse Cholesky and the Jacobi PCG solver.
 
@@ -148,42 +148,29 @@ Scope: the keywords that the validation cases need. Any other keyword fails with
   - Every writer takes one array at a time from a buffered file and makes no copy of a field.
 - ParaView opens the PVD file directly.
 - The wasm viewer reads the same files.
-- **TOON** is used only for summaries and queries that agents ask for (for example, "maximum Mises stress in set X, step 2"). Full field data never goes into TOON.
+- Agents read plain text lines. Full field data stays in the VTU files.
 - Weak point: very large models (millions of elements). A binary format of our own can come later if this becomes a problem.
 
 ---
 
 ## 9. Extensibility
 
-### 9.1 Solver interfaces
+### 9.1 Solver interface
 
-| Interface | For | How it works |
-|---|---|---|
-| Subprocess protocol | Every solver: `fh-solve-ccx`, and other solvers | An executable takes an `.inp` file path and a run folder, and writes result files plus a TOON summary. The protocol is versioned (version 2, section 9.3). |
+`fh` starts `ccx` directly, in the process of `fh serve` or of the `fh` command (D-31). The `solver-ccx` crate writes the `ccx` input, runs `ccx` and writes the results. There is no solver protocol, because only 1 solver exists. Another solver can get its own adapter crate when a real run needs it.
 
-Users can use the open `inp`, `io`, and `toon` crates in their own solvers.
+Users can use the open `inp` and `io` crates in their own solvers.
 
-### 9.2 Limits for subprocess solvers
+### 9.2 Limits of the `ccx` process
 
 - Each run has its own working folder.
-- Each run has a memory limit. A time limit applies only when the case or an option sets one.
-- Results from a solver that has not passed the validation suite are marked **unvalidated**.
+- Each run has a memory limit. The default is 85 percent of the RAM of the machine. A time limit applies only when the case or an option sets one.
+- A cancel, the memory limit and the time limit kill the whole process group of `ccx` at once. A guard process kills the group when `fh` stops.
+- The run reads the memory use of the group with an operating system probe (Linux and macOS).
+- The run folder has `step-N.vtu` for the last increment of step N, the PVD collection, and the `ccx` files in `ccx/`. There is no summary file. The run record has the state and the time.
+- The chat and the page show the state of the run and the time.
 
-The agent itself runs under the permission system of its harness.
-
-### 9.3 Subprocess protocol, version 2
-
-Command line: `<solver> <input.inp> <run-dir>`. The protocol text is in `docs/solver-protocol.md`.
-
-- **stdout** is line based. The first line is `fh-solver-protocol 2`. Then these event lines:
-  - `estimate bytes=N`: the memory estimate of the solver, before the work starts.
-  - `progress step=i/n phase=<name> fraction=<0..1>`: about 20 lines for each phase.
-  - The runner keeps any other line as a log line.
-- **stdin**: the line `cancel` stops the run. The end of stdin also stops it when `FH_CANCEL_ON_EOF` is `1`, which the runner sets. The exit code is 130. The runner keeps the pipe open while the solver runs.
-- **Run folder**: `step-N.vtu` for the last increment of step N, the PVD collection and `summary.toon`. `fh-solve-ccx` also keeps the `ccx` files in `ccx/`.
-- **Summary**: `summary.toon` follows the `fh.run` schema (TOON schema, sections 3.5 and 3.7). It has the header (`source`, `source_hash`, `units`, `status`), `run_id`, `solver`, `results`, `wall_s`, one row for each step (`name`, `status`, `reached`, `increments`), one row for each increment (`step`, `inc`, `iters`, `result` ok or cutback), and the diagnostics.
-- **Limits**: the runner stops the whole process group at the memory limit, and at the time limit when the case or an option sets one. It reads the memory use of the group with an operating system probe (Linux and macOS). The default memory limit is 85 percent of the RAM of the machine. A process that ignores `cancel` is killed after a grace period.
-
+The agent itself runs under the permission system of its harness. `docs/ccx.md` has the details.
 
 ---
 
@@ -237,13 +224,11 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 |---|---|---|
 | `inp` | `.inp` reader, Abaqus-shaped model | open API |
 | `io` | gmsh `.msh` import, VTU and PVD write and read | open API |
-| `toon` | agent-facing summaries and queries | open API |
-| `solver-api` | subprocess protocol v2 and its runner | open API |
 | `validation` | harness and the pass rule | validated core |
 | `daemon` | HTTP server, token auth, process supervision, chat agent, the page (HTML chat) | app |
 | `cli` | `fh` commands | app |
 | `viewer` | eframe app, wgpu mesh and contour renderer | app |
-| `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU, PVD and TOON (D-13) | app |
+| `solver-ccx` | CalculiX adapter: `ccx` input writer, process run, `.frd` reader, results as VTU and PVD (D-13, D-31) | app |
 
 ### 11.1 Key dependencies
 
@@ -260,7 +245,7 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 
 **Target machine:** 16 GB RAM, 4 to 6 cores, a hard disk or a slow SSD (D-06). Input files are small. Results files are not: write them in pieces.
 
-- The default memory limit of a run is 85 percent of the RAM of the machine. The runner stops a solver at this limit (section 9.3).
+- The default memory limit of a run is 85 percent of the RAM of the machine. The run stops `ccx` at this limit (section 9.2).
 - The native solver solved a model of 1M `C3D8` elements in 5.9 GiB. Section 11.2 of `DESIGN.md` at main commit `08a97c2` has the measurements.
 
 ---
@@ -296,7 +281,6 @@ Later, with no milestone yet: a mesher of our own (D-15) and an own solver (D-29
 |---|---|
 | Leader | The agent of the chat. Plans and does the work. Writes no solver code. |
 | Fixture | One validation case: mesh, reference values, tolerances, justification. |
-| Unvalidated | A result from a solver that has not passed the validation suite. |
 
 ---
 
@@ -321,12 +305,12 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Built:** `.msh` import and `fh mesh` (`cli` crate). `fh mesh` runs gmsh as a subprocess. v1 refuses a `.geo` file that can run other programs or files.
 
 ### D-03 TOON is for agents, VTU keeps full precision
-- **Decided by:** the captain.
+- **Decided by:** the captain. Changed by D-31.
 - **Choice:** TOON output is only for agent reading. VTU files keep the full-precision values. A `precision` key sets the significant figures in TOON. The default is 4.
 - **Reason:** Fewer digits save agent tokens. Full data stays in the files for exact work.
 - **Rejected:** full precision in TOON, one fixed precision with no key.
 - **Reverse if:** agents need more digits to make correct decisions.
-- **Built:** yes (`toon` crate, `--precision`).
+- **Built:** removed by D-31 on 2026-10-19. The `toon` crate and the TOON summary are deleted.
 
 ### D-04 Results are VTU with PVD
 - **Decided by:** the captain.
@@ -334,7 +318,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** VTU needs no large library, and ParaView opens it. HDF5 and Exodus need C libraries that are hard to build.
 - **Rejected:** HDF5, Exodus.
 - **Reverse if:** a real model is too big for VTU.
-- **Built:** yes. `fh-solve-ccx` writes VTU with PVD. D-30 removed the plain text and legacy VTK writers on 2026-10-19, because no solver wrote these files after D-29.
+- **Built:** yes. The `ccx` run writes VTU with PVD. D-30 removed the plain text and legacy VTK writers on 2026-10-19, because no solver wrote these files after D-29.
 
 ### D-05 Model input stays Abaqus-style `.inp`, TOML holds only case metadata
 - **Decided by:** the captain.
@@ -350,7 +334,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** This is the machine of the expected user.
 - **Rejected:** solvers that need more than 16 GB or fast disk swap.
 - **Reverse if:** the captain changes the target machine.
-- **Built:** M2 (PR 10) built the memory estimate, the solver switch rule and the parallel PCG in the native solver. D-29 removed them on 2026-10-19. The runner keeps the default memory limit (section 11.2).
+- **Built:** M2 (PR 10) built the memory estimate, the solver switch rule and the parallel PCG in the native solver. D-29 removed them on 2026-10-19. The `ccx` run keeps the default memory limit (section 11.2).
 
 ### D-07 Code builds and passes on aarch64
 - **Decided by:** the captain.
@@ -366,15 +350,15 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Long runs on a slow disk can die at any time.
 - **Rejected:** write in place, trust any file that exists.
 - **Reverse if:** a better atomic method exists on all target platforms.
-- **Built:** `fh-solve-ccx` writes each result file to a temporary name and renames it. D-29 removed restart with the native solver on 2026-10-19.
+- **Built:** the `ccx` run writes each result file to a temporary name and renames it. D-29 removed restart with the native solver on 2026-10-19.
 
 ### D-12 Own solver, and other solvers as separate programs
-- **Decided by:** the captain. Changed by D-27 and D-29.
+- **Decided by:** the captain. Changed by D-27, D-29 and D-31.
 - **Choice:** An own solver is a main advantage of the product, later (D-29). Other open solvers run as separate programs that the user installs. femahoy adds an adapter crate for each one. "One package" means one femahoy package with the adapters. It never contains the solver programs.
 - **Reason:** External solvers give capabilities now. Separate programs keep GPL code out of the product (D-02).
 - **Rejected:** link or bundle another solver.
 - **Reverse if:** the captain changes the focus of the product.
-- **Built:** yes. `solver-ccx` is the first adapter crate (D-13).
+- **Built:** yes. `solver-ccx` is the first adapter crate (D-13). Since D-31, `fh` calls the adapter crate in its own process and starts `ccx` directly.
 
 ### D-13 CalculiX is the first external solver
 - **Decided by:** the captain.
@@ -382,7 +366,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Reason:** Its input is closest to our `.inp`. It passed all 6 capability tests (linear, plasticity, contact, large movement, model change, submodel). It is GPL, so it stays a separate program.
 - **Rejected:** link or bundle `ccx`.
 - **Reverse if:** `ccx` cannot pass the C1 stage, or its licence or input format changes.
-- **Built:** yes. Stage C1 built `solver-ccx` for linear static (`docs/ccx.md`). C3 added thermal strain and several materials.
+- **Built:** yes. Stage C1 built `solver-ccx` for linear static (`docs/ccx.md`). C3 added thermal strain and several materials. D-31 removed the `fh-solve-ccx` program between `fh` and `ccx`.
 
 ### D-15 gmsh now, a mesher of our own later
 - **Decided by:** the captain. Changed by D-27.
@@ -532,3 +516,11 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 - **Rejected:** keep the plans as "later" items.
 - **Reverse if:** a real run shows the need for one of these items. Then add it as a new item with an exit test.
 - **Built:** yes. This changes D-02, D-04, D-05, D-09, D-13, D-15, D-22, D-27 and D-28.
+
+### D-31 `fh` starts `ccx` directly, and the run summary goes
+- **Decided by:** the owner, 2026-10-19. The owner said: "yes do 1 2 and 3, replace toon" and then "Agree with all."
+- **Choice:** `fh` starts `ccx` directly. The adapter code is a library that `fh serve` and the `fh` command call in their own process. Remove the `fh-solve-ccx` program, the subprocess protocol v2 and its runner (`crates/solver-api`), `FH_SOLVE` and the case key `solver`. Remove TOON (`crates/toon`) and the run summary. No new summary file replaces it.
+- **Reason:** No run needed another solver. The summary had no result numbers, and the run record already has the state and the time. Nobody measured the token saving of TOON.
+- **Rejected:** keep the protocol for a later solver. Replace TOON with a `key=value` summary.
+- **Reverse if:** a real run needs a second solver, or an agent needs a summary file.
+- **Built:** yes. The memory limit, the time limit, the stop of the process group and the run state in the chat stay. This changes D-03, D-12, D-13 and D-29.

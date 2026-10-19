@@ -299,15 +299,10 @@ function setRunning(on, fields = {}) {
   $("hint").textContent = on ? "The agent reads your message at its next step" : "Ctrl+Enter sends";
   started = Number(fields.started_ms) || 0;
   tick();
-  const solving = (fields.solving || "").split(" ");
-  const [run, state] = solving;
-  const step = Object.fromEntries(solving.slice(3).map((p) => p.split("=")));
-  const text = step.phase
-    ? step.phase + " " + Math.round(Number(step.fraction) * 100) + "%, step " + step.step
-    : state;
+  const [run, state] = (fields.solving || "").split(" ");
   $("solve").hidden = !run;
-  // The progress first, because a long name gets cut at the end.
-  if (run) $("solve").lastChild.replaceChildren(text + " · ", runName(run));
+  // The state first, because a long name gets cut at the end.
+  if (run) $("solve").lastChild.replaceChildren(state + " · ", runName(run));
 }
 
 function status(id, text, title) {

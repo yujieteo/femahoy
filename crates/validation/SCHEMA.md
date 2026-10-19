@@ -19,7 +19,6 @@ The captain also accepted the cantilever reference error of 2 percent and the La
 | `units` | 1 | The unit system of every number in the case: `"SI-mm"` (mm, N, MPa, tonne, s) or `"SI-m"` (m, N, Pa, kg, s). No default. A missing or other value is an error (D-12). |
 | `justification` | 1 | Why the tolerance is right (string). |
 | `derivation` | 1 | A file in the folder that shows how the reference values were derived. |
-| `solver` | 0 or 1 | The solver program. The only value is `"fh-solve-ccx"` (CalculiX), the default. If `ccx` does not start, `fh validate` stops before the first case. |
 | `mesh` | 1 | One input file (string), path relative to the folder. It holds only `C3D10` elements (D-19). |
 | `time_limit_s` | 0 or 1 | The time limit of each solve in `fh validate`, in seconds (above 0). The default is no time limit. |
 | `memory_limit_mib` | 0 or 1 | The memory limit of each solve in `fh validate`, in MiB (above 0). The default is the limit of the runner, 85 % of the RAM. |

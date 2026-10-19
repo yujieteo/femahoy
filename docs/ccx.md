@@ -1,8 +1,8 @@
 # CalculiX (`ccx`) adapter
 
-`fh-solve-ccx` runs CalculiX as a protocol v2 solver (D-13). femahoy never bundles or links `ccx`, because it is GPL. You install it.
+`fh` starts CalculiX directly as a separate program (D-13). The crate `fh-solver-ccx` has the adapter code. femahoy never bundles or links `ccx`, because it is GPL. You install it.
 
-`fh-solve-ccx` is the only solver of femahoy. The owner removed the native solver `fh-solve` on 2026-10-19 (D-29). An own solver is a main advantage later, but not now. Main commit `08a97c2` has the native solver.
+`ccx` is the only solver of femahoy. The owner removed the native solver `fh-solve` on 2026-10-19 (D-29). An own solver is a main advantage later, but not now. Main commit `08a97c2` has the native solver.
 
 ## Get `ccx`
 
@@ -15,13 +15,42 @@ If `ccx` does not start, each solve and `fh validate` stop with an error that re
 ## Run
 
 ```
-fh-solve-ccx model.inp run-dir    # one run
-fh validate                       # the validation suite through ccx
+fh run model.inp    # one run through the daemon
+fh validate         # the validation suite through ccx
 ```
 
-The run folder gets `results.pvd`, `step-N.vtu` and `summary.toon` (`docs/solver-protocol.md`). The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.log`) are in `run-dir/ccx`.
+The run folder gets `results.pvd` and `step-N.vtu`. There is no summary file: the run record has the state and the time. The `ccx` files (`job.inp`, `job.frd`, `job.dat`, `job.log`) are in `run-dir/ccx`.
 U and RF come from `job.frd`. The stress comes from the integration points in `job.dat` (`*EL PRINT`).
-The summary says `solver: "ccx <version>, unvalidated"`.
+
+## Run folder
+
+- A run clears the run folder before it starts, but only if the folder has the marker file `.fh-run`.
+- If the folder is not empty and has no marker, the run stops with an error and deletes nothing.
+- The run writes the marker on the first run.
+- Each result file gets a temporary name first, and then a rename (D-09).
+
+## Result contract
+
+`fh validate` reads these arrays in each VTU file. The adapter uses the shared code in `fh_io::result` for the ids, the set flags and the rule for `S`.
+
+- `NODE_ID` on the points and `ELEMENT_ID` on the cells, in model order.
+- `NSET_<name>` on the points and `ELSET_<name>` on the cells, one for each set of the model. The value is 1 for a member of the set and 0 for all other entries.
+- `U` and `RF` on the points.
+- `S` on the cells, in the order `[xx, yy, zz, xy, yz, xz]`. `S` is the volume mean of the integration point stress. The weight of each point is its integration weight times its Jacobian determinant.
+- `MISES` on the cells, from `S`.
+
+## Process limits
+
+- There is no default time limit, because a large model can solve for hours. A cancel stops a run.
+- The default memory limit is 85% of the machine RAM. If the RAM is not known, there is no limit.
+- A validation case can set its own limits with `time_limit_s` and `memory_limit_mib`.
+- The error at a limit tells the user to use a coarser mesh.
+- `ccx` runs in its own process group. A cancel, the time limit and the memory limit kill the whole group at once.
+- A guard process in the group reads a pipe from `fh`. If `fh` stops, also on SIGKILL, the pipe closes and the guard kills the group. Thus `ccx` never runs longer than `fh`.
+- The memory check sums the memory of the whole group (Linux: the resident memory from `/proc`, macOS: the physical footprint).
+- Linux: the run also sets a hard address space limit (limit + 256 MiB).
+- macOS has no hard limit that the kernel enforces. Only the memory check applies.
+- If the memory check fails, the run stops `ccx` with an error.
 
 ## Keyword subset
 
@@ -32,7 +61,7 @@ Changes for `ccx`:
 
 - A model with no `*SOLID SECTION` gets one section for all elements with its only material.
 - Each step is one linear increment. The parser does not read the `*STATIC` data lines.
-- The element stress `S` is the volume mean of the `ccx` integration point stress (`docs/solver-protocol.md`, "Result contract").
+- The element stress `S` is the volume mean of the `ccx` integration point stress ("Result contract" above).
 - Each number in `job.inp` has 20 characters or fewer, because `ccx` reads only the first 20 characters of a number.
   A longer number lost the end of its exponent with no error. For example, `-1.33027879758290e-17` became -0.133.
 - Before `ccx` starts, the adapter checks the supports of each step. They must hold the 6 rigid motions of each connected part of the mesh.
@@ -50,7 +79,7 @@ Each failure of `ccx` gives a message that tells why and what to do:
 | Any other exit code | `ccx failed (STATUS) with no *ERROR message. The last ccx line is: LINE.` |
 
 Each message ends with the path of `job.log`.
-The runner adds the time limit and the memory limit (`docs/solver-protocol.md`, "Limits"). At a limit, it stops `fh-solve-ccx` and `ccx` together.
+The time limit and the memory limit give their own errors ("Process limits" above).
 
 ## Thermal strain
 
@@ -61,9 +90,8 @@ The adapter writes these keywords to `job.inp` with the same data, so `ccx` give
 - `*TEMPERATURE`: the temperature at the end of the step. A node with no value in a step keeps its last temperature.
 
 A model with several materials needs one `*SOLID SECTION` for each element set.
-`fh validate` runs each case with `fh-solve-ccx`. If `ccx` does not start, `fh validate` stops with exit code 1 before the first case. A run where no case ran does not pass.
-`fh run` finds `fh-solve-ccx` beside `fh`, else on `PATH`. You do not set `FH_SOLVE`.
-If `fh-solve-ccx` is not there, `fh run` stops with `run.solver.missing`. Then run `scripts/install.sh`, which puts `fh-solve-ccx` beside `fh`.
+`fh validate` runs each case with `ccx`. If `ccx` does not start, `fh validate` stops with exit code 1 before the first case. A run where no case ran does not pass.
+If `ccx` does not start in `fh run`, the run fails with an error that refers to this page.
 
 ## Limits
 
@@ -74,7 +102,7 @@ If `fh-solve-ccx` is not there, `fh run` stops with `run.solver.missing`. Then r
 ## Record of the case cut (2026-10-19)
 
 Tested `ccx`: 2.23, on macOS aarch64.
-The owner cut the suite to 9 cases with 1 `C3D10` mesh each. `fh validate` runs each case through `fh-solve-ccx`: 9 of 9 cases pass.
+The owner cut the suite to 9 cases with 1 `C3D10` mesh each. `fh validate` runs each case through `ccx`: 9 of 9 cases pass.
 The earlier records of this file, with the deleted cases, are in the Git history.
 
 ## Public warpage workflow

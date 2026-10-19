@@ -3,8 +3,6 @@ resolver = "2"
 members = [
     "crates/inp",
     "crates/io",
-    "crates/toon",
-    "crates/solver-api",
     "crates/solver-ccx",
     "crates/validation",
     "crates/daemon",

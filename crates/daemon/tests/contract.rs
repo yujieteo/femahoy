@@ -1,4 +1,4 @@
-//! The D1 exit checks of the run contract, with a shell script as a protocol v2 solver.
+//! The D1 exit checks of the run contract, with a shell script as a fake `ccx`.
 //!
 //! Browser close, cancel, a daemon stop and a daemon failure each keep one correct run
 //! record. A foreign browser `Origin` fails. An authorized CLI passes.
@@ -12,32 +12,60 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use fh_daemon::{Client, Config, Daemon, Options, RunRecord, RunState};
-use fh_solver_api::SubprocessSolver;
+use fh_solver_ccx::Ccx;
 
-/// A solver that runs until a cancel or the end of stdin when the input has the word
-/// `slow`. Other inputs wait for the file `gate` and then write good results.
+/// A fake `ccx` that runs until a kill when the model has the node set `SLOW`. Other models
+/// wait for the file `gate` and then get results from `fixtures/ccx/fake-ccx.sh`.
 const SOLVER: &str = r#"#!/bin/sh
-echo "fh-solver-protocol 2"
-echo "start $1" >> DIR/started.log
-if grep -q slow "$1"; then
+echo start >> DIR/started.log
+if grep -q SLOW job.inp; then
   echo $$ > DIR/solver.pid
-  echo "progress step=1/1 phase=solve fraction=0.1"
-  while read line; do
-    if [ "$line" = cancel ]; then echo cancelled > DIR/solver.end; exit 130; fi
-  done
-  echo eof > DIR/solver.end
-  exit 130
-fi
-if grep -q chatty "$1"; then
-  i=0
-  while [ $i -lt 2000 ]; do printf 'line %01000d\n' $i; i=$((i+1)); done
+  exec sleep 30
 fi
 while [ ! -e DIR/gate ]; do sleep 0.02; done
-echo "progress step=1/1 phase=solve fraction=1"
-echo '<VTKFile type="Collection"><Collection><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>' > results.pvd
-echo "<VTKFile/>" > step-1.vtu
-printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon
+exec FAKE "$@"
 "#;
+
+fn fixture(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/ccx")
+        .join(name)
+}
+
+/// A model with one C3D10 tet that `ccx` can solve.
+fn tet() -> String {
+    fs::read_to_string(fixture("tet.inp")).unwrap()
+}
+
+/// The tet model with the node set `SLOW`.
+fn slow() -> String {
+    tet().replace("*STEP", "*NSET, NSET=SLOW\n1\n*STEP")
+}
+
+fn ccx(exe: &Path) -> Ccx {
+    Ccx {
+        exe: exe.into(),
+        ..Ccx::new()
+    }
+}
+
+fn alive(pid: &str) -> bool {
+    Command::new("kill")
+        .args(["-0", pid.trim()])
+        .stderr(Stdio::null())
+        .status()
+        .unwrap()
+        .success()
+}
+
+/// Wait until the process `pid` has ended.
+fn ended(pid: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(pid) {
+        assert!(Instant::now() < deadline, "ccx {pid} is still alive");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
 
 struct Lab {
     dir: PathBuf,
@@ -54,7 +82,9 @@ impl Lab {
         let root = dir.join("project");
         fs::create_dir_all(&root).unwrap();
         let solver = dir.join("solver.sh");
-        fs::write(&solver, SOLVER.replace("DIR", dir.to_str().unwrap())).unwrap();
+        let text = SOLVER.replace("DIR", dir.to_str().unwrap());
+        let text = text.replace("FAKE", fixture("fake-ccx.sh").to_str().unwrap());
+        fs::write(&solver, text).unwrap();
         fs::set_permissions(&solver, fs::Permissions::from_mode(0o755)).unwrap();
         Lab {
             state: dir.join("state"),
@@ -67,7 +97,7 @@ impl Lab {
     fn config(&self) -> Config {
         Config {
             state_dir: self.state.clone(),
-            solver: SubprocessSolver::new(&self.solver),
+            solver: ccx(&self.solver),
         }
     }
 
@@ -139,7 +169,7 @@ fn an_authorized_cli_passes_and_a_foreign_origin_fails() {
     let daemon = lab.start();
     let cli = Client::discover(&lab.state).unwrap();
     assert_eq!(cli.port(), daemon.port());
-    let input = lab.input("a.inp", "*NODE\n");
+    let input = lab.input("a.inp", &tet());
 
     let foreign = daemon.client().with_origin("http://evil.example");
     let e = foreign.submit(&input).unwrap_err();
@@ -167,7 +197,7 @@ fn a_closed_browser_does_not_stop_the_run() {
     let daemon = lab.start();
     let page = format!("http://127.0.0.1:{}", daemon.port());
     let browser = daemon.client().with_origin(&page);
-    let input = lab.input("a.inp", "*NODE\n");
+    let input = lab.input("a.inp", &tet());
     let run = browser.submit(&input).unwrap().run;
     wait_for(&browser, &run, |s| s == RunState::Running);
 
@@ -202,9 +232,10 @@ fn cancel_keeps_one_record() {
     let lab = Lab::new("cancel");
     let daemon = lab.start();
     let c = daemon.client();
-    let run = c.submit(&lab.input("slow.inp", "** slow\n")).unwrap().run;
-    let waiting = c.submit(&lab.input("b.inp", "*NODE\n")).unwrap().run;
+    let run = c.submit(&lab.input("slow.inp", &slow())).unwrap().run;
+    let waiting = c.submit(&lab.input("b.inp", &tet())).unwrap().run;
     wait_for(&c, &run, |s| s == RunState::Running);
+    let pid = wait_file(&lab, "solver.pid");
     assert_eq!(c.record(&waiting).unwrap().state, RunState::Queued);
 
     // A queued run ends at once and never starts.
@@ -212,7 +243,7 @@ fn cancel_keeps_one_record() {
     assert_eq!(c.cancel(&run).unwrap().state, RunState::Cancelling);
     let record = wait_for(&c, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Cancelled);
-    assert_eq!(wait_file(&lab, "solver.end"), "cancelled\n");
+    ended(&pid);
     // A cancel of a final run changes nothing.
     assert_eq!(c.cancel(&run).unwrap(), record);
     assert_eq!(c.cancel("run-000009").unwrap_err().status, 404);
@@ -241,12 +272,12 @@ fn a_run_solves_a_copy_of_its_input() {
     let lab = Lab::new("copy");
     let daemon = lab.start();
     let c = daemon.client();
-    let input = lab.input("a.inp", "*NODE\n1, 0, 0, 0\n");
+    let input = lab.input("a.inp", &tet());
     let first = c.submit(&input).unwrap().run;
     // The user changes the file while the run waits.
-    lab.input("a.inp", "*NODE\n1, 9, 9, 9\n");
+    lab.input("a.inp", &slow());
     let copy = lab.state.join("runs").join(&first).join("input.inp");
-    assert_eq!(fs::read_to_string(&copy).unwrap(), "*NODE\n1, 0, 0, 0\n");
+    assert_eq!(fs::read_to_string(&copy).unwrap(), tet());
     assert!(fs::metadata(&copy).unwrap().permissions().readonly());
     let record = c.record(&first).unwrap();
     assert_eq!(record.input, input.to_str().unwrap());
@@ -254,33 +285,8 @@ fn a_run_solves_a_copy_of_its_input() {
     let relative = c.submit(Path::new("a.inp")).unwrap_err();
     assert_eq!(relative.code, "input.invalid");
     lab.open_gate();
-    wait_for(&c, &first, RunState::is_final);
-}
-
-#[test]
-fn the_event_log_and_queue_are_bounded() {
-    let lab = Lab::new("bounded");
-    let daemon = lab.start();
-    let c = daemon.client();
-    lab.open_gate();
-    let run = c.submit(&lab.input("a.inp", "** chatty\n")).unwrap().run;
-    let record = wait_for(&c, &run, RunState::is_final);
+    let record = wait_for(&c, &first, RunState::is_final);
     assert_eq!(record.state, RunState::Succeeded, "{}", record.message);
-    let events = c.events(&run, 0, Duration::ZERO).unwrap();
-    assert!(events.dropped > 0 && events.last > fh_daemon::EVENT_QUEUE as u64);
-    assert!(events
-        .items
-        .iter()
-        .all(|e| e.text.len() <= fh_daemon::EVENT_TEXT));
-    let log = lab.state.join("runs").join(&run).join("events.log");
-    let size = fs::metadata(&log).unwrap().len();
-    assert!(
-        size <= fh_daemon::EVENT_LOG + 4096,
-        "event log has {size} bytes"
-    );
-    let text = fs::read_to_string(&log).unwrap();
-    assert!(text.contains(" log-full "));
-    assert!(text.trim_end().ends_with("state succeeded"));
 }
 
 #[test]
@@ -298,12 +304,13 @@ fn a_stopped_daemon_leaves_interrupted_records() {
     let lab = Lab::new("stop");
     let daemon = lab.start();
     let c = daemon.client();
-    let run = c.submit(&lab.input("slow.inp", "** slow\n")).unwrap().run;
-    let waiting = c.submit(&lab.input("b.inp", "*NODE\n")).unwrap().run;
+    let run = c.submit(&lab.input("slow.inp", &slow())).unwrap().run;
+    let waiting = c.submit(&lab.input("b.inp", &tet())).unwrap().run;
     wait_for(&c, &run, |s| s == RunState::Running);
+    let pid = wait_file(&lab, "solver.pid");
     let old_token = daemon.token().to_owned();
     drop(daemon);
-    assert_eq!(lab.file("solver.end").as_deref(), Some("cancelled\n"));
+    assert!(!alive(&pid), "ccx lives after the daemon stopped");
 
     let daemon = lab.start();
     let stale = Client::new(daemon.port(), old_token).status().unwrap_err();
@@ -330,7 +337,7 @@ fn daemon_child() {
     };
     let config = Config {
         state_dir: state.into(),
-        solver: SubprocessSolver::new(solver),
+        solver: ccx(Path::new(&solver)),
     };
     let _daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
     loop {
@@ -365,7 +372,7 @@ fn a_failed_daemon_leaves_no_running_run() {
         assert!(Instant::now() < deadline, "the child daemon did not start");
         std::thread::sleep(Duration::from_millis(20));
     };
-    let slow = lab.input("slow.inp", "** slow\n");
+    let slow = lab.input("slow.inp", &slow());
     let run = c.submit(&slow).unwrap().run;
     wait_for(&c, &run, |s| s == RunState::Running);
     let pid = wait_file(&lab, "solver.pid");
@@ -373,22 +380,8 @@ fn a_failed_daemon_leaves_no_running_run() {
     // SIGKILL: the daemon cannot clean up.
     child.kill().unwrap();
     child.wait().unwrap();
-    // The solver sees the end of its stdin and stops (protocol v2).
-    assert_eq!(wait_file(&lab, "solver.end"), "eof\n");
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while Command::new("kill")
-        .args(["-0", pid.trim()])
-        .stderr(Stdio::null())
-        .status()
-        .unwrap()
-        .success()
-    {
-        assert!(
-            Instant::now() < deadline,
-            "the solver lives after the daemon"
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    // The pipe to the guard closes, and the guard kills the group of ccx.
+    ended(&pid);
 
     // The next daemon shows the run as interrupted, not as running.
     let daemon = lab.start();
@@ -396,24 +389,23 @@ fn a_failed_daemon_leaves_no_running_run() {
     assert_eq!(c.record(&run).unwrap().state, RunState::Interrupted);
     assert_eq!(c.runs().unwrap(), [(run.clone(), RunState::Interrupted)]);
     // The run counter goes on. No run ID is used twice.
+    fs::remove_file(lab.dir.join("solver.pid")).unwrap();
     let next = c.submit(&slow).unwrap().run;
     assert_eq!(next, "run-000002");
+    let pid = wait_file(&lab, "solver.pid");
     c.cancel(&next).unwrap();
     wait_for(&c, &next, RunState::is_final);
+    ended(&pid);
     assert_eq!(lab.starts(), 2);
 }
 
 #[test]
 fn the_last_event_of_a_failed_run_tells_why() {
     let lab = Lab::new("failed-event");
-    fs::write(
-        &lab.solver,
-        "#!/bin/sh\necho \"fh-solver-protocol 2\"\necho boom >&2\nexit 1\n",
-    )
-    .unwrap();
+    fs::write(&lab.solver, "#!/bin/sh\necho boom\nexit 1\n").unwrap();
     let daemon = lab.start();
     let c = daemon.client();
-    let run = c.submit(&lab.input("a.inp", "*NODE\n")).unwrap().run;
+    let run = c.submit(&lab.input("a.inp", &tet())).unwrap().run;
     let record = wait_for(&c, &run, RunState::is_final);
     assert_eq!(record.state, RunState::Failed);
     assert!(record.message.contains("boom"), "{}", record.message);

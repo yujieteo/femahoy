@@ -41,7 +41,7 @@ The reference value in `case.toml` is -0.01919619048 mm (z is the load direction
 Beam theory ignores the 3D stress state at the clamp. The case sets 2 percent of the reference as the stated error.
 This value is an engineering estimate, not a derived bound. The captain accepted it.
 
-`fh-solve-ccx` gave these values on 4 meshes (2026-10-19):
+`ccx` gave these values on 4 meshes (2026-10-19):
 
 | Cells along x | Tip deflection (mm) | Difference from the reference |
 |---|---|---|

@@ -65,7 +65,7 @@ The beam form with E gives 0.60445 µm/K. The paper gives 0.605 µm/K for it.
 ## Measured result
 
 The check passed on macOS 27.0.1 arm64 with Python 3.12.13, build123d 0.13.0, gmsh 4.15.2-git and CalculiX 2.23.
-The solver time is `wall_s` from the adapter summary. It changes with the load of the machine.
+The solver time is the run time that `fh run` prints. It changes with the load of the machine.
 
 | Mesh size (mm) | Nodes | C3D10 elements | Shared interface nodes | Minimum scaled Jacobian | Warpage (mm) | Rate (µm/K) | Measured (mm) | Difference (%) | Solver time (s) |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|

@@ -59,8 +59,7 @@ impl Serve {
         let state = state_dir(name);
         let stop = Arc::new(AtomicBool::new(false));
         let (flag, args) = (stop.clone(), args(&state));
-        let thread =
-            std::thread::spawn(move || fh_daemon::serve_until(&args, "fh-solve-ccx".into(), &flag));
+        let thread = std::thread::spawn(move || fh_daemon::serve_until(&args, &flag));
         let (port, token) = wait_for_info(&state);
         Serve {
             stop,
@@ -231,7 +230,7 @@ fn the_daemon_listens_on_loopback_only() {
 fn a_second_daemon_on_the_same_state_folder_fails() {
     let serve = Serve::start("second");
     let never = AtomicBool::new(false);
-    let second = fh_daemon::serve_until(&args(&serve.state), "fh-solve-ccx".into(), &never);
+    let second = fh_daemon::serve_until(&args(&serve.state), &never);
     assert_eq!(second, Ok(ExitCode::from(1)));
 }
 
@@ -247,7 +246,7 @@ fn the_stop_flag_stops_the_daemon_and_removes_daemon_info() {
 fn sigterm_stops_the_daemon() {
     let state = state_dir("sigterm");
     let args = args(&state);
-    let thread = std::thread::spawn(move || fh_daemon::serve(&args, "fh-solve-ccx".into()));
+    let thread = std::thread::spawn(move || fh_daemon::serve(&args));
     // `serve` installs the signal handler before it writes daemon.info.
     wait_for_info(&state);
     let pid = std::process::id().to_string();
@@ -264,6 +263,6 @@ fn sigterm_stops_the_daemon() {
 fn serve_refuses_a_bad_option() {
     let args = ["--host".to_owned(), "0.0.0.0".to_owned()];
     let never = AtomicBool::new(false);
-    let err = fh_daemon::serve_until(&args, "fh-solve-ccx".into(), &never).unwrap_err();
+    let err = fh_daemon::serve_until(&args, &never).unwrap_err();
     assert!(err.contains("unknown option: --host"), "{err}");
 }

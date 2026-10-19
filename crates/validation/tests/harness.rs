@@ -351,22 +351,6 @@ fn units_are_read_and_a_missing_or_unknown_value_is_refused() {
 }
 
 #[test]
-fn the_solver_key_is_read_and_an_unknown_solver_is_refused() {
-    let case = write_case(&tmp("solver-default"), &body("")).unwrap();
-    assert_eq!(case.solver, "fh-solve-ccx");
-    let ccx = body("solver = \"fh-solve-ccx\"");
-    let case = write_case(&tmp("solver-ccx"), &ccx).unwrap();
-    assert_eq!(case.solver, "fh-solve-ccx");
-    let unknown = body("solver = \"abaqus\"");
-    let error = write_case(&tmp("solver-unknown"), &unknown).unwrap_err();
-    assert_eq!(
-        error.message,
-        "unknown solver `abaqus`, expected fh-solve-ccx"
-    );
-    assert_eq!(error.line, Some(9));
-}
-
-#[test]
 fn the_time_and_memory_limits_are_read_and_a_bad_limit_is_refused() {
     let case = write_case(&tmp("limits-none"), &body("")).unwrap();
     assert_eq!((case.time_limit_s, case.memory_limit_mib), (None, None));

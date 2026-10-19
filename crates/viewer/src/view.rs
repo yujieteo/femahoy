@@ -101,7 +101,7 @@ pub fn field_names(results: &Results) -> Vec<String> {
     names
 }
 
-/// A value with 4 significant digits, as in the TOON summaries.
+/// A value with 4 significant digits.
 pub fn format_value(v: f64) -> String {
     format_sig(v, 4)
 }

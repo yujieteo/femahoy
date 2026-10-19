@@ -1,13 +1,13 @@
-//! Operating system calls for the runner: process group, hard memory limit,
-//! memory probe and machine RAM. No crate is used. The calls are declared here.
+//! Operating system calls for a run: process group, hard memory limit, memory probe and
+//! machine RAM. No crate is used. The calls are declared here.
 //!
-//! Unix: the child leads a new process group. Linux also gets a hard address
-//! space limit (`RLIMIT_AS`). macOS has no limit that the kernel enforces, so
-//! only the probe watches the memory there.
+//! Unix: `ccx` runs in its own process group. Linux also gives it a hard address space limit
+//! (`RLIMIT_AS`). macOS has no limit that the kernel enforces, so only the probe watches the
+//! memory there.
 
-use std::process::{Child, Command};
+use std::process::Command;
 
-/// Address space limit for a solver with `threads` threads: the resident limit
+/// Address space limit for `ccx` with `threads` threads: the resident limit
 /// plus 256 MiB and 64 MiB for each thread.
 #[cfg_attr(
     not(all(target_os = "linux", target_pointer_width = "64")),
@@ -20,7 +20,7 @@ pub fn address_space_limit(resident_limit: u64, threads: usize) -> u64 {
 }
 
 /// Soft and hard `RLIMIT_AS` for the child. A process without privilege cannot raise
-/// its hard limit, so the request stops at the hard limit that the runner inherited.
+/// its hard limit, so the request stops at the hard limit that `fh` inherited.
 #[cfg_attr(
     not(all(target_os = "linux", target_pointer_width = "64")),
     allow(dead_code)
@@ -29,7 +29,7 @@ fn address_limits(requested: u64, inherited_hard: u64) -> [u64; 2] {
     [requested.min(inherited_hard); 2]
 }
 
-/// Thread count of the solver: `FH_THREADS` when set and above 0, else the CPU count.
+/// Thread count of `ccx`: `FH_THREADS` when set and above 0, else the CPU count.
 #[cfg_attr(
     not(all(target_os = "linux", target_pointer_width = "64")),
     allow(dead_code)
@@ -54,13 +54,10 @@ fn vm_rss_bytes(status: &str) -> u64 {
         .map_or(0, |kib| kib.saturating_mul(1024))
 }
 
-/// Handle for the process tree of a child.
+/// Handle for a process group.
 pub struct Group {
     pid: u32,
 }
-
-/// Memory of the process tree in bytes: physical footprint on macOS, resident elsewhere.
-pub type Probe = fn(u32) -> Result<u64, String>;
 
 #[cfg(unix)]
 mod os {
@@ -76,8 +73,8 @@ mod os {
         fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
     }
 
-    pub fn prepare(cmd: &mut Command, hard_limit: Option<u64>) {
-        cmd.process_group(0);
+    pub fn prepare(cmd: &mut Command, hard_limit: Option<u64>, group: u32) {
+        cmd.process_group(group as i32);
         #[cfg(all(target_os = "linux", target_pointer_width = "64"))]
         if let Some(bytes) = hard_limit {
             // RLIMIT_AS is 9 on Linux. Address space is not resident memory:
@@ -102,10 +99,6 @@ mod os {
         }
         #[cfg(not(all(target_os = "linux", target_pointer_width = "64")))]
         let _ = hard_limit;
-    }
-
-    pub fn attach(child: &Child, _hard_limit: Option<u64>) -> Group {
-        Group { pid: child.id() }
     }
 
     pub fn kill_group(g: &Group) {
@@ -162,7 +155,7 @@ mod os {
             // SAFETY: the buffer holds `size` bytes, with the alignment of pid_t.
             let used = unsafe { proc_listpids(2, pgid, pids.as_mut_ptr().cast(), size) };
             if used <= 0 {
-                // libproc returns 0 on error too. The runner checks for child exit.
+                // libproc returns 0 on error too.
                 return Err(format!(
                     "proc_listpids returned no processes: {}",
                     std::io::Error::last_os_error()
@@ -253,34 +246,19 @@ mod os {
     }
 }
 
-#[cfg(not(unix))]
-mod os {
-    use super::*;
-    pub fn prepare(_: &mut Command, _: Option<u64>) {}
-    pub fn attach(child: &Child, _: Option<u64>) -> Group {
-        Group { pid: child.id() }
-    }
-    pub fn kill_group(_: &Group) {}
-    pub fn probe(_: u32) -> Result<u64, String> {
-        Err("no memory probe for this operating system".into())
-    }
-    pub fn total_memory() -> Option<u64> {
-        None
-    }
-}
-
-/// Set up `cmd` so that the child leads its own process tree.
-pub fn prepare(cmd: &mut Command, hard_limit: Option<u64>) {
-    os::prepare(cmd, hard_limit);
-}
-
-/// Take hold of the process tree after the spawn.
-pub fn attach(child: &Child, hard_limit: Option<u64>) -> Group {
-    os::attach(child, hard_limit)
+/// Set up `cmd` so that the child goes into the process group `group`, or leads a new group
+/// for 0, with the hard memory limit on Linux.
+pub fn prepare(cmd: &mut Command, hard_limit: Option<u64>, group: u32) {
+    os::prepare(cmd, hard_limit, group);
 }
 
 impl Group {
-    /// Kill every process of the tree.
+    /// The group that the process `pid` leads.
+    pub fn new(pid: u32) -> Group {
+        Group { pid }
+    }
+
+    /// Kill every process of the group.
     pub fn kill(&self) {
         os::kill_group(self);
     }
@@ -290,9 +268,10 @@ impl Group {
     }
 }
 
-/// The memory probe of this operating system.
-pub fn default_probe() -> Probe {
-    os::probe
+/// Memory of the process group `pgid` in bytes: physical footprint on macOS, resident
+/// elsewhere.
+pub fn probe(pgid: u32) -> Result<u64, String> {
+    os::probe(pgid)
 }
 
 /// Physical memory of the machine in bytes, or `None` if the system does not tell.
@@ -357,8 +336,7 @@ mod probe_tests {
 
     #[test]
     fn the_resident_size_comes_from_vm_rss_in_kib() {
-        let status =
-            "Name:\tfh-solve-ccx\nVmPeak:\t  9999 kB\nVmRSS:\t    2048 kB\nRssAnon:\t1 kB\n";
+        let status = "Name:\tccx\nVmPeak:\t  9999 kB\nVmRSS:\t    2048 kB\nRssAnon:\t1 kB\n";
         assert_eq!(vm_rss_bytes(status), 2048 * 1024);
         assert_eq!(vm_rss_bytes("Name:\tkthreadd\nState:\tS (sleeping)\n"), 0);
     }
@@ -416,7 +394,7 @@ mod limit_tests {
             // This copy of the test has a hard limit of 4 GiB. The request with its
             // allowance is above it.
             let mut cmd = Command::new("true");
-            super::prepare(&mut cmd, Some(4 * gib));
+            super::prepare(&mut cmd, Some(4 * gib), 0);
             let status = cmd.status().expect("the child starts");
             assert!(status.success());
             return;

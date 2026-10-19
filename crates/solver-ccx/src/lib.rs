@@ -1,29 +1,117 @@
-//! CalculiX (`ccx`) as a protocol v2 solver: `fh-solve-ccx <input.inp> <run-dir>`.
-//! Decision D-13, see DESIGN.md.
+//! CalculiX (`ccx`) as the solver of femahoy, in the process of `fh` (D-13, see DESIGN.md).
 //!
-//! The adapter writes the model as `ccx` input in `<run-dir>/ccx`, runs the user's `ccx`
+//! [`Ccx::run`] writes the model as `ccx` input in `<run-dir>/ccx`, runs the user's `ccx`
 //! (`$FH_CCX`, else `ccx` on PATH), reads U and RF from the `.frd` file and the integration
-//! point stress from the `.dat` file, and writes one VTU file for each step, `results.pvd` and `summary.toon`. `ccx` is GPL, so femahoy only starts it as a
-//! separate program. The results are unvalidated.
+//! point stress from the `.dat` file, and writes one VTU file for each step, `results.pvd`
+//! in the run folder. `ccx` is GPL, so femahoy only starts it as a separate
+//! program.
+//!
+//! # Limits
+//!
+//! `ccx` leads its own process group. The run kills the whole group at a cancel, at the
+//! time limit or at the memory limit. The memory limit counts the physical footprint on
+//! macOS and the resident memory elsewhere. Linux also gives `ccx` a hard limit that the
+//! kernel enforces. If the memory cannot be read, the run stops `ccx` and tells this. The
+//! default memory limit is 85 % of the machine RAM. There is no default time limit.
+//!
+//! A guard process in the group of `ccx` reads a pipe from this process. When this process
+//! ends, also on SIGKILL, the pipe closes and the guard kills the group. Thus `ccx` never
+//! lives longer than `fh`.
+
+mod sys;
 
 use std::collections::HashMap;
-use std::fmt::Write as _;
+use std::fmt::{self, Write as _};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fh_inp::{Boundary, ElementTarget, Model, Target, Temperature};
 use fh_io::result::{base_grid, element_stress};
 use fh_io::vtu::{write_pvd_units, write_vtu, Field, PvdEntry};
-use fh_solver_api::{watch_stdin, PROTOCOL_HEADER, PVD_FILE, SUMMARY_FILE};
-use fh_toon as toon;
 
-/// Exit code of a run that the user cancelled.
-const CANCELLED: u8 = 130;
+pub use sys::total_memory;
+
+pub const PVD_FILE: &str = "results.pvd";
+/// A run puts this file in a run folder that it made. It clears only a folder that has the
+/// file.
+pub const RUN_MARKER: &str = ".fh-run";
 /// Name of the `ccx` job in `<run-dir>/ccx`.
 const JOB: &str = "job";
+
+/// Stable diagnostic codes of a run. `docs/diagnostics.md` lists them.
+pub mod code {
+    pub const CANCELLED: &str = "API001";
+    pub const RUN_FOLDER: &str = "API002";
+    pub const START_FAILED: &str = "API003";
+    pub const MEMORY: &str = "API005";
+    pub const TIME_LIMIT: &str = "API006";
+    pub const SOLVER_FAILED: &str = "API007";
+}
+
+/// An error of a run, with a stable code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Error {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({})", self.message, self.code)
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl Error {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Error {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// The error of a run that the user cancelled.
+    pub fn cancelled() -> Self {
+        Error::new(code::CANCELLED, "run cancelled")
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.code == code::CANCELLED
+    }
+}
+
+/// An error of the model or of the `ccx` files.
+fn failed(message: impl Into<String>) -> Error {
+    Error::new(code::SOLVER_FAILED, message)
+}
+
+/// A flag that asks a running solve to stop. Clones share the flag.
+#[derive(Debug, Clone, Default)]
+pub struct CancelToken(Arc<AtomicBool>);
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+/// 85 % of the machine RAM. If the system does not tell the RAM, there is no limit.
+pub fn default_memory_limit() -> u64 {
+    total_memory().map_or(u64::MAX, |ram| ram / 100 * 85)
+}
 
 /// A real for `ccx` input. `ccx` reads at most 20 characters for each number, and a longer
 /// number loses the end of its exponent. Thus a negative number with a 2-digit exponent
@@ -310,7 +398,6 @@ fn free_motion(g: &[[f64; 6]; 6]) -> Option<usize> {
 #[derive(Debug, Default)]
 struct FrdStep {
     time: f64,
-    increments: u64,
     disp: HashMap<u32, Vec<f64>>,
     forc: HashMap<u32, Vec<f64>>,
 }
@@ -320,16 +407,16 @@ struct FrdStep {
 fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
     let bad = |n: usize, why: &str| format!("{JOB}.frd line {}: {why}", n + 1);
     let mut steps: Vec<FrdStep> = Vec::new();
-    let (mut step, mut inc, mut time) = (0usize, 0u64, 0.0);
+    let (mut step, mut time) = (0usize, 0.0);
     let mut block: Option<&str> = None;
     let mut ended = false;
     for (n, line) in text.lines().enumerate() {
         let words: Vec<&str> = line.split_whitespace().collect();
         match words.first().copied() {
             Some("1PSTEP") => {
-                let num = |i: usize| words.get(i).and_then(|w| w.parse().ok());
-                (inc, step) = match (num(2), num(3)) {
-                    (Some(i), Some(s)) if s > 0 => (i, s as usize),
+                let num = |i: usize| words.get(i).and_then(|w| w.parse::<usize>().ok());
+                step = match (num(2), num(3)) {
+                    (Some(_), Some(s)) if s > 0 => s,
                     _ => return Err(bad(n, "bad PSTEP line")),
                 };
             }
@@ -349,7 +436,7 @@ fn read_frd(text: &str) -> Result<Vec<FrdStep>, String> {
                         steps.resize_with(step, FrdStep::default);
                     }
                     let s = &mut steps[step - 1];
-                    (s.time, s.increments) = (time, inc);
+                    s.time = time;
                     if b == "DISP" {
                         s.disp.clear();
                     } else {
@@ -460,116 +547,6 @@ fn point_weights(x: &[[f64; 3]]) -> Vec<f64> {
     ccx_points().into_iter().map(weight).collect()
 }
 
-/// Write the VTU file of each step, the PVD collection and the summary. Each file is written
-/// under a temporary name and renamed (D-09).
-fn write_results(
-    model: &Model,
-    frd: &[FrdStep],
-    dat: &[Points],
-    run_dir: &Path,
-    header: toon::Header,
-    solver: String,
-    wall: f64,
-) -> Result<(), String> {
-    let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
-        let tmp = run_dir.join(format!("{file}.tmp"));
-        fs::write(&tmp, bytes)
-            .and_then(|()| fs::rename(&tmp, run_dir.join(file)))
-            .map_err(|e| format!("{file}: {e}"))
-    };
-    let base = base_grid(model)?;
-    let coords: HashMap<u32, [f64; 3]> = model.nodes.iter().map(|n| (n.id, n.xyz)).collect();
-    let weights: Vec<Vec<f64>> = (model.elements.iter())
-        .map(|e| {
-            let x: Vec<[f64; 3]> = e.nodes.iter().map(|n| coords[n]).collect();
-            point_weights(&x)
-        })
-        .collect();
-    if dat.len() != model.steps.len() {
-        return Err(format!(
-            "{JOB}.dat has {} stress blocks for {} steps",
-            dat.len(),
-            model.steps.len()
-        ));
-    }
-    let mut entries = Vec::new();
-    let mut steps = Vec::new();
-    let mut increments = Vec::new();
-    for (i, step) in model.steps.iter().enumerate() {
-        let r = frd
-            .get(i)
-            .filter(|r| !r.disp.is_empty())
-            .ok_or_else(|| format!("{JOB}.frd has no displacement of step {}", i + 1))?;
-        let node = |map: &HashMap<u32, Vec<f64>>, id: u32, k: usize| -> Vec<f64> {
-            let v = map.get(&id).map_or(&[][..], Vec::as_slice);
-            (0..k).map(|c| v.get(c).copied().unwrap_or(0.0)).collect()
-        };
-        let mut g = base.clone();
-        for (name, map) in [("U", &r.disp), ("RF", &r.forc)] {
-            let v = model.nodes.iter().flat_map(|n| node(map, n.id, 3));
-            g.point_data.push(Field::f64(name, 3, v.collect()));
-        }
-        let (mut s, mut mises) = (Vec::new(), Vec::new());
-        for (e, w) in model.elements.iter().zip(&weights) {
-            let at =
-                |what: &str| format!("{JOB}.dat has {what} of element {} in step {}", e.id, i + 1);
-            let points = dat[i].get(&e.id).ok_or_else(|| at("no stress"))?;
-            let weighted = points
-                .iter()
-                .map(|(p, s)| Some((*s, *w.get(p.checked_sub(1)?)?)))
-                .collect::<Option<Vec<_>>>()
-                .ok_or_else(|| at("a bad integration point"))?;
-            let m = element_stress(weighted);
-            let [xx, yy, zz, xy, yz, zx] = m;
-            let d = (xx - yy).powi(2) + (yy - zz).powi(2) + (zz - xx).powi(2);
-            mises.push((0.5 * d + 3.0 * (xy * xy + yz * yz + zx * zx)).sqrt());
-            s.extend(m);
-        }
-        g.cell_data.push(Field::f64("S", 6, s));
-        g.cell_data.push(Field::f64("MISES", 1, mises));
-        let file = format!("step-{}.vtu", i + 1);
-        atomic(&file, &write_vtu(&g).map_err(|e| e.to_string())?)?;
-        entries.push(PvdEntry { time: r.time, file });
-        let name = step
-            .name
-            .clone()
-            .unwrap_or_else(|| format!("Step-{}", i + 1));
-        steps.push(toon::RunStep {
-            name: name.clone(),
-            status: "converged".into(),
-            reached: 1.0,
-            increments: r.increments,
-        });
-        increments.push(toon::Increment {
-            step: name,
-            inc: r.increments,
-            iters: 0,
-            result: toon::IncResult::Ok,
-        });
-    }
-    atomic(
-        PVD_FILE,
-        write_pvd_units(&entries, &header.units).as_bytes(),
-    )?;
-    let run = toon::Run {
-        header,
-        run_id: run_dir
-            .file_name()
-            .map_or_else(|| "run".into(), |n| n.to_string_lossy().to_string()),
-        solver,
-        results: PVD_FILE.into(),
-        wall_s: wall,
-        steps,
-        increments,
-        diagnostics: Vec::new(),
-        next: Vec::new(),
-    };
-    let text = run
-        .render(&toon::Opts::default())
-        .map_err(|e| e.to_string())?;
-    atomic(SUMMARY_FILE, text.as_bytes())
-}
-
 /// The units that the input declares in a `** units:` comment before the first keyword (D-18).
 fn input_units(text: &str) -> String {
     let comment = text
@@ -618,93 +595,310 @@ fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
     )
 }
 
-fn run(inp: &Path, run_dir: &Path, cancel: &AtomicBool) -> Result<(), String> {
-    let clock = Instant::now();
-    let text = fs::read_to_string(inp).map_err(|e| format!("{}: {e}", inp.display()))?;
-    let model = fh_inp::parse_file(&inp.display().to_string(), &text)
-        .map_err(|e| fh_inp::join_errors(&e))?;
-    let input = ccx_input(&model)?;
-    check_support(&model)?;
-    let work = run_dir.join("ccx");
-    fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
-    fs::write(work.join(format!("{JOB}.inp")), input).map_err(|e| format!("{JOB}.inp: {e}"))?;
-    let exe = std::env::var_os("FH_CCX").map_or_else(|| PathBuf::from("ccx"), PathBuf::from);
-    let log = fs::File::create(work.join(format!("{JOB}.log"))).map_err(|e| e.to_string())?;
-    let mut child = Command::new(&exe)
-        .args(["-i", JOB])
-        .current_dir(&work)
-        .stdin(Stdio::null())
-        .stdout(log.try_clone().map_err(|e| e.to_string())?)
-        .stderr(log)
-        .spawn()
-        .map_err(|e| {
-            format!(
-                "cannot start {}: {e}. Install CalculiX (docs/ccx.md) and put ccx on PATH, or set FH_CCX",
-                exe.display()
-            )
-        })?;
-    let status = loop {
-        if cancel.load(Ordering::Relaxed) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err("cancelled".into());
-        }
-        match child.try_wait().map_err(|e| e.to_string())? {
-            Some(s) => break s,
-            None => std::thread::sleep(Duration::from_millis(20)),
-        }
+/// Write the VTU file of each step and the PVD collection in `units`. Each file is written
+/// under a temporary name and renamed (D-09).
+fn write_results(
+    model: &Model,
+    frd: &[FrdStep],
+    dat: &[Points],
+    run_dir: &Path,
+    units: &str,
+) -> Result<(), String> {
+    let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
+        let tmp = run_dir.join(format!("{file}.tmp"));
+        fs::write(&tmp, bytes)
+            .and_then(|()| fs::rename(&tmp, run_dir.join(file)))
+            .map_err(|e| format!("{file}: {e}"))
     };
-    let log_file = work.join(format!("{JOB}.log"));
-    let log = fs::read_to_string(&log_file).unwrap_or_default();
-    if !status.success() || log.contains("*ERROR") {
-        return Err(ccx_failure(status, &log, &log_file));
+    let base = base_grid(model)?;
+    let coords: HashMap<u32, [f64; 3]> = model.nodes.iter().map(|n| (n.id, n.xyz)).collect();
+    let weights: Vec<Vec<f64>> = (model.elements.iter())
+        .map(|e| {
+            let x: Vec<[f64; 3]> = e.nodes.iter().map(|n| coords[n]).collect();
+            point_weights(&x)
+        })
+        .collect();
+    if dat.len() != model.steps.len() {
+        return Err(format!(
+            "{JOB}.dat has {} stress blocks for {} steps",
+            dat.len(),
+            model.steps.len()
+        ));
     }
-    let read = |ext: &str| {
-        fs::read_to_string(work.join(format!("{JOB}.{ext}")))
-            .map_err(|e| format!("{JOB}.{ext}: {e}"))
-    };
-    let (frd, dat) = (read_frd(&read("frd")?)?, read_dat(&read("dat")?));
-    let version = log
-        .split("CalculiX Version ")
-        .nth(1)
-        .and_then(|v| v.split([',', ' ', '\n']).next())
-        .unwrap_or("unknown");
-    let hash = text.bytes().fold(0xcbf2_9ce4_8422_2325, |h: u64, b| {
-        (h ^ u64::from(b)).wrapping_mul(0x0000_0100_0000_01b3)
-    });
-    let header = toon::Header {
-        source: inp
-            .file_name()
-            .map_or_else(String::new, |n| n.to_string_lossy().to_string()),
-        source_hash: format!("{hash:016x}"),
-        units: input_units(&text),
-        status: toon::Status::Ok,
-    };
-    let solver = format!("ccx {version}, unvalidated");
-    let wall = clock.elapsed().as_secs_f64();
-    write_results(&model, &frd, &dat, run_dir, header, solver, wall)
+    let mut entries = Vec::new();
+    for (i, stress) in dat.iter().enumerate() {
+        let r = frd
+            .get(i)
+            .filter(|r| !r.disp.is_empty())
+            .ok_or_else(|| format!("{JOB}.frd has no displacement of step {}", i + 1))?;
+        let node = |map: &HashMap<u32, Vec<f64>>, id: u32, k: usize| -> Vec<f64> {
+            let v = map.get(&id).map_or(&[][..], Vec::as_slice);
+            (0..k).map(|c| v.get(c).copied().unwrap_or(0.0)).collect()
+        };
+        let mut g = base.clone();
+        for (name, map) in [("U", &r.disp), ("RF", &r.forc)] {
+            let v = model.nodes.iter().flat_map(|n| node(map, n.id, 3));
+            g.point_data.push(Field::f64(name, 3, v.collect()));
+        }
+        let (mut s, mut mises) = (Vec::new(), Vec::new());
+        for (e, w) in model.elements.iter().zip(&weights) {
+            let at =
+                |what: &str| format!("{JOB}.dat has {what} of element {} in step {}", e.id, i + 1);
+            let points = stress.get(&e.id).ok_or_else(|| at("no stress"))?;
+            let weighted = points
+                .iter()
+                .map(|(p, s)| Some((*s, *w.get(p.checked_sub(1)?)?)))
+                .collect::<Option<Vec<_>>>()
+                .ok_or_else(|| at("a bad integration point"))?;
+            let m = element_stress(weighted);
+            let [xx, yy, zz, xy, yz, zx] = m;
+            let d = (xx - yy).powi(2) + (yy - zz).powi(2) + (zz - xx).powi(2);
+            mises.push((0.5 * d + 3.0 * (xy * xy + yz * yz + zx * zx)).sqrt());
+            s.extend(m);
+        }
+        g.cell_data.push(Field::f64("S", 6, s));
+        g.cell_data.push(Field::f64("MISES", 1, mises));
+        let file = format!("step-{}.vtu", i + 1);
+        atomic(&file, &write_vtu(&g).map_err(|e| e.to_string())?)?;
+        entries.push(PvdEntry { time: r.time, file });
+    }
+    atomic(PVD_FILE, write_pvd_units(&entries, units).as_bytes())
 }
 
-fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let (inp, run_dir) = match args.as_slice() {
-        [i, r] => (i, r),
-        _ => {
-            eprintln!("usage: fh-solve-ccx <input.inp> <run-dir>");
-            return ExitCode::from(2);
-        }
-    };
-    println!("{PROTOCOL_HEADER}");
-    let cancel = watch_stdin();
-    match run(Path::new(inp), Path::new(run_dir), &cancel) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) if e == "cancelled" => {
-            eprintln!("cancelled");
-            ExitCode::from(CANCELLED)
-        }
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::FAILURE
+/// The `ccx` program with the limits of its runs.
+#[derive(Debug, Clone)]
+pub struct Ccx {
+    /// `$FH_CCX`, else `ccx` on PATH.
+    pub exe: PathBuf,
+    /// Time limit of a run. `None` means no limit: a large model can solve for hours.
+    pub timeout: Option<Duration>,
+    /// Limit for the process group of `ccx` in bytes: physical footprint on macOS, resident
+    /// elsewhere. `u64::MAX` means no limit.
+    pub memory_limit: u64,
+}
+
+impl Default for Ccx {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+const POLL: Duration = Duration::from_millis(10);
+const PROBE_EVERY: Duration = Duration::from_millis(100);
+
+/// What to do when a run does not fit in its limits.
+const SMALLER: &str = "Use a coarser mesh (a larger element size) to make the model smaller";
+
+impl Ccx {
+    /// `ccx` from `$FH_CCX`, else `ccx` on PATH. It has no time limit. The memory limit is
+    /// 85 % of the machine RAM.
+    pub fn new() -> Self {
+        Ccx {
+            exe: std::env::var_os("FH_CCX").map_or_else(|| PathBuf::from("ccx"), PathBuf::from),
+            timeout: None,
+            memory_limit: default_memory_limit(),
         }
     }
+
+    /// Solve `inp` in the folder `run_dir`. The run clears the folder first, if a run made
+    /// the folder earlier.
+    pub fn run(&self, inp: &Path, run_dir: &Path) -> Result<(), Error> {
+        self.run_with(inp, run_dir, &CancelToken::new())
+    }
+
+    /// Solve, and stop when `cancel` is set.
+    pub fn run_with(&self, inp: &Path, run_dir: &Path, cancel: &CancelToken) -> Result<(), Error> {
+        if cancel.is_cancelled() {
+            return Err(Error::cancelled());
+        }
+        // Check the input before the folder changes: a new run clears the folder.
+        let inp = fs::canonicalize(inp).map_err(|e| {
+            Error::new(
+                code::START_FAILED,
+                format!("{}: input file: {e}", inp.display()),
+            )
+        })?;
+        let text =
+            fs::read_to_string(&inp).map_err(|e| failed(format!("{}: {e}", inp.display())))?;
+        let model = fh_inp::parse_file(&inp.display().to_string(), &text)
+            .map_err(|e| failed(fh_inp::join_errors(&e)))?;
+        let input = ccx_input(&model).map_err(failed)?;
+        check_support(&model).map_err(failed)?;
+        let run_dir = prepare_run_dir(run_dir, &inp)?;
+        let work = run_dir.join("ccx");
+        let folder = |e: std::io::Error| Error::new(code::RUN_FOLDER, format!("run folder: {e}"));
+        fs::create_dir_all(&work).map_err(folder)?;
+        fs::write(work.join(format!("{JOB}.inp")), input).map_err(folder)?;
+        let log_file = work.join(format!("{JOB}.log"));
+        let log = fs::File::create(&log_file).map_err(folder)?;
+        let status = self.solve(&work, log, cancel)?;
+        let log = fs::read_to_string(&log_file).unwrap_or_default();
+        if !status.success() || log.contains("*ERROR") {
+            return Err(failed(ccx_failure(status, &log, &log_file)));
+        }
+        let read = |ext: &str| {
+            fs::read_to_string(work.join(format!("{JOB}.{ext}")))
+                .map_err(|e| failed(format!("{JOB}.{ext}: {e}")))
+        };
+        let frd = read_frd(&read("frd")?).map_err(failed)?;
+        let dat = read_dat(&read("dat")?);
+        write_results(&model, &frd, &dat, &run_dir, &input_units(&text)).map_err(failed)
+    }
+
+    /// Run `ccx -i job` in `work` with its output in `log`, in its own process group, to its
+    /// end or to a stop.
+    fn solve(&self, work: &Path, log: fs::File, cancel: &CancelToken) -> Result<ExitStatus, Error> {
+        let cannot_start = |e: std::io::Error| {
+            Error::new(
+                code::START_FAILED,
+                format!(
+                    "cannot start {}: {e}. Install CalculiX (docs/ccx.md) and put ccx on PATH, \
+                     or set FH_CCX",
+                    self.exe.display()
+                ),
+            )
+        };
+        let limited = self.memory_limit != u64::MAX;
+        // The guard leads the group. It stops the group when the pipe from this process
+        // closes. It is the leader, so the group exists until the end of `ccx`.
+        let mut guard = Command::new("/bin/sh");
+        guard
+            .args(["-c", "while read -r _; do :; done; kill -KILL 0"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        sys::prepare(&mut guard, None, 0);
+        let guard = guard.spawn().map_err(cannot_start)?;
+        let group = sys::Group::new(guard.id());
+        let mut tree = Tree {
+            group,
+            guard,
+            ccx: None,
+        };
+        let mut cmd = Command::new(&self.exe);
+        cmd.args(["-i", JOB])
+            .current_dir(work)
+            .stdin(Stdio::null())
+            .stdout(log.try_clone().map_err(cannot_start)?)
+            .stderr(log);
+        sys::prepare(
+            &mut cmd,
+            limited.then_some(self.memory_limit),
+            tree.group.pid(),
+        );
+        // From here each return and each panic drops `tree`, and the drop kills the group.
+        tree.ccx = Some(cmd.spawn().map_err(cannot_start)?);
+        let start = Instant::now();
+        let mut last_probe = Instant::now();
+        loop {
+            if cancel.is_cancelled() {
+                return Err(Error::cancelled());
+            }
+            if let Some(t) = self.timeout.filter(|t| start.elapsed() > *t) {
+                return Err(Error::new(
+                    code::TIME_LIMIT,
+                    format!(
+                        "the solve stopped at the time limit of {} s. {SMALLER}",
+                        t.as_secs_f64()
+                    ),
+                ));
+            }
+            if limited && last_probe.elapsed() >= PROBE_EVERY {
+                last_probe = Instant::now();
+                match sys::probe(tree.group.pid()) {
+                    Ok(b) if b > self.memory_limit => {
+                        return Err(Error::new(
+                            code::MEMORY,
+                            format!(
+                                "the solve stopped after ccx used more than the memory limit \
+                                 of {}. {SMALLER}",
+                                size(self.memory_limit)
+                            ),
+                        ));
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        return Err(Error::new(
+                            code::MEMORY,
+                            format!(
+                                "the memory probe failed ({e}), so the memory limit cannot \
+                                 apply"
+                            ),
+                        ));
+                    }
+                }
+            }
+            // The end of `ccx` comes after the checks, so a late end does not hide a cancel
+            // or the time limit.
+            let ccx = tree.ccx.as_mut().expect("ccx started");
+            match ccx.try_wait() {
+                Ok(Some(status)) => return Ok(status),
+                Ok(None) => std::thread::sleep(POLL),
+                Err(e) => return Err(failed(format!("wait for ccx failed: {e}"))),
+            }
+        }
+    }
+}
+
+/// The process group of a run: the guard and `ccx`. A drop kills the group, so that an early
+/// return or a panic cannot leave `ccx` running without its limits.
+struct Tree {
+    group: sys::Group,
+    guard: Child,
+    ccx: Option<Child>,
+}
+
+impl Drop for Tree {
+    fn drop(&mut self) {
+        // Also the processes that `ccx` left behind.
+        self.group.kill();
+        for child in std::iter::once(&mut self.guard).chain(&mut self.ccx) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+/// A memory size for a person: GiB from 1 GiB, else MiB.
+fn size(bytes: u64) -> String {
+    let mib = bytes as f64 / f64::from(1 << 20);
+    if mib >= 1024.0 {
+        format!("{:.1} GiB", mib / 1024.0)
+    } else {
+        format!("{} MiB", (mib * 1000.0).round() / 1000.0)
+    }
+}
+
+/// Make the run folder ready. A folder with files in it must be a run folder (it has the
+/// marker file), or the call fails. A fresh run clears it, so the input `inp` (a real path)
+/// must be outside it.
+fn prepare_run_dir(run_dir: &Path, inp: &Path) -> Result<PathBuf, Error> {
+    let fail = |message: String| Err(Error::new(code::RUN_FOLDER, message));
+    let err = |e: std::io::Error| Error::new(code::RUN_FOLDER, format!("run folder: {e}"));
+    fs::create_dir_all(run_dir).map_err(err)?;
+    let dir = fs::canonicalize(run_dir).map_err(err)?;
+    if inp.starts_with(&dir) {
+        return fail(format!(
+            "input file {} is inside the run folder, which a new run clears",
+            inp.display()
+        ));
+    }
+    let marked = dir.join(RUN_MARKER).is_file();
+    let empty = fs::read_dir(&dir).map_err(err)?.next().is_none();
+    if !empty && !marked {
+        return fail(format!(
+            "run folder {} has files and is not a run folder of femahoy: choose an empty folder",
+            dir.display()
+        ));
+    }
+    for entry in fs::read_dir(&dir).map_err(err)?.flatten() {
+        let path = entry.path();
+        if entry.file_type().is_ok_and(|t| t.is_dir()) {
+            fs::remove_dir_all(&path).map_err(err)?;
+        } else {
+            fs::remove_file(&path).map_err(err)?;
+        }
+    }
+    fs::write(dir.join(RUN_MARKER), "femahoy run folder\n").map_err(err)?;
+    Ok(dir)
 }

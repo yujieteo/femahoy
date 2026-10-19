@@ -6,8 +6,7 @@
 //!   with `case.toml` and one STEP file. It runs `fh mesh` and `fh model` in the work folder
 //!   `<state>/cases/<name>-<hash>`, then solves the input. Thus the case folder does not
 //!   change.
-//! - Each run uses the solver of the daemon: `FH_SOLVE` when set, else `fh-solve-ccx` beside
-//!   `fh` or on `PATH`. `fh-solve-ccx` needs CalculiX (`docs/ccx.md`).
+//! - The daemon solves each run with CalculiX: `$FH_CCX`, else `ccx` on `PATH` (`docs/ccx.md`).
 //!
 //! Before the solve, `fh run` sends the input to the preview route of the daemon, so that
 //! the page shows the model with each support and each load. With `--preview`, `fh run`
@@ -324,20 +323,7 @@ fn show(event: &Event) -> String {
     if let Some(state) = text.strip_prefix("state ") {
         return state.split(':').next().unwrap_or(state).to_owned();
     }
-    if let Some(bytes) = text.strip_prefix("estimate bytes=") {
-        let mib = bytes.parse::<f64>().unwrap_or(0.0) / f64::from(1 << 20);
-        return format!("memory estimate {mib:.1} MiB");
-    }
-    if let Some(rest) = text.strip_prefix("progress ") {
-        let field = |key: &str| {
-            rest.split(' ')
-                .find_map(|f| f.strip_prefix(key)?.strip_prefix('='))
-                .unwrap_or("?")
-        };
-        let percent = field("fraction").parse::<f64>().map_or(0.0, |f| f * 100.0);
-        return format!("step {} {} {percent:.0}%", field("step"), field("phase"));
-    }
-    text.strip_prefix("log ").unwrap_or(text).to_owned()
+    text.to_owned()
 }
 
 /// Show the events of the run until it ends. A Ctrl+C sends a cancel command, a second one
@@ -409,21 +395,12 @@ fn message_of(record: &RunRecord, state: &Path, input: &Path) -> String {
         .replace(&copy.display().to_string(), &input.display().to_string())
 }
 
-/// Print the result folder and the summary of a run that succeeded, and open the browser.
+/// Print the wall time and the result folder of a run that succeeded, and open the browser.
 fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_hint: &str) {
     let out = state.join("runs").join(&record.run).join("out");
     let seconds = record.finished_ms.saturating_sub(record.started_ms) as f64 / 1000.0;
     println!("fh run: {} succeeded in {seconds:.2} s", record.run);
     println!("fh run: results in {}", out.display());
-    match fs::read_to_string(out.join("summary.toon")) {
-        Ok(summary) => {
-            println!("fh run: summary.toon:");
-            for line in summary.lines() {
-                println!("  {line}");
-            }
-        }
-        Err(e) => println!("fh run: no summary.toon ({e})"),
-    }
     let url = client.page_url(&format!("&run={}", record.run));
     println!("fh run: page {url}");
     if !fh_daemon::no_open(o.no_open) {
@@ -460,13 +437,6 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     // The canonical path: the daemon gives it in its paths, and a new daemon runs in the
     // state folder, where a relative path names another folder.
     let state = fs::canonicalize(&state).unwrap_or(state);
-    // Without FH_SOLVE the daemon runs fh-solve-ccx. Stop now when it is not there.
-    let solver = fh_daemon::SOLVER;
-    if std::env::var_os("FH_SOLVE").is_none()
-        && fh_daemon::find_solver(&fh_daemon::solver_dirs(), solver).is_none()
-    {
-        return Ok(fail(FAILED, &fh_daemon::missing_solver(solver)));
-    }
     let (client, started) = match daemon(&state) {
         Ok(found) => found,
         Err(e) => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
@@ -591,12 +561,7 @@ mod tests {
             })
         };
         assert_eq!(line("state running"), "running");
-        assert_eq!(line("estimate bytes=2097152"), "memory estimate 2.0 MiB");
-        assert_eq!(
-            line("progress step=1/2 phase=assemble fraction=0.5"),
-            "step 1/2 assemble 50%"
-        );
-        assert_eq!(line("log step 1 max_u=1"), "step 1 max_u=1");
+        assert_eq!(line("state failed: ccx failed"), "failed");
     }
 
     #[test]

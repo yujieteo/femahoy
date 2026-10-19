@@ -15,8 +15,8 @@ fh serve
 
 ### The install
 
-`scripts/install.sh` builds `fh`, `fh-solve-ccx` and the browser viewer (release builds).
-It copies `fh`, `fh-solve-ccx` and the folder `viewer` to `~/.local/bin`.
+`scripts/install.sh` builds `fh` and the browser viewer (release builds).
+It copies `fh` and the folder `viewer` to `~/.local/bin`.
 Use `--prefix DIR` for another folder.
 It also uses uv to make a Python 3.12 environment with build123d 0.13.0 in `~/.local/share/femahoy/venv` (`$XDG_DATA_HOME/femahoy/venv` when you set `XDG_DATA_HOME`).
 Use `--venv DIR` for another folder.
@@ -54,7 +54,7 @@ The exact von Mises stress is 100 MPa in all of the bar ([derivation](../validat
 1. `fh run` uses the daemon of the state folder. `STATE` is the state folder, `~/.local/state/femahoy` by default. If no daemon answers, it starts `fh serve --no-open` in the background.
 2. It runs `fh mesh` (gmsh) and `fh model` in a work folder, `STATE/cases/bar-pressure-HASH`.
 3. It submits the input to the daemon and shows the events of the run.
-4. It shows the result folder and `summary.toon`, and opens the run in the browser.
+4. It shows the result folder and opens the run in the browser.
 
 Output excerpt (paths cut, `STATE` for the state folder):
 
@@ -71,11 +71,6 @@ fh run: run-000001 solves STATE/cases/bar-pressure-f069ef66a99460ee/bar.inp
   succeeded
 fh run: run-000001 succeeded in 0.19 s
 fh run: results in STATE/runs/run-000001/out
-fh run: summary.toon:
-  ...
-  status: ok
-  ...
-  solver: "ccx 2.23, unvalidated"
 fh run: page http://127.0.0.1:53513/?token=TOKEN&run=run-000001
 fh run: opened run-000001 in the browser
 fh run: the daemon stays alive for the browser. Stop it with: fh serve --stop
@@ -107,7 +102,7 @@ The sections below do the same steps one at a time.
 ## 1. Prepare the programs
 
 Run these commands from the repository root in an interactive terminal.
-`scripts/install.sh` (see [Start](#start)) puts `fh`, `fh-solve-ccx` and `fh-python` on `PATH`.
+`scripts/install.sh` (see [Start](#start)) puts `fh` and `fh-python` on `PATH`.
 The solve step needs CalculiX (`ccx`, [the CalculiX adapter](ccx.md)).
 The CAD step uses `fh-python`, the Python with build123d that the install makes.
 The mesh step needs an external gmsh executable.
@@ -175,7 +170,7 @@ type	C3D10	1015
 
 ## 4. Write the solver input and run the solver
 
-`fh-solve-ccx` reads `.inp`, not `.msh` or case TOML.
+The solver reads `.inp`, not `.msh` or case TOML.
 `fh model` writes the `.inp` file from the mesh and the `[model]` table of a case.
 The [bar-tension case](../validation/cases/bar-tension/case.toml) has that table.
 It holds the material, node sets on coordinate planes, boundary conditions and loads.
@@ -202,42 +197,25 @@ The command keeps `C3D10` as the element. It refuses another element type.
 fh model "$WORK/bar.msh" --case validation/cases/bar-tension -o "$WORK/bar.inp"
 ```
 
-A `cancel` line on stdin stops the solver. The end of stdin does not stop it (`docs/solver-protocol.md`).
+`fh run` gives the input to the daemon, which starts `ccx`. Ctrl+C stops the solve.
 You can run this command from a script or an agent shell.
-Use a new result directory for each run.
 
 ```sh
-fh-solve-ccx "$WORK/bar.inp" "$WORK/run-bar"
+fh run "$WORK/bar.inp" --no-open
 ```
 
 The bar has a prescribed end displacement of 0.1 mm. The exact von Mises stress is 210 MPa.
-The solver prints only the line `fh-solver-protocol 2`. Section 5 reads the results.
-The `ccx` files are in `$WORK/run-bar/ccx`.
+`fh run` prints the results folder, for example `fh run: results in STATE/runs/run-000001/out`.
+Set `OUT` to that folder. Section 5 reads the results. The `ccx` files are in `$OUT/ccx`.
 
 ## 5. Read the results
 
 ```sh
-cat "$WORK/run-bar/summary.toon"
-cat "$WORK/run-bar/results.pvd"
-head -n 25 "$WORK/run-bar/step-1.vtu"
+cat "$OUT/results.pvd"
+head -n 25 "$OUT/step-1.vtu"
 ```
 
-The TOON summary contains this excerpt.
-
-```text
-schema: fh.run
-version: 1.1.0
-source: bar.inp
-units: SI-mm
-status: ok
-precision: 4
-run_id: run-bar
-solver: "ccx 2.23, unvalidated"
-results: results.pvd
-```
-
-TOON rounds numbers to 4 significant figures. The VTU file retains full precision.
-The PVD file states the units and names the VTU result.
+The PVD file states the units and names the VTU result. The VTU file keeps full precision.
 
 ```xml
 <Collection units="SI-mm">
@@ -249,7 +227,7 @@ The last command reads the XML header before the binary result arrays.
 `U` is displacement. `RF` is reaction force. `S` is stress. `MISES` is von Mises stress.
 The stress components are `S11 S22 S33 S12 S23 S13`.
 The solver reads the units from the `** units:` line of the input. It uses them only as a label.
-An input with no such line gives `units: unspecified`.
+An input with no such line gives `units="unspecified"` in the PVD file.
 Interpret the numbers in the declared unit system: mm, N and MPa for `SI-mm`.
 
 ## 6. Name regions and apply a pressure
@@ -274,7 +252,7 @@ Give `fh mesh` the case with `--case`, so that it makes a gmsh physical surface 
 ```sh
 fh mesh "$WORK/bar.step" --case validation/cases/bar-pressure --size 8 -o "$WORK/press.msh"
 fh model "$WORK/press.msh" --case validation/cases/bar-pressure -o "$WORK/press.inp"
-fh-solve-ccx "$WORK/press.inp" "$WORK/run-press"
+fh run "$WORK/press.inp" --no-open
 ```
 
 Output excerpt of `fh mesh` (element-face counts of each region):
@@ -304,7 +282,7 @@ The [bar-pressure-m case](../validation/cases/bar-pressure-m/case.toml) is the s
 ## 7. Run validation
 
 Run this command from the repository root.
-`fh validate` locates `fh-solve-ccx` beside `fh` or on `PATH`, or through `FH_SOLVE`.
+`fh validate` starts `ccx` (`FH_CCX`, else `ccx` on `PATH`).
 If `ccx` does not start, `fh validate` stops with exit code 1 and tells how to install it.
 
 ```sh

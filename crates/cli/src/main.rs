@@ -15,9 +15,7 @@ fn usage() -> &'static str {
          model     write a solver input from a .msh file and the case (fh model FILE.msh --case DIR [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR])\n  \
          run       solve a model or a case on the daemon and open the results in the browser (fh run MODEL.inp|CASE_DIR [--preview])\n  \
-         serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n\n\
-                  TOON numbers are rounded to 4 significant figures (header key `precision`).\n\
-         Exact values are in the VTU files.\n"
+         serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve [--state DIR] [--port N] [--no-open] | --stop)\n"
 }
 
 fn main() -> ExitCode {
@@ -32,7 +30,7 @@ fn main() -> ExitCode {
         Some("validate") => validate::run(&args[1..]),
         Some("model") => model::run(&args[1..]),
         Some("run") => run::run(&args[1..]),
-        Some("serve") => fh_daemon::serve(&args[1..], measure::Subprocess::locate().solver.exe),
+        Some("serve") => fh_daemon::serve(&args[1..]),
         _ => {
             eprintln!("fh: unknown argument: {}", args.join(" "));
             eprint!("{}", usage());

@@ -4,7 +4,6 @@ id = "plate-on-edge"
 units = "SI-mm"
 justification = "The reference is the converged value of a separate graded hex model in CalculiX (derivation.md). The 20 mm tetrahedral mesh is 3.8 percent from it. The 5 percent tolerance holds this mesh error and the 0.2 percent error of the reference."
 derivation = "derivation.md"
-solver = "fh-solve-ccx"
 mesh = "part.inp"
 # A 16 GB laptop solved this mesh in 12 s with 2.9 GiB. The limits stop a run that is 10 times slower or 2 times larger.
 time_limit_s = 120.0

@@ -4,7 +4,7 @@
 schema = 3
 id = "kirsch-plate-c3d10"
 units = "SI-mm"
-justification = "Reference is the Kirsch closed form for a hole in an infinite plate. The plate is finite (half-width 20 hole radii), so the reference has a stated error of 1 percent. The solver reports one stress for each element, so the value sits at the element centroid, not on the edge. On mesh-16x16.inp, this offset makes fh-solve-ccx give values 6 and 13 percent below the references (derivation.md). The 15 percent tolerance holds this offset and the reference error."
+justification = "Reference is the Kirsch closed form for a hole in an infinite plate. The plate is finite (half-width 20 hole radii), so the reference has a stated error of 1 percent. The solver reports one stress for each element, so the value sits at the element centroid, not on the edge. On mesh-16x16.inp, this offset makes ccx give values 6 and 13 percent below the references (derivation.md). The 15 percent tolerance holds this offset and the reference error."
 derivation = "derivation.md"
 mesh = "mesh-16x16.inp"
 rel_tol = 0.15

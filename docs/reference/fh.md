@@ -13,7 +13,6 @@ The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --hel
 
 A command error returned to the dispatcher prints `fh COMMAND: MESSAGE` on stderr and exits with 2.
 This includes command argument errors. Subcommands do not implement `-h` or `--help`.
-The help text mentions TOON precision, but these command handlers print the formats listed below.
 The command sources define more `mesh` options than the top-level help text shows.
 
 ## `fh mesh`
@@ -84,7 +83,7 @@ fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm|SI-m]
 Source: [model.rs](../../crates/cli/src/model.rs).
 
 The command writes a solver input from the mesh and the `[model]` table of the case (`crates/validation/SCHEMA.md`).
-The input starts with the line `** units: SI-mm` or `** units: SI-m`. `fh-solve-ccx` copies the units into `summary.toon` and `results.pvd`. It writes VTU with PVD.
+The input starts with the line `** units: SI-mm` or `** units: SI-m`. The `ccx` run copies the units into `results.pvd`. It writes VTU with PVD.
 Each material box selects a named solid group and a separate material section.
 `model.temperature_change` writes uniform thermal input for CalculiX.
 A node set can select a plane or an existing node with `point = [x, y, z]`.
@@ -119,17 +118,15 @@ Sources: [validate.rs](../../crates/cli/src/validate.rs),
 
 `--root` defaults to `.`. The normal run loads case directories under `DIR/validation/cases`, sorted by directory name.
 Each case solves its 1 mesh, then compares each quantity with its reference.
-The solver is `FH_SOLVE` when set, otherwise `fh-solve-ccx` beside `fh`, otherwise `fh-solve-ccx` on `PATH`.
-The `solver` key of a case can only be `fh-solve-ccx`, the default.
-If the solver is `fh-solve-ccx` and `ccx` (`FH_CCX`, else `ccx` on PATH) does not start, `fh validate` stops before the first case.
-A case can set `time_limit_s` and `memory_limit_mib` ([case fields](case-toml.md)). At a limit, the runner stops the solver and the case cannot run.
+The solver is `ccx` (`FH_CCX`, else `ccx` on PATH). If `ccx` does not start, `fh validate` stops before the first case.
+A case can set `time_limit_s` and `memory_limit_mib` ([case fields](case-toml.md)). At a limit, the run stops `ccx` and the case cannot run.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
 | Each case passes | stdout: `ID<TAB>pass`, quantity rows, and `N cases: P pass, F fail`. | 0 |
-| `ccx` does not start | stderr: `fh validate: cannot start ccx (PATH): ERROR. fh-solve-ccx needs CalculiX: install it as docs/ccx.md tells, then put ccx on PATH or set FH_CCX` | 1 |
+| `ccx` does not start | stderr: `fh validate: cannot start ccx (PATH): ERROR. fh needs CalculiX: install it as docs/ccx.md tells, then put ccx on PATH or set FH_CCX` | 1 |
 | Case failure | stdout: case row with `fail: REASON`, then summary. | 1 |
-| Solver absent or measurement cannot run | stdout: case row with `cannot run: REASON`. | 1 |
+| The solve or the measurement cannot run | stdout: case row with `cannot run: REASON`. | 1 |
 | Fixture load error | stderr: `fh validate: FILE[:LINE]: MESSAGE` | 1 |
 | Mesh parse error, missing set, or missing step | stderr: `fh validate: CASE.toml: MESSAGE` | 1 |
 | Missing option value | `fh validate: --root needs a directory` | 2 |
@@ -164,15 +161,7 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 
 `fh run` uses the daemon of the state folder when one answers. Else it starts `fh serve --state DIR --no-open` in the background, in its own process group, with its output in `DIR/daemon.log`, and waits up to 20 seconds for it. The file has mode 0600, because it holds the page address with the token. When another daemon answers first, for example the daemon of an `fh run` that started at the same time, `fh run` stops its own `fh serve` and uses the daemon that answers.
 That daemon stays alive when `fh run` ends. The browser keeps the results, and the next `fh run` uses the same daemon. `fh serve --stop` stops it.
-A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_SOLVE` and `FH_VIEWER`. `fh mesh` uses `FH_GMSH`.
-
-The run of a case uses the solver that the `solver` key of `case.toml` names:
-
-- No `solver` key, or `solver = "fh-solve-ccx"`: the solver of the daemon. That is `FH_SOLVE` when set, else `fh-solve-ccx` beside `fh`, else on `PATH`.
-- Any other value is an error of the case.
-- When `FH_SOLVE` is not set and `fh-solve-ccx` is in neither place, `fh run` stops with `run.solver.missing`.
-
-An `.inp` file uses the solver of the daemon.
+A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_CCX` and `FH_VIEWER`. `fh mesh` uses `FH_GMSH`.
 
 Before the solve, `fh run` sends the input to the preview route of the daemon (see [the chat](../chat.md#the-model-before-the-solve)).
 The page then shows the model with the faces of each support and each load, the direction of each load, and the names of the regions.
@@ -182,16 +171,15 @@ With `--preview`, `fh run` prints `fh run: --preview: no solve` and stops. It do
 A daemon that has no preview route still solves: `fh run` prints `fh run: no preview (MESSAGE)` and continues.
 
 The browser opens on `http://127.0.0.1:PORT/?token=TOKEN&run=R`, the same way as for [`fh serve`](#fh-serve).
-Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
+Ctrl+C sends a cancel command for the run, then `fh run` waits for the end of the run. The cancel stops `ccx` at once. A second Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
 Before a daemon starts, `fh run` checks the arguments and the input. Thus a usage error starts no daemon.
 
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
 | `--preview`, and the page shows the model | stdout: the `fh mesh` and `fh model` rows for a case, the preview line, and `fh run: --preview: no solve` | 0 |
-| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the preview line, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `summary.toon`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), and the stop command. | 0 |
-| The solver refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder, for example `bad.inp: line 3, *BOGUS: unsupported keyword (INP002)`. | 1 |
+| The run succeeded | stdout: the `fh mesh` and `fh model` rows for a case, the preview line, the events of the run, `fh run: RUN succeeded in S s`, `results in DIR`, `page URL`, `opened RUN in the browser` (or `no browser (CAUSE)`), and the stop command. | 0 |
+| The parser or `ccx` refused the input, or the run failed | stderr: `fh run: RUN failed: MESSAGE`. The message names the input file, not the copy in the state folder, for example `bad.inp: line 3, *BOGUS: unsupported keyword (INP002)`. | 1 |
 | The daemon stopped during the run | `fh run: RUN was interrupted: MESSAGE` | 1 |
-| `FH_SOLVE` is not set, and `fh-solve-ccx` is not beside `fh` or on `PATH` | `fh run: the solver fh-solve-ccx is not beside fh or on PATH. To install it, see docs/ccx.md (run.solver.missing)`. No daemon starts. | 1 |
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
 | The daemon refused the run | `fh run: the daemon refused the run: MESSAGE (CODE)`, for example `queue.full` | 1 |
@@ -217,11 +205,11 @@ fh serve [--state DIR] [--port N] [--no-open]
 fh serve --stop [--state DIR]
 ```
 
-Source: [serve.rs](../../crates/daemon/src/serve.rs). The dispatcher calls it with the solver of `fh validate`.
+Source: [serve.rs](../../crates/daemon/src/serve.rs).
 
 The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
 `--state` defaults to `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default.
-`--port` defaults to 0, a free port. The solver is `FH_SOLVE` when set, otherwise `fh-solve-ccx` beside `fh`, otherwise on `PATH`. It needs CalculiX ([ccx](../ccx.md)).
+`--port` defaults to 0, a free port. The solver is `ccx` (`FH_CCX`, else `ccx` on `PATH`, [ccx](../ccx.md)).
 The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
 The page has the chat with the agent ([chat](../chat.md)).
 

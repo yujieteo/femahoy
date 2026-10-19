@@ -5,7 +5,8 @@
 //! The fake gmsh copies `fixtures/msh/bar-pressure.msh`, the output of gmsh 4.15.2 for
 //! `fh mesh validation/cases/bar-pressure/bar.step --case validation/cases/bar-pressure`.
 //! Thus the case tests run with no gmsh. One test uses the real gmsh when it is installed.
-//! The solver is a fake protocol v2 solver. One test uses the real ccx when it is installed.
+//! The ccx is a wrapper around `fixtures/ccx/fake-ccx.sh`. One test uses the real ccx when it
+//! is installed.
 mod common;
 use common::{ccx_solver, fails, p, real_gmsh, root, scratch, script, stderr, stdout};
 
@@ -16,30 +17,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-/// A protocol v2 solver that writes one step with no data and a summary. It does not read the
-/// input.
+/// A fake ccx: it adds a line to `LOG`. A model with the node set `SLOW` runs until a kill,
+/// other models get zero results from `fixtures/ccx/fake-ccx.sh`.
 const FAKE_SOLVER: &str = r#"#!/bin/sh
-echo "fh-solver-protocol 2"
-echo "progress step=1/1 phase=solve fraction=1"
-echo "fake solve done"
-echo '<VTKFile type="Collection"><Collection><DataSet timestep="1" part="0" file="step-1.vtu"/></Collection></VTKFile>' > results.pvd
-echo '<VTKFile/>' > step-1.vtu
-printf 'schema: fh.run\nversion: 1.1.0\nstatus: ok\n' > summary.toon
-"#;
-
-/// A protocol v2 solver that waits for a cancel. With `stubborn` in the input, it waits for
-/// the end of stdin only.
-const SLOW_SOLVER: &str = r#"#!/bin/sh
-echo "fh-solver-protocol 2"
-echo "progress step=1/1 phase=solve fraction=0.1"
-if grep -q stubborn "$1"; then
-  while read line; do :; done
-  exit 130
-fi
-while read line; do
-  if [ "$line" = cancel ]; then exit 130; fi
-done
-exit 130
+echo ccx >> LOG
+if grep -q SLOW job.inp; then exec sleep 30; fi
+exec FAKE "$@"
 "#;
 
 /// A scratch folder with a state folder, a fake browser and a fake gmsh.
@@ -70,7 +53,13 @@ impl Lab {
                 p(&fixture)
             ),
         );
-        let solver = script(&dir.join("fake-solver"), FAKE_SOLVER);
+        let fake = root().join("fixtures/ccx/fake-ccx.sh");
+        let solver = script(
+            &dir.join("fake-ccx"),
+            &FAKE_SOLVER
+                .replace("FAKE", p(&fake))
+                .replace("LOG", p(&dir.join("ccx.log"))),
+        );
         Lab {
             state: dir.join("state"),
             dir,
@@ -81,17 +70,12 @@ impl Lab {
 
     /// `fh ARGS --state STATE` with the fake browser, `FH_NO_OPEN=1` and the fake gmsh.
     fn cmd(&self, args: &[&str]) -> Command {
-        self.cmd_of(Path::new(env!("CARGO_BIN_EXE_fh")), args)
-    }
-
-    /// [`Lab::cmd`] for the `fh` program at `fh`.
-    fn cmd_of(&self, fh: &Path, args: &[&str]) -> Command {
-        let mut cmd = Command::new(fh);
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_fh"));
         cmd.args(args).args(["--state", p(&self.state)]);
         cmd.current_dir(&self.dir)
             .env("BROWSER", self.dir.join("browser"))
             .env("FH_NO_OPEN", "1")
-            .env("FH_SOLVE", &self.solver)
+            .env("FH_CCX", &self.solver)
             .env("FH_GMSH", &self.gmsh);
         cmd
     }
@@ -106,15 +90,10 @@ impl Lab {
         path
     }
 
-    fn slow_solver(&mut self) {
-        self.solver = script(&self.dir.join("slow-solver"), SLOW_SOLVER);
-    }
-
-    /// A solver that prints the header, then `message` on stderr, and fails.
+    /// A ccx that prints `message` and fails.
     fn failing_solver(&mut self, message: &str) {
-        let text =
-            format!("#!/bin/sh\necho \"fh-solver-protocol 2\"\necho \"{message}\" >&2\nexit 1\n");
-        self.solver = script(&self.dir.join("failing-solver"), &text);
+        let text = format!("#!/bin/sh\necho \"{message}\"\nexit 201\n");
+        self.solver = script(&self.dir.join("failing-ccx"), &text);
     }
 
     fn browser_log(&self) -> Option<String> {
@@ -163,9 +142,18 @@ fn succeeds(out: &Output) {
     );
 }
 
-/// True when the fake solver ran: its log line is in the output of `fh run`.
-fn solved(out: &Output) -> bool {
-    stdout(out).contains("\n  fake solve done\n")
+/// True when the fake ccx of the lab ran.
+fn solved(lab: &Lab) -> bool {
+    lab.dir.join("ccx.log").is_file()
+}
+
+/// The tet model of the fixtures with the node set `SLOW`: the fake ccx runs until a kill.
+fn slow_model(lab: &Lab) -> PathBuf {
+    let tet = fs::read_to_string(root().join("fixtures/ccx/tet.inp")).unwrap();
+    lab.input(
+        "slow.inp",
+        &tet.replace("*STEP", "*NSET, NSET=SLOW\n1\n*STEP"),
+    )
 }
 
 #[test]
@@ -177,8 +165,7 @@ fn an_inp_file_runs_on_a_new_daemon_and_a_second_run_uses_it() {
     let text = stdout(&out);
     assert!(text.contains("fh run: started a daemon"), "{text}");
     assert!(text.contains("run-000001 succeeded"), "{text}");
-    assert!(text.contains("  schema: fh.run"), "{text}");
-    assert!(solved(&out), "{}", stdout(&out));
+    assert!(solved(&lab), "{}", stdout(&out));
     let folder = text
         .lines()
         .find_map(|l| l.strip_prefix("fh run: results in "))
@@ -312,9 +299,7 @@ fn a_missing_file_exits_2() {
 
 #[test]
 fn an_input_that_the_solver_refuses_exits_1_with_the_line_in_the_file() {
-    let mut lab = Lab::new("run-refused");
-    // The error of fh_inp, as fh-solve-ccx prints it, with the path that the solver gets.
-    lab.failing_solver("$1: line 3, *BOGUS: unsupported keyword (INP002)");
+    let lab = Lab::new("run-refused");
     let bad = lab.input("bad.inp", "*NODE\n1, 0, 0\n*BOGUS\n");
     let out = lab.fh(&["run", p(&bad)]);
     fails(&out, 1, "run-000001 failed: ");
@@ -330,11 +315,11 @@ fn an_input_that_the_solver_refuses_exits_1_with_the_line_in_the_file() {
 #[test]
 fn a_run_that_fails_in_the_solve_exits_1() {
     let mut lab = Lab::new("run-failed");
-    lab.failing_solver("ccx failed: singular stiffness");
+    lab.failing_solver(" *ERROR in e_c3d: nonpositive jacobian");
     let model = root().join("validation/cases/cantilever-c3d10/mesh-8.inp");
     let out = lab.fh(&["run", p(&model)]);
     fails(&out, 1, "run-000001 failed: ");
-    fails(&out, 1, "ccx failed: singular stiffness");
+    fails(&out, 1, "*ERROR in e_c3d: nonpositive jacobian");
 }
 
 #[test]
@@ -409,11 +394,10 @@ fn state_of(lab: &Lab, run: &str) -> String {
 
 #[test]
 fn ctrl_c_cancels_the_run_through_the_contract() {
-    let mut lab = Lab::new("run-cancel");
-    lab.slow_solver();
-    let model = lab.input("slow.inp", "slow\n");
+    let lab = Lab::new("run-cancel");
+    let model = slow_model(&lab);
     let (child, mut lines) = start(&mut lab.cmd(&["run", p(&model)]));
-    read_until(&mut lines, "step 1/1 solve 10%");
+    read_until(&mut lines, "  running");
     interrupt(&child);
     read_until(&mut lines, "  cancel: cancelling");
     let out = finish(child, lines);
@@ -430,28 +414,6 @@ fn ctrl_c_cancels_the_run_through_the_contract() {
 }
 
 #[test]
-fn a_second_ctrl_c_ends_fh_run_at_once_and_the_cancel_continues() {
-    let mut lab = Lab::new("run-cancel-twice");
-    lab.slow_solver();
-    let model = lab.input("slow.inp", "stubborn\n");
-    let (child, mut lines) = start(&mut lab.cmd(&["run", p(&model)]));
-    read_until(&mut lines, "step 1/1 solve 10%");
-    interrupt(&child);
-    read_until(&mut lines, "  cancel: cancelling");
-    interrupt(&child);
-    read_until(&mut lines, "Ctrl+C again: fh run ends");
-    let out = finish(child, lines);
-    assert_eq!(out.status.code(), Some(130), "{}", stderr(&out));
-    assert_eq!(state_of(&lab, "run-000001"), "cancelling");
-    // The solver ignores the cancel. The runner stops it after its grace time.
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while state_of(&lab, "run-000001") != "cancelled" {
-        assert!(Instant::now() < deadline, "the cancel did not end the run");
-        std::thread::sleep(Duration::from_millis(50));
-    }
-}
-
-#[test]
 fn a_case_folder_runs_mesh_model_and_solve_and_does_not_change() {
     let lab = Lab::new("run-case");
     let case = root().join("validation/cases/bar-pressure");
@@ -465,7 +427,7 @@ fn a_case_folder_runs_mesh_model_and_solve_and_does_not_change() {
     let text = stdout(&out);
     assert!(text.contains("fh run: mesh: fh mesh "), "{text}");
     assert!(text.contains("fh run: model: fh model "), "{text}");
-    assert!(solved(&out), "{}", stdout(&out));
+    assert!(solved(&lab), "{}", stdout(&out));
     let work: Vec<_> = fs::read_dir(lab.state.join("cases")).unwrap().collect();
     assert_eq!(work.len(), 1);
     let work = work[0].as_ref().unwrap().path();
@@ -487,60 +449,6 @@ fn a_case_folder_runs_mesh_model_and_solve_and_does_not_change() {
     succeeds(&lab.fh(&["run", p(&case.join("case.toml"))]));
     succeeds(&lab.fh(&["run", p(&case.join("bar.step"))]));
     assert_eq!(fs::read_dir(lab.state.join("cases")).unwrap().count(), 1);
-}
-
-#[test]
-fn without_fh_solve_a_run_uses_fh_solve_ccx() {
-    let lab = Lab::new("run-case-solver");
-    // A copy of fh in its own folder: the solvers beside fh are the solvers of the test.
-    let bin = lab.dir.join("bin");
-    fs::create_dir_all(&bin).unwrap();
-    let fh = bin.join("fh");
-    fs::copy(env!("CARGO_BIN_EXE_fh"), &fh).unwrap();
-    let case = root().join("validation/cases/bar-pressure");
-    let dir = lab.dir.join("bar-ccx");
-    fs::create_dir_all(&dir).unwrap();
-    for file in ["bar.step", "derivation.md"] {
-        fs::copy(case.join(file), dir.join(file)).unwrap();
-    }
-    let toml = fs::read_to_string(case.join("case.toml")).unwrap();
-    let toml = toml.replace("\nmesh = ", "\nsolver = \"fh-solve-ccx\"\nmesh = ");
-    fs::write(dir.join("case.toml"), toml).unwrap();
-    let run = |path: &str| {
-        let mut cmd = lab.cmd_of(&fh, &["run", p(&dir)]);
-        cmd.env_remove("FH_SOLVE").env("PATH", path);
-        cmd.output().unwrap()
-    };
-
-    // No fh-solve-ccx beside fh or on PATH: fh run stops before a daemon starts.
-    let out = run("/usr/bin:/bin");
-    fails(
-        &out,
-        1,
-        "the solver fh-solve-ccx is not beside fh or on PATH",
-    );
-    fails(&out, 1, "docs/ccx.md (run.solver.missing)");
-    assert!(!lab.state.join("daemon.info").exists());
-
-    // fh-solve-ccx beside fh. It writes a line and runs the fake solver.
-    let log = lab.dir.join("ccx.log");
-    script(
-        &bin.join("fh-solve-ccx"),
-        &format!(
-            "#!/bin/sh\necho ccx >> {}\nexec {} \"$@\"\n",
-            p(&log),
-            p(&lab.solver)
-        ),
-    );
-    let out = run(&std::env::var("PATH").unwrap());
-    succeeds(&out);
-    assert!(solved(&out), "{}", stdout(&out));
-    assert_eq!(fs::read_to_string(&log).unwrap(), "ccx\n");
-
-    // FH_SOLVE wins over fh-solve-ccx.
-    succeeds(&lab.fh(&["serve", "--stop"]));
-    succeeds(&lab.fh(&["run", p(&dir)]));
-    assert_eq!(fs::read_to_string(&log).unwrap(), "ccx\n");
 }
 
 #[test]
@@ -577,14 +485,18 @@ fn an_inp_file_runs_through_the_real_ccx() {
     let bar = root().join("validation/cases/bar-pressure/bar.inp");
     let out = lab
         .cmd(&["run", p(&bar)])
-        .env("FH_SOLVE", solver)
+        .env("FH_CCX", solver)
         .output()
         .unwrap();
     succeeds(&out);
     let text = stdout(&out);
     assert!(text.contains("run-000001 succeeded"), "{text}");
-    assert!(text.contains("  status: ok"), "{text}");
-    assert!(text.contains("  solver: \"ccx "), "{text}");
+    assert!(!solved(&lab), "the real ccx solves, not the fake");
+    let folder = text
+        .lines()
+        .find_map(|l| l.strip_prefix("fh run: results in "))
+        .unwrap();
+    assert!(Path::new(folder).join("step-1.vtu").is_file());
 }
 
 #[test]
@@ -641,7 +553,7 @@ fn a_case_folder_runs_with_the_real_gmsh() {
         .unwrap();
     succeeds(&out);
     assert!(stdout(&out).contains("nodes\t844"), "{}", stdout(&out));
-    assert!(solved(&out), "{}", stdout(&out));
+    assert!(solved(&lab), "{}", stdout(&out));
 }
 
 #[test]

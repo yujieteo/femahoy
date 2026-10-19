@@ -101,11 +101,9 @@ pub struct Case {
     pub rel_tol: f64,
     pub abs_tol: f64,
     pub references: Vec<Reference>,
-    /// The solver program. `fh-solve-ccx` is the default and the only value now.
-    pub solver: String,
-    /// The longest time of one solver run, in seconds. `None`: the time limit of the runner.
+    /// The longest time of one solver run, in seconds. `None`: no time limit.
     pub time_limit_s: Option<f64>,
-    /// The most memory of one solver run, in MiB. `None`: the memory limit of the runner.
+    /// The most memory of one solver run, in MiB. `None`: 85 % of the RAM.
     pub memory_limit_mib: Option<f64>,
     /// How to build a solver input from a `.msh` file (`fh model`). Optional.
     pub model: Option<ModelSpec>,
@@ -351,9 +349,8 @@ impl FixtureReader<'_> {
     }
 
     fn build(&self, dir: &Path, table: &Table) -> Result<Case, FixtureError> {
-        const KEYS: [&str; 14] = [
+        const KEYS: [&str; 13] = [
             "schema",
-            "solver",
             "time_limit_s",
             "memory_limit_mib",
             "model",
@@ -410,18 +407,6 @@ impl FixtureReader<'_> {
         let references = self.references(table)?;
         let rel_tol = self.tolerance(table, "rel_tol")?;
         let abs_tol = self.tolerance(table, "abs_tol")?;
-        let solver = match table.get("solver") {
-            None => "fh-solve-ccx".to_owned(),
-            Some(item) => match self.non_empty_string(item, "solver")? {
-                s @ "fh-solve-ccx" => s.to_owned(),
-                other => {
-                    return Err(self.err(
-                        Some(item),
-                        format!("unknown solver `{other}`, expected fh-solve-ccx"),
-                    ))
-                }
-            },
-        };
         let limit = |key: &str| -> Result<Option<f64>, FixtureError> {
             let Some(item) = table.get(key) else {
                 return Ok(None);
@@ -443,7 +428,6 @@ impl FixtureReader<'_> {
             rel_tol,
             abs_tol,
             references,
-            solver,
             time_limit_s,
             memory_limit_mib,
             model,

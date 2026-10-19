@@ -37,7 +37,7 @@ Check of the boundary conditions: s_r(a) = 33.333 - 133.333 = -100 MPa (equals -
 
 ## Tolerance
 
-`fh-solve-ccx` gave these values on 4 meshes (2026-10-19):
+`ccx` gave these values on 4 meshes (2026-10-19):
 
 | Cells | u_r(100) (mm) | Difference | u_r(200) (mm) | Difference |
 |---|---|---|---|---|

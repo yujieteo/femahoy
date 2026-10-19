@@ -1,35 +1,26 @@
 //! `fh validate [--root DIR]`: load every case and run the harness.
 //!
-//! Each case runs through the solver: `$FH_SOLVE`, else `fh-solve-ccx` next to `fh` or on
-//! `PATH`. A table shows every quantity with its computed value, reference, tolerance and margin.
-//! A bad fixture, a case that fails or a case that cannot run gives exit code 1. If the solver is `fh-solve-ccx` and `ccx` does not start, `fh validate`
-//! stops before the first case and tells how to install CalculiX.
+//! Each case runs through `ccx` (`$FH_CCX`, else `ccx` on PATH). A table shows every quantity
+//! with its computed value, reference, tolerance and margin. A bad fixture, a case that fails
+//! or a case that cannot run gives exit code 1. If `ccx` does not start, `fh validate` stops
+//! before the first case and tells how to install CalculiX.
 
 use crate::measure::Subprocess;
+use fh_solver_ccx::Ccx;
 use fh_validation::{load_all, run_case_with, Case, Field, Outcome, Report};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode, Stdio};
 
-/// Prints the error and gives false when the solver is `fh-solve-ccx` and `ccx` (`$FH_CCX`,
-/// else `ccx` on PATH) does not start. Another solver from `$FH_SOLVE` needs no `ccx`.
+/// Prints the error and gives false when `ccx` does not start.
 fn solver_ready() -> bool {
-    let solver = Subprocess::locate();
-    if solver
-        .solver
-        .exe
-        .file_stem()
-        .is_none_or(|s| s != fh_daemon::SOLVER)
-    {
-        return true;
-    }
-    let exe = std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into());
+    let exe = Ccx::new().exe;
     match Command::new(&exe).arg("-v").stdin(Stdio::null()).output() {
         Ok(_) => true,
         Err(e) => {
             eprintln!(
-                "fh validate: cannot start ccx ({}): {e}. fh-solve-ccx needs CalculiX: install \
-                 it as docs/ccx.md tells, then put ccx on PATH or set FH_CCX",
-                Path::new(&exe).display()
+                "fh validate: cannot start ccx ({}): {e}. fh needs CalculiX: install it as \
+                 docs/ccx.md tells, then put ccx on PATH or set FH_CCX",
+                exe.display()
             );
             false
         }

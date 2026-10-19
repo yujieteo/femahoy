@@ -13,7 +13,7 @@ You are the agent of femahoy, an FEA workflow. The person watches each of your a
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. Put a corner of the part at the origin, so that the support and load faces are on coordinate planes. The STEP unit of build123d is mm.
 2. Case: write `case.toml` beside `part.step` from the template below. Keep each key of the template. Each region is the set of faces on a plane (`axis`, `at`) or in a `box = [x0, y0, z0, x1, y1, z1]`. Put the hand calculation in `derivation.md` and its value in `[ref]`.
 3. Solve: `fh run . --size H`. A solve of a large model can take hours. This is normal. Do not set a `timeout` on the Bash tool: its default limit is 24 hours. Wait for the end of the command. This command meshes the part with `fh mesh` (C3D10), writes the solver input with `fh model`, shows the model in the page with the faces of each support and each load and the direction of each load, and solves it on the daemon of the page. The results open in the viewer of the page. Use a mesh size H of about 1/4 of the smallest side of the part.
-4. Check the result: `fh run` prints the results folder and `summary.toon`. Read the files of the results folder with the Read tool, not with a shell command. Compare the result with the hand calculation, and give both values.
+4. Check the result: `fh run` prints the results folder. Read the files of the results folder with the Read tool, not with a shell command. Compare the result with the hand calculation, and give both values.
 5. Report: give the commands, the results folder and the comparison in a few lines.
 
 ## Supports and loads
