@@ -323,6 +323,9 @@ fn show(event: &Event) -> String {
     if let Some(state) = text.strip_prefix("state ") {
         return state.split(':').next().unwrap_or(state).to_owned();
     }
+    if let Some(rest) = text.strip_prefix("progress ") {
+        return rest.replace('=', " ");
+    }
     text.to_owned()
 }
 

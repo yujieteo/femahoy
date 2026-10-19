@@ -393,7 +393,7 @@ fn cancel_stops_ccx() {
     });
     let clock = Instant::now();
     let e = ccx(&exe)
-        .run_with(&tet(&dir, ""), &dir.join("run"), &token)
+        .run_with(&tet(&dir, ""), &dir.join("run"), &token, &mut |_| {})
         .unwrap_err();
     assert!(e.is_cancelled(), "{e}");
     assert!(clock.elapsed() < Duration::from_secs(10));
@@ -571,4 +571,26 @@ fn real_ccx_adds_cload_lines_in_a_step_and_a_later_step_replaces_the_total() {
         u(&one),
         u(&two)
     );
+}
+
+#[test]
+fn progress_reports_the_step_and_increment_of_ccx() {
+    let dir = scratch("progress");
+    let exe = fake_ccx(
+        &dir,
+        "printf ' STEP 1\\n INCREMENT 1\\n ATTEMPT 1\\n INCREMENT 2\\n STEP 2\\n INCREMENT 1\\n'; sleep 30",
+    );
+    let token = CancelToken::new();
+    let stop = token.clone();
+    let mut seen = Vec::new();
+    let e = ccx(&exe)
+        .run_with(&tet(&dir, ""), &dir.join("run"), &token, &mut |p| {
+            seen.push((p.step, p.increment));
+            if seen.len() == 3 {
+                stop.cancel();
+            }
+        })
+        .unwrap_err();
+    assert!(e.is_cancelled(), "{e}");
+    assert_eq!(seen, [(1, 1), (1, 2), (2, 1)]);
 }

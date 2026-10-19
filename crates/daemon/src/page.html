@@ -299,10 +299,10 @@ function setRunning(on, fields = {}) {
   $("hint").textContent = on ? "The agent reads your message at its next step" : "Ctrl+Enter sends";
   started = Number(fields.started_ms) || 0;
   tick();
-  const [run, state] = (fields.solving || "").split(" ");
+  const [run, state, , ...place] = (fields.solving || "").split(" ");
   $("solve").hidden = !run;
   // The state first, because a long name gets cut at the end.
-  if (run) $("solve").lastChild.replaceChildren(state + " · ", runName(run));
+  if (run) $("solve").lastChild.replaceChildren(state + " · ", runName(run), place.length ? " · " + place.join(" ").replaceAll("=", " ") : "");
 }
 
 function status(id, text, title) {

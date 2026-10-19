@@ -157,7 +157,7 @@ impl Chat {
     /// The state of the chat and the entries after `since`, as the items `<seq> <kind>
     /// <text>`. The fields are `state` (`running` or `idle`) and `next`. While the agent
     /// works, `started_ms` is the time when it started, and `solving` is the first run of
-    /// the daemon that is not final: `<run> <state>`.
+    /// the daemon that is not final: `<run> <state> <last progress event>`.
     pub(crate) fn read(&self, since: u64) -> Message {
         let mut m = Message::new();
         let log = self.lock();
@@ -169,8 +169,13 @@ impl Chat {
         if running {
             m.set("started_ms", log.started_ms);
             drop(log);
-            if let Some(r) = self.service.active().into_iter().next() {
-                m.set("solving", format!("{} {}", r.run, r.state));
+            if let Some((r, progress)) = self.service.active().into_iter().next() {
+                m.set(
+                    "solving",
+                    format!("{} {} {progress}", r.run, r.state)
+                        .trim_end()
+                        .to_owned(),
+                );
             }
         }
         m

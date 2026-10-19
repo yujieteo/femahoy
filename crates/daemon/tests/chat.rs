@@ -29,6 +29,7 @@ if grep -q FAIL job.inp; then
   echo " *ERROR in fake: the conjugate gradient solver did not reach the tolerance"
   exit 201
 fi
+printf ' STEP 1\n INCREMENT 1\n'
 while [ ! -e '{}' ]; do sleep 0.05; done
 exec '{}' "$@"
 "#,
@@ -165,7 +166,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     );
 
     // The `fh run` of the agent sends the model to the page, then solves it. While it
-    // solves, the chat shows the run and its state, and the time when the work started.
+    // solves, the chat shows the run and its state and progress, and the time when the work started.
     let (model, bad) = (dir.join("project/model.inp"), dir.join("project/bad.inp"));
     let tet = fs::read_to_string(fixture("tet.inp")).unwrap();
     fs::write(&model, &tet).unwrap();
@@ -173,7 +174,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
     let preview = c.preview(&model, "my case").unwrap();
     let bad = c.submit(&bad).unwrap().run;
     let run = c.submit(&model).unwrap().run;
-    let solving = format!("{run} running");
+    let solving = format!("{run} running progress step=1 increment=1");
     let m = wait(&c, |m| m.get("solving") == Some(solving.as_str()));
     assert_eq!(m.get("state"), Some("running"));
     let started: u64 = m.get("started_ms").unwrap().parse().unwrap();

@@ -665,6 +665,55 @@ fn write_results(
     atomic(PVD_FILE, write_pvd_units(&entries, units).as_bytes())
 }
 
+/// The place of a running solve, from the output of `ccx`. Steps and increments count from 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Progress {
+    pub step: u64,
+    pub increment: u64,
+}
+
+/// Reads the new lines of the log of `ccx` and tells the place of the solve.
+struct LogTail {
+    file: PathBuf,
+    pos: u64,
+    last: Option<Progress>,
+}
+
+impl LogTail {
+    fn poll(&mut self, on_progress: &mut dyn FnMut(Progress)) {
+        use std::io::{Read, Seek, SeekFrom};
+        let Ok(mut f) = fs::File::open(&self.file) else {
+            return;
+        };
+        let mut bytes = Vec::new();
+        if f.seek(SeekFrom::Start(self.pos)).is_err() || f.read_to_end(&mut bytes).is_err() {
+            return;
+        }
+        let Some(end) = bytes.iter().rposition(|b| *b == b'\n') else {
+            return;
+        };
+        self.pos += end as u64 + 1;
+        for line in String::from_utf8_lossy(&bytes[..end]).lines() {
+            let mut words = line.split_whitespace();
+            let (key, n) = (
+                words.next(),
+                words.next().and_then(|n| n.parse::<u64>().ok()),
+            );
+            let now = match (key, n, self.last) {
+                (Some("STEP"), Some(step), _) => Progress { step, increment: 0 },
+                (Some("INCREMENT"), Some(increment), Some(p)) => Progress { increment, ..p },
+                _ => continue,
+            };
+            if self.last != Some(now) {
+                self.last = Some(now);
+                if now.increment > 0 {
+                    on_progress(now);
+                }
+            }
+        }
+    }
+}
+
 /// The `ccx` program with the limits of its runs.
 #[derive(Debug, Clone)]
 pub struct Ccx {
@@ -703,11 +752,18 @@ impl Ccx {
     /// Solve `inp` in the folder `run_dir`. The run clears the folder first, if a run made
     /// the folder earlier.
     pub fn run(&self, inp: &Path, run_dir: &Path) -> Result<(), Error> {
-        self.run_with(inp, run_dir, &CancelToken::new())
+        self.run_with(inp, run_dir, &CancelToken::new(), &mut |_| {})
     }
 
-    /// Solve, and stop when `cancel` is set.
-    pub fn run_with(&self, inp: &Path, run_dir: &Path, cancel: &CancelToken) -> Result<(), Error> {
+    /// Solve, and stop when `cancel` is set. `on_progress` gets the step and the increment
+    /// that `ccx` starts.
+    pub fn run_with(
+        &self,
+        inp: &Path,
+        run_dir: &Path,
+        cancel: &CancelToken,
+        on_progress: &mut dyn FnMut(Progress),
+    ) -> Result<(), Error> {
         if cancel.is_cancelled() {
             return Err(Error::cancelled());
         }
@@ -731,7 +787,7 @@ impl Ccx {
         fs::write(work.join(format!("{JOB}.inp")), input).map_err(folder)?;
         let log_file = work.join(format!("{JOB}.log"));
         let log = fs::File::create(&log_file).map_err(folder)?;
-        let status = self.solve(&work, log, cancel)?;
+        let status = self.solve(&work, &log_file, log, cancel, on_progress)?;
         let log = fs::read_to_string(&log_file).unwrap_or_default();
         if !status.success() || log.contains("*ERROR") {
             return Err(failed(ccx_failure(status, &log, &log_file)));
@@ -747,7 +803,14 @@ impl Ccx {
 
     /// Run `ccx -i job` in `work` with its output in `log`, in its own process group, to its
     /// end or to a stop.
-    fn solve(&self, work: &Path, log: fs::File, cancel: &CancelToken) -> Result<ExitStatus, Error> {
+    fn solve(
+        &self,
+        work: &Path,
+        log_file: &Path,
+        log: fs::File,
+        cancel: &CancelToken,
+        on_progress: &mut dyn FnMut(Progress),
+    ) -> Result<ExitStatus, Error> {
         let cannot_start = |e: std::io::Error| {
             Error::new(
                 code::START_FAILED,
@@ -790,7 +853,17 @@ impl Ccx {
         tree.ccx = Some(cmd.spawn().map_err(cannot_start)?);
         let start = Instant::now();
         let mut last_probe = Instant::now();
+        let mut tail = LogTail {
+            file: log_file.to_owned(),
+            pos: 0,
+            last: None,
+        };
+        let mut last_tail = Instant::now();
         loop {
+            if last_tail.elapsed() >= PROBE_EVERY {
+                last_tail = Instant::now();
+                tail.poll(on_progress);
+            }
             if cancel.is_cancelled() {
                 return Err(Error::cancelled());
             }
@@ -832,7 +905,10 @@ impl Ccx {
             // or the time limit.
             let ccx = tree.ccx.as_mut().expect("ccx started");
             match ccx.try_wait() {
-                Ok(Some(status)) => return Ok(status),
+                Ok(Some(status)) => {
+                    tail.poll(on_progress);
+                    return Ok(status);
+                }
                 Ok(None) => std::thread::sleep(POLL),
                 Err(e) => return Err(failed(format!("wait for ccx failed: {e}"))),
             }

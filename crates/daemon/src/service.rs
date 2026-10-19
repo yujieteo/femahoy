@@ -270,6 +270,13 @@ impl Shared {
         self.wake.notify_all();
     }
 
+    fn event(&self, run: &str, text: &str) {
+        if let Some(live) = self.lock().live.get_mut(run) {
+            live.push(text);
+        }
+        self.wake.notify_all();
+    }
+
     /// The record of a run. A run of an earlier daemon that did not end shows as
     /// `interrupted`, because no daemon runs it now.
     fn record_of(&self, inner: &Inner, run: &str) -> Result<RunRecord, Error> {
@@ -320,9 +327,17 @@ impl Shared {
         };
         self.wake.notify_all();
         let dir = self.run_dir(run);
-        let result = self
-            .solver
-            .run_with(&dir.join(INPUT_FILE), &dir.join(OUT_DIR), &cancel);
+        let result = self.solver.run_with(
+            &dir.join(INPUT_FILE),
+            &dir.join(OUT_DIR),
+            &cancel,
+            &mut |p| {
+                self.event(
+                    run,
+                    &format!("progress step={} increment={}", p.step, p.increment),
+                )
+            },
+        );
         let mut inner = self.lock();
         let Some(state) = inner.live.get(run).map(|l| l.record.state) else {
             return;
@@ -567,11 +582,17 @@ impl Service {
         Ok(records.filter_map(Result::ok).collect())
     }
 
-    /// The runs of this daemon that are not final, in run order.
-    pub fn active(&self) -> Vec<RunRecord> {
+    /// The runs of this daemon that are not final, in run order, each with the text of its
+    /// last `progress` event (or an empty text).
+    pub fn active(&self) -> Vec<(RunRecord, String)> {
         let inner = self.shared.lock();
         let live = inner.live.values().filter(|l| !l.record.state.is_final());
-        live.map(|l| l.record.clone()).collect()
+        live.map(|l| {
+            let items = l.events.items.iter().rev();
+            let progress = items.map(|e| &e.text).find(|t| t.starts_with("progress "));
+            (l.record.clone(), progress.cloned().unwrap_or_default())
+        })
+        .collect()
     }
 
     /// The bytes of one file in the run folder of a run, for the viewer. `name`
