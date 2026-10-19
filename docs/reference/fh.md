@@ -1,8 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
 `fh` implements `mesh`, `validate`, `run`, and `serve`.
-This reference comes from the [command dispatcher](../../crates/cli/src/main.rs) and the command sources below.
-The help text was checked with `cargo +stable run -q -p fh-cli --bin fh -- --help`.
 
 ## Dispatch and help
 
@@ -49,7 +47,7 @@ The input has no material, no step and no load. The chat includes it with `*INCL
 A name uses letters, digits and `_`, and not `ALL` or `NALL`. Each name is used once.
 `NALL` is the node set of all nodes. `ALL` is the element set of all elements.
 
-For a STEP file, `fh mesh` writes the gmsh script (the fixed script contract of M2b).
+For a STEP file, `fh mesh` writes the gmsh script.
 The script sets the STEP target unit and uses `SOLID` for one material without a `--volume` box.
 For `--volume` boxes, it fragments the bodies and creates one physical volume group per box.
 It checks that each solid element belongs to exactly one box.
@@ -173,8 +171,6 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | The daemon does not answer for 10 seconds during the run | `fh run: RUN: the daemon does not answer: ...` | 3 |
 | Ctrl+C, and the run ended as cancelled | stdout: `cancel: cancelling` (the state after the cancel). stderr: `fh run: RUN was cancelled` | 130 |
 | A second Ctrl+C | stdout: `fh run: Ctrl+C again: fh run ends. The cancel of RUN continues in the daemon.` | 130 |
-
-`crates/cli/tests/run.rs` has a test for each refusal, with a fake browser and `FH_NO_OPEN=1`.
 
 ## `fh serve`
 
