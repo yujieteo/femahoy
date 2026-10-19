@@ -102,7 +102,7 @@ impl Lab {
     }
 
     fn start(&self) -> Daemon {
-        Daemon::start_with_options(self.config(), 0, Options::default()).unwrap()
+        Daemon::start_with_options(self.config(), Options::default()).unwrap()
     }
 
     fn input(&self, name: &str, text: &str) -> PathBuf {
@@ -268,9 +268,8 @@ fn cancel_keeps_one_record() {
     let c = daemon.client();
     assert_eq!(c.record(&run).unwrap(), record);
     let events = c.events(&run, 0, Duration::ZERO).unwrap();
-    let texts: Vec<&str> = events.items.iter().map(|e| e.text.as_str()).collect();
-    assert_eq!(texts.first(), Some(&"state queued"));
-    assert_eq!(texts.last(), Some(&"state cancelled"));
+    assert!(events.items.is_empty());
+    assert_eq!(events.state, RunState::Cancelled);
 }
 
 #[test]
@@ -317,7 +316,7 @@ fn the_limits_of_a_run_stop_a_slow_solve() {
 fn a_second_daemon_cannot_use_the_same_state() {
     let lab = Lab::new("lock");
     let _daemon = lab.start();
-    let e = Daemon::start_with_options(lab.config(), 0, Options::default())
+    let e = Daemon::start_with_options(lab.config(), Options::default())
         .err()
         .unwrap();
     assert_eq!(e.code, "daemon.running");
@@ -369,7 +368,7 @@ fn daemon_child() {
         state_dir: state.into(),
         solver: ccx(Path::new(&solver)),
     };
-    let _daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
+    let _daemon = Daemon::start_with_options(config, Options::default()).unwrap();
     loop {
         std::thread::park();
     }

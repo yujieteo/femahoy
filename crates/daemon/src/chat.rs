@@ -17,8 +17,7 @@
 //! message then starts a new agent that continues the session (`--resume`).
 //!
 //! The agent gets the instructions of `agent.md`, the state folder of the daemon in
-//! `FH_STATE` (so `fh run` uses this daemon), `FH_NO_OPEN=1` and the folder of `fh` first
-//! on `PATH`. It works in `STATE/chat`. Its tools are the `fh` commands, Python for the CAD
+//! `FH_STATE` (so `fh run` uses this daemon) and the folder of `fh` first on `PATH`. It works in `STATE/chat`. Its tools are the `fh` commands, Python for the CAD
 //! script, and the file tools. `FH_AGENT` names another agent program, for example a
 //! fake agent that prints a recorded event stream in the tests.
 //!
@@ -484,7 +483,6 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
         &std::env::var_os("PATH").unwrap_or_default(),
     ));
     cmd.env("FH_STATE", state_dir)
-        .env("FH_NO_OPEN", "1")
         .env("PATH", std::env::join_paths(path).unwrap_or_default())
         .env("BASH_DEFAULT_TIMEOUT_MS", BASH_TIMEOUT_MS)
         .env("BASH_MAX_TIMEOUT_MS", BASH_TIMEOUT_MS);

@@ -45,7 +45,7 @@ fn agent(data: &Path) -> String {
     format!(
         r#"#!/bin/sh
 printf '%s\n' "$@" > args.txt
-printf 'FH_STATE=%s\nFH_NO_OPEN=%s\n' "$FH_STATE" "$FH_NO_OPEN" > env.txt
+printf 'FH_STATE=%s\n' "$FH_STATE" > env.txt
 take() {{
   IFS= read -r line || exit 0
   printf '%s\n' "$line" >> prompt.txt
@@ -116,7 +116,7 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
             ..Ccx::new()
         },
     };
-    let daemon = Daemon::start_with_options(config, 0, Options::default()).unwrap();
+    let daemon = Daemon::start_with_options(config, Options::default()).unwrap();
     let c = daemon.client();
     let token = daemon.token().to_owned();
 
@@ -259,7 +259,6 @@ fn the_chat_shows_each_action_of_the_agent_and_opens_the_new_run() {
         env.contains(&format!("FH_STATE={}\n", state.display())),
         "{env}"
     );
-    assert!(env.contains("FH_NO_OPEN=1\n"), "{env}");
 
     // The next request goes to the same agent. Stop ends the agent at once.
     call(&c, "POST /api/v1/chat", &[("text", "Again.")]).unwrap();

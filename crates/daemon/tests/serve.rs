@@ -1,4 +1,4 @@
-//! `fh serve`: the daemon with its token, `Origin` and loopback rules, and its stop.
+//! `fh serve`: the daemon with its token, `Origin` and loopback rules, and its stop flag.
 
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
@@ -9,21 +9,10 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-type Outcome = Result<ExitCode, String>;
-
 fn state_dir(name: &str) -> PathBuf {
     let state = std::env::temp_dir().join(format!("fh-serve-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&state);
     state
-}
-
-fn args(state: &Path) -> Vec<String> {
-    // --no-open: a test never opens the browser of the machine.
-    vec![
-        "--state".into(),
-        state.display().to_string(),
-        "--no-open".into(),
-    ]
 }
 
 /// Wait for `daemon.info` and read the port and the token.
@@ -48,7 +37,7 @@ fn wait_for_info(state: &Path) -> (u16, String) {
 /// `fh serve` on a new state folder, in a thread, with its own stop flag.
 struct Serve {
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<Outcome>>,
+    thread: Option<JoinHandle<ExitCode>>,
     state: PathBuf,
     port: u16,
     token: String,
@@ -58,8 +47,9 @@ impl Serve {
     fn start(name: &str) -> Serve {
         let state = state_dir(name);
         let stop = Arc::new(AtomicBool::new(false));
-        let (flag, args) = (stop.clone(), args(&state));
-        let thread = std::thread::spawn(move || fh_daemon::serve_until(&args, &flag));
+        let (flag, dir) = (stop.clone(), state.clone());
+        // A test never opens the browser of the machine.
+        let thread = std::thread::spawn(move || fh_daemon::serve_until(&dir, &flag, false));
         let (port, token) = wait_for_info(&state);
         Serve {
             stop,
@@ -278,8 +268,8 @@ fn the_daemon_listens_on_loopback_only() {
 fn a_second_daemon_on_the_same_state_folder_fails() {
     let serve = Serve::start("second");
     let never = AtomicBool::new(false);
-    let second = fh_daemon::serve_until(&args(&serve.state), &never);
-    assert_eq!(second, Ok(ExitCode::from(1)));
+    let second = fh_daemon::serve_until(&serve.state, &never, false);
+    assert_eq!(second, ExitCode::from(1));
 }
 
 #[test]
@@ -287,30 +277,11 @@ fn the_stop_flag_stops_the_daemon_and_removes_daemon_info() {
     let mut serve = Serve::start("stop");
     serve.stop.store(true, Ordering::SeqCst);
     let outcome = serve.thread.take().unwrap().join().unwrap();
-    assert_eq!(outcome, Ok(ExitCode::SUCCESS));
+    assert_eq!(outcome, ExitCode::SUCCESS);
     assert!(!serve.state.join("daemon.info").exists());
 }
 #[test]
-fn sigterm_stops_the_daemon() {
-    let state = state_dir("sigterm");
-    let args = args(&state);
-    let thread = std::thread::spawn(move || fh_daemon::serve(&args));
-    // `serve` installs the signal handler before it writes daemon.info.
-    wait_for_info(&state);
-    let pid = std::process::id().to_string();
-    let sent = std::process::Command::new("kill")
-        .args(["-TERM", &pid])
-        .status();
-    assert!(sent.unwrap().success());
-    assert_eq!(thread.join().unwrap(), Ok(ExitCode::SUCCESS));
-    assert!(!state.join("daemon.info").exists());
-    let _ = std::fs::remove_dir_all(state);
-}
-
-#[test]
 fn serve_refuses_a_bad_option() {
-    let args = ["--host".to_owned(), "0.0.0.0".to_owned()];
-    let never = AtomicBool::new(false);
-    let err = fh_daemon::serve_until(&args, &never).unwrap_err();
+    let err = fh_daemon::serve(&["--host".to_owned(), "0.0.0.0".to_owned()]).unwrap_err();
     assert!(err.contains("unknown option: --host"), "{err}");
 }

@@ -1,94 +1,57 @@
-//! `fh serve [--state DIR] [--port N] [--no-open]`: run the daemon until a stop signal. The daemon listens on
-//! 127.0.0.1 only, and no option changes the address. It makes a random token at each start
-//! and writes the port and the token to `DIR/daemon.info` (mode 0600). Each request must
-//! carry the token, and a request from a page of another `Origin` fails (`http` module).
+//! `fh serve`: run the daemon until a stop signal. The daemon listens on 127.0.0.1 only, and
+//! no option changes the address. It makes a random token at each start and writes the port
+//! and the token to `DIR/daemon.info` (mode 0600). Each request must carry the token, and a
+//! request from a page of another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
 //! At start, `fh serve` opens the page in the browser (`browser` module).
-//!
-//! `fh serve --stop [--state DIR]` stops the daemon of the state folder, for example the
-//! daemon that `fh run` started in the background.
+//! The state folder `DIR` is `$FH_STATE` (see `default_state_dir`). Ctrl+C stops the daemon.
 
-use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use fh_solver_ccx::Ccx;
 
 use crate::browser::{no_open, open_page};
-use crate::service::LOCK_FILE;
 use crate::{Client, Config, Daemon, Options};
 
-const USAGE: &str = "usage: fh serve [--state DIR] [--port N] [--no-open]\n       \
-                     fh serve --stop [--state DIR]";
-
-/// The longest time that `fh serve --stop` waits for the daemon to end its runs.
-const STOP_WAIT: Duration = Duration::from_secs(30);
+const USAGE: &str = "usage: fh serve";
 
 /// Run `fh serve` with the arguments after `serve`, until SIGINT, SIGTERM or SIGHUP.
 pub fn serve(args: &[String]) -> Result<ExitCode, String> {
+    if let Some(arg) = args.first() {
+        return Err(format!("unknown option: {arg}\n{USAGE}"));
+    }
+    let state_dir =
+        default_state_dir().ok_or_else(|| format!("no home folder, so set FH_STATE\n{USAGE}"))?;
     stop::install();
-    serve_until(args, &stop::STOP)
+    Ok(serve_until(&state_dir, &stop::STOP, !no_open()))
 }
 
-/// Run `fh serve` until `stop` is true. A usage error is an `Err`. A daemon that cannot
-/// start prints the cause and gives exit code 1.
-pub fn serve_until(args: &[String], stop: &AtomicBool) -> Result<ExitCode, String> {
-    let mut state = None;
-    let mut port = 0;
-    let mut options = Options::default();
-    let (mut no_open_option, mut stop_option, mut start_option) = (false, false, false);
-    let mut rest = args.iter();
-    while let Some(arg) = rest.next() {
-        let mut value = || {
-            rest.next()
-                .ok_or_else(|| format!("{arg} needs a value\n{USAGE}"))
-        };
-        match arg.as_str() {
-            "--state" => state = Some(PathBuf::from(value()?)),
-            "--port" => {
-                port = value()?
-                    .parse()
-                    .map_err(|_| format!("--port needs a number from 0 to 65535\n{USAGE}"))?
-            }
-            "--no-open" => no_open_option = true,
-            "--stop" => stop_option = true,
-            _ => return Err(format!("unknown option: {arg}\n{USAGE}")),
-        }
-        // The options other than --state and --stop are for a start.
-        start_option |= !matches!(arg.as_str(), "--state" | "--stop");
-    }
-    let state_dir = state
-        .or_else(default_state_dir)
-        .ok_or_else(|| format!("no home folder, so give the state folder\n{USAGE}"))?;
-    if stop_option {
-        if start_option {
-            return Err(format!("--stop takes only --state DIR\n{USAGE}"));
-        }
-        return Ok(stop_daemon(&state_dir));
-    }
+/// Run the daemon on `state_dir` until `stop` is true. With `open`, it opens the page in the
+/// browser. A daemon that cannot start prints the cause and gives exit code 1.
+pub fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode {
     let config = Config {
-        state_dir: state_dir.clone(),
+        state_dir: state_dir.to_owned(),
         solver: Ccx::new(),
     };
-    options.viewer = viewer_dir();
+    let options = Options {
+        viewer: viewer_dir(),
+    };
     let viewer = options.viewer.clone();
-    let daemon = match Daemon::start_with_options(config, port, options) {
+    let daemon = match Daemon::start_with_options(config, options) {
         Ok(daemon) => daemon,
         Err(e) => {
             let dir = state_dir.display();
             eprintln!("fh serve: {dir}: {} ({})", e.message, e.code);
-            if let Some(c) = Client::discover(&state_dir)
+            if let Some(c) = Client::discover(state_dir)
                 .ok()
                 .filter(|c| c.status().is_ok())
             {
-                eprintln!(
-                    "fh serve: its page is {}. Stop it with: fh serve --stop --state {dir}",
-                    c.page_url("")
-                );
+                eprintln!("fh serve: its page is {}", c.page_url(""));
             }
-            return Ok(ExitCode::from(1));
+            return ExitCode::from(1);
         }
     };
     let url = daemon.client().page_url("");
@@ -104,8 +67,8 @@ pub fn serve_until(args: &[String], stop: &AtomicBool) -> Result<ExitCode, Strin
         "fh serve: state folder {}. Stop with Ctrl+C.",
         state_dir.display()
     );
-    if !no_open(no_open_option) {
-        match open_page(&state_dir, &url) {
+    if open {
+        match open_page(state_dir, &url) {
             Ok(()) => println!("fh serve: opened the page in the browser"),
             Err(e) => println!("fh serve: no browser ({e}). Open the address above."),
         }
@@ -116,7 +79,7 @@ pub fn serve_until(args: &[String], stop: &AtomicBool) -> Result<ExitCode, Strin
     // The drop removes daemon.info and ends the active runs as `interrupted`.
     drop(daemon);
     println!("fh serve: stopped");
-    Ok(ExitCode::SUCCESS)
+    ExitCode::SUCCESS
 }
 
 /// The folder of the wasm viewer files: `$FH_VIEWER`, else `viewer` beside the `fh`
@@ -127,47 +90,6 @@ fn viewer_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .or_else(|| Some(std::env::current_exe().ok()?.parent()?.join("viewer")))?;
     dir.join("fh_viewer_bg.wasm").is_file().then_some(dir)
-}
-
-/// `fh serve --stop`: send a stop signal to the daemon that answers for `state_dir`, then
-/// wait until it frees the state folder. The daemon ends its active runs as `interrupted`
-/// (the run contract). No daemon to stop is not an error.
-fn stop_daemon(state_dir: &Path) -> ExitCode {
-    let dir = state_dir.display();
-    // Only the daemon with the token of daemon.info answers, so the pid is its own.
-    let status = Client::discover(state_dir).and_then(|c| c.status());
-    let pid = match status {
-        Ok(m) => m.get("pid").and_then(|p| p.parse::<u32>().ok()),
-        Err(e) => {
-            println!("fh serve: no daemon answers for {dir} ({})", e.code);
-            return ExitCode::SUCCESS;
-        }
-    };
-    let Some(pid) = pid else {
-        eprintln!("fh serve: the daemon of {dir} gives no pid");
-        return ExitCode::from(1);
-    };
-    if let Err(e) = stop::terminate(pid) {
-        eprintln!("fh serve: cannot stop the daemon (pid {pid}): {e}");
-        return ExitCode::from(1);
-    }
-    let deadline = Instant::now() + STOP_WAIT;
-    while Instant::now() < deadline {
-        let lock = OpenOptions::new()
-            .write(true)
-            .open(state_dir.join(LOCK_FILE));
-        // The daemon frees the lock when its runs have ended.
-        if lock.is_ok_and(|f| f.try_lock().is_ok()) {
-            println!("fh serve: stopped the daemon (pid {pid}) of {dir}");
-            return ExitCode::SUCCESS;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
-    eprintln!(
-        "fh serve: the daemon (pid {pid}) did not stop in {} s",
-        STOP_WAIT.as_secs()
-    );
-    ExitCode::from(1)
 }
 
 /// `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. The daemon
@@ -202,19 +124,6 @@ mod stop {
             unsafe {
                 signal(sig, on_signal);
             }
-        }
-    }
-
-    /// Send SIGTERM to the process `pid`.
-    pub fn terminate(pid: u32) -> Result<(), String> {
-        extern "C" {
-            fn kill(pid: i32, sig: i32) -> i32;
-        }
-        let pid = i32::try_from(pid).map_err(|_| format!("bad pid {pid}"))?;
-        // SAFETY: kill only sends a signal. The pid comes from the daemon that answered.
-        match unsafe { kill(pid, 15) } {
-            0 => Ok(()),
-            _ => Err(std::io::Error::last_os_error().to_string()),
         }
     }
 }

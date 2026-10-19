@@ -9,7 +9,6 @@
 //! <state>/runs/<run>/in/input.inp     the read-only copy of the input that the run solves, with
 //!                                     the copies of its `*INCLUDE` files
 //! <state>/runs/<run>/record           the run record
-//! <state>/runs/<run>/events.log       bounded event log
 //! <state>/runs/<run>/out/             run folder of ccx
 //! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
 //! ```
@@ -19,7 +18,7 @@
 
 use std::collections::{BTreeMap, VecDeque};
 use std::fs::{self, File, OpenOptions, TryLockError};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
@@ -28,7 +27,7 @@ use std::time::{Duration, Instant};
 use fh_solver_ccx::{input_text, stage_input, CancelToken, Ccx};
 
 use crate::contract::{
-    now_ms, parse_event, run_id, valid_run, Error, Event, Events, Message, RunRecord, RunState,
+    now_ms, run_id, valid_run, Error, Event, Events, Message, RunRecord, RunState,
 };
 
 /// The most runs that can wait in the queue. A submit after that fails with `queue.full`.
@@ -37,20 +36,17 @@ pub const MAX_QUEUED: usize = 64;
 pub const EVENT_QUEUE: usize = 1024;
 /// The longest event text in bytes. A longer text is cut.
 pub const EVENT_TEXT: usize = 1024;
-/// The largest event log of a run in bytes. State events are always written.
-pub const EVENT_LOG: u64 = 1 << 20;
 /// The most events in one answer.
 pub const EVENT_BATCH: usize = 256;
 /// The longest time that an events request waits for a new event.
 pub const MAX_WAIT: Duration = Duration::from_secs(30);
-/// The number of ended runs whose events stay in memory. The others come from their log.
+/// The number of ended runs whose events stay in memory. The others show no events.
 const KEEP_ENDED: usize = 32;
 
 pub(crate) const LOCK_FILE: &str = "daemon.lock";
 const RUNS_DIR: &str = "runs";
 const PREVIEWS_DIR: &str = "previews";
 const RECORD_FILE: &str = "record";
-const EVENTS_FILE: &str = "events.log";
 const INPUT_FILE: &str = "input.inp";
 const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
@@ -101,9 +97,6 @@ struct Inner {
 struct Live {
     record: RunRecord,
     events: EventQueue,
-    log: Option<File>,
-    log_bytes: u64,
-    log_full: bool,
     cancel: CancelToken,
     /// The solver with the limits of this run.
     solver: Ccx,
@@ -111,21 +104,7 @@ struct Live {
 
 impl Live {
     fn push(&mut self, text: &str) {
-        let text = clip(text, EVENT_TEXT);
-        let seq = self.events.push(text.clone());
-        let Some(log) = &mut self.log else { return };
-        let line = format!("{seq} {text}\n");
-        if text.starts_with("state ") || self.log_bytes + line.len() as u64 <= EVENT_LOG {
-            if log.write_all(line.as_bytes()).is_ok() {
-                self.log_bytes += line.len() as u64;
-            }
-        } else if !self.log_full {
-            self.log_full = true;
-            let _ = writeln!(
-                log,
-                "{seq} log-full the event log reached {EVENT_LOG} bytes"
-            );
-        }
+        self.events.push(clip(text, EVENT_TEXT));
     }
 }
 
@@ -143,18 +122,15 @@ impl EventQueue {
         }
     }
 
-    fn push(&mut self, text: String) -> u64 {
-        let seq = self.next;
-        self.add(Event { seq, text });
-        seq
-    }
-
-    fn add(&mut self, event: Event) {
+    fn push(&mut self, text: String) {
         if self.items.len() == EVENT_QUEUE {
             self.items.pop_front();
         }
-        self.next = event.seq + 1;
-        self.items.push_back(event);
+        self.items.push_back(Event {
+            seq: self.next,
+            text,
+        });
+        self.next += 1;
     }
 
     fn since(&self, since: u64, state: RunState) -> Events {
@@ -171,27 +147,6 @@ impl EventQueue {
             dropped: first.saturating_sub(since.saturating_add(1)),
             state,
         }
-    }
-
-    /// The last events of an event log.
-    fn load(path: &Path) -> Result<EventQueue, Error> {
-        let mut queue = EventQueue::new();
-        let mut bytes = Vec::new();
-        match File::open(path) {
-            Ok(f) => f
-                .take(2 * EVENT_LOG)
-                .read_to_end(&mut bytes)
-                .map_err(|e| Error::io("event log", e))?,
-            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(queue),
-            Err(e) => return Err(Error::io("event log", e)),
-        };
-        for event in String::from_utf8_lossy(&bytes)
-            .lines()
-            .filter_map(parse_event)
-        {
-            queue.add(event);
-        }
-        Ok(queue)
     }
 }
 
@@ -246,8 +201,8 @@ impl Shared {
         if state.is_final() {
             live.record.finished_ms = now_ms();
         }
-        // The state event has the reason, so that a client that reads only the events (or
-        // the event log) sees why a run failed.
+        // The state event has the reason, so that a client that reads only the events sees why
+        // a run failed.
         if message.is_empty() {
             live.push(&format!("state {state}"));
         } else {
@@ -262,7 +217,6 @@ impl Shared {
     fn finish(&self, inner: &mut Inner, run: &str, state: RunState, message: &str) {
         if let Some(live) = inner.live.get_mut(run) {
             self.change(live, state, message);
-            live.log = None;
         }
         inner.ended.push_back(run.to_owned());
         while inner.ended.len() > KEEP_ENDED {
@@ -504,17 +458,9 @@ impl Service {
             message: String::new(),
         };
         sh.save(&record)?;
-        let log = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(dir.join(EVENTS_FILE))
-            .ok();
         let mut live = Live {
             record: record.clone(),
             events: EventQueue::new(),
-            log,
-            log_bytes: 0,
-            log_full: false,
             cancel: CancelToken::new(),
             solver: Ccx {
                 timeout: limits.timeout.or(sh.solver.timeout),
@@ -651,9 +597,9 @@ impl Service {
         let mut inner = sh.lock();
         loop {
             let Some(live) = inner.live.get(run) else {
+                // An earlier daemon ran it, or its events left the memory.
                 let record = sh.record_of(&inner, run)?;
-                let log = sh.run_dir(run).join(EVENTS_FILE);
-                return Ok(EventQueue::load(&log)?.since(since, record.state));
+                return Ok(EventQueue::new().since(since, record.state));
             };
             let left = deadline.saturating_duration_since(Instant::now());
             if live.events.next - 1 > since

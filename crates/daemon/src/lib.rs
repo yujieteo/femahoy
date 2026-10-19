@@ -9,8 +9,8 @@
 //! - **Previews.** A preview copies the input file with no run, so that the page shows the
 //!   model with its supports and loads before the solve.
 //! - **Bounded queues.** At most [`MAX_QUEUED`] runs wait. Each run keeps its last
-//!   [`EVENT_QUEUE`] events in memory and an event log of at most [`EVENT_LOG`] bytes.
-//!   Clients read events by sequence number, so a slow client never grows a queue.
+//!   [`EVENT_QUEUE`] events in memory. Clients read events by sequence number, so a slow
+//!   client never grows a queue.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
 //!   its actions as chat entries for the page (`chat`).
@@ -45,12 +45,11 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-pub use browser::{no_open, open_page};
 pub use client::Client;
 pub use contract::{Error, Event, Events, Message, RunRecord, RunState};
 pub use serve::{default_state_dir, serve, serve_until};
 use service::Service;
-pub use service::{Config, Limits, EVENT_LOG, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
+pub use service::{Config, Limits, EVENT_QUEUE, EVENT_TEXT, MAX_QUEUED};
 
 /// The file in the state folder that tells clients the port and the token.
 pub const INFO_FILE: &str = "daemon.info";
@@ -93,27 +92,18 @@ pub struct Daemon {
 }
 
 impl Daemon {
-    /// Open the service, make a random token, listen on 127.0.0.1 at `port` (0 for any free
-    /// port) and write `daemon.info` for the clients. `options.viewer` is the folder of the
-    /// wasm viewer (see `fh serve`).
-    pub fn start_with_options(
-        config: Config,
-        port: u16,
-        options: Options,
-    ) -> Result<Daemon, Error> {
+    /// Open the service, make a random token, listen on 127.0.0.1 at any free port and write
+    /// `daemon.info` for the clients. `options.viewer` is the folder of the wasm viewer (see
+    /// `fh serve`).
+    pub fn start_with_options(config: Config, options: Options) -> Result<Daemon, Error> {
         let info = config.state_dir.join(INFO_FILE);
         let state_dir = config.state_dir.clone();
         let service = Arc::new(Service::open(config)?);
         let token = random_hex(32)?;
         let chat = chat::Chat::new(service.clone(), state_dir, token.clone());
-        let server = http::Server::start(
-            service.clone(),
-            chat.clone(),
-            port,
-            token.clone(),
-            options.viewer,
-        )
-        .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
+        let server =
+            http::Server::start(service.clone(), chat.clone(), token.clone(), options.viewer)
+                .map_err(|e| Error::io("listen on 127.0.0.1", e))?;
         let mut m = Message::new();
         m.set("port", server.port());
         m.set("token", &token);

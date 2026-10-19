@@ -1,5 +1,4 @@
-//! `fh run`: solve a CalculiX input on the daemon, show the progress, and open the results in
-//! the browser.
+//! `fh run`: solve a CalculiX input on the daemon and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). The daemon solves a copy, so a later edit does not change the run.
@@ -10,37 +9,25 @@
 //! the page shows the model with each support and each load. With `--preview`, `fh run`
 //! stops there and does not solve.
 //!
-//! Which process stays alive: `fh run` uses the daemon of the state folder when one answers.
-//! Else it starts `fh serve --state DIR --no-open` in the background, in its own process
-//! group, with its output in `DIR/daemon.log`. That daemon stays alive when `fh run` ends,
-//! so that the browser keeps the results, and the next `fh run` uses it.
-//! `fh serve --stop` stops it.
+//! `fh run` needs the daemon of `fh serve`: it finds it in the state folder (`$FH_STATE`).
 //!
 //! Ctrl+C sends a cancel command for the run and waits for the end of the run. A second
 //! Ctrl+C ends `fh run` at once. The cancel continues in the daemon.
 
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Stdio};
+use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use fh_daemon::{Client, Event, Limits, RunRecord, RunState};
 
-const USAGE: &str = "usage: fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB] \
-[--state DIR] [--no-open]";
+const USAGE: &str = "usage: fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
 const NO_DAEMON: u8 = 3;
 const CANCELLED: u8 = 130;
 
-/// The file in the state folder that gets the output of a daemon that `fh run` starts.
-const LOG_FILE: &str = "daemon.log";
-/// The longest time to wait for a new daemon to answer.
-const START_WAIT: Duration = Duration::from_secs(20);
-/// The time to wait for another daemon after the new one ended, because another `fh run` can
-/// start a daemon on the same state folder at the same time and win its lock.
-const LOSER_WAIT: Duration = Duration::from_secs(3);
 /// The longest time without an answer of the daemon during a run.
 const LOST_WAIT: Duration = Duration::from_secs(10);
 /// The wait of each events request. It is short, so that Ctrl+C acts fast.
@@ -50,8 +37,6 @@ const EVENT_WAIT: Duration = Duration::from_millis(500);
 struct Options {
     target: Option<PathBuf>,
     limits: Limits,
-    state: Option<PathBuf>,
-    no_open: bool,
     preview: bool,
 }
 
@@ -85,8 +70,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 let mib = positive(&value("a number of MiB")?, "--memory")?;
                 o.limits.memory = Some((mib * f64::from(1 << 20)) as u64);
             }
-            "--state" => o.state = Some(value("a folder")?.into()),
-            "--no-open" => o.no_open = true,
             "--preview" => o.preview = true,
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
             s if o.target.is_none() => o.target = Some(s.into()),
@@ -119,89 +102,6 @@ fn text(path: &Path) -> Result<String, String> {
     path.to_str()
         .map(str::to_owned)
         .ok_or_else(|| format!("{}: the path is not UTF-8", path.display()))
-}
-
-/// The tail of the daemon log, for an error message.
-fn log_tail(path: &Path) -> String {
-    let text = fs::read_to_string(path).unwrap_or_default();
-    let lines: Vec<&str> = text.lines().collect();
-    lines[lines.len().saturating_sub(5)..]
-        .iter()
-        .map(|l| format!("\n  {l}"))
-        .collect()
-}
-
-fn answers(state: &Path) -> Option<Client> {
-    Client::discover(state).ok().filter(|c| c.status().is_ok())
-}
-
-/// The daemon of the state folder: the daemon that answers, else a new `fh serve` in the
-/// background. The flag is true for a new daemon.
-fn daemon(state: &Path) -> Result<(Client, bool), String> {
-    if let Some(client) = answers(state) {
-        return Ok((client, false));
-    }
-    let log_path = state.join(LOG_FILE);
-    let mut options = OpenOptions::new();
-    options.create(true).append(true);
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let log = options
-        .open(&log_path)
-        .map_err(|e| format!("cannot write {}: {e}", log_path.display()))?;
-    fs::set_permissions(
-        &log_path,
-        std::os::unix::fs::PermissionsExt::from_mode(0o600),
-    )
-    .map_err(|e| format!("cannot protect {}: {e}", log_path.display()))?;
-    let err = log.try_clone().map_err(|e| e.to_string())?;
-    let exe = std::env::current_exe().map_err(|e| format!("cannot find the fh program: {e}"))?;
-    let mut command = Command::new(exe);
-    command
-        .arg("serve")
-        .arg("--state")
-        .arg(state)
-        .arg("--no-open")
-        .current_dir(state)
-        .stdin(Stdio::null())
-        .stdout(log)
-        .stderr(err);
-    // Its own process group: a Ctrl+C in the terminal stops fh run, not the daemon.
-    std::os::unix::process::CommandExt::process_group(&mut command, 0);
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("cannot start fh serve: {e}"))?;
-    let deadline = Instant::now() + START_WAIT;
-    let mut ended: Option<Instant> = None;
-    loop {
-        if let Some(client) = answers(state) {
-            // Another fh run can start the daemon that answers. Then stop the new one now:
-            // it tries the lock for 1 s, and it must not take the lock when the other daemon
-            // stops. It has no lock and no run, because the daemon that answers has the lock.
-            let pid = client
-                .status()
-                .ok()
-                .and_then(|m| m.get("pid")?.parse::<u32>().ok());
-            let new = pid == Some(child.id());
-            if !new {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-            return Ok((client, new));
-        }
-        if ended.is_none() && child.try_wait().ok().flatten().is_some() {
-            ended = Some(Instant::now());
-        }
-        if ended.is_some_and(|t| t.elapsed() > LOSER_WAIT) || Instant::now() > deadline {
-            let _ = child.kill();
-            return Err(format!(
-                "fh serve did not start a daemon for {}. The end of {}:{}",
-                state.display(),
-                log_path.display(),
-                log_tail(&log_path)
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
 }
 
 fn fail(code: u8, message: &str) -> ExitCode {
@@ -296,8 +196,8 @@ fn frames(out: &Path) -> usize {
     fs::read_to_string(out.join("results.pvd")).map_or(0, |t| t.matches("<DataSet").count())
 }
 
-/// Print the wall time and the result folder of a run that succeeded, and open the browser.
-fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_hint: &str) {
+/// Print the wall time and the result folder of a run that succeeded.
+fn report(record: &RunRecord, state: &Path) {
     let out = state.join("runs").join(&record.run).join("out");
     let seconds = record.finished_ms.saturating_sub(record.started_ms) as f64 / 1000.0;
     println!("fh run: {} succeeded in {seconds:.2} s", record.run);
@@ -313,51 +213,21 @@ fn report(client: &Client, record: &RunRecord, state: &Path, o: &Options, stop_h
              write a field"
         );
     }
-    let url = client.page_url(&format!("&run={}", record.run));
-    println!("fh run: page {url}");
-    if !fh_daemon::no_open(o.no_open) {
-        match fh_daemon::open_page(state, &url) {
-            Ok(()) => println!("fh run: opened {} in the browser", record.run),
-            Err(e) => println!("fh run: no browser ({e}). Open the page above."),
-        }
-    }
-    println!("fh run: the daemon stays alive for the browser. Stop it with: {stop_hint}");
 }
 
 pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let o = parse(args)?;
-    let state = o
-        .state
-        .clone()
-        .or_else(fh_daemon::default_state_dir)
-        .ok_or_else(|| format!("no home folder, so give the state folder\n{USAGE}"))?;
-    // Check the model before a daemon starts.
+    let state = fh_daemon::default_state_dir()
+        .ok_or_else(|| format!("no home folder, so set FH_STATE\n{USAGE}"))?;
+    // Check the model before the daemon is asked.
     let file = resolve(o.target.as_deref().expect("parse needs a model"))?;
-    if let Err(e) = fs::create_dir_all(&state) {
-        let message = format!(
-            "no daemon: cannot make the state folder {}: {e}",
-            state.display()
-        );
-        return Ok(fail(NO_DAEMON, &message));
-    }
-    // The canonical path: the daemon gives it in its paths, and a new daemon runs in the
-    // state folder, where a relative path names another folder.
-    let state = fs::canonicalize(&state).unwrap_or(state);
-    let (client, started) = match daemon(&state) {
-        Ok(found) => found,
-        Err(e) => return Ok(fail(NO_DAEMON, &format!("no daemon: {e}"))),
+    let client = match Client::discover(&state).and_then(|c| c.status().map(|_| c)) {
+        Ok(client) => client,
+        Err(e) => {
+            let message = format!("no daemon: {e}. Start it with `fh serve`");
+            return Ok(fail(NO_DAEMON, &message));
+        }
     };
-    let stop_hint = match &o.state {
-        Some(_) => format!("fh serve --stop --state {}", state.display()),
-        None => "fh serve --stop".to_owned(),
-    };
-    if started {
-        println!(
-            "fh run: started a daemon for {} (log {})",
-            state.display(),
-            state.join(LOG_FILE).display()
-        );
-    }
     // The name of the model in the page: the input file.
     let title = text(Path::new(file.file_name().unwrap_or_default()))?;
     interrupt::install();
@@ -397,7 +267,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let message = message_of(&record, &state, &file);
     Ok(match end {
         RunState::Succeeded => {
-            report(&client, &record, &state, &o, &stop_hint);
+            report(&record, &state);
             ExitCode::SUCCESS
         }
         RunState::Cancelled => fail(CANCELLED, &format!("{run} was cancelled")),
@@ -454,16 +324,7 @@ mod tests {
         assert!(parse(&args(&["m.inp", "--memory", "x"])).is_err());
         assert!(parse(&args(&["m.inp", "--size", "1"])).is_err());
         assert!(parse(&args(&[])).is_err());
-        let o = parse(&args(&[
-            "m.inp",
-            "--no-open",
-            "--timeout",
-            "1.5",
-            "--memory",
-            "512",
-        ]))
-        .unwrap();
-        assert!(o.no_open);
+        let o = parse(&args(&["m.inp", "--timeout", "1.5", "--memory", "512"])).unwrap();
         assert_eq!(o.limits.timeout, Some(Duration::from_millis(1500)));
         assert_eq!(o.limits.memory, Some(512 << 20));
     }

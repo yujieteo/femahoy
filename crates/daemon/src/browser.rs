@@ -1,7 +1,6 @@
 //! Open the page of the daemon in the browser of the user (DESIGN.md section 4.1). `fh serve`
-//! and `fh run` do this by themselves. The option `--no-open`, or the environment variable
-//! `FH_NO_OPEN` with a value that is not empty and not `0`, stops it, for tests and for a
-//! machine with no screen.
+//! does this by itself. The environment variable `FH_NO_OPEN` with a value that is not empty
+//! and not `0` stops it, for tests and for a machine with no screen.
 //!
 //! The address of the page holds the token. The token must not stay in the command line of a
 //! browser process, because other users of the machine can read a command line:
@@ -21,10 +20,9 @@ pub const NO_OPEN: &str = "FH_NO_OPEN";
 /// The file in the state folder that sends the browser on to the page.
 pub const OPEN_FILE: &str = "open.html";
 
-/// True when the browser must not open: the option `--no-open` is `option`, or `FH_NO_OPEN`
-/// has a value that is not empty and not `0`.
-pub fn no_open(option: bool) -> bool {
-    option || std::env::var_os(NO_OPEN).is_some_and(|v| !v.is_empty() && v != "0")
+/// True when the browser must not open: `FH_NO_OPEN` has a value that is not empty and not `0`.
+pub fn no_open() -> bool {
+    std::env::var_os(NO_OPEN).is_some_and(|v| !v.is_empty() && v != "0")
 }
 
 /// Open `url`, an address of the page of the daemon of `state_dir`, in the browser. This does

@@ -1,27 +1,23 @@
-//! `fh mesh FILE.(geo|step) --units U [options]`: run the external gmsh program and write the
+//! `fh mesh FILE.step --units U [options]`: run the external gmsh program and write the
 //! mesh as the nodes, the C3D10 elements (S6 shells with `--shell`) and the named sets of a
 //! CalculiX input.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
-use std::time::{Duration, Instant};
 
 use crate::rules;
 
-const USAGE: &str = "usage: fh mesh FILE.(geo|step) --units SI-mm|SI-m [-o OUT.inp] [--size H] \
-[--scale S] [--set NAME=VALUE]... [--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
-[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--refine NAME[,NAME]...=H]... [--shell] \
-[--timeout SECONDS] [--gmsh PATH]\n\
+const USAGE: &str = "usage: fh mesh FILE.step --units SI-mm|SI-m [-o OUT.inp] [--size H] \
+[--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
+[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--refine NAME[,NAME]...=H]... [--shell]\n\
 A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z (--nodes only).\n\
 --face makes a node set and a surface of the faces of the part in the selection. --nodes makes a \
-node set. --volume makes an element set (STEP only). Each name is used once.\n\
+node set. --volume makes an element set. Each name is used once.\n\
 --refine makes the elements at the --face sets NAME the size H. They grow to --size away from the sets.\n\
 --shell meshes the surfaces of the file, not a solid: the elements are S6 shells, --face picks \
 edges (the surface is the edge of the shells) and --volume picks surfaces.\n\
-The units are required. The mesh is order 2, C3D10, or S6 with --shell.\n\
-v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
-or Merge of a file that is not .msh.";
+The units are required. The mesh is order 2, C3D10, or S6 with --shell.";
 
 /// The size of an element grows by this much for each unit of distance from a `--refine` set.
 /// 0.3 is a ratio of 1.3 between neighbour elements.
@@ -120,8 +116,6 @@ struct Options {
     input: PathBuf,
     output: PathBuf,
     size: Option<f64>,
-    scale: Option<f64>,
-    numbers: Vec<(String, f64)>,
     units: Option<Units>,
     /// Faces of the part, from gmsh: a node set and a surface each.
     faces: Vec<Named>,
@@ -133,9 +127,6 @@ struct Options {
     refine: Vec<(String, f64)>,
     /// Mesh the surfaces as shells. Faces are edges and volumes are surfaces.
     shell: bool,
-    /// `None` means no limit: a large model can mesh for hours.
-    timeout: Option<Duration>,
-    gmsh: Option<PathBuf>,
 }
 
 fn number(flag: &str, text: Option<&String>) -> Result<f64, String> {
@@ -174,16 +165,12 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         input: PathBuf::new(),
         output: PathBuf::new(),
         size: None,
-        scale: None,
-        numbers: Vec::new(),
         units: None,
         faces: Vec::new(),
         nodes: Vec::new(),
         volumes: Vec::new(),
         refine: Vec::new(),
         shell: false,
-        timeout: None,
-        gmsh: None,
     };
     let mut output: Option<PathBuf> = None;
     let mut it = args.iter();
@@ -191,24 +178,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         match a.as_str() {
             "-o" => output = Some(it.next().ok_or("-o needs a file")?.into()),
             "--size" => o.size = Some(number("--size", it.next())?),
-            "--scale" => o.scale = Some(number("--scale", it.next())?),
-            "--set" => {
-                let text = it.next().ok_or("--set needs NAME=VALUE")?;
-                let (name, value) = text.split_once('=').ok_or("--set needs NAME=VALUE")?;
-                let name_ok = !name.is_empty()
-                    && name
-                        .chars()
-                        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
-                let value: f64 = value
-                    .parse()
-                    .ok()
-                    .filter(|v: &f64| v.is_finite())
-                    .ok_or(format!("--set {name}: the value must be a number"))?;
-                if !name_ok {
-                    return Err(format!("--set: bad name `{name}`"));
-                }
-                o.numbers.push((name.to_string(), value));
-            }
             "--units" => {
                 let units = it.next().and_then(|t| Units::parse(t));
                 o.units = Some(units.ok_or("--units needs SI-mm or SI-m")?);
@@ -237,14 +206,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 }
             }
             "--shell" => o.shell = true,
-            "--timeout" => {
-                let seconds = number("--timeout", it.next())?;
-                o.timeout = Some(
-                    Duration::try_from_secs_f64(seconds)
-                        .map_err(|_| "--timeout is too large".to_string())?,
-                );
-            }
-            "--gmsh" => o.gmsh = Some(it.next().ok_or("--gmsh needs a path")?.into()),
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
             s => {
                 if input.replace(s.into()).is_some() {
@@ -273,83 +234,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         refined.push(name.to_ascii_uppercase());
     }
     Ok(o)
-}
-
-/// A refusal of the input that does not need gmsh.
-/// A `.geo` file is code. v1 refuses every command that can run another program or file:
-/// `SystemCall`, `NonBlockingSystemCall`, `OnelabRun`, `Include`, and `Merge` of a non-`.msh` file.
-fn check_geo(text: &str) -> Result<(), String> {
-    let chars: Vec<char> = text.chars().collect();
-    let mut i = 0;
-    let mut merge_pending = false;
-    while i < chars.len() {
-        let c = chars[i];
-        if c == '/' && chars.get(i + 1) == Some(&'/') {
-            while i < chars.len() && chars[i] != '\n' {
-                i += 1;
-            }
-        } else if c == '/' && chars.get(i + 1) == Some(&'*') {
-            i += 2;
-            while i < chars.len() && !(chars[i] == '*' && chars.get(i + 1) == Some(&'/')) {
-                i += 1;
-            }
-            i += 2;
-        } else if c == '"' {
-            let mut literal = String::new();
-            i += 1;
-            while i < chars.len() && chars[i] != '"' {
-                if chars[i] == '\\' && i + 1 < chars.len() {
-                    i += 1;
-                }
-                literal.push(chars[i]);
-                i += 1;
-            }
-            i += 1;
-            if std::mem::take(&mut merge_pending) && !literal.to_ascii_lowercase().ends_with(".msh")
-            {
-                return Err(format!(
-                    "the .geo file merges `{literal}`. fh mesh v1 refuses Merge of a file that is not .msh"
-                ));
-            }
-        } else if c.is_ascii_alphabetic() || c == '_' {
-            let start = i;
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
-                i += 1;
-            }
-            if merge_pending {
-                return Err(
-                    "the .geo file has a Merge that is not a plain file name. fh mesh v1 refuses it"
-                        .into(),
-                );
-            }
-            let word: String = chars[start..i]
-                .iter()
-                .collect::<String>()
-                .to_ascii_lowercase();
-            match word.as_str() {
-                "systemcall" | "nonblockingsystemcall" | "onelabrun" | "include" => {
-                    return Err(format!(
-                        "the .geo file contains {word}. fh mesh v1 refuses it, \
-because gmsh would run a shell command or another file"
-                    ));
-                }
-                "merge" => merge_pending = true,
-                _ => {}
-            }
-        } else {
-            if !c.is_whitespace() && c != '(' && merge_pending {
-                return Err(
-                    "the .geo file has a Merge that is not a plain file name. fh mesh v1 refuses it"
-                        .into(),
-                );
-            }
-            i += 1;
-        }
-    }
-    if merge_pending {
-        return Err("the .geo file has a Merge without a file name".into());
-    }
-    Ok(())
 }
 
 /// Physical volume groups select the material boxes, or SOLID for the single body.
@@ -473,11 +357,8 @@ fn quote_ok(path: &Path) -> Result<String, String> {
     Ok(text)
 }
 
-/// A gmsh program: the `--gmsh` path, `FH_GMSH`, `gmsh` on `PATH`, or the macOS app.
-fn find_gmsh(option: Option<&Path>) -> Result<PathBuf, String> {
-    if let Some(p) = option {
-        return Ok(p.to_path_buf());
-    }
+/// A gmsh program: `FH_GMSH`, `gmsh` on `PATH`, or the macOS app.
+fn find_gmsh() -> Result<PathBuf, String> {
     if let Some(p) = std::env::var_os("FH_GMSH").filter(|p| !p.is_empty()) {
         return Ok(p.into());
     }
@@ -487,7 +368,7 @@ fn find_gmsh(option: Option<&Path>) -> Result<PathBuf, String> {
     candidates.push("/Applications/Gmsh.app/Contents/MacOS/gmsh".into());
     candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| {
         "gmsh is not installed. Install it from your package manager or from gmsh.info, \
-then set FH_GMSH or use --gmsh PATH"
+then set FH_GMSH"
             .into()
     })
 }
@@ -498,16 +379,10 @@ struct Finished {
     stderr: String,
 }
 
-/// Run a command in `dir`, with a time limit when `limit` is set. Kill it on expiry.
-/// The output goes to files, so a full pipe cannot block the child.
-fn run_limited(
-    gmsh: &Path,
-    args: &[String],
-    dir: &Path,
-    limit: Option<Duration>,
-) -> Result<Finished, String> {
+/// Run gmsh in `dir`. The output goes to files, so a full pipe cannot block the child.
+fn run_gmsh(gmsh: &Path, args: &[String], dir: &Path) -> Result<Finished, String> {
     let open = |name: &str| std::fs::File::create(dir.join(name)).map_err(|e| e.to_string());
-    let mut child = Command::new(gmsh)
+    let status = Command::new(gmsh)
         .args(args)
         .current_dir(dir)
         // gmsh reads `~/.gmsh-options` and writes into HOME. Give it an empty folder.
@@ -515,23 +390,8 @@ fn run_limited(
         .stdin(Stdio::null())
         .stdout(open("stdout.txt")?)
         .stderr(open("stderr.txt")?)
-        .spawn()
+        .status()
         .map_err(|e| format!("cannot start gmsh ({}): {e}", gmsh.display()))?;
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-            break status;
-        }
-        if let Some(limit) = limit.filter(|l| start.elapsed() >= *l) {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!(
-                "gmsh timed out after {} seconds and was stopped",
-                limit.as_secs_f64()
-            ));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
     let read = |name: &str| {
         String::from_utf8_lossy(&std::fs::read(dir.join(name)).unwrap_or_default()).into_owned()
     };
@@ -716,41 +576,28 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     }
     let bytes = std::fs::read(&input).map_err(|e| format!("{}: {e}", input.display()))?;
     let text = String::from_utf8_lossy(&bytes);
-    let script = match extension.as_deref() {
-        Some("geo") => {
-            if !o.faces.is_empty() || !o.volumes.is_empty() {
-                return Err(
-                    "--face and --volume need a .step file. A .geo file names its own groups"
-                        .into(),
-                );
-            }
-            check_geo(&text)?;
-            input.clone()
-        }
-        Some("step" | "stp") => {
-            check_step(&text, units)?;
-            // Pin the target unit in every run. The gmsh default is a process state.
-            let wrapper = dir.join("input.geo");
-            let body =
-                format!(
-                "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
-                units.gmsh_length(),
-                quote_ok(&input)?,
-                groups_script(&o.faces, &o.volumes, o.shell, &o.refine, o.size.unwrap_or(0.0))
-            );
-            std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
-            wrapper
-        }
-        _ => return Err("the input must be a .geo or a .step file".into()),
-    };
-    let gmsh = find_gmsh(o.gmsh.as_deref())?;
+    if !matches!(extension.as_deref(), Some("step" | "stp")) {
+        return Err("the input must be a .step file".into());
+    }
+    check_step(&text, units)?;
+    // Pin the target unit in every run. The gmsh default is a process state.
+    let script = dir.join("input.geo");
+    let body = format!(
+        "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
+        units.gmsh_length(),
+        quote_ok(&input)?,
+        groups_script(
+            &o.faces,
+            &o.volumes,
+            o.shell,
+            &o.refine,
+            o.size.unwrap_or(0.0)
+        )
+    );
+    std::fs::write(&script, body).map_err(|e| e.to_string())?;
+    let gmsh = find_gmsh()?;
 
-    let probe = run_limited(
-        &gmsh,
-        &["-version".into()],
-        dir,
-        Some(Duration::from_secs(30)),
-    )?;
+    let probe = run_gmsh(&gmsh, &["-version".into()], dir)?;
     let version = probe.stdout.trim().to_string();
     let parsed = version_of(&version)
         .ok_or_else(|| format!("cannot read the gmsh version from `{version}`"))?;
@@ -782,17 +629,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     ]
     .map(String::from)
     .into();
-    for (flag, value) in [("-clmax", o.size), ("-clscale", o.scale)] {
-        if let Some(v) = value {
-            args.extend([flag.into(), v.to_string()]);
-        }
-    }
-    for (name, value) in &o.numbers {
-        args.extend(["-setnumber".into(), name.clone(), value.to_string()]);
+    if let Some(size) = o.size {
+        args.extend(["-clmax".into(), size.to_string()]);
     }
     args.extend(["-o".into(), msh_file.to_string_lossy().into_owned()]);
     args.push(script.to_string_lossy().into_owned());
-    let run = run_limited(&gmsh, &args, dir, o.timeout)?;
+    let run = run_gmsh(&gmsh, &args, dir)?;
 
     let errors = lines_with("Error", [&run.stderr, &run.stdout]);
     if !run.status.success() || !errors.is_empty() {
@@ -847,7 +689,9 @@ for example {:?}",
         .file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
     // The default body group of a STEP file holds the same elements as ALL.
-    let hide = (extension.as_deref() != Some("geo") && o.volumes.is_empty())
+    let hide = o
+        .volumes
+        .is_empty()
         .then_some(if o.shell { "SHELL" } else { "SOLID" });
     let picked = pick_sets(model, &o.nodes)?;
     let inp = write_inp(model, &label, units, &picked, hide);
@@ -931,15 +775,6 @@ mod tests {
         assert!(check_step("DATA;ENDSEC;", Units::SiMm)
             .unwrap_err()
             .starts_with("unit.step.missing"));
-    }
-
-    #[test]
-    fn gmsh_has_a_time_limit_only_with_the_timeout_option() {
-        assert_eq!(args(&["a.geo"]).unwrap().timeout, None);
-        assert_eq!(
-            args(&["a.geo", "--timeout", "2"]).unwrap().timeout,
-            Some(Duration::from_secs(2))
-        );
     }
 
     #[test]

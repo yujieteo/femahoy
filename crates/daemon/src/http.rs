@@ -99,11 +99,10 @@ impl Server {
     pub(crate) fn start(
         service: Arc<Service>,
         chat: Arc<Chat>,
-        port: u16,
         token: String,
         viewer: Option<PathBuf>,
     ) -> io::Result<Server> {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
         let port = listener.local_addr()?.port();
         let ctx = Arc::new(Ctx {
             service,
