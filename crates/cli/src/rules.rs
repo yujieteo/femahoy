@@ -3,7 +3,7 @@
 use fh_io::MshMesh;
 
 /// Refuse a mesh with a volume outside every physical group. gmsh writes no element of such a
-/// volume, so a part of the body is lost without an error (M2b).
+/// volume, so a part of the body is lost without an error.
 pub fn volumes_are_named(mesh: &MshMesh) -> Result<(), String> {
     match mesh.unnamed_volumes.as_slice() {
         [] => Ok(()),

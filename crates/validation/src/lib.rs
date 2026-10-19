@@ -1,6 +1,6 @@
 //! Harness and check file.
 //!
-//! The check file of a case (DESIGN.md section 10.4) and the runner that compares the values of
+//! The check file of a case (DESIGN.md section 7) and the runner that compares the values of
 //! a solver with the references.
 
 mod fixture;

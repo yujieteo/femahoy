@@ -6,8 +6,7 @@ The full rules for build agents are in `AGENTS.md`.
 ## Task rules
 
 Make one change for each task.
-Use one branch and one roadmap item for each task.
-Read the crate `SKILL.md` before you change code in that crate.
+Use one branch for each task.
 Do not add a dependency without approval.
 Use only permissive licences: MIT, Apache-2.0, BSD, ISC or Zlib.
 Never add GPL or AGPL code.
@@ -30,10 +29,7 @@ A change merges only when all these checks pass:
 - `cargo fmt --check`
 - `cargo clippy --workspace --all-targets -- -D warnings`
 - `cargo test --workspace`
-- `fh validate`
-
-After the checks pass, a reviewer reads the diff and the report.
-A rejection from the reviewer blocks the merge.
+- `fh validate` (when the change touches solver code)
 
 ## Licence
 

@@ -1,4 +1,4 @@
-//! The supports and loads of a solver input (`docs/chat.md`): the surface faces of each
+//! The supports and loads of a solver input: the surface faces of each
 //! support and each load, the direction and the total of each load, and a label for each set.
 //! The page shows them before the solve and on the results. The input is the copy of the
 //! input file that the run solves, so the page shows what the solver gets.

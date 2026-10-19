@@ -1,5 +1,5 @@
 //! The daemon of femahoy (`fh serve`, DESIGN.md section 4.1). This crate has the run
-//! contract (roadmap item D1): one contract for runs that the CLI and the UI share.
+//! contract: one contract for runs that the CLI and the UI share.
 //!
 //! - **Runs.** A submit names the absolute path of an input file. The daemon copies the
 //!   file and its `*INCLUDE` files into the folder of a new run, and the run solves the
@@ -13,9 +13,9 @@
 //!   Clients read events by sequence number, so a slow client never grows a queue.
 //! - **Access.** The token and `Origin` rules are in the `http` module documentation.
 //! - **Chat.** The daemon runs the agent, a Claude Code process in headless mode, and keeps
-//!   its actions as chat entries for the page (`chat`, `docs/chat.md`).
+//!   its actions as chat entries for the page (`chat`).
 //!
-//! A run starts `ccx` through `fh_solver_ccx` in the daemon process (DESIGN.md section 9).
+//! A run starts `ccx` through `fh_solver_ccx` in the daemon process (DESIGN.md section 6).
 //! The contract only starts it, cancels it and keeps the record.
 //!
 //! # Which process stays alive

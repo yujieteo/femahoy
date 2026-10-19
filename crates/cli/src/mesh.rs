@@ -19,8 +19,7 @@ The units are required (D-18). The mesh is order 2, C3D10 (D-19).\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
 
-/// Tested gmsh release line, and the oldest release that `fh mesh` accepts.
-const TESTED: (u32, u32) = (4, 15);
+/// The oldest gmsh release that `fh mesh` accepts.
 const OLDEST: (u32, u32) = (4, 8);
 
 /// The unit system of the input (D-18). There is no default.
@@ -759,12 +758,6 @@ min_scaled_jacobian\t{:.4}\nnset\tNALL\t{}\nelset\tALL\t{}\n",
     }
     for (name, ids) in &picked {
         report.push_str(&format!("nset\t{name}\t{}\n", ids.len()));
-    }
-    if (parsed.0, parsed.1) != TESTED {
-        report.push_str(&format!(
-            "warning\tgmsh {version} is not the tested release {}.{}\n",
-            TESTED.0, TESTED.1
-        ));
     }
     for line in lines_with("Warning", [&run.stderr, &run.stdout]) {
         report.push_str(&format!("warning\t{line}\n"));

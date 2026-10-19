@@ -1,9 +1,9 @@
-//! `fh run`: solve a CalculiX input on the daemon of the run contract (`docs/run-contract.md`),
-//! show the progress, and open the results in the browser.
+//! `fh run`: solve a CalculiX input on the daemon, show the progress, and open the results in
+//! the browser.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). The daemon solves a copy, so a later edit does not change the run.
-//! - The daemon solves each run with CalculiX: `$FH_CCX`, else `ccx` on `PATH` (`docs/ccx.md`).
+//! - The daemon solves each run with CalculiX: `$FH_CCX`, else `ccx` on `PATH`.
 //! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
 //! Before the solve, `fh run` sends the input to the preview route of the daemon, so that

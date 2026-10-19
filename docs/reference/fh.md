@@ -52,7 +52,7 @@ For `--volume` boxes, it fragments the bodies and creates one physical volume gr
 It checks that each solid element belongs to exactly one box.
 
 The macOS fallback is `/Applications/Gmsh.app/Contents/MacOS/gmsh`.
-The minimum gmsh version is 4.8. A release outside 4.15 produces a warning.
+The minimum gmsh version is 4.8.
 The command replaces an existing output file only when the mesh succeeds.
 
 | Condition | Diagnostic or output | Exit |
@@ -100,7 +100,7 @@ Each solve has a limit of 300 seconds. At the limit, the run stops `ccx` and the
 | Condition | Diagnostic or output | Exit |
 |---|---|---:|
 | Each case passes | stdout: `ID<TAB>pass`, quantity rows, and `N cases: P pass, F fail`. | 0 |
-| `ccx` does not start | stderr: `fh validate: cannot start ccx (PATH): ERROR. fh needs CalculiX: install it as docs/ccx.md tells, then put ccx on PATH or set FH_CCX` | 1 |
+| `ccx` does not start | stderr: `fh validate: cannot start ccx (PATH): ERROR. fh needs CalculiX: install it as README.md tells, then put ccx on PATH or set FH_CCX` | 1 |
 | Case failure | stdout: case row with `fail: REASON`, then summary. | 1 |
 | The solve or the measurement cannot run | stdout: case row with `cannot run: REASON`. | 1 |
 | Fixture load error | stderr: `fh validate: FILE[:LINE]: MESSAGE` | 1 |
@@ -121,7 +121,7 @@ fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB] [--state DIR] [-
 
 Source: [run.rs](../../crates/cli/src/run.rs).
 
-The command solves a model on the daemon of the [run contract](../run-contract.md), shows the events of the run, and opens the run in the browser.
+The command solves a model on the daemon, shows the events of the run, and opens the run in the browser.
 
 `MODEL.inp` is a CalculiX input file (the extension in any case). `fh run` gives it to `ccx` as it is, with each file that it includes (`*INCLUDE`). The run solves a copy, so a later edit of the file does not change the run.
 
@@ -137,7 +137,7 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 That daemon stays alive when `fh run` ends. The browser keeps the results, and the next `fh run` uses the same daemon. `fh serve --stop` stops it.
 A daemon that `fh run` starts gets the environment of `fh run`, so it uses `FH_CCX` and `FH_VIEWER`.
 
-Before the solve, `fh run` sends the input to the preview route of the daemon (see [the chat](../chat.md#the-model-before-the-solve)).
+Before the solve, `fh run` sends the input to the preview route of the daemon.
 The page then shows the model with the faces of each support and each load, the direction of each load, and the names of the sets.
 The line `fh run: preview: the page shows NAME (preview ID) with its supports and loads` tells this. NAME is the input file.
 The preview and the run each copy the input file, one directly after the other. Thus the page shows the bytes that the solver gets.
@@ -176,11 +176,11 @@ fh serve --stop [--state DIR]
 
 Source: [serve.rs](../../crates/daemon/src/serve.rs).
 
-The command runs the daemon of the [run contract](../run-contract.md) on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
+The command runs the daemon on 127.0.0.1 until SIGINT, SIGTERM or SIGHUP.
 `--state` defaults to `$FH_STATE`, else `$XDG_STATE_HOME/femahoy`, else `~/.local/state/femahoy`. `fh run` has the same default.
-`--port` defaults to 0, a free port. The solver is `ccx` (`FH_CCX`, else `ccx` on `PATH`, [ccx](../ccx.md)).
-The page is the wasm viewer ([viewer](../viewer.md)), from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
-The page has the chat with the agent ([chat](../chat.md)).
+`--port` defaults to 0, a free port. The solver is `ccx` (`FH_CCX`, else `ccx` on `PATH`).
+The page is the wasm viewer, from `FH_VIEWER` when set, otherwise the `viewer` folder beside `fh`.
+The page has the chat with the agent.
 
 After the start, `fh serve` opens its page in the browser. `--no-open`, or a value of `FH_NO_OPEN` that is not empty and not `0`, stops this, for tests and for a machine with no screen.
 The address holds the token, so it does not go into the command line of a browser process, where other users of the machine can read it:
@@ -205,9 +205,3 @@ The address holds the token, so it does not go into the command line of a browse
 | Bad port | `fh serve: --port needs a number from 0 to 65535` | 2 |
 | `--stop` with an option other than `--state` | `fh serve: --stop takes only --state DIR` | 2 |
 | Any other argument | `fh serve: unknown option: ARGUMENT` | 2 |
-
-## Keep this list current
-
-Run `fh --help` from the branch under review after a CLI change.
-Compare dispatch and exit codes with `main.rs` and every command’s `run` function.
-Check returned errors as well as explicit exit codes. The dispatcher converts returned errors to exit code 2.

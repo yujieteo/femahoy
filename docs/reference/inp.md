@@ -1,7 +1,7 @@
 # Input keywords and element types
 
 CalculiX (`ccx`) reads and checks the input. It takes every keyword, element type and solver that it has.
-`fh run` gives `ccx` the input file unchanged, with each file that it includes (`*INCLUDE`) ([ccx.md](../ccx.md)).
+`fh run` gives `ccx` the input file unchanged, with each file that it includes (`*INCLUDE`).
 
 The crate `fh-inp` has a small reader for the preview of the supports and the loads. It never refuses a keyword.
 It takes the keywords below, and skips each other keyword and each data line that it cannot read.
@@ -32,8 +32,8 @@ The lexer ignores blank lines and lines that start with `**`. A trailing comma c
 
 The page and the preview draw the element types that `ccx` writes to the result file: `C3D4`, `C3D6`, `C3D8`, `C3D10`, `C3D15` and `C3D20`.
 `ccx` writes a shell or a beam element (for example `S8R`, `S4` or `B32`) as one of these solid elements, so the page shows it too. The adapter also converts the 2D and line cells of the result file, but the page does not draw them.
-`fh mesh` writes `C3D10` (D-19).
+`fh mesh` writes `C3D10`.
 
 ## Units
 
-`** units: SI-mm` (or `SI-m`) is a comment line in the input. `fh mesh` writes it (D-18). The run copies it into `results.pvd`.
+`** units: SI-mm` (or `SI-m`) is a comment line in the input. `fh mesh` writes it. The run copies it into `results.pvd`.

@@ -11,10 +11,10 @@ scripts/install.sh
 fh serve
 ```
 
-1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, [docs/ccx.md](docs/ccx.md)).
-2. `fh serve` starts a local daemon and opens the page in the browser. Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login ([docs/chat.md](docs/chat.md)). Stop the daemon with `fh serve --stop`.
+1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, see "Get `ccx`" below).
+2. `fh serve` starts a local daemon and opens the page in the browser. Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login. Stop the daemon with `fh serve --stop`.
 
-For your own model, give `fh run` a CalculiX `.inp` file. `fh mesh` makes the mesh and the sets from a STEP file. The [quickstart](docs/quickstart.md) shows each step, and [`fh` commands](docs/reference/fh.md) gives the options and the exit codes.
+For your own model, give `fh run` a CalculiX `.inp` file. `fh mesh` makes the mesh and the sets from a STEP file. [`fh` commands](docs/reference/fh.md) gives the options and the exit codes.
 
 ## Product
 
@@ -22,13 +22,18 @@ The engine is the `fh` command-line program. The main interface is a visual chat
 
 The chat has 1 focused agent. It plans and does the work.
 
-The input is `.inp` text, heavily inspired by Abaqus input conventions. Agent-facing output is plain text lines. Results are VTU files, so ParaView can open them.
+The input is CalculiX `.inp` text. Agent-facing output is plain text lines. Results are VTU files, so ParaView can open them.
 
 The solver is CalculiX (`ccx`). `fh` starts it directly. The owner removed the native solver `fh-solve` on 2026-10-19. An own solver is a main advantage later, but not now. Main commit `08a97c2` has the native solver.
 
-## Status
+## Get `ccx`
 
-The roadmap and the status of each item are in [docs/milestones.md](docs/milestones.md).
+`fh` starts CalculiX (`ccx`) as a separate program. You install it. femahoy never bundles or links `ccx`, because it is GPL.
+
+- Nix (macOS, Linux): `nix build nixpkgs#calculix-ccx -o ccx`, then `export FH_CCX=$PWD/ccx/bin/ccx`.
+- Debian, Ubuntu: `apt install calculix-ccx`. This puts `ccx` on PATH.
+
+`fh` uses `$FH_CCX`. If `FH_CCX` is not set, it uses `ccx` on PATH. If `ccx` does not start, each solve and `fh validate` stop with an error. The validation cases are tested with `ccx` 2.23. The Ubuntu package is older.
 
 ## Licence
 
@@ -36,8 +41,7 @@ The code is licensed under AGPL-3.0.
 
 ## Documents
 
-- [Quickstart](docs/quickstart.md): the install, `fh run`, and the STEP, mesh, solver and validation commands, with output from actual runs.
-- `DESIGN.md`: product design, architecture, crates, solver scope and the decision log (section 15).
+- `DESIGN.md`: the current rules of the product, each with its reason.
 - `AGENTS.md`: rules for the agents that build femahoy.
 - [Input keywords and element types](docs/reference/inp.md): the input of the preview and the element types of the page.
 - [`fh` commands](docs/reference/fh.md): diagnostics and exit codes.
