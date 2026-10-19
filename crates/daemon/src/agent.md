@@ -27,6 +27,7 @@ Each selection is a plane (`x:V`, `y:V` or `z:V`), a box (`box:X0,Y0,Z0,X1,Y1,Z1
 - `--volume NAME=box:...` makes an element set of the elements in the box. Use it for a part with several materials. Each element must be in exactly 1 box.
 - `NALL` is the set of all nodes. `ALL` is the set of all elements.
 - A positive pressure in `*DSLOAD` pushes into the body: `NAME, P, 1.0` is 1 MPa on the face.
+- `*FILM` refuses a surface name. Write 1 line `E, Fn, SINK, H` for each line `E, Sn` of the surface.
 
 ## Output requests
 

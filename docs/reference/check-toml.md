@@ -19,15 +19,21 @@ Sources: [check reader](../../crates/validation/src/fixture.rs),
 | `rel_tol`, `abs_tol` | Numbers, 0 or more. Required. |
 | `[<name>]` | One table for each check. At least 1. |
 
-Each check table has these 5 keys. All are required.
+A check of `U`, `RF`, `S` or `NT` has these 5 keys. All are required.
 
 | Key | Rule |
 |---|---|
 | `value` | The reference value, a finite number in the units of `job.inp`. |
-| `set` | Node set (fields `U`, `RF`) or element set (field `S`) in a print request of `job.inp`. The match ignores letter case. |
-| `field` | `U` (displacement) and `RF` (reaction force) from `*NODE PRINT`. `S` (stress) from `*EL PRINT`. |
-| `component` | `U` and `RF`: 1, 2, 3. `S`: 11, 22, 33, 12, 13, 23. |
+| `set` | Node set (fields `U`, `RF`, `NT`) or element set (field `S`) in a print request of `job.inp`. The match ignores letter case. |
+| `field` | `U` (displacement), `RF` (reaction force) and `NT` (temperature) from `*NODE PRINT`. `S` (stress) from `*EL PRINT`. |
+| `component` | `U` and `RF`: 1, 2, 3. `S`: 11, 22, 33, 12, 13, 23. `NT`: 1. |
 | `op` | `value` (the set holds exactly 1 value), `mean`, `max`, `min` or `sum`. |
+
+A check of `FREQ` or `BUCKLE` has 3 keys: `value`, `field` and `mode` (the mode number, 1 or more).
+`FREQ` is the frequency in cycles per time from the eigenvalue table of `*FREQUENCY`.
+`BUCKLE` is the buckling factor from the table of `*BUCKLE`.
+
+A check of `CSTR` (contact stress, from `*CONTACT PRINT`) has 4 keys: `value`, `field`, `component` and `op`. Component 1 is the pressure, 2 and 3 are the shear stresses. It has no `set`: ccx writes the contact stress of all contact elements.
 
 `SI-mm` uses mm, N, MPa, tonne, and s. `SI-m` uses m, N, Pa, kg, and s.
 The reader rejects an unknown key, a missing key and a wrong type.

@@ -13,6 +13,15 @@ pub enum Field {
     RF,
     /// Stress at each integration point, from `*EL PRINT`. Components 11, 22, 33, 12, 13, 23.
     S,
+    /// Temperature, from `*NODE PRINT`. Component 1.
+    NT,
+    /// Contact stress at each point of all contact elements, from `*CONTACT PRINT`. Component 1
+    /// is the pressure, 2 and 3 are the shear stresses. It has no set.
+    Cstr,
+    /// The frequency of a mode (cycles per time unit), from a `*FREQUENCY` step.
+    Freq,
+    /// The buckling factor of a mode, from a `*BUCKLE` step.
+    Buckle,
 }
 
 /// How the values of a set reduce to the one number that is compared with the reference.
@@ -27,6 +36,8 @@ pub enum Op {
 }
 
 /// What to measure: a field component, in a node or element set, at the end of the last step.
+/// `Freq` and `Buckle` have no set: `component` is the mode number and `op` is `Value`.
+/// `Cstr` has no set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Quantity {
     /// The name of the set that the print request of the input names.
@@ -181,30 +192,61 @@ impl Reader<'_> {
         Ok(value)
     }
 
-    /// One check: the `[name]` table with `value`, `set`, `field`, `component` and `op`.
+    /// One check: the `[name]` table with `value`, `set`, `field`, `component` and `op`, or
+    /// with `value`, `field` and `mode` for `FREQ` and `BUCKLE`.
     fn reference(&self, name: &str, item: &Item) -> Result<Reference, FixtureError> {
         let table = item
             .as_table_like()
             .ok_or_else(|| self.err(Some(item), format!("`{name}` must be a table")))?;
-        for (key, value) in table.iter() {
-            if !["value", "set", "field", "component", "op"].contains(&key) {
-                return Err(self.err(Some(value), format!("unknown key `{key}` in `{name}`")));
-            }
-        }
         let get = |key: &str| self.get(table, key, Some(item));
         let value = self.finite(get("value")?, "value")?;
-        let set = self.string(get("set")?, "set")?.to_owned();
         let field_item = get("field")?;
         let (field, components): (Field, &[u32]) = match self.string(field_item, "field")? {
             "U" => (Field::U, &[1, 2, 3]),
             "RF" => (Field::RF, &[1, 2, 3]),
             "S" => (Field::S, &[11, 22, 33, 12, 13, 23]),
+            "NT" => (Field::NT, &[1]),
+            "CSTR" => (Field::Cstr, &[1, 2, 3]),
+            "FREQ" => (Field::Freq, &[]),
+            "BUCKLE" => (Field::Buckle, &[]),
             other => {
                 return Err(self.err(
                     Some(field_item),
-                    format!("unknown field `{other}`, expected U, RF or S"),
+                    format!("unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ or BUCKLE"),
                 ))
             }
+        };
+        let keys: &[&str] = match field {
+            Field::Freq | Field::Buckle => &["value", "field", "mode"],
+            Field::Cstr => &["value", "field", "component", "op"],
+            _ => &["value", "set", "field", "component", "op"],
+        };
+        for (key, value) in table.iter() {
+            if !keys.contains(&key) {
+                return Err(self.err(Some(value), format!("unknown key `{key}` in `{name}`")));
+            }
+        }
+        if components.is_empty() {
+            let mode_item = get("mode")?;
+            let mode = mode_item
+                .as_integer()
+                .and_then(|m| u32::try_from(m).ok())
+                .filter(|m| *m >= 1)
+                .ok_or_else(|| self.err(Some(mode_item), "`mode` must be 1 or more".into()))?;
+            return Ok(Reference {
+                name: name.to_owned(),
+                value,
+                quantity: Quantity {
+                    set: String::new(),
+                    field,
+                    component: mode,
+                    op: Op::Value,
+                },
+            });
+        }
+        let set = match field {
+            Field::Cstr => String::new(),
+            _ => self.string(get("set")?, "set")?.to_owned(),
         };
         let component_item = get("component")?;
         let component = component_item

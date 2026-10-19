@@ -58,11 +58,20 @@ fn validate_runs_every_case_through_ccx() {
     let out = fh_with_solver(&["validate", "--root", &root()], p(&solver));
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
-    for id in ["bar-pressure", "warpage-thick-copper"] {
+    for id in [
+        "bar-pressure",
+        "buckling-column",
+        "contact-hertz",
+        "dynamics-bar-step",
+        "frequency-cantilever",
+        "heat-fin",
+        "plasticity-sphere",
+        "warpage-thick-copper",
+    ] {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("2 cases: 2 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("8 cases: 8 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");

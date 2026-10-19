@@ -1,0 +1,10 @@
+# Timoshenko and Gere (1961), Art. 2.1, column fixed at the base and free at the top:
+# P = pi^2 E I / (4 L^2), L = 200 mm, I = 10^4 / 12 mm4. The load in job.inp is 1 N, so the
+# buckling factor is the force in N. This solid is 0.10 % higher. See derivation.md.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[p_cr]
+value = 10794.88
+field = "BUCKLE"
+mode = 1

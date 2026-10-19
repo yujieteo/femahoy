@@ -1,0 +1,13 @@
+# Longitudinal waves in a thin bar (Graff 1975, chapter 2): a step force F on the free end
+# moves the end with the speed F / (A sqrt(E rho)). At t = 2L/c the end is at 2 F L / (E A),
+# 2 times the static value. The mesh rounds the corner of this peak: this solid is 1.6 %
+# lower. See derivation.md.
+rel_tol = 0.03
+abs_tol = 0.0
+
+[u_end]
+value = 0.0190476
+set = "END"
+field = "U"
+component = 1
+op = "mean"

@@ -1,0 +1,12 @@
+# Hill (1950), Chapter V: thick sphere of an elastic-perfectly plastic material under internal
+# pressure. p = 2Y ln(c/a) + (2Y/3)(1 - c^3/b^3) gives c = 15.0476 mm, then
+# u(b) = (1 - nu) Y c^3 / (E b^2). This solid is 0.08 % higher. See derivation.md.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[u_outer]
+value = 0.00709845
+set = "PX"
+field = "U"
+component = 1
+op = "value"

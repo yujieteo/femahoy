@@ -56,6 +56,7 @@ fn every_field_component_and_op_is_accepted() {
         ("U", Field::U, vec![1, 2, 3]),
         ("RF", Field::RF, vec![1, 2, 3]),
         ("S", Field::S, vec![11, 22, 33, 12, 13, 23]),
+        ("NT", Field::NT, vec![1]),
     ];
     let ops = [
         ("value", Op::Value),
@@ -79,6 +80,54 @@ fn every_field_component_and_op_is_accepted() {
             }
         }
     }
+}
+
+#[test]
+fn a_mode_check_names_the_mode_and_no_set() {
+    let d = tmp("modes");
+    for (i, (name, field)) in [("FREQ", Field::Freq), ("BUCKLE", Field::Buckle)]
+        .into_iter()
+        .enumerate()
+    {
+        let text = format!(
+            "rel_tol = 0.02\nabs_tol = 0\n[f]\nvalue = 417.8\nfield = \"{name}\"\nmode = 2\n"
+        );
+        let c = write_case(&d.join(format!("m{i}")), &text).unwrap();
+        let x = &c.references[0].quantity;
+        assert_eq!((x.field, x.component, x.op), (field, 2, Op::Value));
+    }
+    let base = "rel_tol = 0\nabs_tol = 0\n[f]\nvalue = 1.0\nfield = \"FREQ\"\n";
+    let cases = [
+        (base.to_string(), "missing key `mode`"),
+        (format!("{base}mode = 0\n"), "`mode` must be 1 or more"),
+        (
+            format!("{base}mode = 1\nset = \"s\"\n"),
+            "unknown key `set` in `f`",
+        ),
+        (
+            body("").replace("op = \"mean\"", "op = \"mean\"\nmode = 1"),
+            "unknown key `mode` in `q`",
+        ),
+    ];
+    for (i, (text, needle)) in cases.iter().enumerate() {
+        let err = write_case(&d.join(format!("bad{i}")), text).unwrap_err();
+        assert!(err.to_string().contains(needle), "case {i}: {err}");
+    }
+}
+
+#[test]
+fn a_contact_check_has_no_set() {
+    let d = tmp("contact");
+    let text = body("").replace("set = \"s\"\nfield = \"U\"", "field = \"CSTR\"");
+    let c = write_case(&d.join("ok"), &text).unwrap();
+    let x = &c.references[0].quantity;
+    assert_eq!((x.field, x.component, x.set.as_str()), (Field::Cstr, 1, ""));
+    let text = body("").replace("field = \"U\"", "field = \"CSTR\"");
+    let err = write_case(&d.join("set"), &text).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown key `set` in `q`"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -174,7 +223,19 @@ fn a_case_without_an_input_is_refused() {
 fn the_shipped_cases_load_and_have_their_inputs() {
     let cases = load_all(&root()).unwrap();
     let ids: Vec<_> = cases.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids, ["bar-pressure", "warpage-thick-copper"]);
+    assert_eq!(
+        ids,
+        [
+            "bar-pressure",
+            "buckling-column",
+            "contact-hertz",
+            "dynamics-bar-step",
+            "frequency-cantilever",
+            "heat-fin",
+            "plasticity-sphere",
+            "warpage-thick-copper",
+        ]
+    );
     for c in &cases {
         assert!(c.input.is_file(), "{}", c.input.display());
         assert!(!c.references.is_empty(), "{}", c.id);

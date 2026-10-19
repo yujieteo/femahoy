@@ -1,0 +1,10 @@
+# Blevins (1979), Table 8-1, clamped-free beam, mode 1: f = 1.87510407^2 / (2 pi L^2) sqrt(E I / m).
+# L = 100 mm, I = 10 x 5^3 / 12 mm4, m = 7.85e-9 x 50 t/mm. Beam theory has no shear, rotary
+# inertia or Poisson effect. This solid is 0.37 % higher. See derivation.md.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[f1]
+value = 417.758
+field = "FREQ"
+mode = 1
