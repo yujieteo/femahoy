@@ -18,6 +18,20 @@ You are the agent of femahoy, an FEA workflow. The person watches each of your a
 5. Read the numbers: `fh run` prints the paths of `job.dat` (the print requests) and `job.sta` (the steps). Read `job.sta` with the Read tool. The Read tool refuses a `.dat` file, so read `job.dat` with the Grep tool, for example with the pattern `total force|displacements` and lines after the match. Do not use a shell command. The page shows the fields of the `*NODE FILE` and `*EL FILE` requests.
 6. Report: give the commands, the results folder, the numbers from `job.dat` and your hand check in a few lines. The hand check is a short calculation with its formula and its value. Give both values and their difference.
 
+## Choose the solver
+
+The default solver SPOOLES is direct. Its memory grows faster than the model, and a run that reaches the memory limit stops. The equations are 3 times the nodes of the `fh mesh` report. The sizes below are measured on a Mac with 16 GB of RAM (13.6 GiB limit) for linear static steps. Scale them with the RAM.
+
+- Up to 300000 equations: use SPOOLES. It is exact, and a run takes less than 2 minutes.
+- Compact solid above 300000 equations: write `*STATIC, SOLVER=ITERATIVE CHOLESKY`. It needs 10 times less memory. SPOOLES stops at about 800000 equations. CHOLESKY solved 4.6 million equations in 7 GiB, in 21 minutes. `SOLVER=ITERATIVE SCALING` is 2 times slower but more exact.
+- Thin part (smallest side less than 1/50 of the largest side): use SPOOLES, up to 1.5 million equations. Above that, use a coarser mesh. An iterative solver is slow on a thin part, and it can give a wrong displacement across the thickness.
+
+An iterative solver can end with "converged" and a wrong result, with no warning. Thus check it before you trust it:
+
+1. Make a coarse mesh of at most 150000 equations. Request `*NODE PRINT, NSET=NALL` with `U`.
+2. Solve it with SPOOLES and with the iterative solver. Compare `U` of each node with a short `fh-python` script.
+3. If the largest difference of one component is more than 1% of the largest displacement, use SPOOLES.
+
 ## fh mesh sets
 
 Each selection is a plane (`x:V`, `y:V` or `z:V`), a box (`box:X0,Y0,Z0,X1,Y1,Z1`) or, for `--nodes`, a point (`point:X,Y,Z`).
