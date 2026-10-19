@@ -1,6 +1,6 @@
 # `fh` commands, diagnostics, and exit codes
 
-`fh` implements `mesh`, `validate`, `run`, and `serve`.
+`fh` implements `mesh`, `validate`, `run`, `report`, and `serve`.
 
 ## Dispatch and help
 
@@ -160,6 +160,35 @@ When `fh run` ends for any reason, `ccx` stops. Ctrl+C, SIGTERM and SIGHUP stop 
 | The input does not exist | `fh run: PATH: ERROR` | 2 |
 | The input is not an `.inp` file | `fh run: PATH: fh run takes a CalculiX input file (.inp)` | 2 |
 | Ctrl+C, SIGTERM or SIGHUP during the solve | stderr: `fh run: RUN was cancelled` | 130 |
+
+## `fh report`
+
+```text
+fh report TEXT.html -o REPORT.html --run RUN [--run RUN]...
+```
+
+Source: [report.rs](../../crates/fh/src/daemon/report.rs).
+
+The command writes 1 HTML file. The file holds a text, the wasm viewer of `fh serve` and the results of the runs that you name. It opens with a double-click (`file://`). It needs no daemon and no network.
+
+`TEXT.html` is the HTML of the left part of the report, for example `h1`, `h2`, `p`, `ul`, `table` and `code`. The viewer is on the right, with a list of the runs. An element of the text with `data-run="RUN"` shows that run when the person clicks it.
+The file allows no script but its own and no file from the network. Thus a script or an image in `TEXT.html` does nothing.
+
+For each run, the file holds the input and each file of the results (`results.pvd` and the `step-N.vtu` files). The size of the report is about the size of these files, plus one third for the base64 text. The run of 300000 nodes of the A320 proof gives 80.6 MiB.
+The state folder is `$FH_STATE`, the same default as `fh serve`. The viewer is `$FH_VIEWER`, else the `viewer` folder beside `fh`.
+
+| Option | Rule |
+|---|---|
+| `-o REPORT.html` | Required. The command replaces the file. |
+| `--run RUN` | Required, at least once. A run of `fh run` that has at least 1 result frame. The first run is the one that the viewer shows at the start. |
+
+| Condition | Diagnostic or output | Exit |
+|---|---|---:|
+| The report is written | stdout: `fh report: wrote REPORT.html (S MiB) with RUN, RUN` | 0 |
+| A run has no results, or is not in the state folder | `fh report: RUN has no results in STATE. Name a run of fh run`. No file is written. | 1 |
+| The viewer is not built | `fh report: the wasm viewer is not built. Run scripts/build-viewer.sh, or set FH_VIEWER to its folder` | 1 |
+| A file cannot be read or written, or `TEXT.html` is not UTF-8 | `fh report: PATH: ERROR` | 1 |
+| No text, no `-o`, no `--run`, or an unknown option | `fh report: usage: fh report TEXT.html -o REPORT.html --run RUN [--run RUN]...` | 2 |
 
 ## `fh serve`
 

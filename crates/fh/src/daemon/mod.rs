@@ -17,6 +17,7 @@ mod chat;
 mod http;
 mod json;
 mod message;
+mod report;
 mod serve;
 mod store;
 
@@ -25,6 +26,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+pub use report::report;
 pub use serve::{default_state_dir, serve};
 pub use store::{new_preview, new_run, Run};
 

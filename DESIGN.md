@@ -64,6 +64,7 @@ Reason: a web page on another origin must not use the daemon, and a key in the b
 
 - **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the Inter font.
 - **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls.
+- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer and the results of the runs that the agent names. The file opens with a double-click and needs no daemon and no network. The agent writes no PDF, image or viewer code.
 
 Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport needs the GPU, and egui hosts it well.
 

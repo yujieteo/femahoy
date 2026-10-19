@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-NONCE' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>femahoy report</title>
+<style>
+/* The colours of the page of fh serve (page.html). */
+:root {
+  --bg: #212121; --side: #181818; --raised: #303030; --line: #2c2c2c; --code: #141414;
+  --text: #ececec; --muted: #a0a0a0; --link: #8ab4f8;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff; --side: #f9f9f9; --raised: #f0f0f0; --line: #e6e6e6; --code: #f4f4f4;
+    --text: #0d0d0d; --muted: #6b6b6b; --link: #1a56c4;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  display: flex; overflow: hidden; background: var(--bg); color: var(--text);
+  font: 15px/1.55 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+}
+code, pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+article { flex: none; width: clamp(360px, 42vw, 720px); overflow-y: auto; padding: 8px 28px 48px; background: var(--side); border-right: 1px solid var(--line); }
+article h1 { font-size: 24px; }
+article h2 { margin-top: 1.8em; padding-top: 0.6em; border-top: 1px solid var(--line); font-size: 18px; }
+article h3 { font-size: 15px; }
+article table { border-collapse: collapse; font-size: 13.5px; }
+article th, article td { padding: 4px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
+article th { background: var(--raised); }
+article pre { padding: 10px 12px; overflow-x: auto; border-radius: 8px; background: var(--code); }
+article :not(pre) > code { padding: 1px 5px; border-radius: 4px; background: var(--code); }
+a { color: var(--link); }
+[data-run] { cursor: pointer; text-decoration: underline; color: var(--link); }
+#model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+header { flex: none; padding: 10px 16px; }
+#runs { max-width: 100%; padding: 6px 10px; border: 0; border-radius: 8px; background: var(--raised); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+#view { position: relative; flex: 1; min-height: 0; }
+#fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
+#msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 16px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<article><!--TEXT--></article>
+<main id="model">
+  <header><select id="runs" aria-label="The run in the model view"><!--OPTIONS--></select></header>
+  <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
+</main>
+<script type="module" nonce="NONCE">
+// The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
+// fetches its files from a daemon, so the files of this report answer its fetches: each
+// `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
+const $ = (id) => document.getElementById(id);
+const runs = $("runs");
+const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
+
+window.fetch = async (request) => {
+  const e = files.get(new URL(request.url ?? request, location.href).pathname);
+  if (!e) return new Response("no such file", { status: 404 });
+  const text = atob(e.textContent);
+  const bytes = new Uint8Array(text.length);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = text.charCodeAt(i);
+  return new Response(bytes);
+};
+
+async function start() {
+  try {
+    const js = await (await fetch("/viewer/fh_viewer.js")).text();
+    const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
+    await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
+    document.fonts.add(new FontFace("Inter", viewer.font(), { weight: "100 900" }));
+    const view = await viewer.start($("fh"), "");
+    $("msg").remove();
+    const open = (run) => {
+      runs.value = run;
+      view.open(run);
+    };
+    runs.addEventListener("change", () => open(runs.value));
+    // An element of the text with `data-run="RUN"` opens that run.
+    document.addEventListener("click", (e) => {
+      const run = e.target.closest("[data-run]")?.dataset.run;
+      if (run && [...runs.options].some((o) => o.value === run)) open(run);
+    });
+    open(runs.value);
+  } catch (e) {
+    $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);
+  }
+}
+start();
+</script>
+<!--DATA-->
+</body>
+</html>

@@ -77,7 +77,7 @@ fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode {
 
 /// The folder of the wasm viewer files: `$FH_VIEWER`, else `viewer` beside the `fh`
 /// program. `None` when the folder has no `fh_viewer_bg.wasm`.
-fn viewer_dir() -> Option<PathBuf> {
+pub(super) fn viewer_dir() -> Option<PathBuf> {
     let dir = std::env::var_os("FH_VIEWER")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
