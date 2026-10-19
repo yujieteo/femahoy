@@ -3,7 +3,6 @@ name = "fh-inp"
 description = "Small CalculiX `.inp` reader for the preview, and the files of an input"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 publish.workspace = true
 
 [dependencies]
