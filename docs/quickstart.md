@@ -96,7 +96,7 @@ Ctrl+C during a run cancels the run. A second Ctrl+C ends `fh run` at once.
 
 For example, `fh run validation/cases/bar-pressure` in the repository solves the case of the example.
 `fh run` does not change the case folder. Its mesh and input go to the work folder.
-`--size H` and `--order 1|2` go to `fh mesh`. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
+`--size H` goes to `fh mesh`. `--no-open` (or `FH_NO_OPEN=1`) keeps the browser closed.
 [`fh` commands](reference/fh.md#fh-run) gives the exit codes and the messages.
 
 The sections below do the same steps one at a time.
@@ -164,7 +164,7 @@ This `fh mesh` command takes `--units` and does not read the case TOML. Section 
 If gmsh is outside `PATH`, add `--gmsh /path/to/gmsh`.
 
 ```sh
-fh mesh "$WORK/bar.step" -o "$WORK/bar.msh" --units SI-mm --order 2 --size 5
+fh mesh "$WORK/bar.step" -o "$WORK/bar.msh" --units SI-mm --size 5
 fh info "$WORK/bar.msh" --case validation/cases/bar-tension
 ```
 

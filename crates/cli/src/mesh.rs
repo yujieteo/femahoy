@@ -9,9 +9,9 @@ use fh_validation::{Case, MaterialSpec, RegionSpec, Select, Units};
 
 use crate::rules;
 
-const USAGE: &str = "usage: fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2] [--size H] \
+const USAGE: &str = "usage: fh mesh FILE.(geo|step) [-o OUT.msh] [--size H] \
 [--scale S] [--set NAME=VALUE]... (--case DIR | --units SI-mm|SI-m) [--timeout SECONDS] [--gmsh PATH]\n\
-The units are required (D-18). The mesh is C3D10 (D-19).\n\
+The units are required (D-18). The mesh is order 2, C3D10 (D-19).\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
 
@@ -22,7 +22,6 @@ const OLDEST: (u32, u32) = (4, 8);
 struct Options {
     input: PathBuf,
     output: PathBuf,
-    order: u8,
     size: Option<f64>,
     scale: Option<f64>,
     numbers: Vec<(String, f64)>,
@@ -50,7 +49,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     let mut o = Options {
         input: PathBuf::new(),
         output: PathBuf::new(),
-        order: 2,
         size: None,
         scale: None,
         numbers: Vec::new(),
@@ -64,13 +62,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "-o" => output = Some(it.next().ok_or("-o needs a file")?.into()),
-            "--order" => {
-                o.order = match it.next().map(String::as_str) {
-                    Some("1") => 1,
-                    Some("2") => 2,
-                    _ => return Err("--order needs 1 or 2".into()),
-                }
-            }
             "--size" => o.size = Some(number("--size", it.next())?),
             "--scale" => o.scale = Some(number("--scale", it.next())?),
             "--set" => {
@@ -445,10 +436,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
         }
         _ => {}
     }
-    let mut args: Vec<String> = ["-3", "-nopopup", "-format", "msh41", "-v", "2"]
-        .map(String::from)
-        .into();
-    args.extend(["-order".into(), o.order.to_string()]);
+    // Order 2 gives C3D10, the only element (D-19).
+    let mut args: Vec<String> = [
+        "-3", "-nopopup", "-format", "msh41", "-v", "2", "-order", "2",
+    ]
+    .map(String::from)
+    .into();
     for (flag, value) in [("-clmax", o.size), ("-clscale", o.scale)] {
         if let Some(v) = value {
             args.extend([flag.into(), v.to_string()]);
@@ -503,10 +496,9 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     )
     .map_err(|e| format!("cannot write the unit record: {e}"))?;
     let mut report = format!(
-        "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t{}\nnodes\t{}\nelements\t{}\n",
+        "ok\t{}\ngmsh\t{version}\nunits\t{}\norder\t2\nnodes\t{}\nelements\t{}\n",
         output.display(),
         units.name(),
-        o.order,
         model.nodes.len(),
         model.elements.len()
     );

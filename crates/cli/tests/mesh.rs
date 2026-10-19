@@ -164,7 +164,7 @@ fn the_case_units_are_used_and_checked_against_the_step_file() {
 
 #[test]
 fn bad_options_exit_2() {
-    for args in [&[][..], &["a.geo", "--order", "3"], &["a.geo", "--bogus"]] {
+    for args in [&[][..], &["a.geo", "--order", "2"], &["a.geo", "--bogus"]] {
         let out = mesh(args, None);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
     }

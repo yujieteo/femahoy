@@ -31,8 +31,8 @@ use std::time::{Duration, Instant};
 
 use fh_daemon::{Client, Event, RunRecord, RunState};
 
-const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] \
-[--preview] [--state DIR] [--no-open]\n       fh run --example NAME [--size H] [--order 1|2] \
+const USAGE: &str = "usage: fh run MODEL.inp|CASE_DIR|PART.step [--size H] \
+[--preview] [--state DIR] [--no-open]\n       fh run --example NAME [--size H] \
 [--preview] [--state DIR] [--no-open]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
@@ -86,7 +86,6 @@ struct Options {
     target: Option<PathBuf>,
     example: Option<String>,
     size: Option<String>,
-    order: Option<String>,
     state: Option<PathBuf>,
     no_open: bool,
     preview: bool,
@@ -117,13 +116,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                     return Err(format!("--size needs a number above 0\n{USAGE}"));
                 }
                 o.size = Some(size);
-            }
-            "--order" => {
-                let order = value("1 or 2")?;
-                if order != "1" && order != "2" {
-                    return Err(format!("--order needs 1 or 2\n{USAGE}"));
-                }
-                o.order = Some(order);
             }
             "--state" => o.state = Some(value("a folder")?.into()),
             "--no-open" => o.no_open = true,
@@ -343,7 +335,6 @@ fn prepare(
     work: &Path,
     dir: &Path,
     step: &Path,
-    o: &Options,
     size: Option<&str>,
 ) -> Result<Result<PathBuf, ExitCode>, String> {
     let stem = step
@@ -360,9 +351,6 @@ fn prepare(
     ];
     if let Some(size) = size {
         mesh.extend(["--size".into(), size.into()]);
-    }
-    if let Some(order) = &o.order {
-        mesh.extend(["--order".into(), order.clone()]);
     }
     println!("fh run: mesh: fh mesh {}", mesh.join(" "));
     let code = crate::mesh::run(&mesh).map_err(|e| format!("mesh: {e}"))?;
@@ -528,9 +516,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Some(target) => Some(resolve(target)?),
         None => None,
     };
-    if matches!(input, Some(Input::Inp(_))) && (o.size.is_some() || o.order.is_some()) {
+    if matches!(input, Some(Input::Inp(_))) && o.size.is_some() {
         return Err(format!(
-            "--size and --order go to fh mesh, for a case folder or a STEP file. An .inp file \
+            "--size goes to fh mesh, for a case folder or a STEP file. An .inp file \
              has its mesh (run.option.mesh)\n{USAGE}"
         ));
     }
@@ -587,7 +575,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             let lock = File::create(work.join(".lock")).and_then(|f| f.lock().map(|()| f));
             let _lock = lock.map_err(|e| format!("cannot lock {}: {e}", work.display()))?;
             let size = o.size.as_deref().or(example.map(|e| e.size));
-            match prepare(&work, dir, step, &o, size)? {
+            match prepare(&work, dir, step, size)? {
                 Ok(inp) => (inp, Some(name.into_owned())),
                 Err(code) => return Ok(code),
             }
@@ -693,7 +681,7 @@ mod tests {
     fn options_are_checked() {
         let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert!(parse(&args(&["m.inp", "--size", "0"])).is_err());
-        assert!(parse(&args(&["m.inp", "--order", "3"])).is_err());
+        assert!(parse(&args(&["m.inp", "--order", "2"])).is_err());
         assert!(parse(&args(&["m.inp", "--example", "bar-pressure"])).is_err());
         assert!(parse(&args(&[])).is_err());
         let o = parse(&args(&["--example", "bar-pressure", "--no-open"])).unwrap();

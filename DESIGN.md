@@ -95,7 +95,6 @@ The daemon has no pane backend. The chat replaced the terminal sidebar, so the s
 
 - `.inp` is the native input format.
 - The internal model is Abaqus-shaped and flat: nodes, elements, sets, surfaces, materials, sections, steps, loads, boundary conditions, interactions, and constraints mirror the keyword structure.
-- `fh check <file.inp>` parses and checks a model, then prints a TOON summary.
 
 ### 6.2 Meshes
 
@@ -240,7 +239,7 @@ Cargo workspace. Keep the code small. Delete code that is not needed, and prefer
 | `io` | gmsh `.msh` import, VTU and PVD write and read | open API |
 | `toon` | agent-facing summaries and queries | open API |
 | `solver-api` | subprocess protocol v2 and its runner | open API |
-| `validation` | harness, tolerance classes, manufactured solutions | validated core |
+| `validation` | harness and the pass rule | validated core |
 | `daemon` | HTTP server, token auth, process supervision, chat agent, the page (HTML chat) | app |
 | `cli` | `fh` commands | app |
 | `viewer` | eframe app, wgpu mesh and contour renderer | app |
@@ -296,7 +295,7 @@ Later, with no milestone yet: a mesher of our own (D-15) and an own solver (D-29
 | Term | Meaning |
 |---|---|
 | Leader | The agent of the chat. Plans and does the work. Writes no solver code. |
-| Fixture | One validation case: inputs, reference values, tolerance class, justification. |
+| Fixture | One validation case: mesh, reference values, tolerances, justification. |
 | Unvalidated | A result from a solver that has not passed the validation suite. |
 
 ---

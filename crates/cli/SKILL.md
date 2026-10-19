@@ -6,7 +6,7 @@ The `fh` binary runs external gmsh, checks units and meshes, runs validation cas
 
 ## Inputs and outputs
 
-- `fh mesh FILE.(geo|step) [-o OUT.msh] [--order 1|2]` writes MSH 4.1 ASCII.
+- `fh mesh FILE.(geo|step) [-o OUT.msh]` writes MSH 4.1 ASCII, always order 2 (`C3D10`).
 - Mesh options include `--size H`, `--scale S`, repeated `--set NAME=VALUE`, `--units SI-mm|SI-m`, `--timeout SECONDS`, and `--gmsh PATH`.
 - Mesh defaults are order 2, SI-mm, no time limit and the input path with a `.msh` extension.
 - `fh model FILE.msh --case DIR [-o OUT.inp] [--mesh-units SI-mm|SI-m]` writes a solver input from the mesh and the `[model]` table of `case.toml`. It refuses a missing or different unit record (`unit.mesh.*`), an empty set, a volume with no physical group (`mesh.volume.unnamed`) and a region that the mesh does not hold (`mesh.region.missing`, `mesh.region.inner`). `fh mesh` writes the unit record `OUT.msh.units`.
@@ -45,7 +45,7 @@ Run `cargo check -p fh-cli` and `cargo test -p fh-cli`. `fh --help` lists availa
 ## Examples
 
 ```sh
-fh mesh part.step --units SI-mm --order 2 -o part.msh
+fh mesh part.step --units SI-mm -o part.msh
 fh model part.msh --case validation/cases/bar-tension -o part.inp
 fh info part.step --case validation/cases/cantilever-c3d10
 fh info part.msh --case validation/cases/cantilever-c3d10

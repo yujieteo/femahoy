@@ -19,19 +19,18 @@ The command sources define more `mesh` options than the top-level help text show
 ## `fh mesh`
 
 ```text
-fh mesh FILE.(geo|step) (--case DIR | --units SI-mm|SI-m) [-o OUT.msh] [--order 1|2]
+fh mesh FILE.(geo|step) (--case DIR | --units SI-mm|SI-m) [-o OUT.msh]
   [--size H] [--scale S] [--set NAME=VALUE]... [--timeout SECONDS] [--gmsh PATH]
 ```
 
 Source: [mesh.rs](../../crates/cli/src/mesh.rs).
 
 The command accepts `.geo`, `.step`, and `.stp`, without regard to extension case.
-It runs external gmsh for a 3D mesh in `msh41` format, then reads the result.
+It runs external gmsh for a 3D mesh of order 2 (`C3D10`) in `msh41` format, then reads the result.
 
 | Option | Default or rule |
 |---|---|
 | `-o` | Input path with the extension changed to `.msh`. |
-| `--order` | `2`. Only `1` and `2` are accepted. |
 | `--size` | No value by default. Positive finite number, sent as gmsh `-clmax`. |
 | `--scale` | No value by default. Positive finite number, sent as gmsh `-clscale`. |
 | `--set` | Repeatable. Name uses ASCII letters, digits, `_`, or `.`. Value is finite. Sent as `-setnumber`. |
@@ -54,7 +53,7 @@ The command removes an existing output file before the mesh run.
 |---|---|---:|
 | Mesh success | stdout: tab-separated `ok`, `gmsh`, `units`, `order`, `nodes`, `elements`, `type`, `nset`, `elset`, and `surface` (element-face count) rows. | 0 |
 | gmsh warning or different release | stdout: `warning<TAB>MESSAGE`. gmsh lines that start with `Warning` are retained. | 0 |
-| Missing option value, invalid number, order, units, or set name | stderr: `fh mesh: MESSAGE` | 2 |
+| Missing option value, invalid number, units, or set name | stderr: `fh mesh: MESSAGE` | 2 |
 | Unknown option, no input, or more than 1 input | Same prefix. Includes mesh usage. | 2 |
 | Cannot create the temporary run directory | `fh mesh: cannot make PATH: ERROR` | 2 |
 | Input read, extension, path, or temporary-file error | `fh mesh: MESSAGE` | 1 |
@@ -172,8 +171,8 @@ See the [case TOML reference](case-toml.md) for fixture fields and pass rules.
 ## `fh run`
 
 ```text
-fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--order 1|2] [--preview] [--state DIR] [--no-open]
-fh run --example NAME [--size H] [--order 1|2] [--preview] [--state DIR] [--no-open]
+fh run MODEL.inp|CASE_DIR|PART.step [--size H] [--preview] [--state DIR] [--no-open]
+fh run --example NAME [--size H] [--preview] [--state DIR] [--no-open]
 ```
 
 Source: [run.rs](../../crates/cli/src/run.rs).
@@ -189,7 +188,6 @@ The command solves a model on the daemon of the [run contract](../run-contract.m
 | Option | Default or rule |
 |---|---|
 | `--size H` | Sent to `fh mesh`. A number above 0. The `fh mesh` default for a case folder, 8 for `bar-pressure`. |
-| `--order 1\|2` | Sent to `fh mesh`. The `fh mesh` default (2). |
 | `--preview` | Show the model with its supports and loads in the page, then stop. No solve occurs. |
 | `--state DIR` | The state folder of the daemon, the same default as `fh serve`. |
 | `--no-open` | Do not open the browser. A value of `FH_NO_OPEN` that is not empty and not `0` does the same. |
@@ -227,8 +225,8 @@ Before a daemon starts, `fh run` checks the arguments and the input. Thus a usag
 | `fh mesh` or `fh model` refused the case | The refusal of that command, for example `fh mesh: unit.step.mismatch: ...`. | 1 |
 | `--preview`, and the daemon refused the preview | `fh run: the daemon refused the preview: MESSAGE (CODE)` | 1 |
 | The daemon refused the run | `fh run: the daemon refused the run: MESSAGE (CODE)`, for example `queue.full` | 1 |
-| No input, unknown option, bad value (for example `--order needs 1 or 2`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
-| `--size` or `--order` with an `.inp` file | `fh run: --size and --order go to fh mesh, ... (run.option.mesh)` | 2 |
+| No input, unknown option, bad value (for example `--size needs a number above 0`), or a model and `--example` together | `fh run: MESSAGE` and the usage | 2 |
+| `--size` with an `.inp` file | `fh run: --size goes to fh mesh, ... (run.option.mesh)` | 2 |
 | The input does not exist | `fh run: PATH: ERROR (run.input.missing)` | 2 |
 | The input is not an `.inp` file, a folder, `case.toml` or a STEP file | `fh run: PATH: ... (run.input.kind)` | 2 |
 | A folder with no `case.toml` | `fh run: DIR: no case.toml, so this is not a case folder (run.case.missing)` | 2 |

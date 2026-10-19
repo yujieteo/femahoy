@@ -12,7 +12,7 @@ use std::process::ExitCode;
 
 fn usage() -> &'static str {
     "usage: fh [-h | --help] <command>\n\ncommands:\n  \
-         mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh] [--order 1|2])\n  \
+         mesh      run gmsh on a .geo or .step file (fh mesh FILE [-o OUT.msh])\n  \
          model     write a solver input from a .msh file and the case (fh model FILE.msh --case DIR [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR])\n  \
          info      check units and mesh quality (fh info FILE.step|FILE.msh [--case DIR])\n  \
