@@ -478,7 +478,7 @@ Each entry has an ID, the choice, the reason, the rejected options, and what wou
 ### D-27 The basic LLM workflow first
 - **Decided by:** the captain, 2026-10-18. The captain said: "biggest problem is getting the basic workflow to work?", "make requirements less dumb", "Delete herdr, I just want to talk" and "1 focused agent focusing on the right thing with the option to add more agents is OK".
 - **Choice:**
-  1. M4 starts now. The two tracks and the workflow lock are removed (this replaces D-16). `scripts/check-workflow.sh` stays the proof of the CLI workflow.
+  1. M4 starts now. The two tracks and the workflow lock are removed (this replaces D-16). `fh validate` is the proof of the CLI workflow (the script `scripts/check-workflow.sh` was deleted).
   2. The M4 exit test is the basic LLM workflow: one chat request gives a solved cantilever, and the page of `fh serve` shows each step. M4 needs one connection path, the user's CLI login.
   3. New item C3: thermal strain, several materials and warpage through CalculiX, now.
   4. New item B1 replaces E2: benchmark records measure the workflow, from the request to the results. D-30 removed B1.
