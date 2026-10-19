@@ -5,7 +5,7 @@ use crate::gpu::{face_vertices, Geometry};
 use crate::results::{self, Results, ScalarField, Step};
 
 /// The field that the contour shows first, when the run has it.
-const DEFAULT_FIELDS: [&str; 2] = ["MISES", "U magnitude"];
+const DEFAULT_FIELDS: [&str; 3] = ["MISES", "U magnitude", "NT"];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewState {
@@ -36,7 +36,7 @@ pub enum Contour<'a> {
 
 impl ViewState {
     /// The last step, deformed with the automatic scale, with the von Mises stress (or the
-    /// displacement magnitude) as contour.
+    /// displacement magnitude, or the temperature) as contour.
     pub fn new(results: &Results) -> Self {
         let names = field_names(results);
         let field = DEFAULT_FIELDS
@@ -167,6 +167,21 @@ mod tests {
         assert!(v.deformed && v.ghost);
         assert_eq!(v.scale, results::auto_scale(&r));
         assert_eq!(v.field.as_deref(), Some("MISES"));
+    }
+
+    #[test]
+    fn a_heat_result_shows_the_temperature() {
+        let mut r = fixture();
+        for step in &mut r.steps {
+            let n = step.displacement.len();
+            step.fields = vec![results::ScalarField {
+                name: "NT".into(),
+                quantity: results::Quantity::Other,
+                location: results::Location::Point,
+                values: vec![20.0; n],
+            }];
+        }
+        assert_eq!(ViewState::new(&r).field.as_deref(), Some("NT"));
     }
 
     #[test]

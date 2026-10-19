@@ -60,21 +60,20 @@ fn validate_runs_every_case_through_ccx() {
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in [
         "bar-pressure",
-        "bar-pressure-m",
-        "bar-tension",
-        "cantilever-c3d10",
-        "kirsch-plate-c3d10",
-        "lame-cylinder-c3d10",
-        "plate-on-edge",
-        "warpage-strip",
+        "buckling-column",
+        "contact-hertz",
+        "dynamics-bar-step",
+        "frequency-cantilever",
+        "heat-fin",
+        "plasticity-sphere",
         "warpage-thick-copper",
     ] {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("9 cases: 9 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("8 cases: 8 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
-    assert!(stdout.contains("tip_deflection_z"), "{stdout}");
+    assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
     warpage_matches_the_theory(&stdout);
 }
@@ -87,19 +86,9 @@ fn row_value(table: &str, id: &str, name: &str, key: &str) -> f64 {
     field.parse().unwrap()
 }
 
-/// The warpage references come from their formulas (see the derivations), and the copper
-/// slice agrees within 1% with the plate theory for the same inputs.
+/// The warpage reference is the measurement (see the derivation), and the copper slice agrees
+/// within 1% with the plate theory for the same inputs.
 fn warpage_matches_the_theory(table: &str) {
-    // warpage-strip: Lubarda and Lubarda, equations 2.5 to 2.7.
-    let (c1, c2) = (200000.0 * 4.0, 70000.0 * 4.0);
-    let stiffness = (c1 + c2) / 12.0;
-    let curvature = 2.0 * c1 * c2 * 2.0 * (2.3e-5 - 1.2e-5) * 100.0
-        / (4.0 * (c1 + c2) * stiffness + c1 * c2 * 4.0);
-    let strip = row_value(table, "warpage-strip", "warpage", "reference=");
-    assert!(
-        (strip + curvature * 40.0 * 40.0 / 2.0).abs() < 1e-10,
-        "{strip}"
-    );
     // warpage-thick-copper: 0.700 um/K measured over 40 K (Calabretta et al. 2021, Table 2).
     let copper = row_value(table, "warpage-thick-copper", "warpage", "reference=");
     assert!((copper + 0.700e-3 * 40.0).abs() < 1e-12, "{copper}");
@@ -147,16 +136,16 @@ fn copy_case(tag: &str, id: &str) -> std::path::PathBuf {
 #[test]
 fn validate_exits_1_when_a_reference_is_wrong() {
     let Some(solver) = ccx_solver() else { return };
-    let dir = copy_case("badref", "bar-tension");
-    let path = dir.join("validation/cases/bar-tension/check.toml");
+    let dir = copy_case("badref", "bar-pressure");
+    let path = dir.join("validation/cases/bar-pressure/check.toml");
     let text_in = std::fs::read_to_string(&path).unwrap();
-    let broken = text_in.replacen("value = 210.0", "value = 300.0", 1);
+    let broken = text_in.replacen("value = 100.0", "value = 300.0", 1);
     assert_ne!(broken, text_in);
     std::fs::write(&path, broken).unwrap();
     let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&solver));
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(1), "{stdout}");
-    assert!(stdout.contains("bar-tension\tfail"), "{stdout}");
+    assert!(stdout.contains("bar-pressure\tfail"), "{stdout}");
     assert!(stdout.contains("1 cases: 0 pass, 1 fail"), "{stdout}");
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -208,11 +197,11 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 #[test]
 fn validate_names_a_set_that_the_input_does_not_print() {
     let Some(solver) = ccx_solver() else { return };
-    let dir = copy_case("noset", "cantilever-c3d10");
-    let path = dir.join("validation/cases/cantilever-c3d10/check.toml");
+    let dir = copy_case("noset", "bar-pressure");
+    let path = dir.join("validation/cases/bar-pressure/check.toml");
     let toml = std::fs::read_to_string(&path).unwrap();
-    assert!(toml.contains("set = \"tip\""));
-    std::fs::write(&path, toml.replace("set = \"tip\"", "set = \"nope\"")).unwrap();
+    assert!(toml.contains("set = \"LOAD\""));
+    std::fs::write(&path, toml.replace("set = \"LOAD\"", "set = \"nope\"")).unwrap();
     let out = fh_with_solver(&["validate", "--root", p(&dir)], p(&solver));
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(1), "{stdout}");
@@ -223,8 +212,9 @@ fn validate_names_a_set_that_the_input_does_not_print() {
 
 #[test]
 fn validate_names_an_include_file_that_is_missing() {
-    let dir = copy_case("noinclude", "plate-on-edge");
-    std::fs::remove_file(dir.join("validation/cases/plate-on-edge/part.inp")).unwrap();
+    let dir = copy_case("noinclude", "bar-pressure");
+    let job = dir.join("validation/cases/bar-pressure/job.inp");
+    std::fs::write(job, "** units: SI-mm\n*INCLUDE, INPUT=part.inp\n").unwrap();
     let out = fh(&["validate", "--root", p(&dir)]);
     assert_eq!(out.status.code(), Some(1));
     assert!(text(out.stderr).contains("part.inp"));

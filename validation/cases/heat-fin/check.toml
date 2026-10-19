@@ -1,0 +1,13 @@
+# Incropera et al. (2007), Table 3.4, case A (convection at the tip):
+# T = 20 + 80 / (cosh mL + (h / mk) sinh mL), mL = 1, h / mk = 0.025.
+# The fin theory has 1 temperature in each section. On the tip face of this solid the
+# temperature changes by 0.064 C. Thus the check is the mean of the face. See derivation.md.
+rel_tol = 0.0
+abs_tol = 0.1
+
+[t_tip]
+value = 70.8757
+set = "TIP"
+field = "NT"
+component = 1
+op = "mean"

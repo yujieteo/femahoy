@@ -564,12 +564,14 @@ fn write_inp(
         "** Made by fh mesh from {label}. Include it in the job file.\n** units: {}\n*NODE, NSET=NALL\n",
         units.name()
     );
+    // CalculiX reads 20 characters of each number: 13 digits fit with any exponent.
+    let fit = |x: f64| match format!("{x:?}") {
+        s if s.len() <= 20 => s,
+        _ => format!("{x:.12e}"),
+    };
     for n in &model.nodes {
-        let _ = writeln!(
-            out,
-            "{}, {:?}, {:?}, {:?}",
-            n.id, n.xyz[0], n.xyz[1], n.xyz[2]
-        );
+        let [x, y, z] = n.xyz.map(fit);
+        let _ = writeln!(out, "{}, {x}, {y}, {z}", n.id);
     }
     let _ = writeln!(out, "*ELEMENT, TYPE=C3D10, ELSET=ALL");
     for e in &model.elements {
@@ -986,6 +988,25 @@ mod tests {
         assert!(text.lines().all(|l| l.split(',').count() <= 16), "{text}");
         let hidden = write_inp(model, "block.step", Units::SiMm, &[], true);
         assert!(hidden.contains("*ELSET, ELSET=BLOCK"));
+    }
+
+    #[test]
+    fn a_coordinate_has_at_most_20_characters() {
+        // CalculiX reads 20 characters of each number. gmsh gives round-off values near 0.
+        let mut model = block().model;
+        let xyz = [
+            -4.874999160318342e-15,
+            1.2345678901234567e-4,
+            19.90369453344394,
+        ];
+        model.nodes[0].xyz = xyz;
+        let text = write_inp(&model, "block.step", Units::SiMm, &[], false);
+        let line = text.lines().nth(3).unwrap();
+        assert!(line.split(", ").all(|w| w.len() <= 20), "{line}");
+        let back = fh_inp::parse(&text).nodes[0].xyz;
+        for (b, x) in back.iter().zip(xyz) {
+            assert!((b - x).abs() <= 1e-12 * x.abs(), "{b} {x}");
+        }
     }
 
     #[test]

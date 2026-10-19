@@ -319,7 +319,7 @@ fn an_include_file_is_solved_with_the_input_and_a_later_edit_does_not_change_the
 fn a_run_that_fails_in_the_solve_exits_1() {
     let mut lab = Lab::new("run-failed");
     lab.failing_solver(" *ERROR in e_c3d: nonpositive jacobian");
-    let model = root().join("validation/cases/cantilever-c3d10/job.inp");
+    let model = root().join("validation/cases/bar-pressure/job.inp");
     let out = lab.fh(&["run", p(&model)]);
     fails(&out, 1, "run-000001 failed: ");
     fails(&out, 1, "*ERROR in e_c3d: nonpositive jacobian");

@@ -1,8 +1,8 @@
 //! The `.frd` result file of `ccx` as VTU grids: every nodal field in the file, for each step.
 //!
 //! The reader keeps the last increment of each step (and of each mode of a frequency step).
-//! It renames the blocks `DISP`, `FORC`, `STRESS`, `TOSTRAIN` and `PE` to the keywords that
-//! a person writes (`U`, `RF`, `S`, `E`, `PEEQ`) and adds `MISES` after each `S`. `ccx` writes
+//! It renames the blocks `DISP`, `FORC`, `STRESS`, `TOSTRAIN`, `PE` and `NDTEMP` to the keywords
+//! that a person writes (`U`, `RF`, `S`, `E`, `PEEQ`, `NT`) and adds `MISES` after each `S`. `ccx` writes
 //! the element codes 1 to 12. The reader skips any other code. A file with no cell gives no frame.
 
 use std::collections::HashMap;
@@ -50,6 +50,7 @@ fn field_name(block: &str) -> &str {
         "STRESS" => "S",
         "TOSTRAIN" => "E",
         "PE" => "PEEQ",
+        "NDTEMP" => "NT",
         other => other,
     }
 }
@@ -360,6 +361,24 @@ mod tests {
         text += " -1         1 1.00000E+00 0.00000E+00 0.00000E+00\n -3\n 9999\n";
         let frd = read(&text).unwrap();
         assert!(frd.cells.is_empty() && frd.frames.is_empty());
+    }
+
+    #[test]
+    fn a_temperature_block_reads_as_nt() {
+        let mut text = String::from(
+            "    2C                             1                                     1\n",
+        );
+        text += &node(1, 1.0);
+        text += " -3\n    3C                             1                                     1\n -1         1    3    0    1\n";
+        text += &format!(
+            " -2{}\n -3\n",
+            [1, 1, 1, 1].map(|i| format!("{i:10}")).concat()
+        );
+        text += "    1PSTEP                         1           1           1\n  100CL  101 1.00000E+00\n -4  NDTEMP      1    1\n";
+        text += " -1         1 7.09000E+01\n -3\n 9999\n";
+        let frd = read(&text).unwrap();
+        let grid = frd.grid(&frd.frames[0]);
+        assert_eq!(grid.point_field("NT").unwrap().as_f64().unwrap(), [70.9]);
     }
 
     #[test]

@@ -8,23 +8,23 @@ fn cases() -> std::path::PathBuf {
 }
 
 #[test]
-fn cantilever_is_read() {
+fn bar_is_read() {
     let m = parse(
-        &fh_inp::flatten(&cases().join("cantilever-c3d10/job.inp"))
+        &fh_inp::flatten(&cases().join("bar-pressure/job.inp"))
             .unwrap()
             .text,
     );
-    assert_eq!(m.nodes.len(), 429);
-    assert_eq!(m.elements.len(), 192);
-    assert_eq!(m.elset("BEAM").unwrap().ids.len(), 192);
+    assert_eq!(m.nodes.len(), 831);
+    assert_eq!(m.elements.len(), 366);
+    assert_eq!(m.elset("ALL").unwrap().ids.len(), 366);
     let step = &m.steps[0];
-    assert_eq!(step.name.as_deref(), Some("TIP-LOAD"));
-    assert_eq!(step.boundaries[0].target, Target::Set("FIXED".into()));
+    assert_eq!(step.name.as_deref(), Some("LOAD"));
+    assert_eq!(step.boundaries[0].target, Target::Set("SUPPORT".into()));
     assert_eq!(
         (step.boundaries[0].first_dof, step.boundaries[0].last_dof),
-        (1, 3)
+        (1, 1)
     );
-    assert_eq!(step.cloads[0].dof, 3);
+    assert_eq!(step.dsloads[0].pressure, -100.0);
 }
 
 #[test]
@@ -41,5 +41,5 @@ fn every_case_input_has_a_mesh_and_units() {
         assert!(!fh_inp::units(&text).is_empty(), "{}", dir.display());
         n += 1;
     }
-    assert_eq!(n, 9);
+    assert_eq!(n, 8);
 }

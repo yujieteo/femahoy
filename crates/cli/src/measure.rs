@@ -50,13 +50,18 @@ fn block_of(field: Field) -> (&'static str, usize, usize) {
         Field::U => ("displacements", 1, 3),
         Field::RF => ("forces", 1, 3),
         Field::S => ("stresses", 2, 6),
+        Field::NT => ("temperatures", 1, 1),
+        Field::Cstr => ("contact stress", 2, 3),
+        // `mode_value` reads these. They have no block of a set.
+        Field::Freq | Field::Buckle => ("", 0, 0),
     }
 }
 
 /// The column of a component in the values of a row.
 fn column_of(q: &Quantity) -> Result<usize, String> {
     let column = match (q.field, q.component) {
-        (Field::U | Field::RF, c @ 1..=3) => c as usize - 1,
+        (Field::U | Field::RF | Field::Cstr, c @ 1..=3) => c as usize - 1,
+        (Field::NT, 1) => 0,
         (Field::S, 11) => 0,
         (Field::S, 22) => 1,
         (Field::S, 33) => 2,
@@ -69,9 +74,14 @@ fn column_of(q: &Quantity) -> Result<usize, String> {
 }
 
 /// The rows of the last block of the field for the set, with the values of one component.
+/// A block with no set (`for all contact elements`) is the block of the empty set name.
 fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
     let (kind, lead, width) = block_of(q.field);
     let column = column_of(q)?;
+    let of = match q.set.as_str() {
+        "" => String::new(),
+        set => format!(" for set `{set}`"),
+    };
     let mut block: Option<Vec<f64>> = None;
     let mut inside = false;
     for line in dat.lines() {
@@ -83,12 +93,12 @@ fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
         let is_row = words.iter().all(|w| w.parse::<f64>().is_ok());
         if !is_row {
             // A header: `<kind> (...) for set NAME and time T`.
-            let wanted = words.first().is_some_and(|w| *w == kind)
-                && words
-                    .iter()
-                    .position(|w| *w == "set")
-                    .and_then(|i| words.get(i + 1))
-                    .is_some_and(|name| name.eq_ignore_ascii_case(&q.set));
+            let set = words
+                .iter()
+                .position(|w| *w == "set")
+                .and_then(|i| words.get(i + 1))
+                .map_or("", |name| name);
+            let wanted = text.starts_with(&format!("{kind} ")) && set.eq_ignore_ascii_case(&q.set);
             inside = wanted;
             if wanted {
                 block = Some(Vec::new());
@@ -100,8 +110,7 @@ fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
         }
         if words.len() != lead + width {
             return Err(format!(
-                "a row of {kind} for set `{}` has {} numbers, expected {}",
-                q.set,
+                "a row of {kind}{of} has {} numbers, expected {}",
                 words.len(),
                 lead + width
             ));
@@ -113,17 +122,59 @@ fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
     }
     match block {
         None => Err(format!(
-            "no {kind} for set `{}` in the .dat file. Add a print request for it to the input",
-            q.set
+            "no {kind}{of} in the .dat file. Add a print request for it to the input"
         )),
-        Some(rows) if rows.is_empty() => Err(format!("{kind} for set `{}` hold no rows", q.set)),
+        Some(rows) if rows.is_empty() => Err(format!("{kind}{of} hold no rows")),
         Some(rows) => Ok(rows),
     }
 }
 
+/// The value in column `column` of the row of `mode` in the last table `title` of the `.dat`
+/// text. A row has `width` numbers, and the first is the mode. The table ends at the first line
+/// after its rows that is not a row.
+fn mode_value(
+    dat: &str,
+    title: &str,
+    width: usize,
+    column: usize,
+    mode: u32,
+) -> Result<f64, String> {
+    let mut table: Option<Vec<Vec<f64>>> = None;
+    let mut inside = false;
+    for line in dat.lines().filter(|l| !l.trim().is_empty()) {
+        let row: Option<Vec<f64>> = line.split_whitespace().map(|w| w.parse().ok()).collect();
+        match (row, table.as_mut()) {
+            _ if line.contains(title) => {
+                table = Some(Vec::new());
+                inside = true;
+            }
+            (Some(row), Some(rows)) if inside && row.len() == width => rows.push(row),
+            (_, Some(rows)) if !rows.is_empty() => inside = false,
+            _ => {}
+        }
+    }
+    let rows = table.ok_or_else(|| format!("no table `{title}` in the .dat file"))?;
+    rows.iter()
+        .find(|r| r[0] == f64::from(mode))
+        .map(|r| r[column])
+        .ok_or_else(|| format!("the table `{title}` has no mode {mode}"))
+}
+
 /// Reduce the values of the set to the one number of the quantity. The `.dat` text holds the
 /// values at the end of each increment that the print request asks for. The last block counts.
+/// A frequency or a buckling factor comes from the last table of its step.
 pub fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
+    match q.field {
+        Field::Freq => {
+            let title = "E I G E N V A L U E   O U T P U T";
+            return mode_value(dat, title, 5, 3, q.component);
+        }
+        Field::Buckle => {
+            let title = "B U C K L I N G   F A C T O R   O U T P U T";
+            return mode_value(dat, title, 2, 1, q.component);
+        }
+        _ => {}
+    }
     let picked = values_of(dat, q)?;
     // f64::max and f64::min drop a NaN, so the check comes before the reduction.
     if let Some(v) = picked.iter().find(|v| !v.is_finite()) {
@@ -178,6 +229,82 @@ mod tests {
          1   1  1.000000E+02  2.000000E+02  3.000000E+02  4.000000E+02  5.000000E+02  6.000000E+02
          1   2  3.000000E+02  2.000000E+02  3.000000E+02  4.000000E+02  5.000000E+02  6.000000E+02
 ";
+
+    /// A frequency step, then a buckling step, as `ccx` 2.23 writes them.
+    const MODES: &str = "
+                        S T E P       1
+
+
+     E I G E N V A L U E   O U T P U T
+
+ MODE NO    EIGENVALUE                       FREQUENCY
+                                     REAL PART            IMAGINARY PART
+                           (RAD/TIME)      (CYCLES/TIME     (RAD/TIME)
+
+      1   0.6927488E+07   0.2632012E+04   0.4188977E+03   0.0000000E+00
+      2   0.2730128E+08   0.5225063E+04   0.8315945E+03   0.0000000E+00
+
+     P A R T I C I P A T I O N   F A C T O R S
+
+MODE NO.   X-COMPONENT     Y-COMPONENT     Z-COMPONENT     X-ROTATION      Y-ROTATION      Z-ROTATION
+
+      1  -0.5374133E-08   0.3279715E-06  -0.9785105E-02  -0.9785316E-01   0.7133069E+00   0.2337304E-04
+
+                        S T E P       2
+
+
+     B U C K L I N G   F A C T O R   O U T P U T
+
+ MODE NO       BUCKLING
+                FACTOR
+
+      1   0.4339808E+03
+      2   0.1685563E+04
+
+ temperatures for set TIP and time  0.1000000E+01
+
+         5  7.090424E+01
+         6  7.090461E+01
+";
+
+    #[test]
+    fn a_mode_reads_its_frequency_or_buckling_factor() {
+        let get = |field, mode| extract(MODES, &q("", field, mode, Op::Value));
+        assert_eq!(get(Field::Freq, 1).unwrap(), 418.8977);
+        assert_eq!(get(Field::Freq, 2).unwrap(), 831.5945);
+        assert_eq!(get(Field::Buckle, 2).unwrap(), 1685.563);
+        let e = get(Field::Freq, 3).unwrap_err();
+        assert!(e.contains("mode 3"), "{e}");
+        let e = extract(DAT, &q("", Field::Buckle, 1, Op::Value)).unwrap_err();
+        assert!(e.contains("B U C K L I N G"), "{e}");
+    }
+
+    #[test]
+    fn a_temperature_is_read_from_its_set() {
+        let t = extract(MODES, &q("tip", Field::NT, 1, Op::Max)).unwrap();
+        assert_eq!(t, 70.90461);
+    }
+
+    #[test]
+    fn a_contact_pressure_is_read_from_all_contact_elements() {
+        let dat = format!(
+            "{DAT}
+ contact force (slave element+face,normal,tang1,tang2) for all contact elements and time  0.1E+01
+
+      4473          1  9.000000E+03  0.000000E+00  0.000000E+00
+
+ contact stress (slave element+face,press,tang1,tang2) for all contact elements and time 0.1E+01
+
+      4473          1  2.928137E+03  1.000000E+00  0.000000E+00
+      6472          2  6.406725E+03  0.000000E+00  0.000000E+00
+"
+        );
+        let p = extract(&dat, &q("", Field::Cstr, 1, Op::Max)).unwrap();
+        assert_eq!(p, 6406.725);
+        assert_eq!(extract(&dat, &q("", Field::Cstr, 2, Op::Sum)).unwrap(), 1.0);
+        let e = extract(DAT, &q("", Field::Cstr, 1, Op::Max)).unwrap_err();
+        assert!(e.contains("no contact stress in the .dat file"), "{e}");
+    }
 
     fn q(set: &str, field: Field, component: u32, op: Op) -> Quantity {
         Quantity {
