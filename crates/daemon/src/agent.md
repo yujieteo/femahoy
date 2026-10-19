@@ -24,6 +24,7 @@ Each selection is a plane (`x:V`, `y:V` or `z:V`), a box (`box:X0,Y0,Z0,X1,Y1,Z1
 
 - `--face NAME=SELECTION` makes the node set `NAME` and the surface `NAME` of the faces of the part in the selection. Use the node set in `*BOUNDARY` and `*CLOAD`. Use the surface in `*DSLOAD`.
 - `--nodes NAME=SELECTION` makes a node set.
+- `--refine NAME=H` makes the elements at the `--face` set `NAME` the size H. They grow to `--size` away from the set. Use it at the small load sets and support sets, for example the pads of a pin, with H of about 1/10 of the width of the set. Do not refine a large set, such as a whole fixed end: it adds many equations and does not change the result.
 - `--volume NAME=box:...` makes an element set of the elements in the box. Use it for a part with several materials. Each element must be in exactly 1 box.
 - `NALL` is the set of all nodes. `ALL` is the set of all elements.
 - A positive pressure in `*DSLOAD` pushes into the body: `NAME, P, 1.0` is 1 MPa on the face.

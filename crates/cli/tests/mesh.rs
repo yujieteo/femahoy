@@ -174,6 +174,12 @@ fn bad_options_exit_2() {
         &["a.geo", "--order", "2"],
         &["a.geo", "--bogus"],
         &["a.geo", "--case", "x"],
+        &["a.geo", "--refine"],
+        &["a.geo", "--refine", "A"],
+        &["a.geo", "--refine", "A=0"],
+        &["a.geo", "--refine", "A=x"],
+        &["a.geo", "--refine", "A=1", "--refine", "a=2"],
+        &["a.geo", "--refine", "A,A=1"],
     ] {
         let out = mesh(args, None);
         assert_eq!(out.status.code(), Some(2), "{args:?}");
@@ -389,4 +395,99 @@ fn a_shell_run_refuses_a_solid_and_a_solid_run_refuses_a_surface() {
         "use --shell",
     );
     assert!(!out.exists());
+}
+
+#[test]
+fn a_refine_that_names_no_face_or_has_no_size_is_refused_before_gmsh_starts() {
+    let step = fixture("block.step");
+    let base = [p(&step), "--face", "END=x:-2"];
+    let run = |extra: &[&str]| mesh(&[&base[..], extra].concat(), no_gmsh());
+    fails(
+        &run(&["--size", "1", "--refine", "FAR=0.1"]),
+        1,
+        "there is no --face FAR",
+    );
+    fails(&run(&["--refine", "END=0.1"]), 1, "needs --size");
+    fails(
+        &run(&["--size", "1", "--refine", "END=1"]),
+        1,
+        "must be below --size 1",
+    );
+    // A good refine reaches the gmsh start.
+    says(
+        &run(&["--size", "1", "--refine", "end=0.1"]),
+        "cannot start gmsh",
+    );
+}
+
+/// The x of each node in an input that `fh mesh` wrote.
+fn node_xs(inp: &str) -> Vec<f64> {
+    inp.lines()
+        .skip_while(|l| !l.starts_with("*NODE"))
+        .skip(1)
+        .take_while(|l| !l.starts_with('*'))
+        .filter_map(|l| l.split(',').nth(1)?.trim().parse().ok())
+        .collect()
+}
+
+/// The size of the node set `name` in the report of `fh mesh`.
+fn set_size(report: &str, name: &str) -> usize {
+    let prefix = format!("nset\t{name}\t");
+    let line = report.lines().find_map(|l| l.strip_prefix(&prefix));
+    line.expect(report).parse().unwrap()
+}
+
+#[test]
+fn real_gmsh_makes_the_mesh_finer_at_a_refined_set_for_a_solid_and_a_shell() {
+    let Some(gmsh) = real_gmsh() else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let dir = scratch("refine");
+    let out = dir.join("a.inp");
+    // The part, whether it is a shell, and the x of the plane of the refined set.
+    for (file, shell, at) in [("block.step", false, -2.0), ("strip-shell.step", true, 0.0)] {
+        let step = fixture(file);
+        let face = format!("END=x:{at}");
+        let mut args = vec![p(&step), "--size", "1", "--face", &face, "-o", p(&out)];
+        if shell {
+            args.push("--shell");
+        }
+        let run = |extra: &[&str]| {
+            let done = mesh(&[&args[..], extra].concat(), Some(&gmsh));
+            assert_eq!(done.status.code(), Some(0), "{file}: {}", stderr(&done));
+            (stdout(&done), std::fs::read_to_string(&out).unwrap())
+        };
+        let (plain_report, plain) = run(&[]);
+        let (fine_report, fine) = run(&["--refine", "END=0.1"]);
+        // Near the set the mesh has at least 3 times more nodes. Far from it, no more nodes.
+        let near = |inp: &str| {
+            node_xs(inp)
+                .iter()
+                .filter(|x| (*x - at).abs() < 0.5)
+                .count()
+        };
+        let far = |inp: &str| {
+            node_xs(inp)
+                .iter()
+                .filter(|x| (*x - at).abs() > 3.0)
+                .count()
+        };
+        assert!(
+            near(&fine) >= 3 * near(&plain),
+            "{file}: {} {}",
+            near(&fine),
+            near(&plain)
+        );
+        assert!(
+            far(&fine) <= far(&plain),
+            "{file}: {} {}",
+            far(&fine),
+            far(&plain)
+        );
+        assert!(
+            set_size(&fine_report, "END") >= 2 * set_size(&plain_report, "END"),
+            "{file}"
+        );
+    }
 }

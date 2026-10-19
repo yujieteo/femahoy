@@ -11,15 +11,25 @@ use crate::rules;
 
 const USAGE: &str = "usage: fh mesh FILE.(geo|step) --units SI-mm|SI-m [-o OUT.inp] [--size H] \
 [--scale S] [--set NAME=VALUE]... [--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
-[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--shell] [--timeout SECONDS] [--gmsh PATH]\n\
+[--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--refine NAME[,NAME]...=H]... [--shell] \
+[--timeout SECONDS] [--gmsh PATH]\n\
 A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z (--nodes only).\n\
 --face makes a node set and a surface of the faces of the part in the selection. --nodes makes a \
 node set. --volume makes an element set (STEP only). Each name is used once.\n\
+--refine makes the elements at the --face sets NAME the size H. They grow to --size away from the sets.\n\
 --shell meshes the surfaces of the file, not a solid: the elements are S6 shells, --face picks \
 edges (the surface is the edge of the shells) and --volume picks surfaces.\n\
 The units are required. The mesh is order 2, C3D10, or S6 with --shell.\n\
 v1 refuses a .geo file with SystemCall, NonBlockingSystemCall, OnelabRun, Include, \
 or Merge of a file that is not .msh.";
+
+/// The size of an element grows by this much for each unit of distance from a `--refine` set.
+/// 0.3 is a ratio of 1.3 between neighbour elements.
+const GROWTH: f64 = 0.3;
+
+/// The most points that a `--refine` field samples on a curve (a surface: this many in each
+/// direction).
+const MAX_SAMPLING: u32 = 1000;
 
 /// The oldest gmsh release that `fh mesh` accepts.
 const OLDEST: (u32, u32) = (4, 8);
@@ -119,6 +129,8 @@ struct Options {
     nodes: Vec<Named>,
     /// Boxes of volume: an element set each.
     volumes: Vec<Named>,
+    /// Element size at a `--face` set, from `--refine`. It grows to `size` away from the set.
+    refine: Vec<(String, f64)>,
     /// Mesh the surfaces as shells. Faces are edges and volumes are surfaces.
     shell: bool,
     /// `None` means no limit: a large model can mesh for hours.
@@ -168,6 +180,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         faces: Vec::new(),
         nodes: Vec::new(),
         volumes: Vec::new(),
+        refine: Vec::new(),
         shell: false,
         timeout: None,
         gmsh: None,
@@ -215,6 +228,14 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
                 }
                 o.volumes.push(volume);
             }
+            "--refine" => {
+                let text = it.next().ok_or("--refine needs NAME=H")?;
+                let (names, size) = text.split_once('=').ok_or("--refine needs NAME=H")?;
+                let size = number("--refine", Some(&size.to_string()))?;
+                for name in names.split(',') {
+                    o.refine.push((name.to_owned(), size));
+                }
+            }
             "--shell" => o.shell = true,
             "--timeout" => {
                 let seconds = number("--timeout", it.next())?;
@@ -243,6 +264,13 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             ));
         }
         seen.push(upper);
+    }
+    let mut refined: Vec<String> = Vec::new();
+    for (name, _) in &o.refine {
+        if refined.contains(&name.to_ascii_uppercase()) {
+            return Err(format!("--refine names {name} twice"));
+        }
+        refined.push(name.to_ascii_uppercase());
     }
     Ok(o)
 }
@@ -328,7 +356,15 @@ because gmsh would run a shell command or another file"
 /// Each face option has its own physical surface group. It holds the faces of the part that
 /// lie fully inside its plane or box, within a millionth of the diagonal of the part.
 /// With `shell`, the body is a set of surfaces (group SHELL) and a face is a curve.
-fn groups_script(faces: &[Named], volumes: &[Named], shell: bool) -> String {
+/// A face in `refine` also gets a size field: size `h` on the face, growing by `GROWTH` for each
+/// unit of distance up to `far`. `refine` is empty when `far` is 0.
+fn groups_script(
+    faces: &[Named],
+    volumes: &[Named],
+    shell: bool,
+    refine: &[(String, f64)],
+    far: f64,
+) -> String {
     let (body, side, default) = if shell {
         ("Surface", "Curve", "SHELL")
     } else {
@@ -361,6 +397,9 @@ fn groups_script(faces: &[Named], volumes: &[Named], shell: bool) -> String {
         "fh_b[] = BoundingBox {body}{{fh_v[]}};\n\
 fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh_b[2])^2);\n"
     ));
+    if !refine.is_empty() {
+        s.push_str("fh_k = 1;\nfh_f[] = {};\n");
+    }
     for (name, select) in faces {
         let (lo, hi) = match select {
             Select::Plane { axis, at } => {
@@ -380,6 +419,35 @@ fh_e = 1e-6 * Sqrt((fh_b[3] - fh_b[0])^2 + (fh_b[4] - fh_b[1])^2 + (fh_b[5] - fh
             "fh_s[] = {side} In BoundingBox{{{}, {}, {}, {}, {}, {}}};\nPhysical {side}(\"{name}\") = fh_s[];\n",
             lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]
         ));
+        let Some((_, h)) = refine.iter().find(|r| r.0.eq_ignore_ascii_case(name)) else {
+            continue;
+        };
+        // The Distance field samples each entity. Sample twice for each element of size h.
+        let list = if shell { "CurvesList" } else { "SurfacesList" };
+        s.push_str(&format!(
+            "For fh_i In {{0 : #fh_s[] - 1}}\n\
+fh_x[] = BoundingBox {side}{{fh_s[fh_i]}};\n\
+Field[fh_k] = Distance;\n\
+Field[fh_k].{list} = {{fh_s[fh_i]}};\n\
+Field[fh_k].Sampling = Min({MAX_SAMPLING}, Ceil(2 * Max(fh_x[3] - fh_x[0], Max(fh_x[4] - fh_x[1], fh_x[5] - fh_x[2])) / {h}));\n\
+Field[fh_k + 1] = Threshold;\n\
+Field[fh_k + 1].InField = fh_k;\n\
+Field[fh_k + 1].SizeMin = {h};\n\
+Field[fh_k + 1].SizeMax = {far};\n\
+Field[fh_k + 1].DistMin = 0;\n\
+Field[fh_k + 1].DistMax = {};\n\
+fh_f[] += {{fh_k + 1}};\n\
+fh_k += 2;\n\
+EndFor\n",
+            (far - h) / GROWTH
+        ));
+    }
+    if !refine.is_empty() {
+        // The sizes come from the field only, not from the points or the boundary.
+        s.push_str(
+            "Field[fh_k] = Min;\nField[fh_k].FieldsList = {fh_f[]};\nBackground Field = fh_k;\n\
+Mesh.MeshSizeExtendFromBoundary = 0;\nMesh.MeshSizeFromPoints = 0;\nMesh.MeshSizeFromCurvature = 0;\n",
+        );
     }
     s
 }
@@ -632,6 +700,20 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     let extension = input
         .extension()
         .map(|e| e.to_string_lossy().to_ascii_lowercase());
+    for (name, h) in &o.refine {
+        if !o.faces.iter().any(|f| f.0.eq_ignore_ascii_case(name)) {
+            return Err(format!("--refine {name}: there is no --face {name}"));
+        }
+        match o.size {
+            Some(far) if h < &far => {}
+            Some(far) => return Err(format!("--refine {name}: {h} must be below --size {far}")),
+            None => {
+                return Err(format!(
+                    "--refine {name}: it needs --size, the size far from the set"
+                ))
+            }
+        }
+    }
     let bytes = std::fs::read(&input).map_err(|e| format!("{}: {e}", input.display()))?;
     let text = String::from_utf8_lossy(&bytes);
     let script = match extension.as_deref() {
@@ -649,11 +731,12 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
             check_step(&text, units)?;
             // Pin the target unit in every run. The gmsh default is a process state.
             let wrapper = dir.join("input.geo");
-            let body = format!(
+            let body =
+                format!(
                 "SetFactory(\"OpenCASCADE\");\nGeometry.OCCTargetUnit = \"{}\";\nMerge \"{}\";\n{}",
                 units.gmsh_length(),
                 quote_ok(&input)?,
-                groups_script(&o.faces, &o.volumes, o.shell)
+                groups_script(&o.faces, &o.volumes, o.shell, &o.refine, o.size.unwrap_or(0.0))
             );
             std::fs::write(&wrapper, body).map_err(|e| e.to_string())?;
             wrapper
@@ -947,7 +1030,7 @@ mod tests {
                 },
             ),
         ];
-        let one = groups_script(&faces, &[], false);
+        let one = groups_script(&faces, &[], false, &[], 0.0);
         assert!(one.contains("Physical Volume(\"SOLID\")"), "{one}");
         assert!(one.contains("Physical Surface(\"TOP\")"), "{one}");
         assert!(
@@ -971,20 +1054,37 @@ mod tests {
                 },
             ),
         ];
-        let two = groups_script(&[], &layers, false);
+        let two = groups_script(&[], &layers, false, &[], 0.0);
         assert!(two.contains("BooleanFragments"), "{two}");
         assert!(two.contains("Physical Volume(\"LOW\")"), "{two}");
         assert!(two.contains("Physical Volume(\"UP\")"), "{two}");
         assert!(!two.contains("SOLID"), "{two}");
         // A shell has surfaces for volumes and curves for faces.
-        let shell = groups_script(&faces, &[], true);
+        let shell = groups_script(&faces, &[], true, &[], 0.0);
         assert!(shell.contains("Physical Surface(\"SHELL\")"), "{shell}");
         assert!(shell.contains("Physical Curve(\"TOP\")"), "{shell}");
         assert!(shell.contains("Curve In BoundingBox"), "{shell}");
-        let parts = groups_script(&[], &layers, true);
+        let parts = groups_script(&[], &layers, true, &[], 0.0);
         assert!(parts.contains("BooleanFragments{ Surface{:}"), "{parts}");
         assert!(parts.contains("Surface In BoundingBox"), "{parts}");
         assert!(parts.contains("Physical Surface(\"LOW\")"), "{parts}");
+    }
+
+    #[test]
+    fn refine_gives_a_size_to_each_named_set() {
+        let o = args(&["a.step", "--refine", "A,b=0.5", "--refine", "C=2"]).unwrap();
+        let sizes: Vec<(&str, f64)> = o.refine.iter().map(|(n, h)| (n.as_str(), *h)).collect();
+        assert_eq!(sizes, [("A", 0.5), ("b", 0.5), ("C", 2.0)]);
+        for bad in [
+            &["a.step", "--refine"][..],
+            &["a.step", "--refine", "A"],
+            &["a.step", "--refine", "A=0"],
+            &["a.step", "--refine", "A=x"],
+            &["a.step", "--refine", "A=1", "--refine", "a=2"],
+            &["a.step", "--refine", "A,a=1"],
+        ] {
+            assert!(args(bad).is_err(), "{bad:?}");
+        }
     }
 
     #[test]
