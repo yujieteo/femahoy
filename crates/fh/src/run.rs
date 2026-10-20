@@ -10,7 +10,7 @@
 //! reads these folders. `fh run` needs no daemon.
 //!
 //! Before the solve, `fh run` writes a preview folder, so that the page shows the model with
-//! each support and each load. With `--preview`, `fh run` stops there and does not solve.
+//! each support and each load.
 //!
 //! When `fh run` ends for any reason, CalculiX stops. Ctrl+C, SIGTERM and SIGHUP stop it and
 //! end `fh run` with code 130. When `fh run` dies at once (SIGKILL), a guard process of the
@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 
-const USAGE: &str = "usage: fh run MODEL.inp [--preview] [--timeout SECONDS] [--memory MIB]";
+const USAGE: &str = "usage: fh run MODEL.inp [--timeout SECONDS] [--memory MIB]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -36,7 +36,6 @@ struct Options {
     timeout: Option<Duration>,
     /// The memory limit in bytes.
     memory: Option<u64>,
-    preview: bool,
 }
 
 /// A number above 0 that is finite.
@@ -69,7 +68,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 let mib = positive(&value("a number of MiB")?, "--memory")?;
                 o.memory = Some((mib * f64::from(1 << 20)) as u64);
             }
-            "--preview" => o.preview = true,
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
             s if o.target.is_none() => o.target = Some(s.into()),
             s => return Err(format!("unexpected argument: {s}\n{USAGE}")),
@@ -133,10 +131,6 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
              loads"
         ),
         Err(e) => return Ok(fail(FAILED, &format!("the preview failed: {e}"))),
-    }
-    if o.preview {
-        println!("fh run: --preview: no solve");
-        return Ok(ExitCode::SUCCESS);
     }
     let run = match new_run(&state, &file) {
         Ok(run) => run,
