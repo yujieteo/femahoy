@@ -1,0 +1,27 @@
+# Taylor bar: a copper bar (radius 3.2 mm, length 32.4 mm) hits a rigid frictionless wall at
+# 227 m/s, with J2 plasticity, yield stress 400 MPa and hardening modulus 100 MPa. The benchmark
+# is A. Kamoulakos, "A simple 'benchmark' for impact", Bench Mark, 1990, pp. 31-35. The
+# references are the DYNA3D results at 80 us: final length 21.66 mm and mushroom radius 7.02 mm.
+# The checks are the displacements: u3 of the top face and u1 of the rim node on the wall.
+# derivation.md gives the sources, the model and the 3-mesh study.
+#
+# The tolerance is in mm, the same for both checks (derivation.md, "Tolerance"):
+# - The mesh error of the radius, from 3 meshes: 0.55 mm.
+# - The extrapolated model and the reference differ by 0.25 mm in the radius.
+# abs_tol = 0.55 + 0.25 = 0.80 mm, rounded up.
+rel_tol = 0.0
+abs_tol = 0.85
+
+[length]
+value = -10.74
+set = "TOP"
+field = "U"
+component = 3
+op = "mean"
+
+[radius]
+value = 3.82
+set = "RIM"
+field = "U"
+component = 1
+op = "value"

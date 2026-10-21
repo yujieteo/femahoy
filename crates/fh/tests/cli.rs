@@ -55,6 +55,7 @@ fn validate_runs_every_case() {
         "naca23012-flap",
         "plasticity-sphere",
         "scordelis-lo-roof",
+        "taylor-bar-impact",
         "team7-eddy-current",
         "topology-mbb-beam",
         "warpage-2p5d-frame",

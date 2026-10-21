@@ -18,7 +18,7 @@ For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folde
 
 ## Get `ccx`
 
-`fh` starts CalculiX (`ccx`) as a separate program. You install it.
+`fh` starts CalculiX (`ccx`) as a separate program. You install it. `ccx` is also the explicit solver for impact (`*DYNAMIC, EXPLICIT`), so an impact needs no other program.
 
 - Nix (macOS, Linux): `nix build nixpkgs#calculix-ccx -o ccx`, then `export FH_CCX=$PWD/ccx/bin/ccx`.
 - Debian, Ubuntu: `apt install calculix-ccx`. This puts `ccx` on PATH.

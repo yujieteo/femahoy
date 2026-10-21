@@ -119,6 +119,10 @@ Topology optimization is a SIMP loop in `fh` around `ccx` (`crates/fh/src/topolo
 
 Reason: the design variables of CalculiX are node coordinates and orientations, not densities. The loop of Andreassen et al. (2011) is short, and `ccx` gives all the values that it needs.
 
+CalculiX (`*DYNAMIC, EXPLICIT`) is also the explicit solver for impact.
+
+Reason: OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS and in CI.
+
 ### 6.1 Limits of the `ccx` process
 
 - Each run has its own folder in the state folder, with the copy of the input, the `ccx` files and the results.
