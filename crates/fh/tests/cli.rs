@@ -42,6 +42,7 @@ fn validate_runs_every_case() {
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in [
+        "acoustics-pulsating-sphere",
         "bar-pressure",
         "buckling-column",
         "cavity-devahldavis",

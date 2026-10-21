@@ -3,7 +3,7 @@
 A validation case is a folder `validation/cases/<id>/` with these files that `fh validate` reads:
 
 - `job.inp`: a plain CalculiX input. It holds the mesh, the model, the steps and the print requests that the check needs. It starts with the line `** units: SI-mm` or `** units: SI-m`. A large mesh can be in a file that `job.inp` includes (`*INCLUDE`).
-- Or, for CFD and electromagnetics, 1 or more OpenFOAM or GetDP case folders in subfolders, for example `a4.04/system/controlDict` or `50hz/case.pro`. A case with table checks has no `job.inp`.
+- Or, for CFD, electromagnetics and acoustics, 1 or more OpenFOAM or GetDP case folders in subfolders, for example `a4.04/system/controlDict` or `50hz/case.pro`. A case with table checks has no `job.inp`.
 - `check.toml`: the reference values, what to measure and the tolerance.
 
 Other files in the folder (`derivation.md`, the STEP file, scripts) are documents. No field points to them.

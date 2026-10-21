@@ -1,4 +1,4 @@
-//! GetDP as the electromagnetic solver of femahoy, in the process of `fh`.
+//! GetDP as the solver of femahoy for electromagnetics and acoustics, in the process of `fh`.
 //!
 //! A GetDP case is a folder with `case.pro`, and `case.geo` or `case.msh`. [`GetDp::run`] copies
 //! the files of the folder to `<run-dir>/getdp` and starts there:
