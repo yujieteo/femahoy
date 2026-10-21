@@ -12,7 +12,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
-- The **chat is the leader**: 1 focused agent that plans and does the work.
+- The **chat is the agent**: 1 focused agent that plans and does the work.
 - The **input** is CalculiX `.inp` text for structures and an OpenFOAM case folder for CFD.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
@@ -30,7 +30,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 | Interface | Purpose |
 |---|---|
-| Chat | Main interface, in a panel on the left of the page. One conversation with the leader. Every leader action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the leader at its next step, and `Stop` ends the work at once. A status shows the current action of the leader and the time. |
+| Chat | Main interface, in a panel on the left of the page. One conversation with the agent. Every agent action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the agent at its next step, and `Stop` ends the work at once. A status shows the current action of the agent and the time. |
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector. |
 
 ---
@@ -45,7 +45,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
         |                                  |
       reads                                | runs fh commands
         |                                  v
-   state folder <---- writes ----- fh run ----> ccx
+   state folder <---- writes ----- fh run ----> ccx, OpenFOAM
  (previews, runs, results)
 ```
 
@@ -71,7 +71,7 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 ### 4.3 Agent
 
 - The agent is a CLI harness process: Claude Code, with the user's own Claude Code login. femahoy has no agent loop of its own.
-- The leader runs under the permission system of its harness.
+- The agent runs under the permission system of its harness.
 
 ---
 
@@ -81,7 +81,7 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 - An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
-- Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel and no STEP reader.
+- Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel. It reads only the length unit of a STEP file.
 
 Reason of the first 2 rules: each solver reads only its own input, and `fh` gives the input to the solver as it is.
 

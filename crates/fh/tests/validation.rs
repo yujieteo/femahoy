@@ -1,6 +1,5 @@
-//! The pass rule of `run_case_with`. A case passes only when its margin is finite and not
-//! negative. When the tolerance and the difference both overflow, the margin is NaN, and a test
-//! for "margin below 0" lets the case pass.
+//! `run_case_with` with a solver that gives an error: the case fails, and the reason names the
+//! error.
 
 use std::path::{Path, PathBuf};
 

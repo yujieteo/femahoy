@@ -43,10 +43,9 @@ async fn get(token: &str, path: &str) -> Result<Vec<u8>, String> {
                 .to_owned()
         };
         return Err(format!(
-            "{path}: HTTP {}: {} ({})",
+            "{path}: HTTP {}: {}",
             response.status(),
-            field("message"),
-            field("error")
+            field("message")
         ));
     }
     Ok(bytes)
