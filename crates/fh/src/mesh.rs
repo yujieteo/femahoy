@@ -349,22 +349,6 @@ fn quote_ok(path: &Path) -> Result<String, String> {
     Ok(text)
 }
 
-/// A gmsh program: `FH_GMSH`, `gmsh` on `PATH`, or the macOS app.
-fn find_gmsh() -> Result<PathBuf, String> {
-    if let Some(p) = std::env::var_os("FH_GMSH").filter(|p| !p.is_empty()) {
-        return Ok(p.into());
-    }
-    let mut candidates: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).map(|d| d.join("gmsh")).collect())
-        .unwrap_or_default();
-    candidates.push("/Applications/Gmsh.app/Contents/MacOS/gmsh".into());
-    candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| {
-        "gmsh is not installed. Install it from your package manager or from gmsh.info, \
-then set FH_GMSH"
-            .into()
-    })
-}
-
 struct Finished {
     status: ExitStatus,
     stdout: String,
@@ -587,7 +571,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
         )
     );
     std::fs::write(&script, body).map_err(|e| e.to_string())?;
-    let gmsh = find_gmsh()?;
+    let gmsh = fh::msh::find_gmsh()?;
 
     let probe = run_gmsh(&gmsh, &["-version".into()], dir)?;
     let version = probe.stdout.trim().to_string();

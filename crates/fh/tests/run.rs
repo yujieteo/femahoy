@@ -1,6 +1,7 @@
 //! `fh run`: one solve with the real ccx on the input of a validation case, and the stop of
 //! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
-//! OpenFOAM tests use a fake `openfoam` that writes the files of each program.
+//! OpenFOAM tests use a fake `openfoam` that writes the files of each program, and the GetDP tests
+//! a fake `gmsh` and a fake `getdp`.
 mod common;
 use common::{ccx_solver, p, root, scratch, script, stderr, stdout};
 
@@ -310,5 +311,97 @@ fn a_failed_openfoam_program_fails_the_run_with_its_fatal_error() {
         2,
         "no foamToVTK after the failure: {calls}"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake `gmsh` and a fake `getdp`. They write their arguments to CALLS. gmsh writes the mesh.
+/// getdp writes a view with 1 tetrahedron and a complex vector, or, when `case.pro` holds FAIL,
+/// fails as GetDP does.
+const FAKE_GMSH: &str = "#!/bin/sh\necho gmsh \"$@\" >> CALLS\n: > case.msh\n";
+const FAKE_GETDP: &str = r#"#!/bin/sh
+echo getdp "$@" >> CALLS
+if grep -q FAIL case.pro; then echo 'Error   : Unknown Resolution (Nope)'; exit 1; fi
+printf 'View "j" {\nVS(0,0,0,1,0,0,0,1,0,0,0,1){1,0,0,1,0,0,1,0,0,1,0,4,0,0,8,0,0,8,0,0,8,0,0,8};\nTIME{0,1};\n};\n' > j.pos
+"#;
+
+/// A GetDP case with `text` in `case.pro` and a `case.geo`, and the fake programs.
+fn getdp_lab(name: &str, text: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("case.pro"), text).unwrap();
+    fs::write(case.join("case.geo"), "Point(1) = {0, 0, 0};\n").unwrap();
+    let calls = p(&dir.join("calls")).to_owned();
+    script(&dir.join("gmsh"), &FAKE_GMSH.replace("CALLS", &calls));
+    script(&dir.join("getdp"), &FAKE_GETDP.replace("CALLS", &calls));
+    (dir, case)
+}
+
+fn fh_run_getdp(dir: &std::path::Path, case: &std::path::Path) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_GMSH", dir.join("gmsh"))
+        .env("FH_GETDP", dir.join("getdp"))
+        .output()
+        .unwrap()
+}
+
+/// `fh run CASE` meshes `case.geo` with gmsh, solves `case.pro` with getdp, and writes each step
+/// of the views to a VTU file of the page: the real part, then the imaginary part.
+#[test]
+fn fh_run_solves_a_getdp_case_with_gmsh_then_getdp() {
+    let (dir, case) = getdp_lab("run-getdp", "Resolution {}\n");
+    let out = fh_run_getdp(&dir, &case);
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(
+        shown.contains("  program gmsh\n  program getdp\n"),
+        "{shown}"
+    );
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(
+        calls,
+        "gmsh case.geo -3 -o case.msh\ngetdp case.pro -msh case.msh -solve #1 -pos #1\n"
+    );
+    let run = dir.join("state/runs/run-000001");
+    assert!(run.join("out/getdp/log.getdp").is_file(), "{shown}");
+    let copy = run.join("in/case.pro");
+    assert!(fs::metadata(&copy).unwrap().permissions().readonly());
+    assert!(
+        !dir.join("state/previews").exists(),
+        "a case has no preview"
+    );
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    assert!(pvd.contains("step-2.vtu"), "{pvd}");
+    for (step, want) in [(1, [1.0, 0.0, 1.0]), (2, [0.0, 0.0, 8.0])] {
+        let vtu = fs::read(run.join(format!("out/step-{step}.vtu"))).unwrap();
+        let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
+        assert_eq!((grid.points.len(), grid.cell_types.clone()), (4, vec![10]));
+        assert!(grid.point_data.is_empty());
+        let j = grid.cell_field("j").unwrap();
+        assert_eq!((j.components, j.as_f64()), (3, Some(&want[..])));
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A case with no `case.geo` uses its own `case.msh`. A program that fails ends the run with
+/// its error lines and the path of its log.
+#[test]
+fn a_failed_getdp_fails_the_run_with_its_error_lines() {
+    let (dir, case) = getdp_lab("run-getdp-fail", "FAIL\n");
+    fs::remove_file(case.join("case.geo")).unwrap();
+    let out = fh_run_getdp(&dir, &case);
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors.contains(
+            "getdp failed (exit status: 1): Error   : Unknown Resolution (Nope). Correct"
+        ),
+        "{errors}"
+    );
+    assert!(errors.contains("out/getdp/log.getdp"), "{errors}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(calls, "getdp case.pro -msh case.msh -solve #1 -pos #1\n");
     let _ = fs::remove_dir_all(&dir);
 }

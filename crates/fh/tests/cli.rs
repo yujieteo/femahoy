@@ -1,5 +1,5 @@
 mod common;
-use common::{ccx_solver, openfoam_solver, p};
+use common::{ccx_solver, getdp_solver, openfoam_solver, p};
 use std::process::{Command, Output};
 
 /// A ccx that does not exist. A test that does not solve uses it.
@@ -27,13 +27,16 @@ fn text(bytes: Vec<u8>) -> String {
 
 #[test]
 fn validate_runs_every_case() {
-    let (Some(solver), Some(openfoam)) = (ccx_solver(), openfoam_solver()) else {
+    let (Some(solver), Some(openfoam), Some(getdp)) =
+        (ccx_solver(), openfoam_solver(), getdp_solver())
+    else {
         return;
     };
     let out = Command::new(env!("CARGO_BIN_EXE_fh"))
         .args(["validate", "--root", &root()])
         .env("FH_CCX", solver)
         .env("FH_OPENFOAM", openfoam)
+        .env("FH_GETDP", getdp)
         .output()
         .expect("run fh");
     let stdout = text(out.stdout);
@@ -50,13 +53,14 @@ fn validate_runs_every_case() {
         "naca23012-flap",
         "plasticity-sphere",
         "scordelis-lo-roof",
+        "team7-eddy-current",
         "warpage-2p5d-frame",
         "warpage-thick-copper",
     ] {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("13 cases: 13 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("14 cases: 14 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");

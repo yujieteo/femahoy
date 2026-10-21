@@ -1,0 +1,54 @@
+# TEAM problem 7: an aluminium plate with an off-centre hole under a coil with 50 Hz alternating
+# current. The eddy currents in the plate change the field of the coil. The references are the
+# measured Bz in T on the line A1-B1 (y = 72 mm, z = 34 mm) of K. Fujiwara and T. Nakata,
+# "Results for benchmark problem 7 (asymmetrical conductor with a hole)", COMPEL 9 (1990)
+# 137-154: at omega t = 0 and 90 degrees, at x = 36 mm (the largest |Bz| above the hole),
+# x = 126 mm (the largest Bz at 0 degrees) and x = 162 mm (the largest Bz at 90 degrees).
+# derivation.md gives the sources, the model and the mesh study.
+#
+# The model is the GetDP case 50hz: edge elements, 278808 unknowns. The tolerance
+# (derivation.md, "Tolerance"):
+# - The source gives no uncertainty of the measurement. An independent code agrees with these
+#   data on A1-B1 at 50 Hz with a relative L2 difference of 3.3 %.
+# - The mesh error of the model, from 3 meshes: 2.2 %.
+# rel_tol = 3.3 % + 2.2 % = 5.5 %, rounded up.
+# - abs_tol: 1 degree of phase moves a 90 degree value by 1.4e-4 T at x = 126 mm.
+#   abs_tol = 1e-4 T is 0.7 degree there.
+rel_tol = 0.06
+abs_tol = 1e-4
+
+[bz0_36]
+value = -2.213e-3
+case = "50hz"
+file = "bz.txt"
+column = "bz0_36"
+
+[bz90_36]
+value = 4.15e-4
+case = "50hz"
+file = "bz.txt"
+column = "bz90_36"
+
+[bz0_126]
+value = 7.811e-3
+case = "50hz"
+file = "bz.txt"
+column = "bz0_126"
+
+[bz90_126]
+value = 4.97e-4
+case = "50hz"
+file = "bz.txt"
+column = "bz90_126"
+
+[bz0_162]
+value = 6.044e-3
+case = "50hz"
+file = "bz.txt"
+column = "bz0_162"
+
+[bz90_162]
+value = 1.415e-3
+case = "50hz"
+file = "bz.txt"
+column = "bz90_162"
