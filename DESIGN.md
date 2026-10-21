@@ -8,21 +8,21 @@ A rule stays only if it passes the test in D-30. Git keeps the old records.
 
 ## 1. Product
 
-femahoy is a finite element workflow in Rust. LLM agents and humans use it together.
+femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use it together.
 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the leader**: 1 focused agent that plans and does the work.
-- The **input** is CalculiX `.inp` text.
+- The **input** is CalculiX `.inp` text for structures and an OpenFOAM case folder for CFD.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
-- The **solver** is CalculiX (`ccx`).
+- The **solvers** are CalculiX (`ccx`) for structures and OpenFOAM for CFD.
 
 ---
 
 ## 2. Separate programs
 
-- CalculiX and gmsh stay separate programs. femahoy never links or bundles them, because they are GPL.
+- CalculiX, gmsh and OpenFOAM stay separate programs. femahoy never links or bundles them, because they are GPL.
 
 ---
 
@@ -77,10 +77,13 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 
 ## 5. Input and meshes
 
-- `.inp` is the native input format. One model format keeps the parser small. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
+- CalculiX `.inp` is the input format for structures. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
+- An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel and no STEP reader.
+
+Reason of the first 2 rules: each solver reads only its own input, and `fh` gives the input to the solver as it is.
 
 Reason of the last rule: Python CAD libraries exist, a chat can write the script, and gmsh already includes OpenCASCADE.
 
@@ -98,11 +101,13 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ---
 
-## 6. Solver
+## 6. Solvers
 
 `fh run` and `fh validate` start `ccx` directly, as a separate program that the user installs. The module `ccx` of the crate `fh` gives the input to `ccx` as it is, runs `ccx` and writes the results. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve and `fh validate` stop with an error that tells how to install `ccx` when it is not there.
 
-Reason: its input is closest to `.inp`, and no run needed another solver.
+OpenFOAM is the CFD solver. It is a separate program that the user installs, as section 2 says.
+
+Reason: a real problem needs CFD: a basic airfoil with control surfaces. CalculiX stays the structural solver, because no structural run needed another solver.
 
 ### 6.1 Limits of the `ccx` process
 
@@ -124,10 +129,11 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 
 - References are analytical solutions and measured values. The cases are in `validation/cases/<id>/`.
 - Cases use our own input files. Each target value cites its source.
-- Each case has 1 mesh and a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
+- Each case has a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
+- A structural case has 1 mesh. A CFD case has at least 2 meshes (3 where practical) and states the mesh error.
 - A change to a solver or its adapter merges only if `fh validate` passes the full suite. A failure blocks the merge. There is no override.
 
-Reason: a solver can give a wrong result without a warning. The suite is the only check.
+Reason: a solver can give a wrong result without a warning. The suite is the only check. In CFD the mesh error is often the largest error, and 1 mesh cannot show it.
 
 ---
 
@@ -143,6 +149,3 @@ Each entry is a rule that is in force. The owner decided each of them.
 
 ### D-30 A requirement stays only if a real run showed the need
 A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.
-
-### D-32 The docs set
-The owner approved the docs set: `README.md`, `crates/fh/src/daemon/agent.md`, `docs/reference` and this file.
