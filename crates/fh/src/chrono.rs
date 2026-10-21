@@ -8,7 +8,8 @@
 //! The script writes its text results (tables) to the files that it names, and the motion of the
 //! bodies to `.pos` files. Then the run writes the views of the `.pos` files to `step-N.vtu` and
 //! `results.pvd`, as a GetDP run does (see [`crate::getdp`]): the view `U` is the displacement of
-//! the page. The units are SI-m.
+//! the page. The units are SI-m, and `results.pvd` has the kind `multibody`, so the page shows
+//! the bodies at true scale.
 //!
 //! Chrono stays a separate program, as each other solver. A run has the limits of a run of `ccx`
 //! (see [`crate::ccx`]).
@@ -115,6 +116,6 @@ impl Chrono {
             }
             return Err(getdp::failure(python.name, status, &log, &log_file));
         }
-        getdp::write_views(&work, &run_dir, "SI-m")
+        getdp::write_views(&work, &run_dir, "SI-m", true)
     }
 }

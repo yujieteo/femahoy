@@ -354,13 +354,18 @@ impl GetDp {
                 return Err(failure(program.name, status, &log, &log_file));
             }
         }
-        write_views(&work, &run_dir, "unspecified")
+        write_views(&work, &run_dir, "unspecified", false)
     }
 }
 
 /// Write the views of the `.pos` files in `work` to the VTU files and `results.pvd` of
-/// `run_dir`, with the unit system `units`.
-pub(crate) fn write_views(work: &Path, run_dir: &Path, units: &str) -> Result<(), String> {
+/// `run_dir`, with the unit system `units` (see [`crate::vtu::write_pvd`] for `multibody`).
+pub(crate) fn write_views(
+    work: &Path,
+    run_dir: &Path,
+    units: &str,
+    multibody: bool,
+) -> Result<(), String> {
     let mut files: Vec<PathBuf> = fs::read_dir(work)
         .map_err(|e| format!("{}: {e}", work.display()))?
         .flatten()
@@ -373,7 +378,7 @@ pub(crate) fn write_views(work: &Path, run_dir: &Path, units: &str) -> Result<()
         let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
         views.extend(read_pos(&text).map_err(|e| format!("{}: {e}", file.display()))?);
     }
-    write_frames(run_dir, units, frames(&views)?.into_iter())
+    write_frames(run_dir, units, multibody, frames(&views)?.into_iter())
 }
 
 #[cfg(test)]

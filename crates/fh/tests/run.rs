@@ -540,7 +540,7 @@ fn fh_run_solves_a_chrono_case_with_python() {
     assert!(!dir.join("state/previews").exists());
     let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
     assert!(
-        pvd.contains("units=\"SI-m\"") && pvd.contains("step-2.vtu"),
+        pvd.contains("units=\"SI-m\" kind=\"multibody\"") && pvd.contains("step-2.vtu"),
         "{pvd}"
     );
     let vtu = fs::read(run.join("out/step-2.vtu")).unwrap();
