@@ -1,5 +1,5 @@
 //! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, or a GetDP
-//! case with GetDP, and show the progress.
+//! case with GetDP, or optimize the topology of a CalculiX model, and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
@@ -8,6 +8,8 @@
 //!   `PATH`.
 //! - `fh run CASE` gives GetDP the case folder (`case.pro`, and `case.geo` or `case.msh`). See
 //!   `fh::getdp` for the programs that it starts. GetDP is `$FH_GETDP`, else `getdp` on `PATH`.
+//! - `fh run CASE` optimizes the topology case folder (`job.inp` and `topology.toml`) with a loop
+//!   of CalculiX solves. See `fh::topology`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
@@ -15,8 +17,8 @@
 //! copy of the input, the solver files, and the VTU and PVD files. The page of `fh serve`
 //! reads these folders. `fh run` needs no daemon.
 //!
-//! Before a CalculiX solve, `fh run` writes a preview folder, so that the page shows the model
-//! with each support and each load.
+//! Before a CalculiX solve or a topology loop, `fh run` writes a preview folder, so that the page
+//! shows the model with each support and each load.
 //!
 //! When `fh run` ends for any reason, the solver stops. Ctrl+C, SIGTERM and SIGHUP stop it and
 //! end `fh run` with code 130. When `fh run` dies at once (SIGKILL), a guard process of the
@@ -31,6 +33,7 @@ use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
+use fh::topology;
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]\n\
 --timeout has no limit by default. --memory is 85 % of the RAM by default. At a limit, fh run \
@@ -39,7 +42,9 @@ CASE is an OpenFOAM case folder with system/controlDict. fh run starts blockMesh
 has system/blockMeshDict and no constant/polyMesh), then the application of system/controlDict, \
 then foamToVTK.\n\
 CASE is also a GetDP case folder with case.pro. fh run starts gmsh (when the case has case.geo), \
-then getdp with the first Resolution and the first PostOperation of case.pro.";
+then getdp with the first Resolution and the first PostOperation of case.pro.\n\
+CASE is also a topology case folder with job.inp and topology.toml. fh run solves job.inp with \
+ccx in each iteration of the loop.";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -100,6 +105,7 @@ enum Solver {
     Ccx,
     OpenFoam,
     GetDp,
+    Topology,
 }
 
 /// The real path of the `.inp` file or the case folder that `fh run` solves.
@@ -109,12 +115,14 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     let inp = full
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("inp"));
-    if (full.is_file() && inp) || foam::is_case(&full) || getdp::is_case(&full) {
+    let case = foam::is_case(&full) || getdp::is_case(&full) || topology::is_case(&full);
+    if (full.is_file() && inp) || case {
         Ok(full)
     } else {
         Err(format!(
             "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
-             system/controlDict) or a GetDP case folder (with case.pro)"
+             system/controlDict), a GetDP case folder (with case.pro) or a topology case folder \
+             (with topology.toml)"
         ))
     }
 }
@@ -152,6 +160,14 @@ fn report(run: &str, out: &Path, seconds: f64, solver: Solver) {
             ),
             "Add *NODE FILE or *EL FILE to a *STEP to write a field",
         ),
+        Solver::Topology => (
+            format!(
+                "{0}/{1} (each iteration), {0}/solve/ccx/job.dat (the last solve)",
+                out.join(topology::WORK).display(),
+                topology::HISTORY
+            ),
+            "Add *NODE FILE or *EL FILE to the *STEP of job.inp to write a field",
+        ),
     };
     println!("fh run: text results {results}");
     if result_frames(out) == 0 {
@@ -168,14 +184,21 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Solver::OpenFoam
     } else if getdp::is_case(&file) {
         Solver::GetDp
+    } else if topology::is_case(&file) {
+        Solver::Topology
     } else {
         Solver::Ccx
     };
     // The name of the model in the page: the input file.
     let title = file.file_name().unwrap_or_default().to_string_lossy();
     // The page shows a CalculiX model before the solve.
-    if solver == Solver::Ccx {
-        match new_preview(&state, &file, &title) {
+    let model = match solver {
+        Solver::Topology => Some(file.join("job.inp")),
+        Solver::Ccx => Some(file.clone()),
+        _ => None,
+    };
+    if let Some(model) = model {
+        match new_preview(&state, &model, &title) {
             Ok(preview) => println!(
                 "fh run: preview: the page shows {title} (preview {preview}) with its supports \
                  and loads"
@@ -212,13 +235,22 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             getdp.memory_limit = o.memory.unwrap_or(getdp.memory_limit);
             getdp.run_with(&run.input, &run.out, &cancel, on_program)
         }
-        Solver::Ccx => {
+        Solver::Ccx | Solver::Topology => {
             let mut ccx = Ccx::new();
             ccx.timeout = o.timeout.or(ccx.timeout);
             ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
-            ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
-                println!("  progress step {} increment {}", p.step, p.increment);
-            })
+            if solver == Solver::Topology {
+                topology::run_with(&ccx, &run.input, &run.out, &cancel, &mut |i| {
+                    println!(
+                        "  iteration {} compliance {:.6e} volume {:.4} change {:.4}",
+                        i.number, i.compliance, i.volume, i.change
+                    );
+                })
+            } else {
+                ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
+                    println!("  progress step {} increment {}", p.step, p.increment);
+                })
+            }
         }
     };
     Ok(match result {

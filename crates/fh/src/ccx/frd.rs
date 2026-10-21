@@ -72,6 +72,8 @@ pub struct Frd {
     points: Vec<[f64; 3]>,
     cell_types: Vec<u8>,
     cells: Vec<Vec<u32>>,
+    /// The element number of each cell.
+    pub elements: Vec<u32>,
     pub frames: Vec<Frame>,
 }
 
@@ -108,7 +110,8 @@ pub fn read(text: &str) -> Result<Frd, String> {
     let bad = |n: usize, why: &str| format!("job.frd line {}: {why}", n + 1);
     let mut frd = Frd::default();
     let mut index: HashMap<u32, u32> = HashMap::new();
-    let mut elements: Vec<(u32, Vec<u32>)> = Vec::new();
+    // The number, the code and the nodes of each element.
+    let mut elements: Vec<(u32, u32, Vec<u32>)> = Vec::new();
     let mut block = Block::None;
     let (mut step, mut increment, mut mode) = (0, 0, 0);
     let mut current: Option<usize> = None;
@@ -162,7 +165,7 @@ pub fn read(text: &str) -> Result<Frd, String> {
         } else if line.starts_with(" -3") {
             match std::mem::replace(&mut block, Block::None) {
                 Block::Elements => {
-                    for (code, ids) in elements.drain(..) {
+                    for (number, code, ids) in elements.drain(..) {
                         let Some((kind, order)) = cell_kind(code) else {
                             continue;
                         };
@@ -174,6 +177,7 @@ pub fn read(text: &str) -> Result<Frd, String> {
                         frd.cells
                             .push(cell.ok_or_else(|| bad(n, "an element has an unknown node"))?);
                         frd.cell_types.push(kind);
+                        frd.elements.push(number);
                     }
                 }
                 Block::Result(name, true, rows) => {
@@ -216,8 +220,12 @@ pub fn read(text: &str) -> Result<Frd, String> {
                     frd.points.push([xyz[0], xyz[1], xyz[2]]);
                 }
                 Block::Elements => {
+                    let number = cell(line, 3, 10).and_then(|s| s.trim().parse().ok());
                     let code = cell(line, 13, 5).and_then(|s| s.trim().parse().ok());
-                    elements.push((code.ok_or_else(|| bad(n, "bad element line"))?, Vec::new()));
+                    let (Some(number), Some(code)) = (number, code) else {
+                        return Err(bad(n, "bad element line"));
+                    };
+                    elements.push((number, code, Vec::new()));
                 }
                 Block::Result(_, true, rows) => {
                     let id = cell(line, 3, 10).and_then(|s| s.trim().parse().ok());
@@ -237,7 +245,7 @@ pub fn read(text: &str) -> Result<Frd, String> {
                     elements
                         .last_mut()
                         .ok_or_else(|| bad(n, "node line before an element"))?
-                        .1
+                        .2
                         .extend(ids);
                 }
                 Block::Result(_, true, rows) => {
@@ -315,6 +323,7 @@ mod tests {
         }
         text += " 9999\n";
         let frd = read(&text).unwrap();
+        assert_eq!(frd.elements, [1]);
         assert_eq!(frd.frames.len(), 1);
         let grid = frd.grid(&frd.frames[0]);
         assert_eq!(frd.frames[0].time, 2.0);

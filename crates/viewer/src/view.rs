@@ -4,8 +4,9 @@
 use crate::mesh::RenderMesh;
 use crate::results::{self, Results, ScalarField, Step};
 
-/// The field that the contour shows first, when the run has it.
-const DEFAULT_FIELDS: [&str; 3] = ["MISES", "U magnitude", "NT"];
+/// The field that the contour shows first, when the run has it. Only a topology run has
+/// `density`.
+const DEFAULT_FIELDS: [&str; 4] = ["density", "MISES", "U magnitude", "NT"];
 
 /// New vertex data: the drawn position of each render position, and the position and the
 /// contour position (0 to 1) of each triangle corner (three per triangle, see `face_vertices`).
@@ -57,8 +58,8 @@ pub enum Contour<'a> {
 }
 
 impl ViewState {
-    /// The last step, deformed with the automatic scale, with the von Mises stress (or the
-    /// displacement magnitude, or the temperature) as contour.
+    /// The last step, deformed with the automatic scale, with the density of a topology run (or
+    /// the von Mises stress, the displacement magnitude or the temperature) as contour.
     pub fn new(results: &Results) -> Self {
         let names = field_names(results);
         let field = DEFAULT_FIELDS

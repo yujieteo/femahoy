@@ -3,7 +3,7 @@
 A validation case is a folder `validation/cases/<id>/` with these files that `fh validate` reads:
 
 - `job.inp`: a plain CalculiX input. It holds the mesh, the model, the steps and the print requests that the check needs. It starts with the line `** units: SI-mm` or `** units: SI-m`. A large mesh can be in a file that `job.inp` includes (`*INCLUDE`).
-- Or, for CFD, electromagnetics and acoustics, 1 or more OpenFOAM or GetDP case folders in subfolders, for example `a4.04/system/controlDict` or `50hz/case.pro`. A case with table checks has no `job.inp`.
+- Or, for CFD, electromagnetics, acoustics and topology optimization, 1 or more OpenFOAM, GetDP or topology case folders in subfolders, for example `a4.04/system/controlDict`, `50hz/case.pro` or `60x20/topology.toml`. A case with table checks has no `job.inp`.
 - `check.toml`: the reference values, what to measure and the tolerance.
 
 Other files in the folder (`derivation.md`, the STEP file, scripts) are documents. No field points to them.
@@ -36,12 +36,12 @@ A check of `FREQ` or `BUCKLE` has 3 keys: `value`, `field` and `mode` (the mode 
 
 A check of `CSTR` (contact stress, from `*CONTACT PRINT`) has 4 keys: `value`, `field`, `component` and `op`. Component 1 is the pressure, 2 and 3 are the shear stresses. It has no `set`: ccx writes the contact stress of all contact elements.
 
-A table check of an OpenFOAM or GetDP case has 4 keys: `value`, `case`, `file` and `column`. It has no `field`.
+A table check of an OpenFOAM, GetDP or topology case has 4 keys: `value`, `case`, `file` and `column`. It has no `field`.
 
 | Key | Rule |
 |---|---|
-| `case` | The name of the subfolder with the OpenFOAM case or the GetDP case. |
-| `file` | The path of a text table in the case folder after the solve, for example `postProcessing/forceCoeffs/0/coefficient.dat`. A function object of OpenFOAM or the PostOperation of GetDP writes it. |
+| `case` | The name of the subfolder with the OpenFOAM, GetDP or topology case. |
+| `file` | The path of a text table in the case folder after the solve, for example `postProcessing/forceCoeffs/0/coefficient.dat`. A function object of OpenFOAM or the PostOperation of GetDP writes it. For a topology case, the path is in the folder of the loop: `history.txt`, with the column `compliance`. |
 | `column` | The name of the column in the last line of the table that starts with `#`. The value is the number in this column of the last row. |
 
 Each column must hold 1 number. A function object writes a vector field as `(x y z)`: use the function object `components` to make the fields `Ux`, `Uy` and `Uz`.
@@ -58,7 +58,7 @@ Each check passes if `abs(computed - reference) <= rel_tol * abs(reference) + ab
 All numbers must be finite.
 
 `fh validate` solves `job.inp` with `ccx`. It reads the last block of the field and the set in `job.dat`.
-For table checks, it solves each OpenFOAM or GetDP case of the file at the same time, as `fh run` does.
+For table checks, it solves each OpenFOAM, GetDP or topology case of the file at the same time, as `fh run` does.
 The stress is the value at each integration point of each element of the set.
 A check with no print request for its set is an error.
 
