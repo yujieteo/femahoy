@@ -47,7 +47,7 @@ Each check passes if `abs(computed - reference) <= rel_tol * abs(reference) + ab
 All numbers must be finite.
 
 `fh validate` solves `job.inp` with `ccx`. It reads the last block of the field and the set in `job.dat`.
-For `CL`, `CD` and `CM`, it solves each OpenFOAM case of the file at the same time, as `fh run` does. Each case has the time limit of 300 s.
+For `CL`, `CD` and `CM`, it solves each OpenFOAM case of the file at the same time, as `fh run` does.
 The stress is the value at each integration point of each element of the set.
 A check with no print request for its set is an error.
 

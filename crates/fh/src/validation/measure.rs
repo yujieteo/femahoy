@@ -2,31 +2,17 @@
 //! one number per reference from the text results.
 
 use std::path::Path;
-use std::time::Duration;
 
 use super::fixture::{Case, Field, Op, Quantity};
 use super::run::Solve;
 use crate::ccx::Ccx;
 use crate::foam::{Foam, WORK};
 
-/// The time limit of one case. The OpenFOAM cases of a case run at the same time, and each has
-/// this limit.
-const TIME_LIMIT: Duration = Duration::from_secs(300);
-
 /// Runs `ccx` or OpenFOAM in a scratch folder on the input of a case.
+#[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
     foam: Foam,
-}
-
-impl Default for Subprocess {
-    fn default() -> Self {
-        let mut solver = Ccx::new();
-        solver.timeout = Some(TIME_LIMIT);
-        let mut foam = Foam::new();
-        foam.timeout = Some(TIME_LIMIT);
-        Subprocess { solver, foam }
-    }
 }
 
 impl Solve for Subprocess {
