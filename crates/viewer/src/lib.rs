@@ -3,10 +3,13 @@
 //! Built so far: the model view of the page of `fh serve`. The page itself, with the chat,
 //! is HTML (`crates/fh/src/daemon/page.html`). `mesh`, `camera`, `results` and `view` are
 //! plain functions with no GPU types. `gpu` and `app` are the thin window layer. `web` is
-//! the browser entry point.
+//! the browser entry point. Only the browser uses `gpu`, `app` and `web`, so only the wasm build
+//! compiles them.
 
+#[cfg(target_arch = "wasm32")]
 mod app;
 pub mod camera;
+#[cfg(target_arch = "wasm32")]
 mod gpu;
 pub mod mesh;
 pub mod preview;
@@ -15,6 +18,7 @@ pub mod view;
 #[cfg(target_arch = "wasm32")]
 mod web;
 
+#[cfg(target_arch = "wasm32")]
 pub use app::{Content, ContentSlot, ViewerApp};
 
 /// The results file of a run folder.

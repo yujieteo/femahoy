@@ -1,11 +1,33 @@
 //! The result view state: the selected step, the deformed shape and the contour field. It
 //! makes the vertex data for the GPU layer. Plain functions with no GPU types.
 
-use crate::gpu::{face_vertices, Geometry};
+use crate::mesh::RenderMesh;
 use crate::results::{self, Results, ScalarField, Step};
 
 /// The field that the contour shows first, when the run has it.
 const DEFAULT_FIELDS: [&str; 3] = ["MISES", "U magnitude", "NT"];
+
+/// New vertex data: the drawn position of each render position, and the position and the
+/// contour position (0 to 1) of each triangle corner (three per triangle, see `face_vertices`).
+pub struct Geometry {
+    /// A new number for each change. The buffers are written once per number.
+    pub version: u64,
+    pub positions: Vec<[f32; 3]>,
+    pub faces: Vec<[f32; 4]>,
+}
+
+/// The face vertex data: three corners per triangle, each `[x, y, z, value]`.
+pub fn face_vertices(mesh: &RenderMesh, positions: &[[f32; 3]], values: &[f32]) -> Vec<[f32; 4]> {
+    mesh.triangles
+        .iter()
+        .flatten()
+        .enumerate()
+        .map(|(i, &p)| {
+            let x = positions[p as usize];
+            [x[0], x[1], x[2], values.get(i).copied().unwrap_or(0.0)]
+        })
+        .collect()
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ViewState {

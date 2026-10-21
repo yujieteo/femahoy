@@ -34,8 +34,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
+      # Only the browser uses the window layer of the viewer, so the wasm build checks it.
       - name: Test
-        run: cargo test --workspace
+        run: |
+          cargo build -p fh-viewer --lib --target wasm32-unknown-unknown
+          cargo test --workspace
         env:
           FH_REQUIRE_CCX: "1"
           FH_OPENFOAM: openfoam2512

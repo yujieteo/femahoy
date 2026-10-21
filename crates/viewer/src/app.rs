@@ -11,11 +11,11 @@ use eframe::egui;
 use eframe::egui_wgpu;
 
 use crate::camera::{self, Camera};
-use crate::gpu::{face_vertices, FrameParams, Geometry, MeshCallback, MeshGpu};
+use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
-use crate::view::{self, Contour, ViewState};
+use crate::view::{self, face_vertices, Contour, Geometry, ViewState};
 
 /// The font of the controls and of the page: Inter (SIL Open Font License 1.1,
 /// `fonts/OFL.txt`). The page gets it from the viewer, so it loads no font from the network.
