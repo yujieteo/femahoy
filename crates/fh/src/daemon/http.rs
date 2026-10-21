@@ -56,8 +56,10 @@ const MAX_BODY: usize = 16 << 10;
 const MAX_CHAT_BODY: usize = 1 << 20;
 /// The most connections at the same time. Each one has a thread.
 const MAX_CONNECTIONS: usize = 32;
-/// The longest time that a client can take to send its request.
-const IO_TIMEOUT: Duration = Duration::from_secs(10);
+/// The longest time that a client can take to send its request. A browser sends it at once.
+const READ_TIMEOUT: Duration = Duration::from_secs(2);
+/// The longest time that a client can take to read a part of the answer.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// The page of the daemon (`page.html`): the chat on the left and the wasm viewer
 /// (`crates/viewer`, `start`) in the center. `NONCE` is the nonce of its script.
 const PAGE: &str = include_str!("page.html");
@@ -115,8 +117,8 @@ impl Server {
                     break;
                 }
                 let Ok(mut stream) = stream else { continue };
-                let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-                let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+                let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+                let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
                 if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     active.fetch_sub(1, Ordering::SeqCst);
                     let busy = fail(503, "too many connections");
