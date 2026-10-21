@@ -45,6 +45,15 @@ jobs:
           echo "$HOME/getdp-3.5.0-Linux64/bin" >> "$GITHUB_PATH"
           "$HOME/.nix-profile/bin/gmsh" -version
           "$HOME/getdp-3.5.0-Linux64/bin/getdp" -version
+      # fh starts the Python of PyChrono for the multibody case (README.md). PyChrono is not on
+      # PyPI, so micromamba installs it from conda-forge. FH_REQUIRE_PYCHRONO=1 makes each test
+      # that solves through the real PyChrono fail if PyChrono is absent.
+      - name: Install PyChrono
+        run: |
+          nix profile install nixpkgs#micromamba
+          "$HOME/.nix-profile/bin/micromamba" create -y -q -p "$HOME/pychrono" -c conda-forge pychrono=10.0.0 python=3.12
+          echo "FH_PYCHRONO=$HOME/pychrono/bin/python" >> "$GITHUB_ENV"
+          "$HOME/pychrono/bin/python" -c "import pychrono"
       # Only the browser uses the window layer of the viewer, so the wasm build checks it.
       - name: Test
         run: |
@@ -55,3 +64,4 @@ jobs:
           FH_OPENFOAM: openfoam2512
           FH_REQUIRE_OPENFOAM: "1"
           FH_REQUIRE_GETDP: "1"
+          FH_REQUIRE_PYCHRONO: "1"

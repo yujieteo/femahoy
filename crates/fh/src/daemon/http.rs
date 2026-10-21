@@ -20,7 +20,7 @@
 //! | `GET /` | | the page of the daemon (HTML): the chat, the list of the runs and the wasm viewer |
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
 //! | `GET /api/v1/runs` | | one item `<run> <input>` for each run that has results |
-//! | `GET /api/v1/runs/<r>/input` | | the text of the copy of the input that the run solves, with its `*INCLUDE` files (bytes). No bytes for an OpenFOAM or GetDP case |
+//! | `GET /api/v1/runs/<r>/input` | | the text of the copy of the input that the run solves, with its `*INCLUDE` files (bytes). No bytes for an OpenFOAM, GetDP or Chrono case |
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
 //! | `GET /api/v1/previews/<id>` | | the text of the copy of the input of the preview, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |

@@ -149,11 +149,12 @@ fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
     format!("ccx failed ({status}) with no *ERROR message. {see}")
 }
 
-/// Write the VTU file of each frame (a time and its grid) and the PVD collection in `units`.
-/// Each file is written under a temporary name and renamed.
+/// Write the VTU file of each frame (a time and its grid) and the PVD collection in `units`
+/// (see [`write_pvd`] for `multibody`). Each file is written under a temporary name and renamed.
 pub(crate) fn write_frames(
     run_dir: &Path,
     units: &str,
+    multibody: bool,
     frames: impl Iterator<Item = (f64, Grid)>,
 ) -> Result<(), String> {
     let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
@@ -169,7 +170,7 @@ pub(crate) fn write_frames(
         atomic(&file, &bytes)?;
         entries.push(PvdEntry { time, file });
     }
-    atomic(PVD_FILE, write_pvd(&entries, units).as_bytes())
+    atomic(PVD_FILE, write_pvd(&entries, units, multibody).as_bytes())
 }
 
 /// The number of result frames that `results.pvd` in the run folder `out` lists. A run folder
@@ -308,7 +309,7 @@ impl Ccx {
             "unspecified"
         };
         let frames = results.frames.iter().map(|f| (f.time, results.grid(f)));
-        write_frames(&run_dir, units, frames)
+        write_frames(&run_dir, units, false, frames)
     }
 
     /// Run `ccx -i job` in `work` with its output in `log`, in its own process group, to its

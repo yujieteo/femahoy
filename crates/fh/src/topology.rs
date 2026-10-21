@@ -408,7 +408,7 @@ pub fn run_with(
             .push(Field::f64("density", 1, density.clone()));
         (f.time, grid)
     });
-    write_frames(&run_dir, units, frames)
+    write_frames(&run_dir, units, false, frames)
 }
 
 #[cfg(test)]

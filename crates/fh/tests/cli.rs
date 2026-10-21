@@ -1,5 +1,5 @@
 mod common;
-use common::{ccx_solver, getdp_solver, openfoam_solver, p};
+use common::{ccx_solver, getdp_solver, openfoam_solver, p, pychrono_solver};
 use std::process::{Command, Output};
 
 /// A ccx that does not exist. A test that does not solve uses it.
@@ -27,9 +27,12 @@ fn text(bytes: Vec<u8>) -> String {
 
 #[test]
 fn validate_runs_every_case() {
-    let (Some(solver), Some(openfoam), Some(getdp)) =
-        (ccx_solver(), openfoam_solver(), getdp_solver())
-    else {
+    let (Some(solver), Some(openfoam), Some(getdp), Some(pychrono)) = (
+        ccx_solver(),
+        openfoam_solver(),
+        getdp_solver(),
+        pychrono_solver(),
+    ) else {
         return;
     };
     let out = Command::new(env!("CARGO_BIN_EXE_fh"))
@@ -37,6 +40,7 @@ fn validate_runs_every_case() {
         .env("FH_CCX", solver)
         .env("FH_OPENFOAM", openfoam)
         .env("FH_GETDP", getdp)
+        .env("FH_PYCHRONO", pychrono)
         .output()
         .expect("run fh");
     let stdout = text(out.stdout);
@@ -55,6 +59,7 @@ fn validate_runs_every_case() {
         "naca23012-flap",
         "plasticity-sphere",
         "scordelis-lo-roof",
+        "slider-crank",
         "team7-eddy-current",
         "topology-mbb-beam",
         "warpage-2p5d-frame",
@@ -63,7 +68,7 @@ fn validate_runs_every_case() {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("17 cases: 17 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("18 cases: 18 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");

@@ -313,7 +313,7 @@ impl Foam {
         };
         let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
         let frame = read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-        write_frames(&run_dir, "unspecified", std::iter::once(frame))
+        write_frames(&run_dir, "unspecified", false, std::iter::once(frame))
     }
 }
 

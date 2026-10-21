@@ -93,17 +93,26 @@ impl Step {
 pub struct Results {
     /// The unit system of the run (`SI-mm`, `SI-m` or `unspecified`).
     pub units: String,
+    /// True for the motion of rigid bodies (`kind="multibody"` in `results.pvd`).
+    pub multibody: bool,
     pub mesh: RenderMesh,
     pub steps: Vec<Step>,
 }
 
-/// The `units` attribute of the `Collection` element, or `unspecified` when it is absent.
-fn pvd_units(text: &str) -> String {
+/// The attribute `name` of the `Collection` element, or `None` when it is absent.
+fn pvd_attribute<'a>(text: &'a str, name: &str) -> Option<&'a str> {
     text.split_once("<Collection")
         .and_then(|(_, rest)| rest.split_once('>'))
-        .and_then(|(attrs, _)| attrs.split_once("units=\""))
+        .and_then(|(attrs, _)| attrs.split_once(&format!(" {name}=\"")))
         .and_then(|(_, v)| v.split_once('"'))
-        .map_or_else(|| "unspecified".to_owned(), |(v, _)| v.to_owned())
+        .map(|(v, _)| v)
+}
+
+/// The `units` attribute of the `Collection` element, or `unspecified` when it is absent.
+fn pvd_units(text: &str) -> String {
+    pvd_attribute(text, "units")
+        .unwrap_or("unspecified")
+        .to_owned()
 }
 
 /// The names of the components of a field with `components` values per item.
@@ -280,6 +289,7 @@ pub fn load(
     }
     Ok(Results {
         units: pvd_units(pvd),
+        multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
         mesh,
         steps,
     })
@@ -322,7 +332,8 @@ pub fn nice_scale(raw: f64) -> f64 {
 }
 
 /// The automatic scale factor: the largest displacement of all steps shows as
-/// `AUTO_SCALE_FRACTION` of the model size. A model with no displacement gives 1.
+/// `AUTO_SCALE_FRACTION` of the model size. For a multibody run it is never below 1, so the
+/// motion of a mechanism shows at true scale. A model with no displacement gives 1.
 pub fn auto_scale(results: &Results) -> f64 {
     let size = results
         .mesh
@@ -334,7 +345,12 @@ pub fn auto_scale(results: &Results) -> f64 {
         .map(Step::max_displacement)
         .fold(0.0, f64::max);
     if max > 0.0 {
-        nice_scale(AUTO_SCALE_FRACTION * size / max)
+        let scale = nice_scale(AUTO_SCALE_FRACTION * size / max);
+        if results.multibody {
+            scale.max(1.0)
+        } else {
+            scale
+        }
     } else {
         1.0
     }
@@ -496,6 +512,37 @@ mod tests {
         assert!((ratio - 2.0).abs() < 1e-9, "ratio {ratio}");
     }
 
+    /// For a multibody run, a displacement larger than a tenth of the model (the motion of a
+    /// mechanism) shows at true scale. A small displacement shows larger.
+    #[test]
+    fn the_automatic_scale_of_a_multibody_run_is_never_below_1() {
+        let mut r = crate::load_run(&fixture_dir()).unwrap();
+        r.multibody = true;
+        assert!(auto_scale(&r) > 1.0);
+        for step in &mut r.steps {
+            step.displacement
+                .iter_mut()
+                .flatten()
+                .for_each(|u| *u *= 1e3);
+        }
+        assert_eq!(auto_scale(&r), 1.0);
+    }
+
+    /// For a run that is not multibody (for example a mode shape of ccx), a displacement larger
+    /// than a tenth of the model shows smaller than true scale.
+    #[test]
+    fn the_automatic_scale_of_a_large_ccx_displacement_is_below_1() {
+        let mut r = crate::load_run(&fixture_dir()).unwrap();
+        assert!(!r.multibody);
+        for step in &mut r.steps {
+            step.displacement
+                .iter_mut()
+                .flatten()
+                .for_each(|u| *u *= 1e3);
+        }
+        assert!(auto_scale(&r) < 1.0, "{}", auto_scale(&r));
+    }
+
     #[test]
     fn deformed_positions_add_the_scaled_displacement() {
         let r = crate::load_run(&fixture_dir()).unwrap();
@@ -567,5 +614,9 @@ mod tests {
         assert_eq!(unit("SI-m", Quantity::Force), "N");
         assert_eq!(unit("unspecified", Quantity::Stress), "");
         assert_eq!(pvd_units("<Collection>"), "unspecified");
+        assert_eq!(
+            pvd_units("<Collection kind=\"multibody\" units=\"SI-m\">"),
+            "SI-m"
+        );
     }
 }

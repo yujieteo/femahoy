@@ -1,6 +1,6 @@
 //! The check file of a case: `validation/cases/<id>/check.toml` (see `docs/reference/check-toml.md`).
 //!
-//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP or topology cases in
+//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP, Chrono or topology cases in
 //! subfolders.
 
 use std::path::{Path, PathBuf};
@@ -127,13 +127,15 @@ impl Case {
                 let solvers = [
                     crate::foam::is_case,
                     crate::getdp::is_case,
+                    crate::chrono::is_case,
                     crate::topology::is_case,
                 ];
                 if !solvers.iter().any(|is_case| is_case(&case)) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
-                        "{}, {} or {} not found",
+                        "{}, {}, {} or {} not found",
                         pro.display(),
+                        case.join("chrono.py").display(),
                         case.join("topology.toml").display(),
                         dict.display()
                     );

@@ -14,7 +14,7 @@ fh serve
 1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, see "Get `ccx`" below).
 2. `fh serve` starts a local daemon and opens the page in the browser (on a system that is not macOS, it only prints the address). Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Stop the daemon with Ctrl+C.
 
-For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folder for CFD (see "Get OpenFOAM" below), a GetDP case folder for electromagnetics or acoustics (see "Get GetDP" below), or a topology case folder (`job.inp` and `topology.toml`) for topology optimization with `ccx`. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer and the results of runs. The file opens with a double-click, and the chat uses it for its report.
+For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folder for CFD (see "Get OpenFOAM" below), a GetDP case folder for electromagnetics or acoustics (see "Get GetDP" below), a topology case folder (`job.inp` and `topology.toml`) for topology optimization with `ccx`, or a Chrono case folder for multibody dynamics (see "Get PyChrono" below). `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer and the results of runs. The file opens with a double-click, and the chat uses it for its report.
 
 ## Get `ccx`
 
@@ -44,12 +44,22 @@ For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folde
 
 `fh` uses `$FH_GETDP`. If `FH_GETDP` is not set, it uses `getdp` on PATH. The validation cases are tested with GetDP 4.0.0 on macOS and 3.5.0 on Linux.
 
+## Get PyChrono
+
+`fh` starts Project Chrono for multibody dynamics: a Python with PyChrono, the Python module of Chrono, runs the `chrono.py` of the case. PyChrono is BSD-3-Clause. It is not on PyPI, so you install it with micromamba from conda-forge.
+
+- micromamba: `brew install micromamba` on macOS, or `nix profile install nixpkgs#micromamba`.
+- PyChrono on macOS (Apple Silicon) and Linux (x86-64): `micromamba create -y -p ~/.local/share/pychrono -c conda-forge pychrono=10.0.0 python=3.12`, then `export FH_PYCHRONO=~/.local/share/pychrono/bin/python`. The download is about 550 MB.
+
+`fh` uses `$FH_PYCHRONO`. If `FH_PYCHRONO` is not set, it uses `python3` on PATH. The validation case is tested with PyChrono 10.0.0 on macOS and Linux.
+
 ## Environment variables
 
 - `FH_GMSH`: the gmsh program of `fh mesh`, and of `fh run` and `fh validate` for a GetDP case.
 - `FH_CCX`: the `ccx` program of `fh run` and `fh validate`.
 - `FH_OPENFOAM`: the `openfoam` program of `fh run` and `fh validate`. It runs each program of OpenFOAM as `$FH_OPENFOAM PROGRAM ARGS`.
 - `FH_GETDP`: the `getdp` program of `fh run` and `fh validate`.
+- `FH_PYCHRONO`: the Python with PyChrono of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
 - `FH_NO_OPEN`: a value that is not empty and not `0` stops `fh serve` from opening the browser.

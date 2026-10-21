@@ -2,8 +2,9 @@
 //!
 //! Each case runs through `ccx` (`$FH_CCX`, else `ccx` on PATH), or, when its checks are tables,
 //! through OpenFOAM (`$FH_OPENFOAM`, else `openfoam` on PATH), GetDP (`$FH_GETDP`, else `getdp`
-//! on PATH) or the topology loop around `ccx`. A table shows every quantity with its computed
-//! value, reference, tolerance and margin. A bad fixture, a case that fails or a case that cannot run gives exit code 1. If `ccx`
+//! on PATH), Chrono (`$FH_PYCHRONO`, else `python3` on PATH) or the topology loop around `ccx`. A
+//! table shows every quantity with its computed value, reference, tolerance and margin. A bad
+//! fixture, a case that fails or a case that cannot run gives exit code 1. If `ccx`
 //! does not start, `fh validate` stops before the first case and tells how to install CalculiX.
 
 use fh::ccx::Ccx;
