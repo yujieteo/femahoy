@@ -2251,4 +2251,7 @@ BASE, 11, 11, 100.0
 805, F3, 20.0, 0.05
 *NODE PRINT, NSET=TIP
 NT
+** The full temperature goes to the result file, so that a person can read it in the viewer.
+*NODE FILE
+NT
 *END STEP
