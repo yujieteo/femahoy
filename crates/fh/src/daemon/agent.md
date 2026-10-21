@@ -54,6 +54,18 @@ This setup agrees with the measured field of TEAM problem 7, eddy currents in a 
 - B at a point: curl a is constant in each element. Make a continuous B with an L2 projection of `{d a}` on `BF_NodeX`, `BF_NodeY` and `BF_NodeZ` in a small region about the points.
 - GetDP uses the time factor exp(j omega t). Thus the value at omega t = 0 is the real part, and at omega t = 90 degrees it is minus the imaginary part.
 
+## Acoustics with GetDP
+
+For a sound request at 1 frequency, for example a radiating or vibrating surface, write a GetDP case as above for the sound pressure p: `div grad p + k^2 p = 0`, k = omega / c.
+
+- p is `Form0` with `BF_Node` on `NodesOf[All]` and `BF_Node_2E` on `EdgesOf[All]` (second order). Use Gauss rules of 15 points for tetrahedra and 7 for triangles. The mesh stays first order, so the page shows the `.pos` files. In the validation case, h = wavelength / 14 gave errors of 0.2 % or less, and wavelength / 7 gave 1 %.
+- Terms: `[ Dof{d p}, {d p} ]` and `[ -k^2 * Dof{p}, {p} ]` in the air. A rigid wall or a symmetry plane needs no term.
+- Normal velocity v on a surface (v positive out of the air): `[ Complex[0, omega * rho * v], {p} ]` on the surface, with `Jacobian Sur`.
+- Open region: air to a sphere of radius R about the source, with `[ Complex[1 / R, k] * Dof{p}, {p} ]` on it. It is exact for a spherical wave from the centre. For another source, it reflects a part of the wave: solve with a second, larger R and give the change in the report.
+- `StoreInVariable` keeps only the real part. For a complex value, print `Re[{p}]` and `Im[{p}]` as 2 quantities. For the mean on a surface, divide an `Integral` of p by an `Integral` of 1.
+
+This setup agrees with the analytical radiation of a pulsating sphere (the validation case `acoustics-pulsating-sphere`).
+
 ## Choose the CalculiX solver
 
 The default solver SPOOLES is direct. Its memory grows faster than the model, and a run that reaches the memory limit stops. `ccx` writes the number of equations of a run in `job.log`, in the folder of `job.dat` that `fh run` prints: the line `number of equations`, then the value on the next line. The sizes below are measured on a Mac with 16 GB of RAM (13.6 GiB limit) for linear static steps. Scale them with the RAM.

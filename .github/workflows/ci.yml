@@ -33,9 +33,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
-      # fh starts gmsh and GetDP for the electromagnetic case (README.md). GetDP has no package,
-      # so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1 makes
-      # each test that solves through the real GetDP fail if GetDP is absent.
+      # fh starts gmsh and GetDP for the electromagnetic and acoustic cases (README.md). GetDP has
+      # no package, so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1
+      # makes each test that solves through the real GetDP fail if GetDP is absent.
       - name: Install gmsh and GetDP
         run: |
           nix profile install nixpkgs#gmsh

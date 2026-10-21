@@ -1,0 +1,39 @@
+# The pulsating sphere: a sphere of radius a = 0.1 m in air (c = 343 m/s, rho = 1.2 kg/m3) with
+# a uniform normal velocity U = 1e-3 m/s at 500 Hz. It radiates a spherical wave. The
+# references are the analytical solution (derivation.md, "Sources"), with ka = 0.91592:
+#   p(r) = rho c U z (a / r) exp(-j k (r - a)), z = j ka / (1 + j ka).
+# z is the specific radiation impedance of the sphere (p on the sphere / (rho c U)). The checks
+# are z, and p in Pa at the point (0.2, 0.2, 0.1), r = 0.3 m.
+#
+# The model is the GetDP case 500hz: an octant, second-order node functions, 15356 unknowns. The
+# tolerance (derivation.md, "Tolerance"):
+# - The reference is exact. The largest error of the check mesh is 0.19 %, and the largest
+#   error of the mesh with 1.5 times its sizes is 0.68 %.
+# rel_tol = 1 %: the check mesh, and a mesh of the same sizes from another gmsh, pass. Each
+# wrong model of derivation.md has an error of 2.4 % or more.
+rel_tol = 0.01
+abs_tol = 0
+
+[z_re]
+value = 0.456197
+case = "500hz"
+file = "z.txt"
+column = "z_re"
+
+[z_im]
+value = 0.498078
+case = "500hz"
+file = "z.txt"
+column = "z_im"
+
+[p_re]
+value = 4.98678e-2
+case = "500hz"
+file = "z.txt"
+column = "p_re"
+
+[p_im]
+value = -7.81063e-2
+case = "500hz"
+file = "z.txt"
+column = "p_im"
