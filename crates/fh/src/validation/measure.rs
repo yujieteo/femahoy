@@ -1,4 +1,5 @@
-//! Run the input of a case with `ccx` and read one number per reference from the text results.
+//! Run the input of a case with `ccx`, or the OpenFOAM cases of a case with OpenFOAM, and read
+//! one number per reference from the text results.
 
 use std::path::Path;
 use std::time::Duration;
@@ -6,20 +7,25 @@ use std::time::Duration;
 use super::fixture::{Case, Field, Op, Quantity};
 use super::run::Solve;
 use crate::ccx::Ccx;
+use crate::foam::{Foam, WORK};
 
-/// The time limit of one case.
+/// The time limit of one case. The OpenFOAM cases of a case run at the same time, and each has
+/// this limit.
 const TIME_LIMIT: Duration = Duration::from_secs(300);
 
-/// Runs `ccx` in a scratch folder on the input of a case.
+/// Runs `ccx` or OpenFOAM in a scratch folder on the input of a case.
 pub struct Subprocess {
     solver: Ccx,
+    foam: Foam,
 }
 
 impl Default for Subprocess {
     fn default() -> Self {
         let mut solver = Ccx::new();
         solver.timeout = Some(TIME_LIMIT);
-        Subprocess { solver }
+        let mut foam = Foam::new();
+        foam.timeout = Some(TIME_LIMIT);
+        Subprocess { solver, foam }
     }
 }
 
@@ -28,22 +34,107 @@ impl Solve for Subprocess {
         let run =
             std::env::temp_dir().join(format!("fh-validate-{}-{}", std::process::id(), case.id));
         let _ = std::fs::remove_dir_all(&run);
-        let result = self
-            .solver
-            .run(input, &run)
-            .map_err(|e| format!("ccx: {e}"));
-        let values = result.and_then(|()| {
-            let file = run.join("ccx/job.dat");
-            let dat =
-                std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
-            case.references
-                .iter()
-                .map(|r| extract(&dat, &r.quantity))
-                .collect()
-        });
+        let values = if case.openfoam() {
+            self.coefficients(case, input, &run)
+        } else {
+            self.ccx(case, input, &run)
+        };
         let _ = std::fs::remove_dir_all(&run);
         values
     }
+}
+
+impl Subprocess {
+    fn ccx(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
+        self.solver
+            .run(input, run)
+            .map_err(|e| format!("ccx: {e}"))?;
+        let file = run.join("ccx/job.dat");
+        let dat = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+        case.references
+            .iter()
+            .map(|r| extract(&dat, &r.quantity))
+            .collect()
+    }
+
+    /// Solve the OpenFOAM case of each check at the same time, each in its own folder in `run`,
+    /// and read the force coefficients of the last iteration.
+    fn coefficients(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
+        let mut folders: Vec<&str> = case
+            .references
+            .iter()
+            .map(|r| r.quantity.set.as_str())
+            .collect();
+        folders.sort_unstable();
+        folders.dedup();
+        let tables: Vec<Result<String, String>> = std::thread::scope(|scope| {
+            let solves: Vec<_> = folders
+                .iter()
+                .map(|folder| {
+                    scope.spawn(move || {
+                        let dir = run.join(folder);
+                        self.foam
+                            .run(&input.join(folder), &dir)
+                            .map_err(|e| format!("openfoam {folder}: {e}"))?;
+                        let file = dir
+                            .join(WORK)
+                            .join("postProcessing/forceCoeffs/0/coefficient.dat");
+                        std::fs::read_to_string(&file)
+                            .map_err(|e| format!("{}: {e}", file.display()))
+                    })
+                })
+                .collect();
+            solves
+                .into_iter()
+                .map(|s| {
+                    s.join()
+                        .unwrap_or_else(|_| Err("the solve panicked".into()))
+                })
+                .collect()
+        });
+        case.references
+            .iter()
+            .map(|r| {
+                let folder = r.quantity.set.as_str();
+                let at = folders
+                    .binary_search(&folder)
+                    .expect("each folder is in the list");
+                let table = tables[at].as_ref().map_err(Clone::clone)?;
+                let name = if r.quantity.field == Field::Cl {
+                    "Cl"
+                } else {
+                    "Cd"
+                };
+                coefficient(table, name).map_err(|e| format!("{folder}: coefficient.dat: {e}"))
+            })
+            .collect()
+    }
+}
+
+/// The column `name` of the last row of the `coefficient.dat` text of `forceCoeffs`. The last
+/// comment line names the columns: `# Time Cd Cd(f) Cd(r) Cl ...`.
+fn coefficient(text: &str, name: &str) -> Result<f64, String> {
+    let header = text
+        .lines()
+        .rfind(|l| l.starts_with('#'))
+        .ok_or("no header line")?;
+    let column = header[1..]
+        .split_whitespace()
+        .position(|w| w == name)
+        .ok_or_else(|| format!("no column {name}"))?;
+    let row = text
+        .lines()
+        .rfind(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .ok_or("no row")?;
+    let value: f64 = row
+        .split_whitespace()
+        .nth(column)
+        .and_then(|w| w.parse().ok())
+        .ok_or_else(|| format!("the last row has no number in column {name}"))?;
+    if !value.is_finite() {
+        return Err(format!("{name} is {value}, which is not finite"));
+    }
+    Ok(value)
 }
 
 /// The kind of block of the `.dat` file, and the number of leading columns before the values.
@@ -54,8 +145,8 @@ fn block_of(field: Field) -> (&'static str, usize, usize) {
         Field::S => ("stresses", 2, 6),
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
-        // `mode_value` reads these. They have no block of a set.
-        Field::Freq | Field::Buckle => ("", 0, 0),
+        // `mode_value` and `coefficient` read these. They have no block of a set.
+        Field::Freq | Field::Buckle | Field::Cl | Field::Cd => ("", 0, 0),
     }
 }
 
@@ -202,4 +293,31 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
         return Err(format!("the {:?} of set `{}` is not finite", q.op, q.set));
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::coefficient;
+
+    const TABLE: &str = "# Force and moment coefficients\n# magUInf : 1\n#\n\
+        # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \n\
+        1         \t0.75  \t-0.35  \t1.1   \t1.47  \n\
+        1500      \t0.0094\t0.004  \t0.005 \t0.4448\n";
+
+    #[test]
+    fn a_coefficient_is_the_column_of_its_name_in_the_last_row() {
+        assert_eq!(coefficient(TABLE, "Cl"), Ok(0.4448));
+        assert_eq!(coefficient(TABLE, "Cd"), Ok(0.0094));
+        assert!(coefficient(TABLE, "Cm")
+            .unwrap_err()
+            .contains("no column Cm"));
+        let cut = TABLE.replace("\t0.4448", "");
+        assert!(coefficient(&cut, "Cl").unwrap_err().contains("no number"));
+        assert!(coefficient("# Time Cd\n", "Cd")
+            .unwrap_err()
+            .contains("no row"));
+        assert!(coefficient("# Time Cd\n1 nan\n", "Cd")
+            .unwrap_err()
+            .contains("not finite"));
+    }
 }

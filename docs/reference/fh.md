@@ -41,15 +41,17 @@ Sources: [validate.rs](../../crates/fh/src/validate.rs),
 ## `fh run`
 
 ```text
-fh run MODEL.inp [--timeout SECONDS] [--memory MIB]
+fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]
 ```
 
-Source: [run.rs](../../crates/fh/src/run.rs).
+Sources: [run.rs](../../crates/fh/src/run.rs) and [foam.rs](../../crates/fh/src/foam.rs).
+
+`MODEL.inp` is a CalculiX input. `CASE` is an OpenFOAM case folder with `system/controlDict`. For a case, `fh run` starts `blockMesh` (when the case has `system/blockMeshDict` and no `constant/polyMesh`), then the `application` of `system/controlDict`, then `foamToVTK`. The page shows the cell fields of the last time.
 
 | Option | Default or rule |
 |---|---|
-| `--timeout SECONDS` | No limit by default. A number above 0. At the limit, `fh run` stops `ccx`. |
-| `--memory MIB` | 85 percent of the RAM of the machine by default. A number above 0. At the limit, `fh run` stops `ccx`. |
+| `--timeout SECONDS` | No limit by default. A number above 0. At the limit, `fh run` stops the solver. For a case, the limit counts all the programs. |
+| `--memory MIB` | 85 percent of the RAM of the machine by default. A number above 0. At the limit, `fh run` stops the solver. |
 
 ## `fh report`
 
@@ -78,6 +80,7 @@ Source: [serve.rs](../../crates/fh/src/daemon/serve.rs).
 
 - `FH_GMSH`: the gmsh program of `fh mesh`.
 - `FH_CCX`: the `ccx` program of `fh run` and `fh validate`.
+- `FH_OPENFOAM`: the `openfoam` program of `fh run` and `fh validate`. It runs each program of OpenFOAM as `$FH_OPENFOAM PROGRAM ARGS`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
 - `FH_NO_OPEN`: a value that is not empty and not `0` stops `fh serve` from opening the browser.

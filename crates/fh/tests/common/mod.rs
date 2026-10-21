@@ -48,6 +48,22 @@ pub fn ccx_solver() -> Option<PathBuf> {
     found.then_some(ccx)
 }
 
+/// `openfoam` (`FH_OPENFOAM`, else `openfoam` on PATH) when it starts. Else `None` with a
+/// message, and the test does not solve. With `FH_REQUIRE_OPENFOAM=1`, as in CI, a missing
+/// OpenFOAM fails the test.
+pub fn openfoam_solver() -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os("FH_OPENFOAM").unwrap_or_else(|| "openfoam".into()));
+    let found = Command::new(&exe).arg("-help").output().is_ok();
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_OPENFOAM").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_OPENFOAM=1, but openfoam does not start"
+        );
+        eprintln!("skipped: openfoam does not start. Set FH_OPENFOAM");
+    }
+    found.then_some(exe)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

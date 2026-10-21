@@ -15,7 +15,7 @@
 //!
 //! A guard process in the group of `ccx` reads a pipe from this process. When this process
 //! ends, also on SIGKILL, the pipe closes and the guard kills the group. Thus `ccx` never
-//! lives longer than `fh`.
+//! lives longer than `fh`. OpenFOAM runs with the same limits ([`supervise`]).
 
 mod frd;
 mod sys;
@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use fh_core::inp::flatten;
-use fh_core::vtu::PvdEntry;
+use fh_core::vtu::{Grid, PvdEntry};
 
 use crate::vtu::{write_pvd, write_vtu};
 
@@ -94,7 +94,7 @@ impl CancelToken {
 }
 
 /// 85 % of the machine RAM. If the system does not tell the RAM, there is no limit.
-fn default_memory_limit() -> u64 {
+pub(crate) fn default_memory_limit() -> u64 {
     total_memory().map_or(u64::MAX, |ram| ram / 100 * 85)
 }
 
@@ -104,7 +104,7 @@ const TAIL_LINES: usize = 15;
 const TAIL_CHARS: usize = 2000;
 
 /// The last lines of `log` that have text, on one line with ` | ` between them.
-fn log_tail(log: &str) -> String {
+pub(crate) fn log_tail(log: &str) -> String {
     let lines: Vec<&str> = log
         .lines()
         .map(str::trim)
@@ -149,9 +149,13 @@ fn ccx_failure(status: ExitStatus, log: &str, log_file: &Path) -> String {
     format!("ccx failed ({status}) with no *ERROR message. {see}")
 }
 
-/// Write the VTU file of each step and the PVD collection in `units`. Each file is written
-/// under a temporary name and renamed.
-fn write_results(results: &frd::Frd, run_dir: &Path, units: &str) -> Result<(), String> {
+/// Write the VTU file of each frame (a time and its grid) and the PVD collection in `units`.
+/// Each file is written under a temporary name and renamed.
+pub(crate) fn write_frames(
+    run_dir: &Path,
+    units: &str,
+    frames: impl Iterator<Item = (f64, Grid)>,
+) -> Result<(), String> {
     let atomic = |file: &str, bytes: &[u8]| -> Result<(), String> {
         let tmp = run_dir.join(format!("{file}.tmp"));
         fs::write(&tmp, bytes)
@@ -159,14 +163,11 @@ fn write_results(results: &frd::Frd, run_dir: &Path, units: &str) -> Result<(), 
             .map_err(|e| format!("{file}: {e}"))
     };
     let mut entries = Vec::new();
-    for (i, frame) in results.frames.iter().enumerate() {
+    for (i, (time, grid)) in frames.enumerate() {
         let file = format!("step-{}.vtu", i + 1);
-        let bytes = write_vtu(&results.grid(frame))?;
+        let bytes = write_vtu(&grid)?;
         atomic(&file, &bytes)?;
-        entries.push(PvdEntry {
-            time: frame.time,
-            file,
-        });
+        entries.push(PvdEntry { time, file });
     }
     atomic(PVD_FILE, write_pvd(&entries, units).as_bytes())
 }
@@ -306,7 +307,8 @@ impl Ccx {
         } else {
             "unspecified"
         };
-        write_results(&results, &run_dir, units)
+        let frames = results.frames.iter().map(|f| (f.time, results.grid(f)));
+        write_frames(&run_dir, units, frames)
     }
 
     /// Run `ccx -i job` in `work` with its output in `log`, in its own process group, to its
@@ -319,112 +321,132 @@ impl Ccx {
         cancel: &CancelToken,
         on_progress: &mut dyn FnMut(Progress),
     ) -> Result<ExitStatus, String> {
-        let cannot_start = |e: std::io::Error| {
-            format!(
-                "cannot start {}: {e}. Install CalculiX (README.md) and put ccx on PATH, \
-                     or set FH_CCX",
-                self.exe.display()
-            )
-        };
-        let limited = self.memory_limit != u64::MAX;
-        // The guard leads the group. It stops the group when the pipe from this process
-        // closes. It is the leader, so the group exists until the end of `ccx`.
-        let mut guard = Command::new("/bin/sh");
-        guard
-            .args(["-c", "while read -r _; do :; done; kill -KILL 0"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        sys::prepare(&mut guard, None, 0);
-        let guard = guard.spawn().map_err(cannot_start)?;
-        let group = sys::Group::new(guard.id());
-        let mut tree = Tree {
-            group,
-            guard,
-            ccx: None,
-        };
         let mut cmd = Command::new(&self.exe);
         cmd.args(["-i", JOB])
             .current_dir(work)
             .stdin(Stdio::null())
-            .stdout(log.try_clone().map_err(cannot_start)?)
+            .stdout(log.try_clone().map_err(|e| format!("run folder: {e}"))?)
             .stderr(log);
-        sys::prepare(
-            &mut cmd,
-            limited.then_some(self.memory_limit),
-            tree.group.pid(),
-        );
-        // From here each return and each panic drops `tree`, and the drop kills the group.
-        tree.ccx = Some(cmd.spawn().map_err(cannot_start)?);
-        let start = Instant::now();
-        let mut last_probe = Instant::now();
         let mut tail = LogTail {
             file: log_file.to_owned(),
             pos: 0,
             last: None,
         };
-        let mut last_tail = Instant::now();
-        loop {
-            if last_tail.elapsed() >= PROBE_EVERY {
-                last_tail = Instant::now();
-                tail.poll(on_progress);
-            }
-            if cancel.is_cancelled() {
-                return Err(CANCELLED.to_owned());
-            }
-            if let Some(t) = self.timeout.filter(|t| start.elapsed() > *t) {
-                return Err(format!(
-                    "the solve stopped at the time limit of {} s. {SMALLER}",
-                    t.as_secs_f64()
-                ));
-            }
-            if limited && last_probe.elapsed() >= PROBE_EVERY {
-                last_probe = Instant::now();
-                match sys::probe(tree.group.pid()) {
-                    Ok(b) if b > self.memory_limit => {
-                        return Err(format!(
-                            "the solve stopped after ccx used more than the memory limit \
-                                 of {}. {SMALLER}",
-                            size(self.memory_limit)
-                        ));
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Err(format!(
-                            "the memory probe failed ({e}), so the memory limit cannot \
-                                 apply"
-                        ));
-                    }
+        let program = Program {
+            name: "ccx",
+            install: "Install CalculiX (README.md) and put ccx on PATH, or set FH_CCX",
+        };
+        let limits = (Instant::now(), self.timeout, self.memory_limit);
+        supervise(&program, &mut cmd, limits, cancel, &mut || {
+            tail.poll(on_progress)
+        })
+    }
+}
+
+/// A solver program, for the errors of [`supervise`].
+pub(crate) struct Program<'a> {
+    /// The name of the program in the errors, for example `ccx`.
+    pub name: &'a str,
+    /// What to do when the program does not start.
+    pub install: &'a str,
+}
+
+/// Run `cmd` in its own process group, to its end or to a stop. `limits` holds the start of the
+/// time limit, the time limit (`None` for no limit) and the memory limit in bytes (`u64::MAX` for
+/// no limit). `poll` runs each 100 ms and at the end.
+pub(crate) fn supervise(
+    program: &Program,
+    cmd: &mut Command,
+    limits: (Instant, Option<Duration>, u64),
+    cancel: &CancelToken,
+    poll: &mut dyn FnMut(),
+) -> Result<ExitStatus, String> {
+    let (start, timeout, memory_limit) = limits;
+    let exe = PathBuf::from(cmd.get_program());
+    let cannot_start =
+        |e: std::io::Error| format!("cannot start {}: {e}. {}", exe.display(), program.install);
+    let limited = memory_limit != u64::MAX;
+    // The guard leads the group. It stops the group when the pipe from this process
+    // closes. It is the leader, so the group exists until the end of the solver.
+    let mut guard = Command::new("/bin/sh");
+    guard
+        .args(["-c", "while read -r _; do :; done; kill -KILL 0"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    sys::prepare(&mut guard, None, 0);
+    let guard = guard.spawn().map_err(cannot_start)?;
+    let group = sys::Group::new(guard.id());
+    let mut tree = Tree {
+        group,
+        guard,
+        solver: None,
+    };
+    sys::prepare(cmd, limited.then_some(memory_limit), tree.group.pid());
+    // From here each return and each panic drops `tree`, and the drop kills the group.
+    tree.solver = Some(cmd.spawn().map_err(cannot_start)?);
+    let mut last_probe = Instant::now();
+    let mut last_poll = Instant::now();
+    loop {
+        if last_poll.elapsed() >= PROBE_EVERY {
+            last_poll = Instant::now();
+            poll();
+        }
+        if cancel.is_cancelled() {
+            return Err(CANCELLED.to_owned());
+        }
+        if let Some(t) = timeout.filter(|t| start.elapsed() > *t) {
+            return Err(format!(
+                "the solve stopped at the time limit of {} s. {SMALLER}",
+                t.as_secs_f64()
+            ));
+        }
+        if limited && last_probe.elapsed() >= PROBE_EVERY {
+            last_probe = Instant::now();
+            match sys::probe(tree.group.pid()) {
+                Ok(b) if b > memory_limit => {
+                    return Err(format!(
+                        "the solve stopped after {} used more than the memory limit of {}. \
+                         {SMALLER}",
+                        program.name,
+                        size(memory_limit)
+                    ));
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    return Err(format!(
+                        "the memory probe failed ({e}), so the memory limit cannot apply"
+                    ));
                 }
             }
-            // The end of `ccx` comes after the checks, so a late end does not hide a cancel
-            // or the time limit.
-            let ccx = tree.ccx.as_mut().expect("ccx started");
-            match ccx.try_wait() {
-                Ok(Some(status)) => {
-                    tail.poll(on_progress);
-                    return Ok(status);
-                }
-                Ok(None) => std::thread::sleep(POLL),
-                Err(e) => return Err(format!("wait for ccx failed: {e}")),
+        }
+        // The end of the solver comes after the checks, so a late end does not hide a cancel
+        // or the time limit.
+        let solver = tree.solver.as_mut().expect("solver started");
+        match solver.try_wait() {
+            Ok(Some(status)) => {
+                poll();
+                return Ok(status);
             }
+            Ok(None) => std::thread::sleep(POLL),
+            Err(e) => return Err(format!("wait for {} failed: {e}", program.name)),
         }
     }
 }
 
-/// The process group of a run: the guard and `ccx`. A drop kills the group, so that an early
-/// return or a panic cannot leave `ccx` running without its limits.
+/// The process group of a run: the guard and the solver. A drop kills the group, so that an
+/// early return or a panic cannot leave the solver running without its limits.
 struct Tree {
     group: sys::Group,
     guard: Child,
-    ccx: Option<Child>,
+    solver: Option<Child>,
 }
 
 impl Drop for Tree {
     fn drop(&mut self) {
-        // Also the processes that `ccx` left behind.
+        // Also the processes that the solver left behind.
         self.group.kill();
-        for child in std::iter::once(&mut self.guard).chain(&mut self.ccx) {
+        for child in std::iter::once(&mut self.guard).chain(&mut self.solver) {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -444,7 +466,7 @@ fn size(bytes: u64) -> String {
 /// Make the run folder ready. A folder with files in it must be a run folder (it has the
 /// marker file), or the call fails. A fresh run clears it, so the input `inp` (a real path)
 /// must be outside it.
-fn prepare_run_dir(run_dir: &Path, inp: &Path) -> Result<PathBuf, String> {
+pub(crate) fn prepare_run_dir(run_dir: &Path, inp: &Path) -> Result<PathBuf, String> {
     let err = |e: std::io::Error| format!("run folder: {e}");
     fs::create_dir_all(run_dir).map_err(err)?;
     let dir = fs::canonicalize(run_dir).map_err(err)?;

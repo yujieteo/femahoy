@@ -1,20 +1,24 @@
-//! `fh run`: solve a CalculiX input with CalculiX and show the progress.
+//! `fh run`: solve a CalculiX input with CalculiX, or an OpenFOAM case with OpenFOAM, and show
+//! the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
-//!   (`*INCLUDE`). `fh run` solves a copy, so a later edit does not change the run.
-//! - CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
+//!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
+//! - `fh run CASE` gives OpenFOAM the case folder (`system/controlDict`, `constant`, `0`). See
+//!   `fh::foam` for the programs that it starts. OpenFOAM is `$FH_OPENFOAM`, else `openfoam` on
+//!   `PATH`.
+//! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
 //! Each run has its own folder in the state folder (`$FH_STATE`, see `fh::daemon::new_run`): the
-//! copy of the input, the CalculiX files, and the VTU and PVD files. The page of `fh serve`
+//! copy of the input, the solver files, and the VTU and PVD files. The page of `fh serve`
 //! reads these folders. `fh run` needs no daemon.
 //!
-//! Before the solve, `fh run` writes a preview folder, so that the page shows the model with
-//! each support and each load.
+//! Before a CalculiX solve, `fh run` writes a preview folder, so that the page shows the model
+//! with each support and each load.
 //!
-//! When `fh run` ends for any reason, CalculiX stops. Ctrl+C, SIGTERM and SIGHUP stop it and
+//! When `fh run` ends for any reason, the solver stops. Ctrl+C, SIGTERM and SIGHUP stop it and
 //! end `fh run` with code 130. When `fh run` dies at once (SIGKILL), a guard process of the
-//! solver kills CalculiX.
+//! solver kills it.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,8 +27,9 @@ use std::time::{Duration, Instant};
 
 use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::daemon::{default_state_dir, new_preview, new_run};
+use fh::foam::{self, Foam};
 
-const USAGE: &str = "usage: fh run MODEL.inp [--timeout SECONDS] [--memory MIB]";
+const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -79,18 +84,19 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(o)
 }
 
-/// The real path of the `.inp` file that `fh run` solves.
+/// The real path of the `.inp` file or the OpenFOAM case that `fh run` solves.
 fn resolve(path: &Path) -> Result<PathBuf, String> {
     let shown = path.display();
     let full = fs::canonicalize(path).map_err(|e| format!("{shown}: {e}"))?;
     let inp = full
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("inp"));
-    if full.is_file() && inp {
+    if (full.is_file() && inp) || foam::is_case(&full) {
         Ok(full)
     } else {
         Err(format!(
-            "{shown}: fh run takes a CalculiX input file (.inp)"
+            "{shown}: fh run takes a CalculiX input file (.inp) or an OpenFOAM case folder (with \
+             system/controlDict)"
         ))
     }
 }
@@ -101,9 +107,19 @@ fn fail(code: u8, message: &str) -> ExitCode {
 }
 
 /// Print the wall time and the result folder of a run that succeeded.
-fn report(run: &str, out: &Path, seconds: f64) {
+fn report(run: &str, out: &Path, seconds: f64, openfoam: bool) {
     println!("fh run: {run} succeeded in {seconds:.2} s");
     println!("fh run: results in {}", out.display());
+    if openfoam {
+        let work = out.join(foam::WORK);
+        println!(
+            "fh run: text results {}/log.<program> (output of each program), {}/postProcessing \
+             (function objects)",
+            work.display(),
+            work.display()
+        );
+        return;
+    }
     println!(
         "fh run: text results {}/ccx/job.dat (print requests), {}/ccx/job.sta (steps)",
         out.display(),
@@ -122,24 +138,24 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let state =
         default_state_dir().ok_or_else(|| format!("no home folder, so set FH_STATE\n{USAGE}"))?;
     let file = resolve(o.target.as_deref().expect("parse needs a model"))?;
+    let openfoam = foam::is_case(&file);
     // The name of the model in the page: the input file.
     let title = file.file_name().unwrap_or_default().to_string_lossy();
-    // The page shows the model before the solve.
-    match new_preview(&state, &file, &title) {
-        Ok(preview) => println!(
-            "fh run: preview: the page shows {title} (preview {preview}) with its supports and \
-             loads"
-        ),
-        Err(e) => return Ok(fail(FAILED, &format!("the preview failed: {e}"))),
+    // The page shows a CalculiX model before the solve.
+    if !openfoam {
+        match new_preview(&state, &file, &title) {
+            Ok(preview) => println!(
+                "fh run: preview: the page shows {title} (preview {preview}) with its supports \
+                 and loads"
+            ),
+            Err(e) => return Ok(fail(FAILED, &format!("the preview failed: {e}"))),
+        }
     }
     let run = match new_run(&state, &file) {
         Ok(run) => run,
         Err(e) => return Ok(fail(FAILED, &format!("the run folder failed: {e}"))),
     };
     println!("fh run: {} solves {}", run.id, file.display());
-    let mut ccx = Ccx::new();
-    ccx.timeout = o.timeout.or(ccx.timeout);
-    ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
     let cancel = CancelToken::new();
     signal::install();
     let flag = cancel.clone();
@@ -150,12 +166,24 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         flag.cancel();
     });
     let start = Instant::now();
-    let result = ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
-        println!("  progress step {} increment {}", p.step, p.increment);
-    });
+    let result = if openfoam {
+        let mut foam = Foam::new();
+        foam.timeout = o.timeout;
+        foam.memory_limit = o.memory.unwrap_or(foam.memory_limit);
+        foam.run_with(&run.input, &run.out, &cancel, &mut |program| {
+            println!("  program {program}");
+        })
+    } else {
+        let mut ccx = Ccx::new();
+        ccx.timeout = o.timeout.or(ccx.timeout);
+        ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
+        ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
+            println!("  progress step {} increment {}", p.step, p.increment);
+        })
+    };
     Ok(match result {
         Ok(()) => {
-            report(&run.id, &run.out, start.elapsed().as_secs_f64());
+            report(&run.id, &run.out, start.elapsed().as_secs_f64(), openfoam);
             ExitCode::SUCCESS
         }
         Err(_) if cancel.is_cancelled() => fail(CANCELLED, &format!("{} was cancelled", run.id)),

@@ -1,5 +1,6 @@
 //! `fh run`: one solve with the real ccx on the input of a validation case, and the stop of
-//! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits.
+//! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
+//! OpenFOAM tests use a fake `openfoam` that writes the files of each program.
 mod common;
 use common::{ccx_solver, p, root, scratch, script, stderr, stdout};
 
@@ -181,5 +182,133 @@ fn fh_run_solves_a_validation_input_and_writes_the_result_files() {
     let tip = field("U").iter().step_by(3).fold(0.0_f64, |m, v| m.max(*v));
     let want = 100.0 / 210000.0 * 100.0;
     assert!((tip - want).abs() < 1e-5 * want, "tip {tip} {want}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake `openfoam`. It writes its arguments to CALLS, and the files that each program writes:
+/// the mesh, a time folder, and a legacy VTK file with 1 hexahedron and its cell fields. With
+/// FAIL as its program, it fails as OpenFOAM does.
+const FAKE_OPENFOAM: &str = r#"#!/bin/sh
+echo "$@" >> CALLS
+case "$1" in
+blockMesh) mkdir -p constant/polyMesh ;;
+FAIL) printf '\n--> FOAM FATAL ERROR: (openfoam-2512)\nUnknown solver FAIL\n\n    From main\n' ; exit 1 ;;
+simpleFoam) mkdir -p 100 ;;
+foamToVTK) mkdir -p VTK && printf '# vtk DataFile Version 2.0\ncase\nASCII\nDATASET UNSTRUCTURED_GRID\nFIELD FieldData 1\nTimeValue 1 1 float\n100\nPOINTS 8 float\n0 0 0 1 0 0 1 1 0 0 1 0\n0 0 1 1 0 1 1 1 1 0 1 1\nCELLS 1 9\n8 0 1 2 3 4 5 6 7\nCELL_TYPES 1\n12\nCELL_DATA 1\nFIELD FieldData 2\np 1 1 float\n-0.5\nU 3 1 float\n1 0.25 0\n' > VTK/case_100.vtk ;;
+esac
+echo End
+"#;
+
+/// An OpenFOAM case with a mesh dictionary and the application `application`, and the fake
+/// `openfoam`.
+fn foam_lab(name: &str, application: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    let case = dir.join("case");
+    for folder in ["system", "constant", "0"] {
+        fs::create_dir_all(case.join(folder)).unwrap();
+    }
+    fs::write(
+        case.join("system/controlDict"),
+        format!("application {application};\n"),
+    )
+    .unwrap();
+    fs::write(case.join("system/blockMeshDict"), "blocks ();\n").unwrap();
+    fs::write(case.join("0/U"), "internalField uniform (1 0 0);\n").unwrap();
+    script(
+        &dir.join("openfoam"),
+        &FAKE_OPENFOAM.replace("CALLS", p(&dir.join("calls"))),
+    );
+    (dir, case)
+}
+
+fn fh_run_foam(dir: &std::path::Path, case: &std::path::Path) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_OPENFOAM", dir.join("openfoam"))
+        .output()
+        .unwrap()
+}
+
+/// `fh run CASE` solves a copy of the case with blockMesh, the application of the case and
+/// foamToVTK, and writes the cell fields of the last time to the VTU file of the page.
+#[test]
+fn fh_run_solves_an_openfoam_case_with_each_program_in_turn() {
+    let (dir, case) = foam_lab("run-foam", "simpleFoam");
+    let out = fh_run_foam(&dir, &case);
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(
+        shown.contains("  program blockMesh\n  program simpleFoam\n  program foamToVTK\n"),
+        "{shown}"
+    );
+
+    let run = dir.join("state/runs/run-000001");
+    let work = run.join("out/foam");
+    let paths = format!(
+        "fh run: text results {0}/log.<program> (output of each program), {0}/postProcessing \
+         (function objects)",
+        work.display()
+    );
+    assert_eq!(shown.lines().last(), Some(paths.as_str()), "{shown}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    let work = fs::canonicalize(&work).unwrap();
+    let want = format!(
+        "blockMesh -case {0}\nsimpleFoam -case {0}\nfoamToVTK -latestTime -legacy -ascii \
+         -no-boundary -no-point-data -case {0}\n",
+        work.display()
+    );
+    assert_eq!(calls, want);
+    for file in ["log.blockMesh", "log.simpleFoam", "log.foamToVTK", "0/U"] {
+        assert!(work.join(file).is_file(), "no {file}: {shown}");
+    }
+    assert_eq!(
+        fs::read_to_string(work.join("log.simpleFoam")).unwrap(),
+        "End\n"
+    );
+    let copy = run.join("in/system/controlDict");
+    assert!(fs::metadata(&copy).unwrap().permissions().readonly());
+    assert!(
+        !dir.join("state/previews").exists(),
+        "a case has no preview"
+    );
+
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    assert!(
+        pvd.contains("step-1.vtu") && pvd.contains("timestep=\"100\""),
+        "{pvd}"
+    );
+    let grid = fh_core::vtu::read_vtu(&fs::read(run.join("out/step-1.vtu")).unwrap()).unwrap();
+    assert_eq!((grid.points.len(), grid.cells.len()), (8, 1));
+    assert!(
+        grid.point_data.is_empty(),
+        "a point field U moves the mesh in the viewer"
+    );
+    let u = grid.cell_field("U").unwrap();
+    assert_eq!((u.components, u.as_f64()), (3, Some(&[1.0, 0.25, 0.0][..])));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A program that fails ends the run with the fatal error of OpenFOAM and the path of its log.
+#[test]
+fn a_failed_openfoam_program_fails_the_run_with_its_fatal_error() {
+    let (dir, case) = foam_lab("run-foam-fail", "FAIL");
+    let out = fh_run_foam(&dir, &case);
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors.contains(
+            "FAIL failed (exit status: 1): FOAM FATAL ERROR: (openfoam-2512) Unknown solver FAIL. \
+             Correct"
+        ),
+        "{errors}"
+    );
+    assert!(errors.contains("out/foam/log.FAIL"), "{errors}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(
+        calls.lines().count(),
+        2,
+        "no foamToVTK after the failure: {calls}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }

@@ -1,5 +1,5 @@
 mod common;
-use common::{ccx_solver, p};
+use common::{ccx_solver, openfoam_solver, p};
 use std::process::{Command, Output};
 
 /// A ccx that does not exist. A test that does not solve uses it.
@@ -26,9 +26,16 @@ fn text(bytes: Vec<u8>) -> String {
 }
 
 #[test]
-fn validate_runs_every_case_through_ccx() {
-    let Some(solver) = ccx_solver() else { return };
-    let out = fh_with_solver(&["validate", "--root", &root()], p(&solver));
+fn validate_runs_every_case() {
+    let (Some(solver), Some(openfoam)) = (ccx_solver(), openfoam_solver()) else {
+        return;
+    };
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["validate", "--root", &root()])
+        .env("FH_CCX", solver)
+        .env("FH_OPENFOAM", openfoam)
+        .output()
+        .expect("run fh");
     let stdout = text(out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}{}", text(out.stderr));
     for id in [
@@ -38,6 +45,7 @@ fn validate_runs_every_case_through_ccx() {
         "dynamics-bar-step",
         "frequency-cantilever",
         "heat-fin",
+        "naca0012-ladson",
         "plasticity-sphere",
         "scordelis-lo-roof",
         "warpage-2p5d-frame",
@@ -46,7 +54,7 @@ fn validate_runs_every_case_through_ccx() {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("10 cases: 10 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("11 cases: 11 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
