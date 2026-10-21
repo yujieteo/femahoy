@@ -1,0 +1,38 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+
+application     pimpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+// The same as max-time in ../precice-config.xml.
+endTime         30;
+deltaT          1;
+writeControl    runTime;
+writeInterval   30;
+writeFormat     ascii;
+writePrecision  8;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable false;
+
+libs            ("libpreciceAdapterFunctionObject.so");
+
+functions
+{
+    // Drag and lift per m of depth on the cylinder and the flag: total_x and total_y.
+    forces
+    {
+        type            forces;
+        libs            (forces);
+        patches         (cylinder flag);
+        rho             rhoInf;
+        rhoInf          1000;
+        CofR            (0.2 0.2 0);
+    }
+    // The adapter must be the last function object.
+    preCICE_Adapter
+    {
+        type            preciceAdapterFunctionObject;
+        errors          strict;
+    }
+}

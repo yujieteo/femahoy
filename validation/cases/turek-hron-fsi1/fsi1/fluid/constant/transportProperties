@@ -1,0 +1,5 @@
+FoamFile { version 2.0; format ascii; class dictionary; object transportProperties; }
+
+transportModel  Newtonian;
+// nu_f = 1e-3 m2/s. With rho_f = 1000 kg/m3 (rhoInf of the forces), mu_f = 1 Pa s.
+nu              1e-3;

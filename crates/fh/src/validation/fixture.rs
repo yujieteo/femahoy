@@ -128,16 +128,18 @@ impl Case {
                     crate::foam::is_case,
                     crate::getdp::is_case,
                     crate::chrono::is_case,
+                    crate::precice::is_case,
                     crate::topology::is_case,
                 ];
                 if !solvers.iter().any(|is_case| is_case(&case)) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
-                        "{}, {}, {} or {} not found",
+                        "{}, {}, {}, {} or {} not found",
                         pro.display(),
                         case.join("chrono.py").display(),
                         case.join("topology.toml").display(),
-                        dict.display()
+                        dict.display(),
+                        case.join("precice-config.xml").display()
                     );
                     return Err(reader.err(None, missing));
                 }

@@ -1,0 +1,33 @@
+FoamFile { version 2.0; format ascii; class volVectorField; object U; }
+
+dimensions      [0 1 -1 0 0 0 0];
+internalField   uniform (0 0 0);
+
+boundaryField
+{
+    // Parabolic profile with the mean velocity 0.2 m/s (Re = 20), ramped up with
+    // (1 - cos(pi t / 2)) / 2 in the first 2 s.
+    inlet
+    {
+        type            exprFixedValue;
+        value           uniform (0 0 0);
+        valueExpr       "(time() < 2 ? 0.5*(1 - cos(0.5*pi()*time())) : 1)*vector(1.2*pos().y()*(0.41 - pos().y())/(0.41*0.41), 0, 0)";
+    }
+    outlet
+    {
+        type            zeroGradient;
+    }
+    "(walls|cylinder)"
+    {
+        type            noSlip;
+    }
+    flag
+    {
+        type            movingWallVelocity;
+        value           uniform (0 0 0);
+    }
+    frontAndBack
+    {
+        type            empty;
+    }
+}

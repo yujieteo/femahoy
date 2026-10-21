@@ -32,6 +32,15 @@ use crate::ccx::{
 pub const WORK: &str = "foam";
 /// The folders of a case that a run copies.
 const CASE_DIRS: [&str; 3] = ["system", "constant", "0"];
+/// The last program of a run: the cell fields of the last time as 1 legacy VTK file.
+pub(crate) const TO_VTK: [&str; 6] = [
+    "foamToVTK",
+    "-latestTime",
+    "-legacy",
+    "-ascii",
+    "-no-boundary",
+    "-no-point-data",
+];
 
 /// True when `dir` is an OpenFOAM case: it has `system/controlDict`.
 pub fn is_case(dir: &Path) -> bool {
@@ -68,7 +77,7 @@ pub(crate) fn copy_case(case: &Path, dir: &Path, read_only: bool) -> Result<(), 
 }
 
 /// The application of the case: the word after `application` in `system/controlDict`.
-fn application(case: &Path) -> Result<String, String> {
+pub(crate) fn application(case: &Path) -> Result<String, String> {
     let file = case.join("system/controlDict");
     let text = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     text.lines()
@@ -86,7 +95,7 @@ fn application(case: &Path) -> Result<String, String> {
 }
 
 /// Why a program of OpenFOAM failed and what to do, from its exit status and its output `log`.
-fn failure(program: &str, status: ExitStatus, log: &str, log_file: &Path) -> String {
+pub(crate) fn failure(program: &str, status: ExitStatus, log: &str, log_file: &Path) -> String {
     let see = format!(
         "The full output is in {}. Its last lines: {}",
         log_file.display(),
@@ -102,6 +111,12 @@ fn failure(program: &str, status: ExitStatus, log: &str, log_file: &Path) -> Str
         return format!(
             "{program} failed ({status}): {}. Correct the case as the message tells. {see}",
             words.join(" ").trim_end_matches('.')
+        );
+    }
+    // The OpenFOAM adapter of preCICE (see crate::precice).
+    if let Some(e) = crate::precice::error_line(log) {
+        return format!(
+            "{program} failed ({status}): {e}. Correct the case as the message tells. {see}"
         );
     }
     if log.contains("sigFpe") {
@@ -265,56 +280,69 @@ impl Foam {
             programs.push(vec!["blockMesh"]);
         }
         programs.push(vec![&app]);
-        programs.push(vec![
-            "foamToVTK",
-            "-latestTime",
-            "-legacy",
-            "-ascii",
-            "-no-boundary",
-            "-no-point-data",
-        ]);
+        programs.push(TO_VTK.to_vec());
+        for args in &programs {
+            on_program(args[0]);
+            let limits = (start, self.timeout, self.memory_limit);
+            self.program(args, &work, limits, cancel, &mut || {})?;
+        }
+        write_result(&work, &run_dir)
+    }
+
+    /// Run the OpenFOAM program `args` on the case in `work`, with its output in
+    /// `work/log.<program>`.
+    pub(crate) fn program(
+        &self,
+        args: &[&str],
+        work: &Path,
+        limits: (Instant, Option<Duration>, u64),
+        cancel: &CancelToken,
+        poll: &mut dyn FnMut(),
+    ) -> Result<(), String> {
         let program = Program {
             name: "openfoam",
             install: "Install OpenFOAM (README.md) and put openfoam on PATH, or set FH_OPENFOAM",
         };
-        for args in &programs {
-            on_program(args[0]);
-            let log_file = work.join(format!("log.{}", args[0]));
-            let folder = |e: std::io::Error| format!("run folder: {e}");
-            let log = fs::File::create(&log_file).map_err(folder)?;
-            let mut cmd = Command::new(&self.exe);
-            cmd.args(args)
-                .arg("-case")
-                .arg(&work)
-                .current_dir(&work)
-                .stdin(Stdio::null())
-                .stdout(log.try_clone().map_err(folder)?)
-                .stderr(log);
-            let limits = (start, self.timeout, self.memory_limit);
-            let status = supervise(&program, &mut cmd, limits, cancel, &mut || {})?;
-            if !status.success() {
-                let log = fs::read_to_string(&log_file).unwrap_or_default();
-                return Err(failure(args[0], status, &log, &log_file));
-            }
+        let log_file = work.join(format!("log.{}", args[0]));
+        let folder = |e: std::io::Error| format!("run folder: {e}");
+        let log = fs::File::create(&log_file).map_err(folder)?;
+        let mut cmd = Command::new(&self.exe);
+        cmd.args(args)
+            .arg("-case")
+            .arg(work)
+            .current_dir(work)
+            .stdin(Stdio::null())
+            .stdout(log.try_clone().map_err(folder)?)
+            .stderr(log);
+        let status = supervise(&program, &mut cmd, limits, cancel, poll)?;
+        if !status.success() {
+            let log = fs::read_to_string(&log_file).unwrap_or_default();
+            return Err(failure(args[0], status, &log, &log_file));
         }
-        let vtk = work.join("VTK");
-        let files: Vec<PathBuf> = fs::read_dir(&vtk)
-            .map_err(|e| format!("{}: {e}", vtk.display()))?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "vtk"))
-            .collect();
-        let [file] = files.as_slice() else {
-            return Err(format!(
-                "{} holds {} .vtk files, expected 1",
-                vtk.display(),
-                files.len()
-            ));
-        };
-        let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-        let frame = read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-        write_frames(&run_dir, "unspecified", false, std::iter::once(frame))
+        Ok(())
     }
+}
+
+/// Write the cell fields of the 1 file of `foamToVTK` in `work/VTK` to `step-1.vtu` and
+/// `results.pvd` in `run_dir`.
+pub(crate) fn write_result(work: &Path, run_dir: &Path) -> Result<(), String> {
+    let vtk = work.join("VTK");
+    let files: Vec<PathBuf> = fs::read_dir(&vtk)
+        .map_err(|e| format!("{}: {e}", vtk.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "vtk"))
+        .collect();
+    let [file] = files.as_slice() else {
+        return Err(format!(
+            "{} holds {} .vtk files, expected 1",
+            vtk.display(),
+            files.len()
+        ));
+    };
+    let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let frame = read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    write_frames(run_dir, "unspecified", false, std::iter::once(frame))
 }
 
 #[cfg(test)]
