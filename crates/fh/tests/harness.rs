@@ -1,6 +1,6 @@
 //! Tests for the pass rule, the check file and the shipped cases.
 
-use fh::validation::{check, Case};
+use fh::validation::{check, Case, Field};
 use std::path::PathBuf;
 
 fn write_case(dir: &std::path::Path, body: &str) -> Result<Case, String> {
@@ -84,10 +84,10 @@ fn a_number_that_is_not_finite_is_refused() {
     }
 }
 
-/// A check of `CL`, `CD` or `CM` names the subfolder of an OpenFOAM case. The case has no
-/// `job.inp`.
+/// A check with `case` reads a column of a table in the subfolder of an OpenFOAM case. The case
+/// has no `job.inp`.
 #[test]
-fn a_force_coefficient_check_names_an_openfoam_case() {
+fn a_table_check_names_an_openfoam_case() {
     let dir = tmp("openfoam");
     std::fs::create_dir_all(dir.join("a4/system")).unwrap();
     std::fs::write(
@@ -95,9 +95,12 @@ fn a_force_coefficient_check_names_an_openfoam_case() {
         "application simpleFoam;\n",
     )
     .unwrap();
-    let check = |field: &str, case: &str| {
-        format!("[{field}]\nvalue = 0.4\nfield = \"{field}\"\ncase = \"{case}\"\n")
+    let check = |name: &str, case: &str, file: &str| {
+        format!(
+            "[{name}]\nvalue = 0.4\ncase = \"{case}\"\nfile = \"{file}\"\ncolumn = \"{name}\"\n"
+        )
     };
+    let coefficients = "postProcessing/forceCoeffs/0/coefficient.dat";
     let load = |body: &str| {
         std::fs::write(
             dir.join("check.toml"),
@@ -106,30 +109,45 @@ fn a_force_coefficient_check_names_an_openfoam_case() {
         .unwrap();
         Case::load(&dir)
     };
-    let case = load(&(check("CL", "a4") + &check("CD", "a4") + &check("CM", "a4"))).unwrap();
+    let case = load(&(check("Cl", "a4", coefficients) + &check("Cd", "a4", coefficients))).unwrap();
     assert!(case.openfoam());
     assert_eq!(case.input, dir);
     assert_eq!(case.references[1].quantity.set, "a4");
     assert_eq!(
-        case.references[2].quantity.field.coefficient(),
-        Some("CmPitch")
+        case.references[1].quantity.field,
+        Field::Table {
+            file: coefficients.into(),
+            column: "Cd".into()
+        }
     );
 
-    let missing = load(&check("CL", "a10")).unwrap_err();
+    let missing = load(&check("Cl", "a10", coefficients)).unwrap_err();
     assert!(
         missing.contains("a10/system/controlDict not found"),
         "{missing}"
     );
-    let outside = load(&check("CL", "../a4")).unwrap_err();
+    let outside = load(&check("Cl", "../a4", coefficients)).unwrap_err();
     assert!(
-        outside.contains("check.toml:6: `case` must be the name of a subfolder"),
+        outside.contains("check.toml:5: `case` must be the name of a subfolder"),
         "{outside}"
     );
-    let mixed = check("CL", "a4")
+    for file in ["../a10/p.dat", "/etc/p.dat", "postProcessing//p.dat", ""] {
+        let error = load(&check("Cl", "a4", file)).unwrap_err();
+        assert!(
+            error.contains("check.toml:6: `file` must"),
+            "{file}: {error}"
+        );
+    }
+    let mixed = check("Cl", "a4", coefficients)
         + "[u]\nvalue = 1\nset = \"s\"\nfield = \"U\"\ncomponent = 1\nop = \"mean\"\n";
     let mixed = load(&mixed).unwrap_err();
-    assert!(mixed.contains("CL, CD and CM checks only"), "{mixed}");
-    let extra = load(&(check("CD", "a4") + "set = \"s\"\n")).unwrap_err();
-    assert!(extra.contains("unknown key `set` in `CD`"), "{extra}");
+    assert!(
+        mixed.contains("OpenFOAM checks (with `case`) only"),
+        "{mixed}"
+    );
+    let extra = load(&(check("Cd", "a4", coefficients) + "field = \"CD\"\n")).unwrap_err();
+    assert!(extra.contains("unknown key `field` in `Cd`"), "{extra}");
+    let no_column = load("[Cd]\nvalue = 0.4\ncase = \"a4\"\nfile = \"p.dat\"\n").unwrap_err();
+    assert!(no_column.contains("missing key `column`"), "{no_column}");
     let _ = std::fs::remove_dir_all(&dir);
 }

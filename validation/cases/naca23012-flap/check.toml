@@ -21,30 +21,36 @@ abs_tol = 0.005
 
 [cl_up10]
 value = -0.3762
-field = "CL"
 case = "d-10"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cl"
 
 [cm_up10]
 value = 0.08
-field = "CM"
 case = "d-10"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "CmPitch"
 
 [cl_0]
 value = 0.1200
-field = "CL"
 case = "d0"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cl"
 
 [cm_0]
 value = -0.008
-field = "CM"
 case = "d0"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "CmPitch"
 
 [cl_down10]
 value = 0.5640
-field = "CL"
 case = "d10"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cl"
 
 [cm_down10]
 value = -0.09
-field = "CM"
 case = "d10"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "CmPitch"

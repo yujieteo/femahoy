@@ -21,7 +21,7 @@ impl Solve for Subprocess {
             std::env::temp_dir().join(format!("fh-validate-{}-{}", std::process::id(), case.id));
         let _ = std::fs::remove_dir_all(&run);
         let values = if case.openfoam() {
-            self.coefficients(case, input, &run)
+            self.tables(case, input, &run)
         } else {
             self.ccx(case, input, &run)
         };
@@ -44,8 +44,8 @@ impl Subprocess {
     }
 
     /// Solve the OpenFOAM case of each check at the same time, each in its own folder in `run`,
-    /// and read the force coefficients of the last iteration.
-    fn coefficients(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
+    /// and read the value of each check in the last row of its table.
+    fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
             .iter()
@@ -53,20 +53,14 @@ impl Subprocess {
             .collect();
         folders.sort_unstable();
         folders.dedup();
-        let tables: Vec<Result<String, String>> = std::thread::scope(|scope| {
+        let solves: Vec<Result<(), String>> = std::thread::scope(|scope| {
             let solves: Vec<_> = folders
                 .iter()
                 .map(|folder| {
                     scope.spawn(move || {
-                        let dir = run.join(folder);
                         self.foam
-                            .run(&input.join(folder), &dir)
-                            .map_err(|e| format!("openfoam {folder}: {e}"))?;
-                        let file = dir
-                            .join(WORK)
-                            .join("postProcessing/forceCoeffs/0/coefficient.dat");
-                        std::fs::read_to_string(&file)
-                            .map_err(|e| format!("{}: {e}", file.display()))
+                            .run(&input.join(folder), &run.join(folder))
+                            .map_err(|e| format!("openfoam {folder}: {e}"))
                     })
                 })
                 .collect();
@@ -85,34 +79,50 @@ impl Subprocess {
                 let at = folders
                     .binary_search(&folder)
                     .expect("each folder is in the list");
-                let table = tables[at].as_ref().map_err(Clone::clone)?;
-                let name = r.quantity.field.coefficient().expect("a force coefficient");
-                coefficient(table, name).map_err(|e| format!("{folder}: coefficient.dat: {e}"))
+                solves[at].clone()?;
+                let Field::Table { file, column } = &r.quantity.field else {
+                    unreachable!("an OpenFOAM case has table checks only")
+                };
+                let path = run.join(folder).join(WORK).join(file);
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))
             })
             .collect()
     }
 }
 
-/// The column `name` of the last row of the `coefficient.dat` text of `forceCoeffs`. The last
-/// comment line names the columns: `# Time Cd Cd(f) Cd(r) Cl ...`.
-fn coefficient(text: &str, name: &str) -> Result<f64, String> {
+/// The value in column `name` of the last row of the table of a function object, for example
+/// `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
+/// `# Time Cd Cd(f) Cd(r) Cl ...`. Each column holds one number in each row.
+fn last_row(text: &str, name: &str) -> Result<f64, String> {
     let header = text
         .lines()
         .rfind(|l| l.starts_with('#'))
         .ok_or("no header line")?;
-    let column = header[1..]
-        .split_whitespace()
-        .position(|w| w == name)
+    let names: Vec<&str> = header[1..].split_whitespace().collect();
+    let column = names
+        .iter()
+        .position(|w| *w == name)
         .ok_or_else(|| format!("no column {name}"))?;
-    let row = text
+    let row: Vec<&str> = text
         .lines()
         .rfind(|l| !l.starts_with('#') && !l.trim().is_empty())
-        .ok_or("no row")?;
-    let value: f64 = row
+        .ok_or("no row")?
         .split_whitespace()
-        .nth(column)
-        .and_then(|w| w.parse().ok())
-        .ok_or_else(|| format!("the last row has no number in column {name}"))?;
+        .collect();
+    // A vector, for example `(1 0 0)`, is 3 words in 1 column.
+    if row.len() != names.len() {
+        return Err(format!(
+            "the last row has {} words for {} columns. Write each vector field as its components \
+             with the function object `components`",
+            row.len(),
+            names.len()
+        ));
+    }
+    let value: f64 = row[column]
+        .parse()
+        .map_err(|_| format!("the last row has no number in column {name}"))?;
     if !value.is_finite() {
         return Err(format!("{name} is {value}, which is not finite"));
     }
@@ -120,21 +130,21 @@ fn coefficient(text: &str, name: &str) -> Result<f64, String> {
 }
 
 /// The kind of block of the `.dat` file, and the number of leading columns before the values.
-fn block_of(field: Field) -> (&'static str, usize, usize) {
+fn block_of(field: &Field) -> (&'static str, usize, usize) {
     match field {
         Field::U => ("displacements", 1, 3),
         Field::RF => ("forces", 1, 3),
         Field::S => ("stresses", 2, 6),
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
-        // `mode_value` and `coefficient` read these. They have no block of a set.
-        Field::Freq | Field::Buckle | Field::Cl | Field::Cd | Field::Cm => ("", 0, 0),
+        // `mode_value` and `last_row` read these. They have no block of a set.
+        Field::Freq | Field::Buckle | Field::Table { .. } => ("", 0, 0),
     }
 }
 
 /// The column of a component in the values of a row.
 fn column_of(q: &Quantity) -> Result<usize, String> {
-    let column = match (q.field, q.component) {
+    let column = match (&q.field, q.component) {
         (Field::U | Field::RF | Field::Cstr, c @ 1..=3) => c as usize - 1,
         (Field::NT, 1) => 0,
         (Field::S, 11) => 0,
@@ -151,7 +161,7 @@ fn column_of(q: &Quantity) -> Result<usize, String> {
 /// The rows of the last block of the field for the set, with the values of one component.
 /// A block with no set (`for all contact elements`) is the block of the empty set name.
 fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
-    let (kind, lead, width) = block_of(q.field);
+    let (kind, lead, width) = block_of(&q.field);
     let column = column_of(q)?;
     let of = match q.set.as_str() {
         "" => String::new(),
@@ -279,7 +289,7 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::coefficient;
+    use super::last_row;
 
     const TABLE: &str = "# Force and moment coefficients\n# magUInf : 1\n#\n\
         # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \tCmPitch\n\
@@ -287,22 +297,38 @@ mod tests {
         1500      \t0.0094\t0.004  \t0.005 \t0.4448\t-0.1151\n";
 
     #[test]
-    fn a_coefficient_is_the_column_of_its_name_in_the_last_row() {
-        assert_eq!(coefficient(TABLE, "Cl"), Ok(0.4448));
-        assert_eq!(coefficient(TABLE, "Cd"), Ok(0.0094));
-        assert_eq!(coefficient(TABLE, "CmPitch"), Ok(-0.1151));
-        assert!(coefficient(TABLE, "Cs")
-            .unwrap_err()
-            .contains("no column Cs"));
+    fn a_value_is_the_column_of_its_name_in_the_last_row() {
+        assert_eq!(last_row(TABLE, "Cl"), Ok(0.4448));
+        assert_eq!(last_row(TABLE, "Cd"), Ok(0.0094));
+        assert_eq!(last_row(TABLE, "CmPitch"), Ok(-0.1151));
+        assert!(last_row(TABLE, "Cs").unwrap_err().contains("no column Cs"));
         let cut = TABLE.replace("\t-0.1151", "");
-        assert!(coefficient(&cut, "CmPitch")
+        assert!(last_row(&cut, "Cl")
             .unwrap_err()
-            .contains("no number"));
-        assert!(coefficient("# Time Cd\n", "Cd")
+            .contains("5 words for 6 columns"));
+        assert!(last_row("# Time Cd\n", "Cd")
             .unwrap_err()
             .contains("no row"));
-        assert!(coefficient("# Time Cd\n1 nan\n", "Cd")
+        assert!(last_row("# Time Cd\n1 nan\n", "Cd")
             .unwrap_err()
             .contains("not finite"));
+        assert!(last_row("# Time Cd\n1 x\n", "Cd")
+            .unwrap_err()
+            .contains("no number in column Cd"));
+    }
+
+    /// `surfaceFieldValue` writes a vector as `(x y z)`. Thus the words of a row do not match the
+    /// columns, and the reader must not take the value of a wrong column.
+    #[test]
+    fn a_vector_column_is_an_error() {
+        let table = "# Time\tmax(U)\tmax(Ux)\n20\t(3.53 0.09 0)\t3.53\n";
+        assert!(last_row(table, "max(Ux)")
+            .unwrap_err()
+            .contains("components"));
+        let table = "# Time\tareaNormalAverage(grad(T))\n2000\t4.5308763737e+00\n";
+        assert_eq!(
+            last_row(table, "areaNormalAverage(grad(T))"),
+            Ok(4.5308763737)
+        );
     }
 }

@@ -1,0 +1,10 @@
+FoamFile { version 2.0; format ascii; class dictionary; object transportProperties; }
+
+// The side L = 1, Th - Tc = 1 and the thermal diffusivity nu/Pr = 1. Thus the velocity is in
+// units of alpha/L, as in de Vahl Davis (1983).
+transportModel  Newtonian;
+nu              0.71;
+Pr              0.71;
+beta            1;
+TRef            0.5;
+Prt             0.85;

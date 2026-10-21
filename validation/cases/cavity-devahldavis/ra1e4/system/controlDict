@@ -1,0 +1,81 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+
+application     buoyantBoussinesqSimpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         2000;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   2000;
+writeFormat     ascii;
+writePrecision  10;
+timePrecision   6;
+runTimeModifiable false;
+
+functions
+{
+    // The average Nusselt number of the hot wall. The side, Th - Tc and the conductivity are 1,
+    // thus it is the average of n & grad(T) on the wall, with n out of the fluid.
+    gradT
+    {
+        type            grad;
+        libs            (fieldFunctionObjects);
+        field           T;
+        writeControl    none;
+    }
+    nusselt
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        regionType      patch;
+        name            hot;
+        operation       areaNormalAverage;
+        fields          (grad(T));
+        writeFields     false;
+    }
+    // The fields Ux, Uy and Uz.
+    components
+    {
+        type            components;
+        libs            (fieldFunctionObjects);
+        field           U;
+        writeControl    none;
+    }
+    // The largest Ux on the vertical centre line and the largest Uy on the horizontal centre
+    // line: the largest cell value in the row of cells that the plane cuts.
+    uMax
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        regionType      sampledSurface;
+        name            xMid;
+        sampledSurfaceDict
+        {
+            type        cuttingPlane;
+            point       (0.5 0.5 0.05);
+            normal      (1 0 0);
+            interpolate false;
+        }
+        operation       max;
+        fields          (Ux);
+        writeFields     false;
+    }
+    vMax
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        regionType      sampledSurface;
+        name            yMid;
+        sampledSurfaceDict
+        {
+            type        cuttingPlane;
+            point       (0.5 0.5 0.05);
+            normal      (0 1 0);
+            interpolate false;
+        }
+        operation       max;
+        fields          (Uy);
+        writeFields     false;
+    }
+}
