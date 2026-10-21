@@ -444,8 +444,7 @@ async function read() {
   timer = setTimeout(read, running ? 1000 : 5000);
 }
 
-// Send the message to the agent, also while it works. A line break is a space, because a
-// field ends at the end of its line.
+// Send the message to the agent, also while it works.
 async function ask() {
   const text = input.value.trim();
   if (!text) return;
@@ -453,7 +452,7 @@ async function ask() {
   grow();
   send.disabled = true;
   try {
-    await call("/api/v1/chat", "text=" + text.replace(/[\r\n]/g, " ") + "\n");
+    await call("/api/v1/chat", text);
     showError("");
   } catch (e) {
     showError(e.message);

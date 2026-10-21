@@ -3,5 +3,4 @@
 # viewer (scripts/build-viewer.sh).
 [toolchain]
 channel = "1.97.0"
-components = ["rustfmt", "clippy"]
 targets = ["wasm32-unknown-unknown"]

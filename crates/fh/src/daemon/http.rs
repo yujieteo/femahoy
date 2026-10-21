@@ -24,7 +24,7 @@
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
 //! | `GET /api/v1/previews/<id>` | | the text of the copy of the input of the preview, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
-//! | `POST /api/v1/chat` | `text` | `state`: the message goes to the agent, also while it works |
+//! | `POST /api/v1/chat` | the text of the message | `state`: the message goes to the agent, also while it works |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
 //!
 //! The page has no secret in it. Its script reads the token from the page address and
@@ -56,8 +56,10 @@ const MAX_BODY: usize = 16 << 10;
 const MAX_CHAT_BODY: usize = 1 << 20;
 /// The most connections at the same time. Each one has a thread.
 const MAX_CONNECTIONS: usize = 32;
-/// The longest time that a client can take to send its request.
-const IO_TIMEOUT: Duration = Duration::from_secs(10);
+/// The longest time that a client can take to send its request. A browser sends it at once.
+const READ_TIMEOUT: Duration = Duration::from_secs(2);
+/// The longest time that a client can take to read a part of the answer.
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// The page of the daemon (`page.html`): the chat on the left and the wasm viewer
 /// (`crates/viewer`, `start`) in the center. `NONCE` is the nonce of its script.
 const PAGE: &str = include_str!("page.html");
@@ -115,8 +117,8 @@ impl Server {
                     break;
                 }
                 let Ok(mut stream) = stream else { continue };
-                let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-                let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+                let _ = stream.set_read_timeout(Some(READ_TIMEOUT));
+                let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
                 if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     active.fetch_sub(1, Ordering::SeqCst);
                     let busy = fail(503, "too many connections");
@@ -327,7 +329,6 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
     }
     let store = &ctx.store;
     let segments: Vec<&str> = req.path.split('/').collect();
-    let body = || Message::parse(&req.body).map_err(bad);
     let mut m = Message::new();
     match (req.method.as_str(), &segments[..]) {
         ("GET", ["", "viewer", name]) => return viewer_file(ctx.viewer.as_deref(), name),
@@ -335,7 +336,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
             m = ctx.chat.read(req.query_number("since")?);
         }
         ("POST", ["", "api", "v1", "chat"]) => {
-            ctx.chat.ask(body()?.need("text").map_err(bad)?)?;
+            ctx.chat.ask(&req.body)?;
             m.set("state", "running");
         }
         ("POST", ["", "api", "v1", "chat", "stop"]) => {

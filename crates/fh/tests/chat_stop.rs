@@ -1,7 +1,7 @@
-//! The Stop of the chat stops ccx. A fake agent takes the first message, runs `fh run` as the
-//! Bash tool of the real agent does, and passes SIGTERM on to it. The Stop button of the page
-//! sends SIGTERM to the process group of the agent. This file holds one test, because it sets
-//! environment variables.
+//! The Stop of the chat stops ccx. A fake agent takes the first message, keeps it, runs `fh run`
+//! as the Bash tool of the real agent does, and passes SIGTERM on to it. The Stop button of the
+//! page sends SIGTERM to the process group of the agent. The kept message shows that its line
+//! breaks reach the agent. This file holds one test, because it sets environment variables.
 mod common;
 use common::{p, root, scratch, script};
 
@@ -17,8 +17,12 @@ use fh::daemon::{Daemon, Options};
 const CCX: &str = "#!/bin/sh\ntrap '' TERM\nsleep 300 &\n\
     echo $$ $! > PIDS.tmp\nmv PIDS.tmp PIDS\nwait\n";
 
-const AGENT: &str = "#!/bin/sh\nIFS= read -r line\n\"FH\" run \"MODEL\" &\nchild=$!\n\
+const AGENT: &str = "#!/bin/sh\nIFS= read -r line\nprintf '%s\\n' \"$line\" > \"LINE\"\n\
+    \"FH\" run \"MODEL\" &\nchild=$!\n\
     trap 'kill -TERM $child; wait $child; exit 0' TERM\nwait $child\n";
+
+/// A message with line breaks, as a pasted table.
+const MESSAGE: &str = "load case table:\nLC1, 100, 0\nLC2, 0, 200";
 
 fn post(daemon: &Daemon, path: &str, body: &str) -> String {
     let port = daemon.port();
@@ -50,17 +54,19 @@ fn alive(pid: &str) -> bool {
 fn the_stop_of_the_chat_stops_ccx() {
     let dir = scratch("chat-stop");
     let pids = dir.join("pids");
+    let line = dir.join("line");
     script(&dir.join("ccx"), &CCX.replace("PIDS", p(&pids)));
     let model = root().join("validation/cases/bar-pressure/job.inp");
     let agent = AGENT
         .replace("FH", env!("CARGO_BIN_EXE_fh"))
-        .replace("MODEL", p(&model));
+        .replace("MODEL", p(&model))
+        .replace("LINE", p(&line));
     script(&dir.join("agent"), &agent);
     std::env::set_var("FH_AGENT", dir.join("agent"));
     std::env::set_var("FH_CCX", dir.join("ccx"));
     let daemon = Daemon::start_with_options(&dir.join("state"), Options::default()).unwrap();
 
-    let answer = post(&daemon, "/api/v1/chat", "text=solve it\n");
+    let answer = post(&daemon, "/api/v1/chat", MESSAGE);
     assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
     let end = Instant::now() + Duration::from_secs(30);
     let started = loop {
@@ -74,6 +80,9 @@ fn the_stop_of_the_chat_stops_ccx() {
         std::thread::sleep(Duration::from_millis(20));
     };
     assert_eq!(started.len(), 2, "{started:?}");
+    let sent = fs::read_to_string(&line).unwrap();
+    let content = format!("\"content\":\"{}\"", MESSAGE.replace('\n', "\\n"));
+    assert!(sent.contains(&content), "{sent}");
 
     let answer = post(&daemon, "/api/v1/chat/stop", "");
     assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");

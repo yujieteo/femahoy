@@ -10,6 +10,7 @@ use wgpu::util::DeviceExt;
 
 use crate::mesh::RenderMesh;
 use crate::results::{BANDS, BAND_COLORS};
+use crate::view::{face_vertices, Geometry};
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -33,28 +34,6 @@ pub struct FrameParams {
     pub ghost: bool,
     /// Colours for the bands in place of the contour colours.
     pub palette: Option<[[f32; 3]; BANDS]>,
-}
-
-/// New vertex data: the drawn position of each render position, and the position and the
-/// contour position (0 to 1) of each triangle corner (three per triangle, see `face_vertices`).
-pub struct Geometry {
-    /// A new number for each change. The buffers are written once per number.
-    pub version: u64,
-    pub positions: Vec<[f32; 3]>,
-    pub faces: Vec<[f32; 4]>,
-}
-
-/// The face vertex data: three corners per triangle, each `[x, y, z, value]`.
-pub fn face_vertices(mesh: &RenderMesh, positions: &[[f32; 3]], values: &[f32]) -> Vec<[f32; 4]> {
-    mesh.triangles
-        .iter()
-        .flatten()
-        .enumerate()
-        .map(|(i, &p)| {
-            let x = positions[p as usize];
-            [x[0], x[1], x[2], values.get(i).copied().unwrap_or(0.0)]
-        })
-        .collect()
 }
 
 struct Layer {
