@@ -18,25 +18,30 @@ abs_tol = 0.0015
 
 [cd_a0]
 value = 0.00809
-field = "CD"
 case = "a-0.05"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cd"
 
 [cl_a4]
 value = 0.4316
-field = "CL"
 case = "a4.04"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cl"
 
 [cd_a4]
 value = 0.00823
-field = "CD"
 case = "a4.04"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cd"
 
 [cl_a10]
 value = 1.0707
-field = "CL"
 case = "a10.12"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cl"
 
 [cd_a10]
 value = 0.01201
-field = "CD"
 case = "a10.12"
+file = "postProcessing/forceCoeffs/0/coefficient.dat"
+column = "Cd"

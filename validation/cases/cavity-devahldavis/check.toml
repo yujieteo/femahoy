@@ -1,0 +1,56 @@
+# Natural convection of air (Pr = 0.71) in a square cavity, laminar and steady. The left wall is
+# hot, the right wall is cold, and the top and the bottom are adiabatic. Ra = 1e4 (ra1e4) and
+# Ra = 1e5 (ra1e5). The references are the bench mark solution of de Vahl Davis (1983), Int. J.
+# Numer. Methods Fluids 3, 249-264, Table V: the average Nusselt number, the largest horizontal
+# velocity on the vertical centre line and the largest vertical velocity on the horizontal centre
+# line. The velocities are in units of alpha/L. derivation.md gives the sources, the setup and
+# the mesh study.
+#
+# The model is buoyantBoussinesqSimpleFoam on a uniform mesh of 129 x 129 cells, 2000
+# iterations. The tolerance comes from the accuracy of the reference and from the mesh study,
+# not from the difference between the model and the reference (derivation.md, "Tolerance"):
+# - Table VII of de Vahl Davis estimates the error of the bench mark: 0.2 % at Ra = 1e4 and
+#   0.3 % at Ra = 1e5.
+# - The mesh error of 129 x 129 against the extrapolated value of 3 meshes is 0.21 % or less.
+#   With the factor of safety 1.25 of the grid convergence index, 0.26 %.
+# - The largest cell value on a centre line against the maximum of a parabola: 0.02 % or less.
+# - The iteration error: 0.0003 % or less.
+# rel_tol = 0.3 % + 0.26 % = 0.56 % (nu_ra1e5, the largest sum), rounded up.
+rel_tol = 0.006
+abs_tol = 0
+
+[nu_ra1e4]
+value = 2.243
+case = "ra1e4"
+file = "postProcessing/nusselt/0/surfaceFieldValue.dat"
+column = "areaNormalAverage(grad(T))"
+
+[umax_ra1e4]
+value = 16.178
+case = "ra1e4"
+file = "postProcessing/uMax/0/surfaceFieldValue.dat"
+column = "max(Ux)"
+
+[vmax_ra1e4]
+value = 19.617
+case = "ra1e4"
+file = "postProcessing/vMax/0/surfaceFieldValue.dat"
+column = "max(Uy)"
+
+[nu_ra1e5]
+value = 4.519
+case = "ra1e5"
+file = "postProcessing/nusselt/0/surfaceFieldValue.dat"
+column = "areaNormalAverage(grad(T))"
+
+[umax_ra1e5]
+value = 34.73
+case = "ra1e5"
+file = "postProcessing/uMax/0/surfaceFieldValue.dat"
+column = "max(Ux)"
+
+[vmax_ra1e5]
+value = 68.59
+case = "ra1e5"
+file = "postProcessing/vMax/0/surfaceFieldValue.dat"
+column = "max(Uy)"

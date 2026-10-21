@@ -1,7 +1,7 @@
 # naca23012-flap derivation
 
 This case checks a control surface in the CFD path: the NACA 23012 airfoil with a plain flap of 20 % chord, at 3 flap angles.
-It uses the setup of `naca0012-ladson`, and it adds the pitching moment `CM` to the lift.
+It uses the setup of `naca0012-ladson`, and it adds the pitching moment (the column `CmPitch`) to the lift.
 
 ## Sources
 

@@ -1,0 +1,5 @@
+FoamFile { version 2.0; format ascii; class uniformDimensionedVectorField; object g; }
+
+// Ra = g beta (Th - Tc) L^3 / (nu alpha), thus g = Ra Pr.
+dimensions      [0 1 -2 0 0 0 0];
+value           (0 -71000 0);

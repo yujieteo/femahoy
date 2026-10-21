@@ -1,7 +1,7 @@
 //! `fh validate [--root DIR]`: load every case and run the harness.
 //!
 //! Each case runs through `ccx` (`$FH_CCX`, else `ccx` on PATH), or through OpenFOAM
-//! (`$FH_OPENFOAM`, else `openfoam` on PATH) when its checks are force coefficients. A table
+//! (`$FH_OPENFOAM`, else `openfoam` on PATH) when its checks are OpenFOAM tables. A table
 //! shows every quantity with its computed value, reference, tolerance and margin. A bad fixture,
 //! a case that fails or a case that cannot run gives exit code 1. If `ccx` does not start,
 //! `fh validate` stops before the first case and tells how to install CalculiX.
