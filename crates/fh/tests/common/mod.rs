@@ -64,6 +64,21 @@ pub fn openfoam_solver() -> Option<PathBuf> {
     found.then_some(exe)
 }
 
+/// `getdp` (`FH_GETDP`, else `getdp` on PATH) when it starts. Else `None` with a message, and
+/// the test does not solve. With `FH_REQUIRE_GETDP=1`, as in CI, a missing GetDP fails the test.
+pub fn getdp_solver() -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os("FH_GETDP").unwrap_or_else(|| "getdp".into()));
+    let found = Command::new(&exe).arg("-version").output().is_ok();
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_GETDP").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_GETDP=1, but getdp does not start"
+        );
+        eprintln!("skipped: getdp does not start. Set FH_GETDP");
+    }
+    found.then_some(exe)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

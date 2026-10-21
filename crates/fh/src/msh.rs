@@ -1,11 +1,29 @@
-//! Reader for the gmsh MSH 4.1 ASCII format. It builds the `inp` model.
+//! The gmsh program, and a reader for the gmsh MSH 4.1 ASCII format. The reader builds the `inp`
+//! model.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use fh_core::inp::{Element, ElementSet, ElementSurface, Model, Node, NodeSet};
 
 type Result<T> = std::result::Result<T, String>;
+
+/// A gmsh program: `FH_GMSH`, `gmsh` on `PATH`, or the macOS app.
+pub fn find_gmsh() -> Result<PathBuf> {
+    if let Some(p) = std::env::var_os("FH_GMSH").filter(|p| !p.is_empty()) {
+        return Ok(p.into());
+    }
+    let mut candidates: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).map(|d| d.join("gmsh")).collect())
+        .unwrap_or_default();
+    candidates.push("/Applications/Gmsh.app/Contents/MacOS/gmsh".into());
+    candidates.into_iter().find(|p| p.is_file()).ok_or_else(|| {
+        "gmsh is not installed. Install it from your package manager or from gmsh.info, \
+then set FH_GMSH"
+            .into()
+    })
+}
 
 /// An import error. The text starts with the line number of the input.
 fn fail<T>(line: usize, message: impl Into<String>) -> Result<T> {

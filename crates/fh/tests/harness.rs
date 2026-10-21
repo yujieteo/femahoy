@@ -84,10 +84,10 @@ fn a_number_that_is_not_finite_is_refused() {
     }
 }
 
-/// A check with `case` reads a column of a table in the subfolder of an OpenFOAM case. The case
-/// has no `job.inp`.
+/// A check with `case` reads a column of a table in the subfolder of an OpenFOAM or GetDP case.
+/// The case has no `job.inp`.
 #[test]
-fn a_table_check_names_an_openfoam_case() {
+fn a_table_check_names_an_openfoam_or_getdp_case() {
     let dir = tmp("openfoam");
     std::fs::create_dir_all(dir.join("a4/system")).unwrap();
     std::fs::write(
@@ -95,6 +95,8 @@ fn a_table_check_names_an_openfoam_case() {
         "application simpleFoam;\n",
     )
     .unwrap();
+    std::fs::create_dir_all(dir.join("em")).unwrap();
+    std::fs::write(dir.join("em/case.pro"), "").unwrap();
     let check = |name: &str, case: &str, file: &str| {
         format!(
             "[{name}]\nvalue = 0.4\ncase = \"{case}\"\nfile = \"{file}\"\ncolumn = \"{name}\"\n"
@@ -109,14 +111,14 @@ fn a_table_check_names_an_openfoam_case() {
         .unwrap();
         Case::load(&dir)
     };
-    let case = load(&(check("Cl", "a4", coefficients) + &check("Cd", "a4", coefficients))).unwrap();
-    assert!(case.openfoam());
+    let case = load(&(check("Cl", "a4", coefficients) + &check("Cd", "em", "b.txt"))).unwrap();
+    assert!(case.tables());
     assert_eq!(case.input, dir);
-    assert_eq!(case.references[1].quantity.set, "a4");
+    assert_eq!(case.references[1].quantity.set, "em");
     assert_eq!(
         case.references[1].quantity.field,
         Field::Table {
-            file: coefficients.into(),
+            file: "b.txt".into(),
             column: "Cd".into()
         }
     );
@@ -141,10 +143,7 @@ fn a_table_check_names_an_openfoam_case() {
     let mixed = check("Cl", "a4", coefficients)
         + "[u]\nvalue = 1\nset = \"s\"\nfield = \"U\"\ncomponent = 1\nop = \"mean\"\n";
     let mixed = load(&mixed).unwrap_err();
-    assert!(
-        mixed.contains("OpenFOAM checks (with `case`) only"),
-        "{mixed}"
-    );
+    assert!(mixed.contains("table checks (with `case`) only"), "{mixed}");
     let extra = load(&(check("Cd", "a4", coefficients) + "field = \"CD\"\n")).unwrap_err();
     assert!(extra.contains("unknown key `field` in `Cd`"), "{extra}");
     let no_column = load("[Cd]\nvalue = 0.4\ncase = \"a4\"\nfile = \"p.dat\"\n").unwrap_err();

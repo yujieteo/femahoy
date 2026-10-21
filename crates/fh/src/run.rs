@@ -1,11 +1,13 @@
-//! `fh run`: solve a CalculiX input with CalculiX, or an OpenFOAM case with OpenFOAM, and show
-//! the progress.
+//! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, or a GetDP
+//! case with GetDP, and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
 //! - `fh run CASE` gives OpenFOAM the case folder (`system/controlDict`, `constant`, `0`). See
 //!   `fh::foam` for the programs that it starts. OpenFOAM is `$FH_OPENFOAM`, else `openfoam` on
 //!   `PATH`.
+//! - `fh run CASE` gives GetDP the case folder (`case.pro`, and `case.geo` or `case.msh`). See
+//!   `fh::getdp` for the programs that it starts. GetDP is `$FH_GETDP`, else `getdp` on `PATH`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
@@ -28,13 +30,16 @@ use std::time::{Duration, Instant};
 use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
+use fh::getdp::{self, GetDp};
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]\n\
 --timeout has no limit by default. --memory is 85 % of the RAM by default. At a limit, fh run \
 stops the solver. For a case, the limit counts all the programs.\n\
 CASE is an OpenFOAM case folder with system/controlDict. fh run starts blockMesh (when the case \
 has system/blockMeshDict and no constant/polyMesh), then the application of system/controlDict, \
-then foamToVTK.";
+then foamToVTK.\n\
+CASE is also a GetDP case folder with case.pro. fh run starts gmsh (when the case has case.geo), \
+then getdp with the first Resolution and the first PostOperation of case.pro.";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -89,19 +94,27 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(o)
 }
 
-/// The real path of the `.inp` file or the OpenFOAM case that `fh run` solves.
+/// The solver of a run.
+#[derive(Clone, Copy, PartialEq)]
+enum Solver {
+    Ccx,
+    OpenFoam,
+    GetDp,
+}
+
+/// The real path of the `.inp` file or the case folder that `fh run` solves.
 fn resolve(path: &Path) -> Result<PathBuf, String> {
     let shown = path.display();
     let full = fs::canonicalize(path).map_err(|e| format!("{shown}: {e}"))?;
     let inp = full
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("inp"));
-    if (full.is_file() && inp) || foam::is_case(&full) {
+    if (full.is_file() && inp) || foam::is_case(&full) || getdp::is_case(&full) {
         Ok(full)
     } else {
         Err(format!(
-            "{shown}: fh run takes a CalculiX input file (.inp) or an OpenFOAM case folder (with \
-             system/controlDict)"
+            "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
+             system/controlDict) or a GetDP case folder (with case.pro)"
         ))
     }
 }
@@ -112,29 +125,37 @@ fn fail(code: u8, message: &str) -> ExitCode {
 }
 
 /// Print the wall time and the result folder of a run that succeeded.
-fn report(run: &str, out: &Path, seconds: f64, openfoam: bool) {
+fn report(run: &str, out: &Path, seconds: f64, solver: Solver) {
     println!("fh run: {run} succeeded in {seconds:.2} s");
     println!("fh run: results in {}", out.display());
-    if openfoam {
-        let work = out.join(foam::WORK);
-        println!(
-            "fh run: text results {}/log.<program> (output of each program), {}/postProcessing \
-             (function objects)",
-            work.display(),
-            work.display()
-        );
-        return;
-    }
-    println!(
-        "fh run: text results {}/ccx/job.dat (print requests), {}/ccx/job.sta (steps)",
-        out.display(),
-        out.display()
-    );
+    let (results, no_field) = match solver {
+        Solver::OpenFoam => {
+            let work = out.join(foam::WORK).display().to_string();
+            println!(
+                "fh run: text results {work}/log.<program> (output of each program), \
+                 {work}/postProcessing (function objects)"
+            );
+            return;
+        }
+        Solver::GetDp => (
+            format!(
+                "{0}/log.<program> (output of each program), the files that the PostOperation \
+                 names in {0}",
+                out.join(getdp::WORK).display()
+            ),
+            "Print a field to a .pos file in the PostOperation",
+        ),
+        Solver::Ccx => (
+            format!(
+                "{0}/ccx/job.dat (print requests), {0}/ccx/job.sta (steps)",
+                out.display()
+            ),
+            "Add *NODE FILE or *EL FILE to a *STEP to write a field",
+        ),
+    };
+    println!("fh run: text results {results}");
     if result_frames(out) == 0 {
-        println!(
-            "fh run: the page has no field to show. Add *NODE FILE or *EL FILE to a *STEP to \
-             write a field"
-        );
+        println!("fh run: the page has no field to show. {no_field}");
     }
 }
 
@@ -143,11 +164,17 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let state =
         default_state_dir().ok_or_else(|| format!("no home folder, so set FH_STATE\n{USAGE}"))?;
     let file = resolve(o.target.as_deref().expect("parse needs a model"))?;
-    let openfoam = foam::is_case(&file);
+    let solver = if foam::is_case(&file) {
+        Solver::OpenFoam
+    } else if getdp::is_case(&file) {
+        Solver::GetDp
+    } else {
+        Solver::Ccx
+    };
     // The name of the model in the page: the input file.
     let title = file.file_name().unwrap_or_default().to_string_lossy();
     // The page shows a CalculiX model before the solve.
-    if !openfoam {
+    if solver == Solver::Ccx {
         match new_preview(&state, &file, &title) {
             Ok(preview) => println!(
                 "fh run: preview: the page shows {title} (preview {preview}) with its supports \
@@ -171,24 +198,32 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         flag.cancel();
     });
     let start = Instant::now();
-    let result = if openfoam {
-        let mut foam = Foam::new();
-        foam.timeout = o.timeout;
-        foam.memory_limit = o.memory.unwrap_or(foam.memory_limit);
-        foam.run_with(&run.input, &run.out, &cancel, &mut |program| {
-            println!("  program {program}");
-        })
-    } else {
-        let mut ccx = Ccx::new();
-        ccx.timeout = o.timeout.or(ccx.timeout);
-        ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
-        ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
-            println!("  progress step {} increment {}", p.step, p.increment);
-        })
+    let on_program = &mut |program: &str| println!("  program {program}");
+    let result = match solver {
+        Solver::OpenFoam => {
+            let mut foam = Foam::new();
+            foam.timeout = o.timeout;
+            foam.memory_limit = o.memory.unwrap_or(foam.memory_limit);
+            foam.run_with(&run.input, &run.out, &cancel, on_program)
+        }
+        Solver::GetDp => {
+            let mut getdp = GetDp::new();
+            getdp.timeout = o.timeout;
+            getdp.memory_limit = o.memory.unwrap_or(getdp.memory_limit);
+            getdp.run_with(&run.input, &run.out, &cancel, on_program)
+        }
+        Solver::Ccx => {
+            let mut ccx = Ccx::new();
+            ccx.timeout = o.timeout.or(ccx.timeout);
+            ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
+            ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
+                println!("  progress step {} increment {}", p.step, p.increment);
+            })
+        }
     };
     Ok(match result {
         Ok(()) => {
-            report(&run.id, &run.out, start.elapsed().as_secs_f64(), openfoam);
+            report(&run.id, &run.out, start.elapsed().as_secs_f64(), solver);
             ExitCode::SUCCESS
         }
         Err(_) if cancel.is_cancelled() => fail(CANCELLED, &format!("{} was cancelled", run.id)),

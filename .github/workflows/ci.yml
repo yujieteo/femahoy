@@ -33,6 +33,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
+      # fh starts gmsh and GetDP for the electromagnetic case (README.md). GetDP has no package,
+      # so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1 makes
+      # each test that solves through the real GetDP fail if GetDP is absent.
+      - name: Install gmsh and GetDP
+        run: |
+          nix profile install nixpkgs#gmsh
+          curl -fsSL -o /tmp/getdp.tgz https://getdp.info/bin/Linux/getdp-3.5.0-Linux64c.tgz
+          echo "d3c28fa18f20d6147b4c7367d4dd802e9f7ddb58c608688bbb71919dbca8041d  /tmp/getdp.tgz" | sha256sum -c
+          tar xzf /tmp/getdp.tgz -C "$HOME"
+          echo "$HOME/getdp-3.5.0-Linux64/bin" >> "$GITHUB_PATH"
+          "$HOME/.nix-profile/bin/gmsh" -version
+          "$HOME/getdp-3.5.0-Linux64/bin/getdp" -version
       # Only the browser uses the window layer of the viewer, so the wasm build checks it.
       - name: Test
         run: |
@@ -42,3 +54,4 @@ jobs:
           FH_REQUIRE_CCX: "1"
           FH_OPENFOAM: openfoam2512
           FH_REQUIRE_OPENFOAM: "1"
+          FH_REQUIRE_GETDP: "1"

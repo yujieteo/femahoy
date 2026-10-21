@@ -1,18 +1,20 @@
-//! Run the input of a case with `ccx`, or the OpenFOAM cases of a case with OpenFOAM, and read
-//! one number per reference from the text results.
+//! Run the input of a case with `ccx`, or the OpenFOAM and GetDP cases of a case with OpenFOAM
+//! and GetDP, and read one number per reference from the text results.
 
 use std::path::Path;
 
 use super::fixture::{Case, Field, Op, Quantity};
 use super::run::Solve;
 use crate::ccx::Ccx;
-use crate::foam::{Foam, WORK};
+use crate::foam::{self, Foam};
+use crate::getdp::{self, GetDp};
 
-/// Runs `ccx` or OpenFOAM in a scratch folder on the input of a case.
+/// Runs `ccx`, OpenFOAM or GetDP in a scratch folder on the input of a case.
 #[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
     foam: Foam,
+    getdp: GetDp,
 }
 
 impl Solve for Subprocess {
@@ -20,7 +22,7 @@ impl Solve for Subprocess {
         let run =
             std::env::temp_dir().join(format!("fh-validate-{}-{}", std::process::id(), case.id));
         let _ = std::fs::remove_dir_all(&run);
-        let values = if case.openfoam() {
+        let values = if case.tables() {
             self.tables(case, input, &run)
         } else {
             self.ccx(case, input, &run)
@@ -43,8 +45,8 @@ impl Subprocess {
             .collect()
     }
 
-    /// Solve the OpenFOAM case of each check at the same time, each in its own folder in `run`,
-    /// and read the value of each check in the last row of its table.
+    /// Solve the OpenFOAM or GetDP case of each check at the same time, each in its own folder in
+    /// `run`, and read the value of each check in the last row of its table.
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
@@ -53,14 +55,24 @@ impl Subprocess {
             .collect();
         folders.sort_unstable();
         folders.dedup();
-        let solves: Vec<Result<(), String>> = std::thread::scope(|scope| {
+        // Each solve gives the folder of the solver files in its run folder.
+        let solves: Vec<Result<&str, String>> = std::thread::scope(|scope| {
             let solves: Vec<_> = folders
                 .iter()
                 .map(|folder| {
                     scope.spawn(move || {
-                        self.foam
-                            .run(&input.join(folder), &run.join(folder))
-                            .map_err(|e| format!("openfoam {folder}: {e}"))
+                        let (dir, out) = (input.join(folder), run.join(folder));
+                        if getdp::is_case(&dir) {
+                            let solved = self.getdp.run(&dir, &out);
+                            solved
+                                .map(|()| getdp::WORK)
+                                .map_err(|e| format!("getdp {folder}: {e}"))
+                        } else {
+                            let solved = self.foam.run(&dir, &out);
+                            solved
+                                .map(|()| foam::WORK)
+                                .map_err(|e| format!("openfoam {folder}: {e}"))
+                        }
                     })
                 })
                 .collect();
@@ -79,11 +91,11 @@ impl Subprocess {
                 let at = folders
                     .binary_search(&folder)
                     .expect("each folder is in the list");
-                solves[at].clone()?;
+                let work = solves[at].clone()?;
                 let Field::Table { file, column } = &r.quantity.field else {
-                    unreachable!("an OpenFOAM case has table checks only")
+                    unreachable!("a case with tables has table checks only")
                 };
-                let path = run.join(folder).join(WORK).join(file);
+                let path = run.join(folder).join(work).join(file);
                 let text = std::fs::read_to_string(&path)
                     .map_err(|e| format!("{}: {e}", path.display()))?;
                 last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))

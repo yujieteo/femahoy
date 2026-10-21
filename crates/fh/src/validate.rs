@@ -1,10 +1,10 @@
 //! `fh validate [--root DIR]`: load every case and run the harness.
 //!
-//! Each case runs through `ccx` (`$FH_CCX`, else `ccx` on PATH), or through OpenFOAM
-//! (`$FH_OPENFOAM`, else `openfoam` on PATH) when its checks are OpenFOAM tables. A table
-//! shows every quantity with its computed value, reference, tolerance and margin. A bad fixture,
-//! a case that fails or a case that cannot run gives exit code 1. If `ccx` does not start,
-//! `fh validate` stops before the first case and tells how to install CalculiX.
+//! Each case runs through `ccx` (`$FH_CCX`, else `ccx` on PATH), or, when its checks are tables,
+//! through OpenFOAM (`$FH_OPENFOAM`, else `openfoam` on PATH) or GetDP (`$FH_GETDP`, else `getdp`
+//! on PATH). A table shows every quantity with its computed value, reference, tolerance and
+//! margin. A bad fixture, a case that fails or a case that cannot run gives exit code 1. If `ccx`
+//! does not start, `fh validate` stops before the first case and tells how to install CalculiX.
 
 use fh::ccx::Ccx;
 use fh::validation::{load_all, run_case_with, Case, Outcome, Report, Subprocess};
@@ -47,7 +47,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     if !fixtures_ok(&cases) {
         return Ok(ExitCode::from(1));
     }
-    if cases.iter().any(|c| !c.openfoam()) && !solver_ready() {
+    if cases.iter().any(|c| !c.tables()) && !solver_ready() {
         return Ok(ExitCode::from(1));
     }
     let solve = Subprocess::default();
@@ -62,7 +62,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
 /// there is none.
 fn fixtures_ok(cases: &[Case]) -> bool {
     let mut ok = true;
-    for case in cases.iter().filter(|c| !c.openfoam()) {
+    for case in cases.iter().filter(|c| !c.tables()) {
         if let Err(problem) = fh_core::inp::flatten(&case.input) {
             eprintln!("fh validate: {}: {problem}", case.input.display());
             ok = false;

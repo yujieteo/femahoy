@@ -13,16 +13,16 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the agent**: 1 focused agent that plans and does the work.
-- The **input** is CalculiX `.inp` text for structures and an OpenFOAM case folder for CFD.
+- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD and a GetDP case folder for electromagnetics.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
-- The **solvers** are CalculiX (`ccx`) for structures and OpenFOAM for CFD.
+- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD and GetDP for electromagnetics.
 
 ---
 
 ## 2. Separate programs
 
-- CalculiX, gmsh and OpenFOAM stay separate programs. femahoy never links or bundles them, because they are GPL.
+- CalculiX, gmsh, OpenFOAM and GetDP stay separate programs. femahoy never links or bundles them, because they are GPL.
 
 ---
 
@@ -45,7 +45,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
         |                                  |
       reads                                | runs fh commands
         |                                  v
-   state folder <---- writes ----- fh run ----> ccx, OpenFOAM
+   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP
  (previews, runs, results)
 ```
 
@@ -79,11 +79,12 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 
 - CalculiX `.inp` is the input format for structures. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
 - An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
+- A GetDP case folder (`case.pro`, and `case.geo` or `case.msh`) is the input for electromagnetics. gmsh meshes `case.geo`, and GetDP reads and checks the case.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel. It reads only the length unit of a STEP file.
 
-Reason of the first 2 rules: each solver reads only its own input, and `fh` gives the input to the solver as it is.
+Reason of the first 3 rules: each solver reads only its own input, and `fh` gives the input to the solver as it is.
 
 Reason of the last rule: Python CAD libraries exist, a chat can write the script, and gmsh already includes OpenCASCADE.
 
@@ -109,6 +110,10 @@ OpenFOAM is the CFD solver. It is a separate program that the user installs, as 
 
 Reason: a real problem needs CFD: a basic airfoil with control surfaces. CalculiX stays the structural solver, because no structural run needed another solver.
 
+GetDP is the electromagnetic solver. It is a separate program that the user installs, as section 2 says.
+
+Reason: CalculiX and OpenFOAM do not solve electromagnetic problems. GetDP reads the meshes of gmsh, and its binaries run on macOS and Linux.
+
 ### 6.1 Limits of the `ccx` process
 
 - Each run has its own folder in the state folder, with the copy of the input, the `ccx` files and the results.
@@ -130,10 +135,10 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 - References are analytical solutions, measured values, or published numerical benchmark values. The cases are in `validation/cases/<id>/`.
 - Cases use our own input files. Each target value cites its source.
 - Each case has a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
-- A structural case has 1 mesh. A CFD case has at least 2 meshes (3 where practical) and states the mesh error.
+- A structural case has 1 mesh. A CFD case or an electromagnetic case has at least 2 meshes (3 where practical) and states the mesh error.
 - A change to a solver or its adapter merges only if `fh validate` passes the full suite. A failure blocks the merge. There is no override.
 
-Reason: a solver can give a wrong result without a warning. The suite is the only check. In CFD the mesh error is often the largest error, and 1 mesh cannot show it.
+Reason: a solver can give a wrong result without a warning. The suite is the only check. In CFD the mesh error is often the largest error. In the electromagnetic case it is 40 % of the tolerance. 1 mesh cannot show it.
 
 ---
 
