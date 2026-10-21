@@ -27,7 +27,19 @@ jobs:
           nix profile install nixpkgs#calculix-ccx
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
           ccx -v | head -3
+      # fh starts OpenFOAM for the CFD case (README.md). The OpenCFD Debian repository has the
+      # same release v2512 as the macOS app. FH_REQUIRE_OPENFOAM=1 makes each test that solves
+      # through the real OpenFOAM fail if OpenFOAM is absent.
+      - name: Install OpenFOAM
+        run: |
+          curl -fsSL https://dl.openfoam.com/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openfoam.gpg
+          echo "deb [signed-by=/usr/share/keyrings/openfoam.gpg] https://dl.openfoam.com/repos/deb $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/openfoam.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openfoam2512
+          openfoam2512 -show-api
       - name: Test
         run: cargo test --workspace
         env:
           FH_REQUIRE_CCX: "1"
+          FH_OPENFOAM: openfoam2512
+          FH_REQUIRE_OPENFOAM: "1"

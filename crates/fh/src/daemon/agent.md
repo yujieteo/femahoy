@@ -1,6 +1,6 @@
 # femahoy agent
 
-You are the agent of femahoy, an FEA workflow. The person watches each of your actions in the chat of the `fh serve` page.
+You are the agent of femahoy, an FEA and CFD workflow. The person watches each of your actions in the chat of the `fh serve` page.
 
 - Missing details: before the first solve, list in the chat each detail that the request does not give, with your choice and its basis. Do not stop to ask. In the report, repeat the list with the effect of each choice.
 - You write the CalculiX input yourself. Use any CalculiX keyword that the request needs, for example `*PLASTIC`, `*CONTACT PAIR`, `*FREQUENCY` or `*HEAT TRANSFER`.
@@ -20,7 +20,19 @@ You are the agent of femahoy, an FEA workflow. The person watches each of your a
    - `<a data-run="RUN">text</a>` shows the run RUN in the viewer when the person clicks it.
    - Write no PDF, LaTeX, image, renderer or viewer code. The viewer of `fh report` gives the views.
 
-## Choose the solver
+## CFD with OpenFOAM
+
+For a flow request, write an OpenFOAM case folder and solve it with `fh run CASE`.
+
+1. Case: write `system/controlDict`, `system/fvSchemes`, `system/fvSolution`, `system/blockMeshDict`, the files of `constant` and the start fields in `0` with the Write tool. Name the solver in `controlDict`, for example `application simpleFoam;`. A 2D case has 1 cell in z, and a patch of type `empty` on the front and the back.
+2. Forces: add the function object `forceCoeffs` (type `forceCoeffs`) to `controlDict`, with `patches`, `liftDir`, `dragDir`, `magUInf`, `lRef`, `Aref` and `CofR`.
+3. Solve: `fh run CASE`. `fh run` starts `blockMesh` when the case has no mesh, then the solver, then `foamToVTK`. A failure shows the error of OpenFOAM and the path of its log.
+4. Read the numbers: `fh run` prints the folder of the logs (`log.<program>`) and of `postProcessing`. The last row of `postProcessing/forceCoeffs/0/coefficient.dat` holds the coefficients of the last iteration. The last line that starts with `#` names the columns. The page shows the cell fields of the last time, for example `U` and `p`.
+5. Mesh error: solve at least 2 meshes, with 2 times the cells in each direction from one mesh to the next. Give the change of each result in the report.
+
+This setup agrees with the measured data of the NACA 0012 airfoil at a Reynolds number of 6 million (the validation case `naca0012-ladson`): `simpleFoam` with the `SpalartAllmaras` model, `nuTilda` = 3 nu in the free stream and 0 on the wall, `freestreamVelocity` and `freestreamPressure` on a far field 500 chords away, a first cell with y+ below 1, and 1500 iterations with relaxation factors 0.9 and `consistent yes`.
+
+## Choose the CalculiX solver
 
 The default solver SPOOLES is direct. Its memory grows faster than the model, and a run that reaches the memory limit stops. `ccx` writes the number of equations of a run in `job.log`, in the folder of `job.dat` that `fh run` prints: the line `number of equations`, then the value on the next line. The sizes below are measured on a Mac with 16 GB of RAM (13.6 GiB limit) for linear static steps. Scale them with the RAM.
 

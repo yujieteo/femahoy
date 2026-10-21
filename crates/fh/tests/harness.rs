@@ -83,3 +83,48 @@ fn a_number_that_is_not_finite_is_refused() {
         }
     }
 }
+
+/// A check of `CL` or `CD` names the subfolder of an OpenFOAM case. The case has no `job.inp`.
+#[test]
+fn a_force_coefficient_check_names_an_openfoam_case() {
+    let dir = tmp("openfoam");
+    std::fs::create_dir_all(dir.join("a4/system")).unwrap();
+    std::fs::write(
+        dir.join("a4/system/controlDict"),
+        "application simpleFoam;\n",
+    )
+    .unwrap();
+    let check = |field: &str, case: &str| {
+        format!("[{field}]\nvalue = 0.4\nfield = \"{field}\"\ncase = \"{case}\"\n")
+    };
+    let load = |body: &str| {
+        std::fs::write(
+            dir.join("check.toml"),
+            format!("rel_tol = 0.1\nabs_tol = 0\n{body}"),
+        )
+        .unwrap();
+        Case::load(&dir)
+    };
+    let case = load(&(check("CL", "a4") + &check("CD", "a4"))).unwrap();
+    assert!(case.openfoam());
+    assert_eq!(case.input, dir);
+    assert_eq!(case.references[1].quantity.set, "a4");
+
+    let missing = load(&check("CL", "a10")).unwrap_err();
+    assert!(
+        missing.contains("a10/system/controlDict not found"),
+        "{missing}"
+    );
+    let outside = load(&check("CL", "../a4")).unwrap_err();
+    assert!(
+        outside.contains("check.toml:6: `case` must be the name of a subfolder"),
+        "{outside}"
+    );
+    let mixed = check("CL", "a4")
+        + "[u]\nvalue = 1\nset = \"s\"\nfield = \"U\"\ncomponent = 1\nop = \"mean\"\n";
+    let mixed = load(&mixed).unwrap_err();
+    assert!(mixed.contains("CL and CD checks only"), "{mixed}");
+    let extra = load(&(check("CD", "a4") + "set = \"s\"\n")).unwrap_err();
+    assert!(extra.contains("unknown key `set` in `CD`"), "{extra}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -2,11 +2,13 @@
 //! them for the page.
 //!
 //! ```text
-//! <state>/runs/<run>/source           the path of the input file that the run solves
+//! <state>/runs/<run>/source           the path of the input file or the case that the run solves
 //! <state>/runs/<run>/in/input.inp     the read-only copy of that input, with the copies of its
 //!                                     `*INCLUDE` files
-//! <state>/runs/<run>/out/             run folder of ccx. `results.pvd` is the last file that
-//!                                     ccx writes, so a run has results when it lists a step
+//! <state>/runs/<run>/in/system/ ...   or the read-only copy of an OpenFOAM case
+//! <state>/runs/<run>/out/             run folder of ccx or OpenFOAM. `results.pvd` is the last
+//!                                     file that a run writes, so a run has results when it lists
+//!                                     a step
 //! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
 //! <state>/previews/<n>/title          the name of the model in the page
 //! ```
@@ -21,6 +23,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::ccx::{input_text, result_frames, stage_input};
+use crate::foam;
 
 use super::message::{bad, fail, Failure};
 
@@ -45,9 +48,9 @@ fn run_id(number: u64) -> String {
 /// The folders of a new run.
 pub struct Run {
     pub id: String,
-    /// The read-only copy of the input. The run solves it.
+    /// The read-only copy of the input file or the case. The run solves it.
     pub input: PathBuf,
-    /// The run folder of ccx.
+    /// The run folder of ccx or OpenFOAM.
     pub out: PathBuf,
 }
 
@@ -64,8 +67,8 @@ fn stage(input: &Path, dir: &Path) -> Result<(), String> {
     stage_input(input, dir, INPUT_FILE)
 }
 
-/// Make the folder of a new run in `state` and copy `source` and its `*INCLUDE` files into it.
-/// A later change of a file does not change the run.
+/// Make the folder of a new run in `state` and copy `source` into it: an input file and its
+/// `*INCLUDE` files, or an OpenFOAM case. A later change of a file does not change the run.
 pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     let runs = state.join(RUNS_DIR);
     let err = |e| format!("run folder: {e}");
@@ -79,7 +82,13 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
             Err(e) => return Err(err(e)),
         }
     };
-    stage(source, &dir.join(IN_DIR))?;
+    let input = if foam::is_case(source) {
+        foam::copy_case(source, &dir.join(IN_DIR), true)?;
+        dir.join(IN_DIR)
+    } else {
+        stage(source, &dir.join(IN_DIR))?;
+        dir.join(IN_DIR).join(INPUT_FILE)
+    };
     fs::write(
         dir.join(SOURCE_FILE),
         source.display().to_string().replace(char::is_control, " "),
@@ -87,7 +96,7 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     .map_err(err)?;
     Ok(Run {
         id: run_id(number),
-        input: dir.join(IN_DIR).join(INPUT_FILE),
+        input,
         out: dir.join(OUT_DIR),
     })
 }
@@ -203,9 +212,13 @@ impl Store {
     }
 
     /// The text of the copy of the input that a run solves, for the page. It holds the text of
-    /// the include files.
+    /// the include files. An OpenFOAM case has no input text for the page, so it gives no bytes.
     pub(crate) fn input_file(&self, run: &str) -> Result<Vec<u8>, Failure> {
-        flat_text(&self.run_dir(run)?.join(IN_DIR).join(INPUT_FILE))
+        let input = self.run_dir(run)?.join(IN_DIR);
+        if foam::is_case(&input) {
+            return Ok(Vec::new());
+        }
+        flat_text(&input.join(INPUT_FILE))
     }
 
     /// The bytes of one file in the run folder of a run, for the viewer. `name` is a plain

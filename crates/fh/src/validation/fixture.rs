@@ -1,4 +1,6 @@
 //! The check file of a case: `validation/cases/<id>/check.toml` (see `docs/reference/check-toml.md`).
+//!
+//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM cases in subfolders.
 
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, TableLike};
@@ -21,6 +23,10 @@ pub enum Field {
     Freq,
     /// The buckling factor of a mode, from a `*BUCKLE` step.
     Buckle,
+    /// The lift coefficient, from the `forceCoeffs` function object of an OpenFOAM case.
+    Cl,
+    /// The drag coefficient, from the `forceCoeffs` function object of an OpenFOAM case.
+    Cd,
 }
 
 /// How the values of a set reduce to the one number that is compared with the reference.
@@ -35,10 +41,11 @@ pub enum Op {
 
 /// What to measure: a field component, in a node or element set, at the end of the last step.
 /// `Freq` and `Buckle` have no set: `component` is the mode number and `op` is `Value`.
-/// `Cstr` has no set.
+/// `Cstr` has no set. `Cl` and `Cd` are the values of the last iteration of an OpenFOAM case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Quantity {
-    /// The name of the set that the print request of the input names.
+    /// The name of the set that the print request of the input names. For `Cl` and `Cd`, the
+    /// subfolder of the OpenFOAM case.
     pub set: String,
     pub field: Field,
     pub component: u32,
@@ -57,7 +64,7 @@ pub struct Case {
     /// The name of the folder.
     pub id: String,
     pub dir: PathBuf,
-    /// The CalculiX input, `<dir>/job.inp`.
+    /// The CalculiX input, `<dir>/job.inp`, or `<dir>` when the checks are `CL` and `CD`.
     pub input: PathBuf,
     /// Pass if `|computed - reference| <= rel_tol * |reference| + abs_tol`.
     pub rel_tol: f64,
@@ -74,7 +81,15 @@ fn located(file: &Path, line: Option<usize>, message: &str) -> String {
 }
 
 impl Case {
-    /// Load `<dir>/check.toml`. The file `<dir>/job.inp` must exist.
+    /// True when the checks are force coefficients of the OpenFOAM cases in the subfolders.
+    pub fn openfoam(&self) -> bool {
+        self.references
+            .iter()
+            .any(|r| matches!(r.quantity.field, Field::Cl | Field::Cd))
+    }
+
+    /// Load `<dir>/check.toml`. The file `<dir>/job.inp` must exist, or, when the checks are
+    /// `CL` and `CD`, the OpenFOAM case of each check.
     pub fn load(dir: &Path) -> Result<Case, String> {
         let file = dir.join("check.toml");
         let text =
@@ -84,10 +99,6 @@ impl Case {
             located(&file, line, e.message())
         })?;
         let reader = Reader { file, text: &text };
-        let input = dir.join("job.inp");
-        if !input.is_file() {
-            return Err(reader.err(None, format!("{} not found", input.display())));
-        }
         let table: &dyn TableLike = doc.as_table();
         let mut references = Vec::new();
         for (name, item) in table.iter() {
@@ -97,6 +108,26 @@ impl Case {
         }
         if references.is_empty() {
             return Err(reader.err(None, "no check: add one `[name]` table".into()));
+        }
+        let foam = |r: &Reference| matches!(r.quantity.field, Field::Cl | Field::Cd);
+        let input = if references.iter().all(foam) {
+            for r in &references {
+                if !crate::foam::is_case(&dir.join(&r.quantity.set)) {
+                    let case = dir.join(&r.quantity.set).join("system/controlDict");
+                    return Err(reader.err(None, format!("{} not found", case.display())));
+                }
+            }
+            dir.to_owned()
+        } else if references.iter().any(foam) {
+            return Err(reader.err(
+                None,
+                "a case has CL and CD checks only, or no CL and CD check".into(),
+            ));
+        } else {
+            dir.join("job.inp")
+        };
+        if !input.exists() {
+            return Err(reader.err(None, format!("{} not found", input.display())));
         }
         Ok(Case {
             id: dir
@@ -173,7 +204,8 @@ impl Reader<'_> {
     }
 
     /// One check: the `[name]` table with `value`, `set`, `field`, `component` and `op`, or
-    /// with `value`, `field` and `mode` for `FREQ` and `BUCKLE`.
+    /// with `value`, `field` and `mode` for `FREQ` and `BUCKLE`, or with `value`, `field` and
+    /// `case` for `CL` and `CD`.
     fn reference(&self, name: &str, item: &Item) -> Result<Reference, String> {
         let table = item
             .as_table_like()
@@ -189,15 +221,21 @@ impl Reader<'_> {
             "CSTR" => (Field::Cstr, &[1, 2, 3]),
             "FREQ" => (Field::Freq, &[]),
             "BUCKLE" => (Field::Buckle, &[]),
+            "CL" => (Field::Cl, &[]),
+            "CD" => (Field::Cd, &[]),
             other => {
                 return Err(self.err(
                     Some(field_item),
-                    format!("unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ or BUCKLE"),
+                    format!(
+                        "unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ, BUCKLE, CL \
+                         or CD"
+                    ),
                 ))
             }
         };
         let keys: &[&str] = match field {
             Field::Freq | Field::Buckle => &["value", "field", "mode"],
+            Field::Cl | Field::Cd => &["value", "field", "case"],
             Field::Cstr => &["value", "field", "component", "op"],
             _ => &["value", "set", "field", "component", "op"],
         };
@@ -205,6 +243,31 @@ impl Reader<'_> {
             if !keys.contains(&key) {
                 return Err(self.err(Some(value), format!("unknown key `{key}` in `{name}`")));
             }
+        }
+        if let Field::Cl | Field::Cd = field {
+            let case_item = get("case")?;
+            let case = self.string(case_item, "case")?;
+            let plain = !case.starts_with('.')
+                && case
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b));
+            if !plain {
+                return Err(self.err(
+                    Some(case_item),
+                    "`case` must be the name of a subfolder: letters, digits, `.`, `_` and `-`"
+                        .into(),
+                ));
+            }
+            return Ok(Reference {
+                name: name.to_owned(),
+                value,
+                quantity: Quantity {
+                    set: case.to_owned(),
+                    field,
+                    component: 0,
+                    op: Op::Value,
+                },
+            });
         }
         if components.is_empty() {
             let mode_item = get("mode")?;

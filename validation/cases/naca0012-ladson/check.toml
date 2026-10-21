@@ -1,0 +1,42 @@
+# NACA 0012 at M = 0.15 and Re = 6 million, transition fixed, against the measured force
+# coefficients of Ladson (1988), NASA TM-4074, Table IX, 80-W grit, R = 5.95 x 10^6, page 19.
+# The same values are in the experimental data file of the NASA Langley Turbulence Modeling
+# Resource (TMR), case 2DN00. derivation.md gives the sources, the setup and the mesh study.
+#
+# The model is incompressible simpleFoam with Spalart-Allmaras on mesh level 2 (36864 cells),
+# 1500 iterations. Thus the tolerance holds these differences (derivation.md, "Tolerance"):
+# - SA against this experiment: the SA results of TMR are 3 % to 4 % above the lift and 0 to 5
+#   drag counts (0.0001) above the drag of Ladson.
+# - The spread of the experiment: the 80-W and 120 grit data differ by up to 0.8 % in lift and
+#   6 drag counts.
+# - The mesh error of level 2 against the extrapolated value of levels 1 to 3: -0.2 % to -0.6 %
+#   in lift and +5.5 to +7.3 drag counts.
+# - The iteration error at 1500 iterations, and incompressible flow against M = 0.15.
+# rel_tol covers the lift, and abs_tol (15 drag counts) covers most of the drag.
+rel_tol = 0.04
+abs_tol = 0.0015
+
+[cd_a0]
+value = 0.00809
+field = "CD"
+case = "a-0.05"
+
+[cl_a4]
+value = 0.4316
+field = "CL"
+case = "a4.04"
+
+[cd_a4]
+value = 0.00823
+field = "CD"
+case = "a4.04"
+
+[cl_a10]
+value = 1.0707
+field = "CL"
+case = "a10.12"
+
+[cd_a10]
+value = 0.01201
+field = "CD"
+case = "a10.12"
