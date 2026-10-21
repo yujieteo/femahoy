@@ -31,6 +31,7 @@ For a flow request, write an OpenFOAM case folder and solve it with `fh run CASE
 5. Mesh error: solve at least 2 meshes, with 2 times the cells in each direction from one mesh to the next. Give the change of each result in the report.
 
 This setup agrees with the measured data of the NACA 0012 airfoil at a Reynolds number of 6 million (the validation case `naca0012-ladson`): `simpleFoam` with the `SpalartAllmaras` model, `nuTilda` = 3 nu in the free stream and 0 on the wall, `freestreamVelocity` and `freestreamPressure` on a far field 500 chords away, a first cell with y+ below 1, and 1500 iterations with relaxation factors 0.9 and `consistent yes`.
+It also agrees with the measured lift and pitching moment of the NACA 23012 with a plain flap of 20 % chord (the validation case `naca23012-flap`). There the mesh turns the surface aft of the hinge about the hinge, with a smooth blend over 5 % of the chord, and the wake cut goes straight downstream from the trailing edge. `CmPitch` is about `CofR`, positive nose up.
 
 ## Choose the CalculiX solver
 

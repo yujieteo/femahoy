@@ -1,0 +1,50 @@
+# NACA 23012 with a 0.20c plain flap, effective Re = 8.4 million, against the section data of
+# Abbott and Greenberg (1939), NACA Report No. 661, Table I, page 381. The angle of attack is 0,
+# and the flap is 10 degrees up (d-10), neutral (d0) and 10 degrees down (d10). Table I gives the
+# angle of zero lift alpha_l0 and the lift slope a0, thus the lift at 0 degrees is -a0 alpha_l0.
+# It gives the pitching moment about the aerodynamic center of the airfoil without flap.
+# derivation.md gives the sources, the setup and the mesh study.
+#
+# The model is incompressible simpleFoam with Spalart-Allmaras on mesh level 2 (36864 cells),
+# 1000 iterations. Thus the tolerance holds these differences (derivation.md, "Tolerance"):
+# - The lift slope of the test: Table I gives 0.094 to 0.100 per degree. The model gives 0.106
+#   to 0.111, and thin-airfoil theory gives 0.110. This is +10 % to +13 % in lift.
+# - The flap effectiveness: the flap moves the angle of zero lift by 0.48 to 0.50 degrees per
+#   degree in the test, and by 0.52 to 0.53 in the model (0.55 in thin-airfoil theory). The flap
+#   changes the moment by -0.0082 to -0.0088 per degree in the test, and by -0.0105 in the model.
+# - Table I gives the moment of a flapped airfoil with 2 decimals, as an average over the lift
+#   range (page 380).
+# - The hinge model, the mesh error of level 2 and the iteration error: each 2.1 % or less.
+# rel_tol covers the lift and the moment, and abs_tol covers the 2 decimals of the moment.
+rel_tol = 0.3
+abs_tol = 0.005
+
+[cl_up10]
+value = -0.3762
+field = "CL"
+case = "d-10"
+
+[cm_up10]
+value = 0.08
+field = "CM"
+case = "d-10"
+
+[cl_0]
+value = 0.1200
+field = "CL"
+case = "d0"
+
+[cm_0]
+value = -0.008
+field = "CM"
+case = "d0"
+
+[cl_down10]
+value = 0.5640
+field = "CL"
+case = "d10"
+
+[cm_down10]
+value = -0.09
+field = "CM"
+case = "d10"

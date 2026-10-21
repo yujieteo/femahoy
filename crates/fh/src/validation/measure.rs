@@ -100,11 +100,7 @@ impl Subprocess {
                     .binary_search(&folder)
                     .expect("each folder is in the list");
                 let table = tables[at].as_ref().map_err(Clone::clone)?;
-                let name = if r.quantity.field == Field::Cl {
-                    "Cl"
-                } else {
-                    "Cd"
-                };
+                let name = r.quantity.field.coefficient().expect("a force coefficient");
                 coefficient(table, name).map_err(|e| format!("{folder}: coefficient.dat: {e}"))
             })
             .collect()
@@ -146,7 +142,7 @@ fn block_of(field: Field) -> (&'static str, usize, usize) {
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
         // `mode_value` and `coefficient` read these. They have no block of a set.
-        Field::Freq | Field::Buckle | Field::Cl | Field::Cd => ("", 0, 0),
+        Field::Freq | Field::Buckle | Field::Cl | Field::Cd | Field::Cm => ("", 0, 0),
     }
 }
 
@@ -300,19 +296,22 @@ mod tests {
     use super::coefficient;
 
     const TABLE: &str = "# Force and moment coefficients\n# magUInf : 1\n#\n\
-        # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \n\
-        1         \t0.75  \t-0.35  \t1.1   \t1.47  \n\
-        1500      \t0.0094\t0.004  \t0.005 \t0.4448\n";
+        # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \tCmPitch\n\
+        1         \t0.75  \t-0.35  \t1.1   \t1.47  \t0.2    \n\
+        1500      \t0.0094\t0.004  \t0.005 \t0.4448\t-0.1151\n";
 
     #[test]
     fn a_coefficient_is_the_column_of_its_name_in_the_last_row() {
         assert_eq!(coefficient(TABLE, "Cl"), Ok(0.4448));
         assert_eq!(coefficient(TABLE, "Cd"), Ok(0.0094));
-        assert!(coefficient(TABLE, "Cm")
+        assert_eq!(coefficient(TABLE, "CmPitch"), Ok(-0.1151));
+        assert!(coefficient(TABLE, "Cs")
             .unwrap_err()
-            .contains("no column Cm"));
-        let cut = TABLE.replace("\t0.4448", "");
-        assert!(coefficient(&cut, "Cl").unwrap_err().contains("no number"));
+            .contains("no column Cs"));
+        let cut = TABLE.replace("\t-0.1151", "");
+        assert!(coefficient(&cut, "CmPitch")
+            .unwrap_err()
+            .contains("no number"));
         assert!(coefficient("# Time Cd\n", "Cd")
             .unwrap_err()
             .contains("no row"));

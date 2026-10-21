@@ -1,10 +1,11 @@
-"""Write the OpenFOAM cases of the NACA 0012 check: 1 folder for each angle of attack.
+"""Write the OpenFOAM cases of an airfoil check: 1 folder for each angle of attack and flap.
 
-Usage, in this folder: python3 case.py [LEVEL [ITERATIONS [OUT]]]
+Usage, in the repository root: python3 validation/airfoil.py CASE [LEVEL [ITERATIONS [OUT]]]
 
-The defaults (level 2, 1500 iterations, this folder) write the folders that check.toml names.
-Level 1 is the coarsest mesh. Each level doubles the cells in each direction and halves the
-first cell height at the wall. derivation.md gives the mesh study.
+CASE is a key of CASES. The defaults (level 2, the iterations of the case, validation/cases/CASE)
+write the folders that the check.toml of the case names. Level 1 is the coarsest mesh. Each level
+doubles the cells in each direction and halves the first cell height at the wall. The
+derivation.md of each case gives its mesh study.
 
 The mesh is a 2D C-grid of 12 blocks, 1 cell deep. The inner layer of blocks is D thick, and
 its lines leave the wall along the normal. The outer layer goes out to a circle of radius R.
@@ -14,8 +15,6 @@ import math
 import os
 import sys
 
-ANGLES = (-0.05, 4.04, 10.12)  # degrees, the angles of Ladson (1988) Table IX
-NU = 1.0 / 6.0e6               # |U| = 1 and chord = 1, so Re = 6 million (TMR)
 R = 500.0                      # radius of the far field circle, in chords
 D = 1.0                        # thickness of the inner layer
 XS = 0.3                       # split of the front and aft blocks, near the maximum thickness
@@ -26,9 +25,50 @@ M = 48                         # spline points on each part of the surface
 
 def half_thickness(x):
     """TMR NACA 0012 with a sharp trailing edge at x = 1 (chord 1)."""
+    if x >= 1:
+        return 0.0
     return 0.594689181 * (0.298222773 * math.sqrt(x) - 0.127125232 * x
                           - 0.357907906 * x**2 + 0.291984971 * x**3
                           - 0.105174606 * x**4)
+
+
+def naca0012(x):
+    """The upper and the lower point of the NACA 0012 of TMR at the station x."""
+    t = half_thickness(x)
+    return (x, t), (x, -t)
+
+
+def mean_line_23012(x):
+    """The NACA 230 mean line (m = 0.2025, k1 = 15.957) at x: the height and the slope."""
+    m, k1 = 0.2025, 15.957
+    if x < m:
+        return k1 / 6 * (x**3 - 3 * m * x**2 + m**2 * (3 - m) * x), \
+            k1 / 6 * (3 * x**2 - 6 * m * x + m**2 * (3 - m))
+    return k1 / 6 * m**3 * (1 - x), -k1 / 6 * m**3
+
+
+def naca23012(flap):
+    """The surface of the NACA 23012 with a 0.20c plain flap down `flap` degrees (a negative flap
+    is up): a function from the station x to the upper and the lower point. The thickness is half_thickness, normal
+    to the mean line. The hinge is on the mean line at x = 0.8. Each point at x turns about the
+    hinge by flap * S((x - 0.8) / W), with S a smooth step from 0 to 1. Thus the flap aft of
+    0.8 + W turns as a rigid body, and the surface stays smooth across the sealed hinge."""
+    hinge = (0.8, mean_line_23012(0.8)[0])
+    W = 0.05
+
+    def turn(p, x):
+        s = min(1.0, max(0.0, (x - hinge[0]) / W))
+        a = -math.radians(flap) * s * s * (3 - 2 * s)
+        dx, dy = p[0] - hinge[0], p[1] - hinge[1]
+        return (hinge[0] + dx * math.cos(a) - dy * math.sin(a),
+                hinge[1] + dx * math.sin(a) + dy * math.cos(a))
+
+    def surface(x):
+        yc, slope = mean_line_23012(x)
+        t = half_thickness(x)
+        s, c = math.sin(math.atan(slope)), math.cos(math.atan(slope))
+        return turn((x - t * s, yc + t * c), x), turn((x + t * s, yc - t * c), x)
+    return surface
 
 
 def ratio(first, length, n):
@@ -66,15 +106,17 @@ def at_length(path, s):
         run += step
 
 
-def block_mesh_dict(level):
-    """The text of system/blockMeshDict, and the number of cells."""
+def block_mesh_dict(title, surface, level):
+    """The text of system/blockMeshDict, and the number of cells. `surface` gives the upper and
+    the lower point at the station x. Its LE (x = 0) is at (0, 0)."""
     k = 2 ** (level - 1)
     n_front, n_aft, n_wake = 16 * k, 48 * k, 32 * k   # n_front is for each half of the front
     n_in, n_out = 32 * k, 16 * k
     h1 = 8e-6 / k                                      # first cell height at the wall
     ds_le = ds_te = 4e-3 / k                           # surface spacing at the LE and the TE
 
-    ts = half_thickness(XS)
+    upper, lower = (lambda x: surface(x)[0]), (lambda x: surface(x)[1])
+    ts = 0.5 * (upper(XS)[1] - lower(XS)[1])
     # The circle of the inner front edge goes through (-D, 0) and (XS, ts + D).
     xc = (XS**2 + ts**2 + 2 * ts * D) / (2 * (XS + D))
     rho = xc + D
@@ -85,8 +127,10 @@ def block_mesh_dict(level):
     theta_a = math.degrees(math.atan2(ts + D, XS - xc))
 
     # Surface: the upper front from the LE to the split, and the upper aft to the TE.
-    front = [(XS * (i / M) ** 2, half_thickness(XS * (i / M) ** 2)) for i in range(M + 1)]
-    aft = [(XS + (1 - XS) * i / M, half_thickness(XS + (1 - XS) * i / M)) for i in range(M + 1)]
+    stations_front = [XS * (i / M) ** 2 for i in range(M + 1)]
+    stations_aft = [XS + (1 - XS) * i / M for i in range(M + 1)]
+    front = [upper(x) for x in stations_front]
+    aft = [upper(x) for x in stations_aft]
     e_f = ratio(ds_le, length(front), n_front) ** (n_front - 1)
     e_aft = ds_te / (ds_le * e_f)
 
@@ -98,7 +142,7 @@ def block_mesh_dict(level):
         dx, dy = x - xc, y
         b = dx * nx + dy * ny
         t = -b + math.sqrt(b * b - (dx * dx + dy * dy - rho * rho))
-        ang = math.degrees(math.atan2(y + t * ny, x + t * nx - xc))
+        ang = math.degrees(math.atan2(y + t * ny, x + t * nx - xc)) % 360
         want.append((180.0 - ang) / (180.0 - theta_a))
     e_arc = min((10 ** (j / 200) for j in range(-800, 801)),
                 key=lambda e: sum((a - b) ** 2 for a, b in zip(fractions(e, n_front), want)))
@@ -121,12 +165,15 @@ def block_mesh_dict(level):
     e_w = ratio(ds_te, X_OUT - 1, n_wake) ** (n_wake - 1)
     e_o3r = ratio(h1 * r_in**n_in, py - D, n_out) ** (n_out - 1)
 
+    # The wake cut goes straight downstream from the TE. A cut at a small angle to the x axis
+    # gives OpenFOAM wrong centres of its thin and long cells.
     fu = on_circle(R, PHI_13)
+    te = upper(1.0)
     pts = [
-        (1.0, 0.0), (XS, ts), (XS, -ts), (0.0, 0.0),            # 0 TE, 1 2 splits, 3 LE
+        te, upper(XS), lower(XS), (0.0, 0.0),                   # 0 TE, 1 2 splits, 3 LE
         (XS, ts + D), (XS, -ts - D), (-D, 0.0),                 # 4 5 inner arc ends, 6 inner LE
         (1.0, D), (1.0, -D),                                    # 7 8 above and below the TE
-        (X_OUT, 0.0), (X_OUT, D), (X_OUT, -D),                  # 9 10 11 outlet of the inner wake
+        (X_OUT, te[1]), (X_OUT, D), (X_OUT, -D),                # 9 10 11 outlet of the inner wake
         (xc - R, 0.0), fu, (fu[0], -fu[1]),                     # 12 13 14 far field front
         (1.0, py), (1.0, -py), (X_OUT, py), (X_OUT, -py),       # 15 16 P, 17 18 outlet corners
     ]
@@ -134,7 +181,8 @@ def block_mesh_dict(level):
     out = []
     w = out.append
     w("FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }\n\n")
-    w(f"// Written by case.py: NACA 0012 C-grid of level {level}.\n\nscale 1;\n\nvertices\n(\n")
+    w(f"// Written by validation/airfoil.py: {title} C-grid of level {level}.\n\nscale 1;\n\n")
+    w("vertices\n(\n")
     for z in (0.0, 1.0):
         for x, y in pts:
             w(f"    ({x:.10g} {y:.10g} {z:g})\n")
@@ -175,8 +223,8 @@ def block_mesh_dict(level):
 
     spline(3, 1, front[1:-1])
     spline(1, 0, aft[1:-1])
-    spline(0, 2, [(x, -y) for x, y in reversed(aft[1:-1])])
-    spline(2, 3, [(x, -y) for x, y in reversed(front[1:-1])])
+    spline(0, 2, [lower(x) for x in reversed(stations_aft[1:-1])])
+    spline(2, 3, [lower(x) for x in reversed(stations_front[1:-1])])
     mid_a = 0.5 * (180.0 + theta_a)
     arc(6, 4, rho, mid_a)
     arc(5, 6, rho, -mid_a)
@@ -205,12 +253,13 @@ def header(cls, obj):
     return f"FoamFile {{ version 2.0; format ascii; class {cls}; object {obj}; }}\n\n"
 
 
-def case_files(alpha, iterations):
-    """The files of the case at the angle `alpha` (degrees), except blockMeshDict."""
+def case_files(alpha, iterations, nu, cofr):
+    """The files of the case at the angle `alpha` (degrees), except blockMeshDict. CmPitch is
+    about the point `cofr`, positive nose up."""
     a = math.radians(alpha)
     ux, uy = math.cos(a), math.sin(a)
     # Free stream turbulence of the SA model: nuTilda = 3 nu, and nut = nuTilda fv1.
-    nutilda = 3.0 * NU
+    nutilda = 3.0 * nu
     nut = nutilda * 3.0**3 / (3.0**3 + 7.1**3)
     files = {}
     files["system/controlDict"] = header("dictionary", "controlDict") + f"""\
@@ -243,8 +292,7 @@ functions
         Aref            1;
         liftDir         ({-uy:.12g} {ux:.12g} 0);
         dragDir         ({ux:.12g} {uy:.12g} 0);
-        CofR            (0.25 0 0);
-        pitchAxis       (0 0 1);
+        CofR            ({cofr[0]:g} {cofr[1]:g} 0);
     }}
 }}
 """
@@ -299,7 +347,7 @@ relaxationFactors
 """
     files["constant/transportProperties"] = header("dictionary", "transportProperties") + f"""\
 transportModel  Newtonian;
-nu              {NU:.10g};
+nu              {nu:.10g};
 """
     files["constant/turbulenceProperties"] = header("dictionary", "turbulenceProperties") + """\
 simulationType  RAS;
@@ -337,20 +385,48 @@ boundaryField
     return files
 
 
+# The folders of each case: the angle of attack in degrees and the surface of each folder, the
+# Reynolds number, and the point of CmPitch. The validation/cases/<case>/derivation.md files give
+# the sources.
+CASES = {
+    "naca0012-ladson": {
+        "title": "NACA 0012",
+        # The angles of Ladson (1988) Table IX, and Re = 6 million as TMR.
+        "runs": {f"a{a:g}": (a, naca0012) for a in (-0.05, 4.04, 10.12)},
+        "re": 6.0e6,
+        "cofr": (0.25, 0.0),
+        "iterations": 1500,
+    },
+    "naca23012-flap": {
+        "title": "NACA 23012 with flap",
+        # Flap 10 degrees up, 0 and 10 degrees down at 0 degrees, and the effective Reynolds
+        # number of Abbott and Greenberg (1939) Table I. The point is the a.c. of the airfoil
+        # without flap.
+        "runs": {f"d{d}": (0.0, naca23012(d)) for d in (-10, 0, 10)},
+        "re": 8.4e6,
+        "cofr": (0.238, 0.07),
+        "iterations": 1000,
+    },
+}
+
+
 def main():
-    level = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-    iterations = int(sys.argv[2]) if len(sys.argv) > 2 else 1500
-    out = sys.argv[3] if len(sys.argv) > 3 else os.path.dirname(os.path.abspath(__file__))
-    mesh, cells = block_mesh_dict(level)
-    for alpha in ANGLES:
-        files = case_files(alpha, iterations)
+    name = sys.argv[1]
+    case = CASES[name]
+    level = int(sys.argv[2]) if len(sys.argv) > 2 else 2
+    iterations = int(sys.argv[3]) if len(sys.argv) > 3 else case["iterations"]
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = sys.argv[4] if len(sys.argv) > 4 else os.path.join(here, "cases", name)
+    for folder, (alpha, surface) in case["runs"].items():
+        mesh, cells = block_mesh_dict(case["title"], surface, level)
+        files = case_files(alpha, iterations, 1.0 / case["re"], case["cofr"])
         files["system/blockMeshDict"] = mesh
         for path, text in files.items():
-            full = os.path.join(out, f"a{alpha:g}", path)
+            full = os.path.join(out, folder, path)
             os.makedirs(os.path.dirname(full), exist_ok=True)
             with open(full, "w") as f:
                 f.write(text)
-    print(f"level {level}: {cells} cells, {iterations} iterations, angles {ANGLES}")
+    print(f"{name} level {level}: {cells} cells, {iterations} iterations, {list(case['runs'])}")
 
 
 main()
