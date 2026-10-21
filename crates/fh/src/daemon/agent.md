@@ -87,8 +87,9 @@ For a request to find the stiffest layout of a fraction of the material in a des
 2. `topology.toml`: `volume` (the fraction of the volume that the material fills, for example 0.5), `radius` (the filter radius, in the length unit of the mesh, at least 1.5 element sizes), `young`, `poisson` and, for 2D elements, `thickness` (default 1).
 3. Solve: `fh run CASE`. Each iteration solves the model with `ccx` and prints the compliance, the volume fraction and the largest change of a density. The loop stops when no density changes by more than 0.01, after about 100 iterations. Thus use a mesh that `ccx` solves in about 1 s.
 4. Results: the last row of `topology/history.txt` holds the compliance of the last design. The page shows the cell field `density`: 1 is material and 0 is void.
+5. CAD: for 2D elements (`CPS` or `CPE`), the run also writes the solid of the density 0.5 or more to `topology/cad/design.step` (in mm), with its gmsh script `design.geo`. This needs gmsh. Then `ccx` solves the solid with the same supports and loads, and `topology/cad/check.txt` holds its compliance. The solid has no gray material, thus its compliance is lower than the compliance of the loop. If the supports do not hold each part of the solid, the run has no check: use a finer mesh or a larger `radius`. For a half model, mirror the solid in gmsh with `Symmetry` and `Duplicata`, then join the 2 halves with `BooleanUnion`.
 
-This loop agrees with the published result of the MBB beam (the validation case `topology-mbb-beam`): 60 x 20 elements, `volume = 0.5` and `radius = 2.4` give a compliance of 216.81, as in Andreassen et al. (2011).
+This loop agrees with the published result of the MBB beam (the validation case `topology-mbb-beam`): 60 x 20 elements, `volume = 0.5` and `radius = 2.4` give a compliance of 216.81, as in Andreassen et al. (2011). The solid of this design gives 190.48, 12 % lower (the validation case `topology-mbb-beam-cad`).
 
 ## Multibody dynamics with Project Chrono
 

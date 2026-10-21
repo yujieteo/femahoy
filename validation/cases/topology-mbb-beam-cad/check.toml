@@ -1,0 +1,23 @@
+# The CAD of the half MBB beam: the solid of the density 0.5 or more of the last design, meshed
+# by gmsh and solved by ccx. The case 60x20 is the same as in topology-mbb-beam. The reference is
+# c = 216.81 of the 88 line code with the sensitivity filter: E. Andreassen, A. Clausen,
+# M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using
+# 88 lines of code", Struct. Multidisc. Optim. 43 (2011) 1-16, figure 3, top left. The loop gives
+# the same value (topology-mbb-beam). derivation.md gives the model.
+#
+# The tolerance (derivation.md, "Tolerance"): the solid has no gray material. An element with a
+# density from 0.5 to 1 has the stiffness x^3 E0 in the loop and E0 in the solid. Thus the solid
+# is stiffer than the last design:
+# - The threshold at 0.5 on the elements of the loop: c = 193.27, -10.86 % from the reference.
+# - The smooth boundary and the mesh of the check: c = 190.48, -1.45 % from the threshold.
+# - 3 mesh algorithms of gmsh give 190.27 to 190.48: 0.11 %.
+# - The stop rule of the loop: 0.12 % (topology-mbb-beam).
+# The sum is 12.5 %. rel_tol = 12.5 %, rounded up to 15 % for other versions of gmsh and ccx.
+rel_tol = 0.15
+abs_tol = 0.0
+
+[cad_compliance]
+value = 216.81
+case = "60x20"
+file = "cad/check.txt"
+column = "compliance"

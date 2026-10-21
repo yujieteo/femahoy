@@ -24,6 +24,11 @@
 //! change of a density after the solve. The last solve is in `<run-dir>/topology/solve`. Its
 //! fields, with the density of each element as the cell field `density`, go to `step-N.vtu` and
 //! `results.pvd`.
+//!
+//! For a mesh of plane elements, the run then writes the CAD of the last design in
+//! `<run-dir>/topology/cad`: `design.step`, the solid of the material (the density 0.5 or more),
+//! and its check with `ccx` (see [`cad`]). The CAD needs gmsh. Without the CAD, the run still
+//! succeeds, and [`Outcome`] tells why it has no CAD.
 
 use std::collections::HashMap;
 use std::fs;
@@ -35,6 +40,9 @@ use fh_core::vtu::Field;
 use toml_edit::{Document, TableLike};
 
 use crate::ccx::{frd, prepare_run_dir, stage_input, write_frames, CancelToken, Ccx};
+
+mod cad;
+pub use cad::{Cad, Check};
 
 /// The folder of the files of the loop in a run folder.
 pub const WORK: &str = "topology";
@@ -295,16 +303,25 @@ pub struct Iteration {
     pub change: f64,
 }
 
-/// Optimize the case `case` in the folder `run_dir`, with `ccx` and its limits. The time limit
-/// of `ccx` counts all the solves. The run clears the folder first, if a run made the folder
-/// earlier. `on_iteration` gets each row of the history.
+/// The end of a topology run: the last row of the history, and the CAD of the last design or why
+/// the run has no CAD.
+#[derive(Debug, Clone)]
+pub struct Outcome {
+    pub last: Iteration,
+    pub cad: Result<Cad, String>,
+}
+
+/// Optimize the case `case` in the folder `run_dir`, with `ccx` and its limits, and write the CAD
+/// of the last design. The time limit of `ccx` counts all the solves and the CAD. The run clears
+/// the folder first, if a run made the folder earlier. `on_iteration` gets each row of the
+/// history.
 pub fn run_with(
     ccx: &Ccx,
     case: &Path,
     run_dir: &Path,
     cancel: &CancelToken,
     on_iteration: &mut dyn FnMut(&Iteration),
-) -> Result<(), String> {
+) -> Result<Outcome, String> {
     let start = Instant::now();
     let case =
         fs::canonicalize(case).map_err(|e| format!("{}: case folder: {e}", case.display()))?;
@@ -342,6 +359,7 @@ pub fn run_with(
     let mut x = vec![s.volume; ids.len()];
     let mut volumes = Vec::new();
     let mut solved = x.clone();
+    let mut last = None;
     for number in 1..=ITERATIONS {
         if cancel.is_cancelled() {
             return Err("run cancelled".into());
@@ -385,6 +403,7 @@ pub fn run_with(
         ));
         fs::write(work.join(HISTORY), &history).map_err(folder)?;
         on_iteration(&row);
+        last = Some(row);
         solved = std::mem::replace(&mut x, next);
         if row.change <= CHANGE {
             break;
@@ -408,7 +427,18 @@ pub fn run_with(
             .push(Field::f64("density", 1, density.clone()));
         (f.time, grid)
     });
-    write_frames(&run_dir, units, false, frames)
+    write_frames(&run_dir, units, false, frames)?;
+    let volume = volumes.iter().sum();
+    let cad = cad::write(
+        &model, &flat.text, &solved, &s, volume, ccx, start, cancel, &work,
+    );
+    if cancel.is_cancelled() {
+        return Err("run cancelled".into());
+    }
+    Ok(Outcome {
+        last: last.expect("the loop solves at least once"),
+        cad,
+    })
 }
 
 #[cfg(test)]
