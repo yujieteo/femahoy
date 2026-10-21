@@ -1,0 +1,13 @@
+# Tada, Paris and Irwin (2000), centre crack in a strip in tension, formula of Tada (1971):
+# K_I = sigma sqrt(pi a) [1 - 0.025 (a/b)^2 + 0.06 (a/b)^4] sqrt(sec(pi a / 2b)),
+# sigma = 100 MPa, a = 25 mm, b = 50 mm. K_I is U2 of the node KI (MPa mm^0.5), see mesh.inp.
+# Budget: formula 0.2 %, mesh 0.2 %, plate height 0.02 %. See derivation.md.
+rel_tol = 0.005
+abs_tol = 0.0
+
+[k_i]
+value = 1051.27
+set = "KI"
+field = "U"
+component = 2
+op = "value"

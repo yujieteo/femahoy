@@ -47,6 +47,7 @@ fn validate_runs_every_case() {
         "cavity-devahldavis",
         "contact-hertz",
         "dynamics-bar-step",
+        "fracture-centre-crack",
         "frequency-cantilever",
         "heat-fin",
         "naca0012-ladson",
@@ -60,7 +61,7 @@ fn validate_runs_every_case() {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("14 cases: 14 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("15 cases: 15 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
