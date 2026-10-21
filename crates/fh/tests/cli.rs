@@ -46,6 +46,7 @@ fn validate_runs_every_case() {
         "frequency-cantilever",
         "heat-fin",
         "naca0012-ladson",
+        "naca23012-flap",
         "plasticity-sphere",
         "scordelis-lo-roof",
         "warpage-2p5d-frame",
@@ -54,7 +55,7 @@ fn validate_runs_every_case() {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("11 cases: 11 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("12 cases: 12 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");

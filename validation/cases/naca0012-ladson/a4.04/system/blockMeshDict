@@ -1,6 +1,6 @@
 FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }
 
-// Written by case.py: NACA 0012 C-grid of level 2.
+// Written by validation/airfoil.py: NACA 0012 C-grid of level 2.
 
 scale 1;
 

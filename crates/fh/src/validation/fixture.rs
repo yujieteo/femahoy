@@ -27,6 +27,22 @@ pub enum Field {
     Cl,
     /// The drag coefficient, from the `forceCoeffs` function object of an OpenFOAM case.
     Cd,
+    /// The pitching moment coefficient, positive nose up, from the `forceCoeffs` function object
+    /// of an OpenFOAM case.
+    Cm,
+}
+
+impl Field {
+    /// The column of a force coefficient in the `coefficient.dat` file of `forceCoeffs`. None for
+    /// a field of `ccx`.
+    pub fn coefficient(self) -> Option<&'static str> {
+        match self {
+            Field::Cl => Some("Cl"),
+            Field::Cd => Some("Cd"),
+            Field::Cm => Some("CmPitch"),
+            _ => None,
+        }
+    }
 }
 
 /// How the values of a set reduce to the one number that is compared with the reference.
@@ -41,11 +57,12 @@ pub enum Op {
 
 /// What to measure: a field component, in a node or element set, at the end of the last step.
 /// `Freq` and `Buckle` have no set: `component` is the mode number and `op` is `Value`.
-/// `Cstr` has no set. `Cl` and `Cd` are the values of the last iteration of an OpenFOAM case.
+/// `Cstr` has no set. `Cl`, `Cd` and `Cm` are the values of the last iteration of an OpenFOAM
+/// case.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Quantity {
-    /// The name of the set that the print request of the input names. For `Cl` and `Cd`, the
-    /// subfolder of the OpenFOAM case.
+    /// The name of the set that the print request of the input names. For `Cl`, `Cd` and `Cm`,
+    /// the subfolder of the OpenFOAM case.
     pub set: String,
     pub field: Field,
     pub component: u32,
@@ -64,7 +81,7 @@ pub struct Case {
     /// The name of the folder.
     pub id: String,
     pub dir: PathBuf,
-    /// The CalculiX input, `<dir>/job.inp`, or `<dir>` when the checks are `CL` and `CD`.
+    /// The CalculiX input, `<dir>/job.inp`, or `<dir>` when the checks are force coefficients.
     pub input: PathBuf,
     /// Pass if `|computed - reference| <= rel_tol * |reference| + abs_tol`.
     pub rel_tol: f64,
@@ -85,11 +102,11 @@ impl Case {
     pub fn openfoam(&self) -> bool {
         self.references
             .iter()
-            .any(|r| matches!(r.quantity.field, Field::Cl | Field::Cd))
+            .any(|r| r.quantity.field.coefficient().is_some())
     }
 
     /// Load `<dir>/check.toml`. The file `<dir>/job.inp` must exist, or, when the checks are
-    /// `CL` and `CD`, the OpenFOAM case of each check.
+    /// force coefficients, the OpenFOAM case of each check.
     pub fn load(dir: &Path) -> Result<Case, String> {
         let file = dir.join("check.toml");
         let text =
@@ -109,7 +126,7 @@ impl Case {
         if references.is_empty() {
             return Err(reader.err(None, "no check: add one `[name]` table".into()));
         }
-        let foam = |r: &Reference| matches!(r.quantity.field, Field::Cl | Field::Cd);
+        let foam = |r: &Reference| r.quantity.field.coefficient().is_some();
         let input = if references.iter().all(foam) {
             for r in &references {
                 if !crate::foam::is_case(&dir.join(&r.quantity.set)) {
@@ -121,7 +138,7 @@ impl Case {
         } else if references.iter().any(foam) {
             return Err(reader.err(
                 None,
-                "a case has CL and CD checks only, or no CL and CD check".into(),
+                "a case has CL, CD and CM checks only, or no CL, CD and CM check".into(),
             ));
         } else {
             dir.join("job.inp")
@@ -205,7 +222,7 @@ impl Reader<'_> {
 
     /// One check: the `[name]` table with `value`, `set`, `field`, `component` and `op`, or
     /// with `value`, `field` and `mode` for `FREQ` and `BUCKLE`, or with `value`, `field` and
-    /// `case` for `CL` and `CD`.
+    /// `case` for `CL`, `CD` and `CM`.
     fn reference(&self, name: &str, item: &Item) -> Result<Reference, String> {
         let table = item
             .as_table_like()
@@ -223,19 +240,20 @@ impl Reader<'_> {
             "BUCKLE" => (Field::Buckle, &[]),
             "CL" => (Field::Cl, &[]),
             "CD" => (Field::Cd, &[]),
+            "CM" => (Field::Cm, &[]),
             other => {
                 return Err(self.err(
                     Some(field_item),
                     format!(
-                        "unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ, BUCKLE, CL \
-                         or CD"
+                        "unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ, BUCKLE, CL, \
+                         CD or CM"
                     ),
                 ))
             }
         };
         let keys: &[&str] = match field {
             Field::Freq | Field::Buckle => &["value", "field", "mode"],
-            Field::Cl | Field::Cd => &["value", "field", "case"],
+            Field::Cl | Field::Cd | Field::Cm => &["value", "field", "case"],
             Field::Cstr => &["value", "field", "component", "op"],
             _ => &["value", "set", "field", "component", "op"],
         };
@@ -244,7 +262,7 @@ impl Reader<'_> {
                 return Err(self.err(Some(value), format!("unknown key `{key}` in `{name}`")));
             }
         }
-        if let Field::Cl | Field::Cd = field {
+        if field.coefficient().is_some() {
             let case_item = get("case")?;
             let case = self.string(case_item, "case")?;
             let plain = !case.starts_with('.')

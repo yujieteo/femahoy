@@ -1,0 +1,29 @@
+FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+
+solvers
+{
+    p
+    {
+        solver          GAMG;
+        smoother        GaussSeidel;
+        tolerance       1e-10;
+        relTol          0.05;
+    }
+    "(U|nuTilda)"
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        nSweeps         2;
+        tolerance       1e-12;
+        relTol          0.1;
+    }
+}
+SIMPLE
+{
+    consistent      yes;
+    nNonOrthogonalCorrectors 0;
+}
+relaxationFactors
+{
+    equations { U 0.9; nuTilda 0.9; }
+}

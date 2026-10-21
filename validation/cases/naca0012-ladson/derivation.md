@@ -22,7 +22,7 @@ The lift at -0.05 degrees is not a check. The lift slope of Table IX (0.107 per 
 
 ## Model
 
-`case.py` writes the 3 OpenFOAM cases `a-0.05`, `a4.04` and `a10.12`. They differ only in the angle of the flow and of the force directions.
+`python3 validation/airfoil.py naca0012-ladson` writes the 3 OpenFOAM cases `a-0.05`, `a4.04` and `a10.12`. They differ only in the angle of the flow and of the force directions.
 
 | Item | Value |
 |---|---|
@@ -51,10 +51,10 @@ Each level doubles the cells in each direction and halves the first cell height.
 
 ## Mesh study
 
-These commands write level 3 in a scratch folder and solve it at 4.04 degrees. Solve the other angles in the same way. Each level and angle starts from the free stream.
+These commands, in the repository root, write level 3 in a scratch folder and solve it at 4.04 degrees. Solve the other angles in the same way. Each level and angle starts from the free stream.
 
 ```
-python3 case.py 3 6000 /tmp/naca-l3
+python3 validation/airfoil.py naca0012-ladson 3 6000 /tmp/naca-l3
 openfoam blockMesh -case /tmp/naca-l3/a4.04
 openfoam simpleFoam -case /tmp/naca-l3/a4.04
 ```
