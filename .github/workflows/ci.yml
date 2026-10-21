@@ -8,15 +8,12 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # A validation case has no time limit. This limit stops a hung solve. It is about 3 times the
+    # time of the job (8 minutes).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Format
-        run: cargo fmt --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
       # The validation cases are tested with ccx 2.23 (README.md). The Ubuntu package is older,

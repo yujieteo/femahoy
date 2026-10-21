@@ -112,7 +112,7 @@ Reason: a real problem needs CFD: a basic airfoil with control surfaces. Calculi
 ### 6.1 Limits of the `ccx` process
 
 - Each run has its own folder in the state folder, with the copy of the input, the `ccx` files and the results.
-- Each run has a memory limit. The default is 85 percent of the RAM of the machine. A run has a time limit only when `--timeout` or `fh validate` sets one.
+- Each run has a memory limit. The default is 85 percent of the RAM of the machine. A run has a time limit only when `--timeout` sets one.
 - A cancel, the memory limit and the time limit kill the whole process group of `ccx` at once. A guard process kills the group when `fh` stops. When `fh run` ends for any reason, `ccx` stops: Ctrl+C, SIGTERM and SIGHUP cancel the run, and the guard process handles SIGKILL.
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops.
