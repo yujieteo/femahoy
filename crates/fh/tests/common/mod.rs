@@ -79,6 +79,24 @@ pub fn getdp_solver() -> Option<PathBuf> {
     found.then_some(exe)
 }
 
+/// The Python of PyChrono (`FH_PYCHRONO`, else `python3` on PATH) when it imports PyChrono. Else
+/// `None` with a message, and the test does not solve. With `FH_REQUIRE_PYCHRONO=1`, as in CI, a
+/// missing PyChrono fails the test.
+pub fn pychrono_solver() -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os("FH_PYCHRONO").unwrap_or_else(|| "python3".into()));
+    let import = Command::new(&exe).args(["-c", "import pychrono"]).output();
+    let found = import.is_ok_and(|o| o.status.success());
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_PYCHRONO").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_PYCHRONO=1, but {} does not import pychrono",
+            exe.display()
+        );
+        eprintln!("skipped: no Python with PyChrono. Set FH_PYCHRONO");
+    }
+    found.then_some(exe)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

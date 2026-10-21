@@ -13,16 +13,17 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the agent**: 1 focused agent that plans and does the work.
-- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, and a topology case folder for topology optimization.
+- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, a topology case folder for topology optimization, and a Chrono case folder for multibody dynamics.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
-- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD and GetDP for electromagnetics and acoustics.
+- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD, GetDP for electromagnetics and acoustics, and Project Chrono for multibody dynamics.
 
 ---
 
 ## 2. Separate programs
 
 - CalculiX, gmsh, OpenFOAM and GetDP stay separate programs. femahoy never links or bundles them, because they are GPL.
+- Project Chrono is BSD-3-Clause, but it also stays a separate program: a Python with PyChrono. Thus femahoy has no dependency on it.
 
 ---
 
@@ -45,7 +46,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
         |                                  |
       reads                                | runs fh commands
         |                                  v
-   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP
+   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, Chrono
  (previews, runs, results)
 ```
 
@@ -81,11 +82,12 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 - An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
 - A GetDP case folder (`case.pro`, and `case.geo` or `case.msh`) is the input for electromagnetics and acoustics. gmsh meshes `case.geo`, and GetDP reads and checks the case.
 - A topology case folder (`job.inp` and `topology.toml`) is the input for topology optimization. `job.inp` is CalculiX input with no material. `fh` adds 1 material for each element, and CalculiX reads and checks the input.
+- A Chrono case folder (`chrono.py`, a PyChrono script) is the input for multibody dynamics. Python runs the script.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel. It reads only the length unit of a STEP file.
 
-Reason of the first 3 rules: each solver reads only its own input, and `fh` gives the input to the solver as it is.
+Reason of the first 4 rules: each solver reads only its own input, and `fh` gives the input to the solver as it is.
 
 Reason of the last rule: Python CAD libraries exist, a chat can write the script, and gmsh already includes OpenCASCADE.
 
@@ -119,6 +121,10 @@ Topology optimization is a SIMP loop in `fh` around `ccx` (`crates/fh/src/topolo
 
 Reason: the design variables of CalculiX are node coordinates and orientations, not densities. The loop of Andreassen et al. (2011) is short, and `ccx` gives all the values that it needs.
 
+Project Chrono is the multibody solver. It is a separate program that the user installs, as section 2 says.
+
+Reason: the other solvers do not solve mechanisms with joints and large rigid motion, for example the actuator linkage of a control surface. PyChrono has builds for macOS (Apple Silicon) and Linux.
+
 CalculiX (`*DYNAMIC, EXPLICIT`) is also the explicit solver for impact.
 
 Reason: OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS and in CI.
@@ -144,7 +150,7 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 - References are analytical solutions, measured values, or published numerical benchmark values. The cases are in `validation/cases/<id>/`.
 - Cases use our own input files. Each target value cites its source.
 - Each case has a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
-- A structural case has 1 mesh. A CFD, electromagnetic or acoustic case has at least 2 meshes (3 where practical) and states the mesh error.
+- A structural case has 1 mesh. A CFD, electromagnetic or acoustic case has at least 2 meshes (3 where practical) and states the mesh error. A multibody case states the error of its time step from at least 2 time steps.
 - A change to a solver or its adapter merges only if `fh validate` passes the full suite. A failure blocks the merge. There is no override.
 
 Reason: a solver can give a wrong result without a warning. The suite is the only check. In CFD the mesh error is often the largest error. In the electromagnetic case it is 40 % of the tolerance. 1 mesh cannot show it.

@@ -13,8 +13,8 @@
 //! its text results (for example `Format Table`) to the files that it names. Then the run writes
 //! the views of the `.pos` files (the default format of GetDP) to `step-N.vtu` and
 //! `results.pvd`: step N of each view as a cell field, the mean of the node values of each
-//! element. A complex resolution has 2 steps: the real part and the imaginary part. The VTU files
-//! have no point fields, because the viewer takes a point field `U` as a displacement.
+//! element. A complex resolution has 2 steps: the real part and the imaginary part. Only a vector
+//! view `U` is a point field, because the viewer takes a point field `U` as a displacement.
 //!
 //! GetDP and gmsh are GPL, so femahoy only starts them as separate programs. A run has the
 //! limits of a run of `ccx` (see [`crate::ccx`]). The time limit counts both programs.
@@ -66,7 +66,7 @@ pub(crate) fn copy_case(case: &Path, dir: &Path, read_only: bool) -> Result<(), 
 
 /// Why `program` failed, from its exit status and its output `log`. gmsh and GetDP start each
 /// error line with `Error`.
-fn failure(program: &str, status: ExitStatus, log: &str, log_file: &Path) -> String {
+pub(crate) fn failure(program: &str, status: ExitStatus, log: &str, log_file: &Path) -> String {
     let see = format!("The full output is in {}", log_file.display());
     let errors: Vec<&str> = log
         .lines()
@@ -86,7 +86,8 @@ fn failure(program: &str, status: ExitStatus, log: &str, log_file: &Path) -> Str
 }
 
 /// One view of a `.pos` file. `cells` holds the VTK type and the corner points of each element.
-/// `steps` holds for each step the mean value of each element, `components` numbers each.
+/// `steps` holds for each step the values at the corners of each element, in the order of the
+/// file, `components` numbers at each corner.
 #[derive(Debug, Default)]
 struct View {
     name: String,
@@ -180,10 +181,7 @@ fn read_pos(text: &str) -> Result<Vec<View>, String> {
             )));
         }
         for (step, chunk) in view.steps.iter_mut().zip(values.chunks_exact(size)) {
-            for c in 0..components {
-                let sum: f64 = chunk.iter().skip(c).step_by(components).sum();
-                step.push(sum / nodes as f64);
-            }
+            step.extend_from_slice(chunk);
         }
         let points = coords.chunks_exact(3).map(|p| [p[0], p[1], p[2]]);
         view.cells.push((vtk, points.collect()));
@@ -192,8 +190,9 @@ fn read_pos(text: &str) -> Result<Vec<View>, String> {
 }
 
 /// The frames of the views: frame N holds step N of each view that has it. All the views must
-/// have the same elements, because a VTU file has 1 mesh. The points of the elements merge when
-/// they have the same coordinates.
+/// have the same elements, because a VTU file has 1 mesh. A view is a cell field, the mean of the
+/// corner values of each element. A view `U` with 3 components is the point field `U`. The points
+/// of the elements merge when they have the same coordinates and the same `U` in each step.
 fn frames(views: &[View]) -> Result<Vec<(f64, Grid)>, String> {
     let Some(first) = views.first() else {
         return Ok(Vec::new());
@@ -205,16 +204,26 @@ fn frames(views: &[View]) -> Result<Vec<(f64, Grid)>, String> {
             other.name, first.name
         ));
     }
+    let is_u = |v: &View| v.name == "U" && v.components == 3;
+    let u = views.iter().find(|v| is_u(v));
     let mut grid = Grid::default();
-    let mut ids: HashMap<[u64; 3], u32> = HashMap::new();
+    // The corner of the elements that gives each point its value of `U`.
+    let mut corners = Vec::new();
+    let mut ids: HashMap<Vec<u64>, u32> = HashMap::new();
     for (vtk, points) in &first.cells {
         let mut cell = Vec::with_capacity(points.len());
         for p in points {
-            let id = *ids.entry(p.map(f64::to_bits)).or_insert_with(|| {
+            let corner = corners.len();
+            let mut key = p.map(f64::to_bits).to_vec();
+            for step in u.map_or(&[][..], |u| &u.steps) {
+                key.extend(step[3 * corner..3 * corner + 3].iter().map(|x| x.to_bits()));
+            }
+            let id = *ids.entry(key).or_insert_with(|| {
                 grid.points.push(*p);
                 grid.points.len() as u32 - 1
             });
             cell.push(id);
+            corners.push(id);
         }
         grid.cells.push(cell);
         grid.cell_types.push(*vtk);
@@ -224,10 +233,30 @@ fn frames(views: &[View]) -> Result<Vec<(f64, Grid)>, String> {
         .map(|k| {
             let mut frame = grid.clone();
             for v in views.iter().filter(|v| k < v.steps.len()) {
-                let values = v.steps[k].clone();
+                let values = &v.steps[k];
+                if is_u(v) {
+                    let mut point = vec![0.0; 3 * grid.points.len()];
+                    for (corner, id) in corners.iter().enumerate() {
+                        let id = *id as usize;
+                        point[3 * id..3 * id + 3]
+                            .copy_from_slice(&values[3 * corner..3 * corner + 3]);
+                    }
+                    frame.point_data.push(Field::f64("U", 3, point));
+                    continue;
+                }
+                let mut means = Vec::with_capacity(first.cells.len() * v.components);
+                let mut at = 0;
+                for (_, points) in &first.cells {
+                    let size = points.len() * v.components;
+                    for c in 0..v.components {
+                        let sum: f64 = values[at + c..at + size].iter().step_by(v.components).sum();
+                        means.push(sum / points.len() as f64);
+                    }
+                    at += size;
+                }
                 frame
                     .cell_data
-                    .push(Field::f64(&v.name, v.components, values));
+                    .push(Field::f64(&v.name, v.components, means));
             }
             (first.times.get(k).copied().unwrap_or(k as f64), frame)
         })
@@ -325,20 +354,31 @@ impl GetDp {
                 return Err(failure(program.name, status, &log, &log_file));
             }
         }
-        let mut files: Vec<PathBuf> = fs::read_dir(&work)
-            .map_err(|e| format!("{}: {e}", work.display()))?
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|x| x == "pos"))
-            .collect();
-        files.sort();
-        let mut views = Vec::new();
-        for file in &files {
-            let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-            views.extend(read_pos(&text).map_err(|e| format!("{}: {e}", file.display()))?);
-        }
-        write_frames(&run_dir, "unspecified", frames(&views)?.into_iter())
+        write_views(&work, &run_dir, "unspecified", false)
     }
+}
+
+/// Write the views of the `.pos` files in `work` to the VTU files and `results.pvd` of
+/// `run_dir`, with the unit system `units` (see [`crate::vtu::write_pvd`] for `multibody`).
+pub(crate) fn write_views(
+    work: &Path,
+    run_dir: &Path,
+    units: &str,
+    multibody: bool,
+) -> Result<(), String> {
+    let mut files: Vec<PathBuf> = fs::read_dir(work)
+        .map_err(|e| format!("{}: {e}", work.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "pos"))
+        .collect();
+    files.sort();
+    let mut views = Vec::new();
+    for file in &files {
+        let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+        views.extend(read_pos(&text).map_err(|e| format!("{}: {e}", file.display()))?);
+    }
+    write_frames(run_dir, units, multibody, frames(&views)?.into_iter())
 }
 
 #[cfg(test)]
@@ -380,6 +420,27 @@ mod tests {
         let b = grid.cell_field("b").unwrap();
         assert_eq!(b.as_f64(), Some(&[0.0, 0.0, 8.0, 0.0, 0.0, 0.0][..]));
         assert!(grid.cell_field("loss").is_none());
+    }
+
+    /// 3 bars in a row. The first 2 have a pin, so their common point has the same `U`. The
+    /// third bar starts at the end of the second, but moves in z.
+    #[test]
+    fn the_view_u_is_a_point_field_and_only_points_that_move_together_merge() {
+        let pos = "View \"U\" {\n\
+            VL(0,0,0,1,0,0){0,0,0,0,0,0,0,0,0,0,1,0};\n\
+            VL(1,0,0,2,0,0){0,0,0,0,0,0,0,1,0,0,2,0};\n\
+            VL(2,0,0,3,0,0){0,0,0,0,0,0,0,0,1,0,0,1};\n\
+            TIME{0,0.5};\n};\n";
+        let frames = frames(&read_pos(pos).unwrap()).unwrap();
+        let (time, grid) = &frames[1];
+        assert_eq!(*time, 0.5);
+        assert_eq!(grid.cells, vec![vec![0, 1], vec![1, 2], vec![3, 4]]);
+        assert!(grid.cell_data.is_empty());
+        let u = grid.point_field("U").unwrap();
+        let want = [
+            0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
+        ];
+        assert_eq!((u.components, u.as_f64()), (3, Some(&want[..])));
     }
 
     #[test]

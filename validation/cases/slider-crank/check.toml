@@ -1,0 +1,28 @@
+# A slider-crank: crank 0.1 m, rod 0.3 m, slider on the x axis through the crank axis, gravity
+# 9.81 m/s^2 along -y. A motor turns the crank at a constant 60 rpm from the dead centre at
+# x = 0.4 m. The references are the closed-form values at t = 1.125 s, when the crank is at
+# 45 degrees after 2.25 turns: the position of the slider and the torque of the motor on the
+# crank. derivation.md gives the formulas, and reference.py computes the values.
+#
+# The model is the Chrono case 60rpm: 3 rigid bodies, the HHT time stepper with a time step of
+# 1 ms. The tolerance (derivation.md, "Tolerance"):
+# - The time-step error of the torque is 6.9e-6 N m (5e-6 of the value), from 4 time steps.
+#   The error of the position is 1.4e-10 m.
+# - rel_tol = 1e-4 is 20 times the time-step error. A change of 1 % in any mass changes the
+#   torque by 1.2e-3 of its value or more, and g = 9.80665 in place of 9.81 by 1.7e-4. Each
+#   fails.
+# - abs_tol = 0: no reference value is near 0.
+rel_tol = 1e-4
+abs_tol = 0
+
+[x_slider]
+value = 0.3622582729
+case = "60rpm"
+file = "slider-crank.txt"
+column = "x_slider"
+
+[torque]
+value = 1.42695517
+case = "60rpm"
+file = "slider-crank.txt"
+column = "torque"

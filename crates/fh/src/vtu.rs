@@ -218,9 +218,11 @@ fn write_vtu_to<W: std::io::Write>(grid: &Grid, w: &mut W) -> Result<(), String>
 }
 
 /// Write a PVD collection file. `time` is the step time at the end of each
-/// step. `units` names the unit system of the model, or `unspecified`.
-pub(crate) fn write_pvd(entries: &[PvdEntry], units: &str) -> String {
-    let mut s = format!("<?xml version=\"1.0\"?>\n<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n<Collection units=\"{}\">\n", escape(units));
+/// step. `units` names the unit system of the model, or `unspecified`. A `multibody` collection
+/// (the motion of rigid bodies) has the attribute `kind="multibody"`.
+pub(crate) fn write_pvd(entries: &[PvdEntry], units: &str, multibody: bool) -> String {
+    let kind = if multibody { " kind=\"multibody\"" } else { "" };
+    let mut s = format!("<?xml version=\"1.0\"?>\n<VTKFile type=\"Collection\" version=\"0.1\" byte_order=\"LittleEndian\">\n<Collection units=\"{}\"{kind}>\n", escape(units));
     for e in entries {
         let _ = writeln!(
             s,

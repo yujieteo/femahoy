@@ -1,7 +1,7 @@
 //! `fh run`: one solve with the real ccx on the input of a validation case, and the stop of
 //! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
-//! OpenFOAM tests use a fake `openfoam` that writes the files of each program, and the GetDP tests
-//! a fake `gmsh` and a fake `getdp`.
+//! OpenFOAM tests use a fake `openfoam` that writes the files of each program, the GetDP tests a
+//! fake `gmsh` and a fake `getdp`, and the Chrono tests a fake Python.
 mod common;
 use common::{ccx_solver, p, root, scratch, script, stderr, stdout};
 
@@ -496,5 +496,72 @@ fn fh_run_optimizes_a_topology_case_with_ccx_in_each_iteration() {
     let mean = density.iter().sum::<f64>() / 48.0;
     assert!((mean - last[2]).abs() < 1e-6, "{mean} {history}");
     assert!(grid.point_field("U").is_some());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake Python with PyChrono. It writes its arguments to CALLS, and the view `U` of 1 bar that
+/// turns about its first end. When `chrono.py` holds FAIL, it fails as a Python with no PyChrono.
+const FAKE_PYTHON: &str = r#"#!/bin/sh
+echo python "$@" >> CALLS
+if grep -q FAIL chrono.py; then echo "ModuleNotFoundError: No module named 'pychrono'" >&2; exit 1; fi
+printf 'View "U" {\nVL(0,0,0,1,0,0){0,0,0,0,0,0,0,0,0,-1,1,0};\nTIME{0,0.5};\n};\n' > motion.pos
+"#;
+
+fn fh_run_chrono(name: &str, text: &str) -> (PathBuf, std::process::Output) {
+    let dir = scratch(name);
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("chrono.py"), text).unwrap();
+    let calls = p(&dir.join("calls")).to_owned();
+    script(&dir.join("python"), &FAKE_PYTHON.replace("CALLS", &calls));
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_PYCHRONO", dir.join("python"))
+        .output()
+        .unwrap();
+    (dir, out)
+}
+
+/// `fh run CASE` starts `chrono.py` with the Python of PyChrono, and writes each step of the
+/// view `U` to a VTU file of the page as the displacement, in SI-m.
+#[test]
+fn fh_run_solves_a_chrono_case_with_python() {
+    let (dir, out) = fh_run_chrono("run-chrono", "import pychrono\n");
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(shown.contains("  program python\n"), "{shown}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(calls, "python chrono.py\n");
+    let run = dir.join("state/runs/run-000001");
+    assert!(run.join("out/chrono/log.python").is_file(), "{shown}");
+    let copy = run.join("in/chrono.py");
+    assert!(fs::metadata(&copy).unwrap().permissions().readonly());
+    assert!(!dir.join("state/previews").exists());
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    assert!(
+        pvd.contains("units=\"SI-m\" kind=\"multibody\"") && pvd.contains("step-2.vtu"),
+        "{pvd}"
+    );
+    let vtu = fs::read(run.join("out/step-2.vtu")).unwrap();
+    let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
+    assert_eq!(grid.points, vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+    assert!(grid.cell_data.is_empty());
+    let u = grid.point_field("U").unwrap();
+    assert_eq!(u.as_f64(), Some(&[0.0, 0.0, 0.0, -1.0, 1.0, 0.0][..]));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A Python with no PyChrono ends the run with the install step and the path of the log.
+#[test]
+fn a_python_with_no_pychrono_fails_the_run_with_the_install_step() {
+    let (dir, out) = fh_run_chrono("run-chrono-fail", "FAIL\n");
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors.contains("has no PyChrono. Install PyChrono (README.md) and set FH_PYCHRONO"),
+        "{errors}"
+    );
+    assert!(errors.contains("out/chrono/log.python"), "{errors}");
     let _ = fs::remove_dir_all(&dir);
 }
