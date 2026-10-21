@@ -63,7 +63,7 @@ The tolerance is `rel_tol = 0.02` and `abs_tol = 0`. The owner approved this tol
 
 `rel_tol` is 1.68 %, rounded up to 2 %. The case gives 190.48, -1.45 % from 193.27.
 The pass band 193.27 +/- 2 % (189.40 to 197.14) is below the loop compliance 216.81. Thus a CAD compliance at or above 216.81 fails the case. This is the physical check: the solid has no gray material, thus its compliance must be lower than the compliance of the loop.
-The tolerance does not hide a large error of the CAD. For example, a part that the supports do not hold stops the check, and a thickness of 2 instead of 1 halves c (-56 %).
+The tolerance does not hide a large error of the CAD. For example, a part that the supports do not hold stops the check, and a thickness of 2 instead of 1 halves c (-51 %).
 
 ## Run time
 
