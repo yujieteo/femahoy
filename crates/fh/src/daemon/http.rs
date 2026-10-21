@@ -24,7 +24,7 @@
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
 //! | `GET /api/v1/previews/<id>` | | the text of the copy of the input of the preview, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
-//! | `POST /api/v1/chat` | `text` | `state`: the message goes to the agent, also while it works |
+//! | `POST /api/v1/chat` | the text of the message | `state`: the message goes to the agent, also while it works |
 //! | `POST /api/v1/chat/stop` | | `state`: the agent and its processes stop |
 //!
 //! The page has no secret in it. Its script reads the token from the page address and
@@ -327,7 +327,6 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
     }
     let store = &ctx.store;
     let segments: Vec<&str> = req.path.split('/').collect();
-    let body = || Message::parse(&req.body).map_err(bad);
     let mut m = Message::new();
     match (req.method.as_str(), &segments[..]) {
         ("GET", ["", "viewer", name]) => return viewer_file(ctx.viewer.as_deref(), name),
@@ -335,7 +334,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
             m = ctx.chat.read(req.query_number("since")?);
         }
         ("POST", ["", "api", "v1", "chat"]) => {
-            ctx.chat.ask(body()?.need("text").map_err(bad)?)?;
+            ctx.chat.ask(&req.body)?;
             m.set("state", "running");
         }
         ("POST", ["", "api", "v1", "chat", "stop"]) => {

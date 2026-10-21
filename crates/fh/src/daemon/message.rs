@@ -2,7 +2,8 @@
 //!
 //! A message is UTF-8 text. It starts with `key=value` lines, one for each field. Keys are
 //! unique. An empty line ends the fields. Item lines can follow it, for example the entries
-//! of the chat. A value never holds a line break.
+//! of the chat. A value never holds a line break. A request is not in this form: the body of a
+//! chat message is the plain text of the message.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -30,37 +31,10 @@ impl Message {
         Message::default()
     }
 
-    pub fn parse(text: &str) -> Result<Message, String> {
-        let mut m = Message::default();
-        let mut lines = text.lines();
-        for line in lines.by_ref() {
-            if line.is_empty() {
-                break;
-            }
-            let Some((key, value)) = line.split_once('=') else {
-                return Err(format!("no '=' in {line:?}"));
-            };
-            if m.fields.insert(key.to_owned(), value.to_owned()).is_some() {
-                return Err(format!("two fields {key}"));
-            }
-        }
-        m.items = lines.map(str::to_owned).collect();
-        Ok(m)
-    }
-
     /// Set a field. A control character in the value becomes a space.
     pub fn set(&mut self, key: &str, value: impl fmt::Display) {
         let value = value.to_string().replace(char::is_control, " ");
         self.fields.insert(key.to_owned(), value);
-    }
-
-    pub fn get(&self, key: &str) -> Option<&str> {
-        self.fields.get(key).map(String::as_str)
-    }
-
-    /// A field that the message must have.
-    pub fn need(&self, key: &str) -> Result<&str, String> {
-        self.get(key).ok_or_else(|| format!("no field {key}"))
     }
 
     pub fn to_text(&self) -> String {
