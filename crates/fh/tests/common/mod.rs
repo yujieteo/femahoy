@@ -97,6 +97,23 @@ pub fn pychrono_solver() -> Option<PathBuf> {
     found.then_some(exe)
 }
 
+/// `ccx_preCICE` (`FH_CCX_PRECICE`, else `ccx_preCICE` on PATH) when it starts. Else `None` with
+/// a message, and the test does not solve. With `FH_REQUIRE_PRECICE=1`, as in CI, a missing
+/// `ccx_preCICE` fails the test.
+pub fn precice_solver() -> Option<PathBuf> {
+    let exe =
+        PathBuf::from(std::env::var_os("FH_CCX_PRECICE").unwrap_or_else(|| "ccx_preCICE".into()));
+    let found = Command::new(&exe).arg("-v").output().is_ok();
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_PRECICE").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_PRECICE=1, but ccx_preCICE does not start"
+        );
+        eprintln!("skipped: ccx_preCICE does not start. Set FH_CCX_PRECICE");
+    }
+    found.then_some(exe)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

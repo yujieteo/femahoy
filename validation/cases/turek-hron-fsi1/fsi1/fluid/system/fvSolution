@@ -1,0 +1,54 @@
+FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+
+solvers
+{
+    "(p|pcorr)"
+    {
+        solver          GAMG;
+        smoother        DIC;
+        tolerance       1e-9;
+        relTol          0.01;
+    }
+    "(p|pcorr)Final"
+    {
+        $p;
+        relTol          0;
+    }
+    U
+    {
+        solver          PBiCGStab;
+        preconditioner  DILU;
+        tolerance       1e-10;
+        relTol          0.01;
+    }
+    UFinal
+    {
+        $U;
+        relTol          0;
+    }
+    "cellDisplacement.*"
+    {
+        solver          PCG;
+        preconditioner  DIC;
+        tolerance       1e-10;
+        relTol          0;
+    }
+}
+
+PIMPLE
+{
+    nOuterCorrectors 30;
+    nCorrectors     2;
+    nNonOrthogonalCorrectors 1;
+    correctPhi      yes;
+    consistent      yes;
+    momentumPredictor yes;
+}
+
+// SIMPLEC (consistent yes): each outer corrector is a relaxed iteration of the steady equations,
+// also the last one.
+relaxationFactors
+{
+    fields { p 0.9; pFinal 0.9; }
+    equations { U 0.9; UFinal 0.9; }
+}

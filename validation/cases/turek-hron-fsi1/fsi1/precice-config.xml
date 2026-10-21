@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Turek and Hron FSI1: OpenFOAM (Fluid, fluid/) and CalculiX (Solid, solid/). 2D, per m of depth. -->
+<precice-configuration>
+  <data:vector name="Force" />
+  <data:vector name="Displacement" />
+
+  <mesh name="Fluid-Mesh" dimensions="2">
+    <use-data name="Force" />
+    <use-data name="Displacement" />
+  </mesh>
+  <mesh name="Solid-Mesh" dimensions="2">
+    <use-data name="Force" />
+    <use-data name="Displacement" />
+  </mesh>
+
+  <participant name="Fluid">
+    <provide-mesh name="Fluid-Mesh" />
+    <receive-mesh name="Solid-Mesh" from="Solid" />
+    <write-data name="Force" mesh="Fluid-Mesh" />
+    <read-data name="Displacement" mesh="Fluid-Mesh" />
+    <!-- Conservative: the total force on the flag stays the same. -->
+    <mapping:rbf direction="write" from="Fluid-Mesh" to="Solid-Mesh" constraint="conservative">
+      <basis-function:compact-polynomial-c6 support-radius="0.05" />
+    </mapping:rbf>
+    <mapping:rbf direction="read" from="Solid-Mesh" to="Fluid-Mesh" constraint="consistent">
+      <basis-function:compact-polynomial-c6 support-radius="0.05" />
+    </mapping:rbf>
+  </participant>
+
+  <participant name="Solid">
+    <provide-mesh name="Solid-Mesh" />
+    <write-data name="Displacement" mesh="Solid-Mesh" />
+    <read-data name="Force" mesh="Solid-Mesh" />
+    <!-- Point A, the middle of the flag tip: solid/precice-Solid-watchpoint-A.log. -->
+    <watch-point mesh="Solid-Mesh" name="A" coordinate="0.6;0.2" />
+  </participant>
+
+  <m2n:sockets acceptor="Fluid" connector="Solid" exchange-directory=".." />
+
+  <!-- The fluid is steady (steadyState in fluid/system/fvSchemes), and the flag is static. Thus
+       each time window is 30 iterations of the steady fluid (nOuterCorrectors), and the coupling
+       iterates each window to equilibrium. The run stops at max-time, at the steady state. A
+       steady fluid has no added mass, so the coupling of the soft flag stays stable. -->
+  <coupling-scheme:parallel-implicit>
+    <participants first="Fluid" second="Solid" />
+    <time-window-size value="1" />
+    <max-time value="30" />
+    <exchange data="Force" mesh="Solid-Mesh" from="Fluid" to="Solid" />
+    <exchange data="Displacement" mesh="Solid-Mesh" from="Solid" to="Fluid" />
+    <max-iterations value="30" />
+    <relative-convergence-measure data="Force" mesh="Solid-Mesh" limit="1e-4" />
+    <relative-convergence-measure data="Displacement" mesh="Solid-Mesh" limit="1e-4" />
+    <acceleration:IQN-ILS>
+      <data name="Force" mesh="Solid-Mesh" />
+      <data name="Displacement" mesh="Solid-Mesh" />
+      <!-- Force and Displacement have very different magnitudes. -->
+      <preconditioner type="residual-sum" />
+      <initial-relaxation value="0.05" />
+      <max-used-iterations value="50" />
+      <time-windows-reused value="10" />
+      <filter type="QR2" limit="1e-2" />
+    </acceleration:IQN-ILS>
+  </coupling-scheme:parallel-implicit>
+</precice-configuration>

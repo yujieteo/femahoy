@@ -1,6 +1,6 @@
-//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, Chrono and topology cases of a case
-//! with their solvers and the topology loop, and read one number per reference from the text
-//! results.
+//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono and topology cases
+//! of a case with their programs and the topology loop, and read one number per reference from the
+//! text results.
 
 use std::path::Path;
 
@@ -10,16 +10,18 @@ use crate::ccx::Ccx;
 use crate::chrono::{self, Chrono};
 use crate::foam::{self, Foam};
 use crate::getdp::{self, GetDp};
+use crate::precice::{self, Precice};
 use crate::topology;
 
-/// Runs `ccx`, OpenFOAM, GetDP, Chrono or the topology loop in a scratch folder on the input of a
-/// case.
+/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono or the topology loop in a scratch folder on the
+/// input of a case.
 #[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
     foam: Foam,
     getdp: GetDp,
     chrono: Chrono,
+    precice: Precice,
 }
 
 impl Solve for Subprocess {
@@ -50,9 +52,9 @@ impl Subprocess {
             .collect()
     }
 
-    /// Solve the OpenFOAM, GetDP, Chrono or topology case of each check at the same time, each in
-    /// its own
-    /// folder in `run`, and read the value of each check in the last row of its table.
+    /// Solve the OpenFOAM, GetDP, preCICE, Chrono or topology case of each check at the same time,
+    /// each in its own folder in `run`, and read the value of each check in the last row of its
+    /// table.
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
@@ -85,6 +87,11 @@ impl Subprocess {
                             solved
                                 .map(|()| chrono::WORK)
                                 .map_err(|e| format!("chrono {folder}: {e}"))
+                        } else if precice::is_case(&dir) {
+                            let solved = self.precice.run(&dir, &out);
+                            solved
+                                .map(|()| precice::WORK)
+                                .map_err(|e| format!("precice {folder}: {e}"))
                         } else {
                             let solved = self.foam.run(&dir, &out);
                             solved
@@ -124,20 +131,22 @@ impl Subprocess {
 
 /// The value in column `name` of the last row of the table of a function object, for example
 /// `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
-/// `# Time Cd Cd(f) Cd(r) Cl ...`. Each column holds one number in each row.
+/// `# Time Cd Cd(f) Cd(r) Cl ...`. A table with no comment line, for example a watch point of
+/// preCICE, names the columns in its first line. Each column holds one number in each row.
 fn last_row(text: &str, name: &str) -> Result<f64, String> {
     let header = text
         .lines()
         .rfind(|l| l.starts_with('#'))
+        .or_else(|| text.lines().find(|l| !l.trim().is_empty()))
         .ok_or("no header line")?;
-    let names: Vec<&str> = header[1..].split_whitespace().collect();
+    let names: Vec<&str> = header.trim_start_matches('#').split_whitespace().collect();
     let column = names
         .iter()
         .position(|w| *w == name)
         .ok_or_else(|| format!("no column {name}"))?;
     let row: Vec<&str> = text
         .lines()
-        .rfind(|l| !l.starts_with('#') && !l.trim().is_empty())
+        .rfind(|l| !l.starts_with('#') && !l.trim().is_empty() && !std::ptr::eq(*l, header))
         .ok_or("no row")?
         .split_whitespace()
         .collect();
@@ -345,6 +354,18 @@ mod tests {
         assert!(last_row("# Time Cd\n1 x\n", "Cd")
             .unwrap_err()
             .contains("no number in column Cd"));
+    }
+
+    /// A watch point of preCICE has no comment line: its first line names the columns.
+    #[test]
+    fn a_table_with_no_comment_line_names_the_columns_in_its_first_line() {
+        let table = "  Time  Coordinate0  Displacement0  Displacement1\n\
+            \x20 0.0e+00   6.0e-01   0.0e+00   0.0e+00\n\
+            \x20 1.6e+01   6.0e-01   2.2e-05   8.1e-04";
+        assert_eq!(last_row(table, "Displacement1"), Ok(8.1e-4));
+        assert!(last_row(&table[..table.find('\n').unwrap()], "Time")
+            .unwrap_err()
+            .contains("no row"));
     }
 
     /// `surfaceFieldValue` writes a vector as `(x y z)`. Thus the words of a row do not match the

@@ -13,16 +13,16 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the agent**: 1 focused agent that plans and does the work.
-- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, a topology case folder for topology optimization, and a Chrono case folder for multibody dynamics.
+- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, a preCICE case folder for fluid-structure interaction, a topology case folder for topology optimization, and a Chrono case folder for multibody dynamics.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
-- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD, GetDP for electromagnetics and acoustics, and Project Chrono for multibody dynamics.
+- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD, GetDP for electromagnetics and acoustics, and Project Chrono for multibody dynamics. preCICE couples OpenFOAM and CalculiX for fluid-structure interaction.
 
 ---
 
 ## 2. Separate programs
 
-- CalculiX, gmsh, OpenFOAM and GetDP stay separate programs. femahoy never links or bundles them, because they are GPL.
+- CalculiX, gmsh, OpenFOAM, GetDP, preCICE and the preCICE adapters stay separate programs. femahoy never links or bundles them, because they are GPL or LGPL.
 - Project Chrono is BSD-3-Clause, but it also stays a separate program: a Python with PyChrono. Thus femahoy has no dependency on it.
 
 ---
@@ -46,7 +46,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
         |                                  |
       reads                                | runs fh commands
         |                                  v
-   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, Chrono
+   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, preCICE, Chrono
  (previews, runs, results)
 ```
 
@@ -81,6 +81,7 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 - CalculiX `.inp` is the input format for structures. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
 - An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
 - A GetDP case folder (`case.pro`, and `case.geo` or `case.msh`) is the input for electromagnetics and acoustics. gmsh meshes `case.geo`, and GetDP reads and checks the case.
+- A preCICE case folder (`precice-config.xml`, the OpenFOAM case `fluid` and the CalculiX input `solid/job.inp`) is the input for fluid-structure interaction. preCICE, OpenFOAM and CalculiX read and check it.
 - A topology case folder (`job.inp` and `topology.toml`) is the input for topology optimization. `job.inp` is CalculiX input with no material. `fh` adds 1 material for each element, and CalculiX reads and checks the input.
 - A Chrono case folder (`chrono.py`, a PyChrono script) is the input for multibody dynamics. Python runs the script.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
@@ -116,6 +117,10 @@ Reason: a real problem needs CFD: a basic airfoil with control surfaces. Calculi
 GetDP is the solver for electromagnetics and acoustics. It is a separate program that the user installs, as section 2 says.
 
 Reason: CalculiX and OpenFOAM do not solve electromagnetic problems or the Helmholtz equation of acoustics. GetDP reads the meshes of gmsh, and its binaries run on macOS and Linux.
+
+preCICE couples OpenFOAM and CalculiX for fluid-structure interaction. `fh run` starts the fluid solver and `ccx_preCICE` (CalculiX with the preCICE adapter) at the same time. The OpenFOAM adapter is a library that OpenFOAM loads. All are separate programs that the user installs, as section 2 says.
+
+Reason: the flow on a soft part changes its shape, and the shape changes the flow. preCICE couples the 2 solvers that femahoy already uses, so femahoy needs no third solver.
 
 Topology optimization is a SIMP loop in `fh` around `ccx` (`crates/fh/src/topology.rs`). Each iteration solves the model with `ccx`, reads the strain energy of each element and changes the densities.
 

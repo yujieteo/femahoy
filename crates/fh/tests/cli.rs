@@ -1,5 +1,5 @@
 mod common;
-use common::{ccx_solver, getdp_solver, openfoam_solver, p, pychrono_solver};
+use common::{ccx_solver, getdp_solver, openfoam_solver, p, precice_solver, pychrono_solver};
 use std::process::{Command, Output};
 
 /// A ccx that does not exist. A test that does not solve uses it.
@@ -27,10 +27,11 @@ fn text(bytes: Vec<u8>) -> String {
 
 #[test]
 fn validate_runs_every_case() {
-    let (Some(solver), Some(openfoam), Some(getdp), Some(pychrono)) = (
+    let (Some(solver), Some(openfoam), Some(getdp), Some(precice), Some(pychrono)) = (
         ccx_solver(),
         openfoam_solver(),
         getdp_solver(),
+        precice_solver(),
         pychrono_solver(),
     ) else {
         return;
@@ -41,6 +42,7 @@ fn validate_runs_every_case() {
         .env("FH_OPENFOAM", openfoam)
         .env("FH_GETDP", getdp)
         .env("FH_PYCHRONO", pychrono)
+        .env("FH_CCX_PRECICE", precice)
         .output()
         .expect("run fh");
     let stdout = text(out.stdout);
@@ -63,13 +65,14 @@ fn validate_runs_every_case() {
         "taylor-bar-impact",
         "team7-eddy-current",
         "topology-mbb-beam",
+        "turek-hron-fsi1",
         "warpage-2p5d-frame",
         "warpage-thick-copper",
     ] {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("19 cases: 19 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("20 cases: 20 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");
