@@ -504,7 +504,10 @@ mod tests {
         let mut r = crate::load_run(&fixture_dir()).unwrap();
         assert!(auto_scale(&r) > 1.0);
         for step in &mut r.steps {
-            step.displacement.iter_mut().flatten().for_each(|u| *u *= 1e3);
+            step.displacement
+                .iter_mut()
+                .flatten()
+                .for_each(|u| *u *= 1e3);
         }
         assert_eq!(auto_scale(&r), 1.0);
     }
