@@ -14,7 +14,7 @@ fh serve
 1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, see "Get `ccx`" below).
 2. `fh serve` starts a local daemon and opens the page in the browser (on a system that is not macOS, it only prints the address). Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Stop the daemon with Ctrl+C.
 
-For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folder for CFD (see "Get OpenFOAM" below), a GetDP case folder for electromagnetics or acoustics (see "Get GetDP" below), a topology case folder (`job.inp` and `topology.toml`) for topology optimization with `ccx`, or a Chrono case folder for multibody dynamics (see "Get PyChrono" below). `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer and the results of runs. The file opens with a double-click, and the chat uses it for its report.
+For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folder for CFD (see "Get OpenFOAM" below), a GetDP case folder for electromagnetics or acoustics (see "Get GetDP" below), a preCICE case folder for fluid-structure interaction (see "Get preCICE" below), a topology case folder (`job.inp` and `topology.toml`) for topology optimization with `ccx`, or a Chrono case folder for multibody dynamics (see "Get PyChrono" below). `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer and the results of runs. The file opens with a double-click, and the chat uses it for its report.
 
 ## Get `ccx`
 
@@ -53,6 +53,26 @@ For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folde
 
 `fh` uses `$FH_PYCHRONO`. If `FH_PYCHRONO` is not set, it uses `python3` on PATH. The validation case is tested with PyChrono 10.0.0 on macOS and Linux.
 
+## Get preCICE
+
+`fh` couples OpenFOAM and CalculiX through preCICE for fluid-structure interaction. preCICE (LGPL) and its 2 adapters (GPL) are separate programs. You install them and OpenFOAM (see "Get OpenFOAM").
+
+- macOS (Apple Silicon), with Nix, in a clone of this repository:
+
+  ```sh
+  nix build nixpkgs#precice -o precice
+  nix build nixpkgs#pkg-config -o pkg-config
+  nix build -f scripts/ccx-precice.nix -o ccx-precice
+  export FH_CCX_PRECICE=$PWD/ccx-precice/bin/ccx_preCICE
+  curl -fsSL https://github.com/precice/openfoam-adapter/releases/download/v1.4.0/openfoam-adapter-1.4.0-OpenFOAMv1812-v2606-newer.tar.gz | tar xz
+  cd openfoam-adapter-1.4.0
+  PATH=$PWD/../pkg-config/bin:$PATH PKG_CONFIG_PATH=$PWD/../precice/lib/pkgconfig openfoam ./Allwmake
+  ```
+
+- Ubuntu 24.04: install the packages of preCICE and of the CalculiX adapter from their GitHub releases, and build the OpenFOAM adapter with `openfoam2512 ./Allwmake`. The step "Install preCICE" in `.github/workflows/ci.yml` shows the commands. The package puts `ccx_preCICE` on PATH.
+
+`./Allwmake` puts the OpenFOAM adapter in the user library folder of OpenFOAM (`$FOAM_USER_LIBBIN`). The fluid solver loads it from there. `fh` uses `$FH_CCX_PRECICE`. If `FH_CCX_PRECICE` is not set, it uses `ccx_preCICE` on PATH. The validation case is tested with preCICE 3.4.1, the CalculiX adapter 2.20.2 and the OpenFOAM adapter 1.4.0.
+
 ## Environment variables
 
 - `FH_GMSH`: the gmsh program of `fh mesh`, and of `fh run` and `fh validate` for a GetDP case.
@@ -60,6 +80,7 @@ For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folde
 - `FH_OPENFOAM`: the `openfoam` program of `fh run` and `fh validate`. It runs each program of OpenFOAM as `$FH_OPENFOAM PROGRAM ARGS`.
 - `FH_GETDP`: the `getdp` program of `fh run` and `fh validate`.
 - `FH_PYCHRONO`: the Python with PyChrono of `fh run` and `fh validate`.
+- `FH_CCX_PRECICE`: the `ccx_preCICE` program (CalculiX with the preCICE adapter) of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
 - `FH_NO_OPEN`: a value that is not empty and not `0` stops `fh serve` from opening the browser.

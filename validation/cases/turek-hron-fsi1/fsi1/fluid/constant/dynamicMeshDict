@@ -1,0 +1,10 @@
+FoamFile { version 2.0; format ascii; class dictionary; object dynamicMeshDict; }
+
+// The flag moves the mesh: the adapter sets pointDisplacement on the patch flag.
+dynamicFvMesh   dynamicMotionSolverFvMesh;
+motionSolverLibs (fvMotionSolvers);
+solver          displacementLaplacian;
+displacementLaplacianCoeffs
+{
+    diffusivity     quadratic inverseDistance (flag);
+}

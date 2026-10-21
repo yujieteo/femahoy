@@ -1,7 +1,7 @@
 //! The check file of a case: `validation/cases/<id>/check.toml` (see `docs/reference/check-toml.md`).
 //!
-//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP, Chrono or topology cases in
-//! subfolders.
+//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP, preCICE, Chrono or topology
+//! cases in subfolders.
 
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, TableLike};
@@ -95,13 +95,14 @@ fn located(file: &Path, line: Option<usize>, message: &str) -> String {
 }
 
 impl Case {
-    /// True when the checks are tables of the OpenFOAM, GetDP or topology cases in the subfolders.
+    /// True when the checks are tables of the OpenFOAM, GetDP, preCICE or topology cases in the
+    /// subfolders.
     pub fn tables(&self) -> bool {
         self.references.iter().any(Reference::table)
     }
 
     /// Load `<dir>/check.toml`. The file `<dir>/job.inp` must exist, or, when the checks are
-    /// tables, the OpenFOAM, GetDP or topology case of each check.
+    /// tables, the OpenFOAM, GetDP, preCICE or topology case of each check.
     pub fn load(dir: &Path) -> Result<Case, String> {
         let file = dir.join("check.toml");
         let text =
@@ -128,16 +129,18 @@ impl Case {
                     crate::foam::is_case,
                     crate::getdp::is_case,
                     crate::chrono::is_case,
+                    crate::precice::is_case,
                     crate::topology::is_case,
                 ];
                 if !solvers.iter().any(|is_case| is_case(&case)) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
-                        "{}, {}, {} or {} not found",
+                        "{}, {}, {}, {} or {} not found",
                         pro.display(),
                         case.join("chrono.py").display(),
                         case.join("topology.toml").display(),
-                        dict.display()
+                        dict.display(),
+                        case.join("precice-config.xml").display()
                     );
                     return Err(reader.err(None, missing));
                 }

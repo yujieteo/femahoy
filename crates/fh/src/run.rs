@@ -1,6 +1,6 @@
 //! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, a GetDP case
-//! with GetDP, or a Chrono case with Project Chrono, or optimize the topology of a CalculiX model,
-//! and show the progress.
+//! with GetDP, a preCICE case with OpenFOAM and CalculiX coupled by preCICE, or a Chrono case
+//! with Project Chrono, or optimize the topology of a CalculiX model, and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
@@ -9,6 +9,9 @@
 //!   `PATH`.
 //! - `fh run CASE` gives GetDP the case folder (`case.pro`, and `case.geo` or `case.msh`). See
 //!   `fh::getdp` for the programs that it starts. GetDP is `$FH_GETDP`, else `getdp` on `PATH`.
+//! - `fh run CASE` gives OpenFOAM and CalculiX the preCICE case folder (`precice-config.xml`,
+//!   `fluid`, `solid`). See `fh::precice` for the programs that it starts. CalculiX with the
+//!   adapter is `$FH_CCX_PRECICE`, else `ccx_preCICE` on `PATH`.
 //! - `fh run CASE` optimizes the topology case folder (`job.inp` and `topology.toml`) with a loop
 //!   of CalculiX solves. See `fh::topology`.
 //! - `fh run CASE` gives Chrono the case folder (`chrono.py`, see `fh::chrono`). The Python of
@@ -37,6 +40,7 @@ use fh::chrono::{self, Chrono};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
+use fh::precice::{self, Precice};
 use fh::topology;
 
 const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]\n\
@@ -47,6 +51,9 @@ has system/blockMeshDict and no constant/polyMesh), then the application of syst
 then foamToVTK.\n\
 CASE is also a GetDP case folder with case.pro. fh run starts gmsh (when the case has case.geo), \
 then getdp with the first Resolution and the first PostOperation of case.pro.\n\
+CASE is also a preCICE case folder with precice-config.xml, the OpenFOAM case fluid and the \
+CalculiX input solid/job.inp. fh run starts blockMesh (as for OpenFOAM), then the application \
+of fluid and ccx_preCICE in solid at the same time, then foamToVTK.\n\
 CASE is also a topology case folder with job.inp and topology.toml. fh run solves job.inp with \
 ccx in each iteration of the loop.\n\
 CASE is also a Chrono case folder with chrono.py. fh run starts python3 chrono.py, with the Python \
@@ -111,6 +118,7 @@ enum Solver {
     Ccx,
     OpenFoam,
     GetDp,
+    Precice,
     Topology,
     Chrono,
 }
@@ -125,14 +133,16 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     let case = foam::is_case(&full)
         || getdp::is_case(&full)
         || chrono::is_case(&full)
+        || precice::is_case(&full)
         || topology::is_case(&full);
     if (full.is_file() && inp) || case {
         Ok(full)
     } else {
         Err(format!(
             "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
-             system/controlDict), a GetDP case folder (with case.pro), a Chrono case folder (with \
-             chrono.py) or a topology case folder (with topology.toml)"
+             system/controlDict), a GetDP case folder (with case.pro), a preCICE case folder \
+             (with precice-config.xml), a Chrono case folder (with chrono.py) or a topology case \
+             folder (with topology.toml)"
         ))
     }
 }
@@ -152,6 +162,15 @@ fn report(run: &str, out: &Path, seconds: f64, solver: Solver) {
             println!(
                 "fh run: text results {work}/log.<program> (output of each program), \
                  {work}/postProcessing (function objects)"
+            );
+            return;
+        }
+        Solver::Precice => {
+            let work = out.join(precice::WORK).display().to_string();
+            println!(
+                "fh run: text results {work}/<fluid|solid>/log.<program> (output of each \
+                 program), {work}/fluid/postProcessing (function objects), {work}/solid \
+                 (watch points of preCICE, ccx_preCICE files)"
             );
             return;
         }
@@ -201,6 +220,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Solver::OpenFoam
     } else if getdp::is_case(&file) {
         Solver::GetDp
+    } else if precice::is_case(&file) {
+        Solver::Precice
     } else if topology::is_case(&file) {
         Solver::Topology
     } else if chrono::is_case(&file) {
@@ -259,6 +280,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             chrono.timeout = o.timeout;
             chrono.memory_limit = o.memory.unwrap_or(chrono.memory_limit);
             chrono.run_with(&run.input, &run.out, &cancel, on_program)
+        }
+        Solver::Precice => {
+            let mut precice = Precice::new();
+            precice.foam.timeout = o.timeout;
+            precice.foam.memory_limit = o.memory.unwrap_or(precice.foam.memory_limit);
+            precice.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Ccx | Solver::Topology => {
             let mut ccx = Ccx::new();

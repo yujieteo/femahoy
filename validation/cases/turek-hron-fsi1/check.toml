@@ -1,0 +1,45 @@
+# Fluid-structure interaction: the Turek and Hron bench mark FSI1. A soft elastic flag behind a
+# cylinder in a laminar channel flow (Re = 20) bends to a steady shape. The references are Turek
+# and Hron (2006), in Fluid-Structure Interaction, Lecture Notes in Computational Science and
+# Engineering 53, Springer, 371-385, the results of FSI1: the displacement of point A (the
+# middle of the end of the flag) and the drag and the lift on the cylinder and the flag, per m
+# of depth.
+# derivation.md gives the sources, the setup and the mesh study.
+#
+# The model is a steady OpenFOAM fluid (pimpleFoam) and a static CalculiX flag (ccx_preCICE),
+# coupled through preCICE, on the meshes of level 1 (mesh.py), 30 time windows. The tolerance
+# comes from the mesh study of 3 levels, not from the difference between the model and the
+# reference (derivation.md, "Tolerance"):
+# - The mesh error of level 1 against the extrapolated value, times 1.25 (the factor of safety
+#   of the grid convergence index): 0.40 % (drag), 3.70 % (ux), 1.45 % (uy). The lift does not
+#   converge monotonically: the range of the 3 levels, times 1.25, 0.41 %.
+# - The extrapolated value against the reference: 0.70 % or less.
+# - The iteration error after 30 windows: 0.05 % or less.
+# - The reference of 2006 against the values of 2009 with more digits: 0.02 % or less.
+# rel_tol = 3.70 % + 0.13 % + 0.01 % + 0.02 % = 3.86 % (ux_a, the largest sum), rounded up.
+rel_tol = 0.04
+abs_tol = 0
+
+[drag]
+value = 14.295
+case = "fsi1"
+file = "fluid/postProcessing/forces/0/force.dat"
+column = "total_x"
+
+[lift]
+value = 0.7638
+case = "fsi1"
+file = "fluid/postProcessing/forces/0/force.dat"
+column = "total_y"
+
+[ux_a]
+value = 0.0227e-3
+case = "fsi1"
+file = "solid/precice-Solid-watchpoint-A.log"
+column = "Displacement0"
+
+[uy_a]
+value = 0.8209e-3
+case = "fsi1"
+file = "solid/precice-Solid-watchpoint-A.log"
+column = "Displacement1"

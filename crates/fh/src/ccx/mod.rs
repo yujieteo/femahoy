@@ -42,7 +42,7 @@ const RUN_MARKER: &str = ".fh-run";
 const JOB: &str = "job";
 
 /// The error of a run that the user cancelled.
-const CANCELLED: &str = "run cancelled";
+pub(crate) const CANCELLED: &str = "run cancelled";
 
 /// Copy `inp` to `dir/name` and each file of `files` (paths relative to the folder of `inp`) to
 /// the same path in `dir`. Each copy is read-only, so that a later edit cannot change a run.

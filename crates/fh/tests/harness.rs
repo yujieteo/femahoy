@@ -125,7 +125,8 @@ fn a_table_check_names_an_openfoam_or_getdp_case() {
 
     let missing = load(&check("Cl", "a10", coefficients)).unwrap_err();
     assert!(
-        missing.contains("a10/system/controlDict not found"),
+        missing.contains("a10/system/controlDict or ")
+            && missing.contains("a10/precice-config.xml not found"),
         "{missing}"
     );
     let outside = load(&check("Cl", "../a4", coefficients)).unwrap_err();
