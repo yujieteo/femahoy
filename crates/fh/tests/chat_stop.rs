@@ -21,6 +21,9 @@ const AGENT: &str = "#!/bin/sh\nIFS= read -r line\nprintf '%s\\n' \"$line\" > \"
     \"FH\" run \"MODEL\" &\nchild=$!\n\
     trap 'kill -TERM $child; wait $child; exit 0' TERM\nwait $child\n";
 
+/// A message with line breaks, as a pasted table.
+const MESSAGE: &str = "load case table:\nLC1, 100, 0\nLC2, 0, 200";
+
 fn post(daemon: &Daemon, path: &str, body: &str) -> String {
     let port = daemon.port();
     let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).unwrap();
@@ -63,7 +66,7 @@ fn the_stop_of_the_chat_stops_ccx() {
     std::env::set_var("FH_CCX", dir.join("ccx"));
     let daemon = Daemon::start_with_options(&dir.join("state"), Options::default()).unwrap();
 
-    let answer = post(&daemon, "/api/v1/chat", "load case table:\nLC1, 100, 0\nLC2, 0, 200");
+    let answer = post(&daemon, "/api/v1/chat", MESSAGE);
     assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
     let end = Instant::now() + Duration::from_secs(30);
     let started = loop {
@@ -78,8 +81,8 @@ fn the_stop_of_the_chat_stops_ccx() {
     };
     assert_eq!(started.len(), 2, "{started:?}");
     let sent = fs::read_to_string(&line).unwrap();
-    let text = r#""content":"load case table:\nLC1, 100, 0\nLC2, 0, 200""#;
-    assert!(sent.contains(text), "{sent}");
+    let content = format!("\"content\":\"{}\"", MESSAGE.replace('\n', "\\n"));
+    assert!(sent.contains(&content), "{sent}");
 
     let answer = post(&daemon, "/api/v1/chat/stop", "");
     assert!(answer.starts_with("HTTP/1.1 200"), "{answer}");
