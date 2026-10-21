@@ -46,7 +46,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
         |                                  |
       reads                                | runs fh commands
         |                                  v
-   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, preCICE, Chrono
+   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS
  (previews, runs, results)
 ```
 
