@@ -13,18 +13,6 @@ pub enum StepUnit {
     Other(String),
 }
 
-impl StepUnit {
-    /// The value of the gmsh option `Geometry.OCCTargetUnit` that equals this unit.
-    pub fn gmsh_name(&self) -> Option<&'static str> {
-        match self {
-            StepUnit::Mm => Some("MM"),
-            StepUnit::M => Some("M"),
-            StepUnit::Inch => Some("INCH"),
-            StepUnit::Other(_) => None,
-        }
-    }
-}
-
 impl fmt::Display for StepUnit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

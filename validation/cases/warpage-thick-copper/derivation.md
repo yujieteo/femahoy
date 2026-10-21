@@ -88,7 +88,7 @@ Thus the 20 µm copper layer gets flat tetrahedra. All Jacobians are positive, a
 
 ## Reproduce
 
-Make a mesh with H = 1, 0.5 or 0.25, and replace the mesh in a copy of `job.inp`. The mesh in `job.inp` is the coarse mesh from `fh mesh slice.step --units SI-mm --size 1 --volume SI=box:0,0,0,25,5,0.73 --volume CU=box:0,0,0.73,25,5,0.75 --face SYM_X=x:0 --face SYM_Y=y:0 --nodes ORIGIN=point:0,0,0 --nodes END=point:25,0,0`. The STEP file comes from `scripts/cad/thick_copper_slice.py`.
+Make a mesh with H = 1, 0.5 or 0.25, and replace the mesh in a copy of `job.inp`. The mesh in `job.inp` is the coarse mesh from `fh mesh slice.step --size 1 --volume SI=box:0,0,0,25,5,0.73 --volume CU=box:0,0,0.73,25,5,0.75 --face SYM_X=x:0 --face SYM_Y=y:0 --nodes ORIGIN=point:0,0,0 --nodes END=point:25,0,0`. The STEP file comes from `scripts/cad/thick_copper_slice.py`.
 
 ## Choice of the case
 

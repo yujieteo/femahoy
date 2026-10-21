@@ -89,7 +89,7 @@ Reason of the last rule: Python CAD libraries exist, a chat can write the script
 
 ### 5.1 Units
 
-`fh mesh` declares the units in the line `** units: SI-mm` (or `SI-m`). It refuses to mesh when `--units` is missing, when a STEP file has no unit record, and when the unit of the file does not match `--units`.
+`fh mesh` takes the units from the STEP unit record: SI-mm for mm, SI-m for m. It declares them in the line `** units: SI-mm` (or `SI-m`). It refuses to mesh when a STEP file has no unit record, mixed units, or a unit other than mm or m.
 
 Reason: a wrong unit gives wrong results without any warning. There is no default unit and no guess.
 
@@ -127,7 +127,7 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 
 ## 7. Validation
 
-- References are analytical solutions and measured values. The cases are in `validation/cases/<id>/`.
+- References are analytical solutions, measured values, or published numerical benchmark values. The cases are in `validation/cases/<id>/`.
 - Cases use our own input files. Each target value cites its source.
 - Each case has a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
 - A structural case has 1 mesh. A CFD case has at least 2 meshes (3 where practical) and states the mesh error.

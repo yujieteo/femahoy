@@ -34,5 +34,5 @@ The run took 65 s and cost 0.34 USD. The chat had no failure. This case uses the
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh part.step --units SI-mm --size 5 --face BASE=z:0 --face TOP=z:200`.
+The mesh in `job.inp` comes from `fh mesh part.step --size 5 --face BASE=z:0 --face TOP=z:200`.
 `part.step` is a box of 10 x 10 x 200 mm with a corner at the origin.

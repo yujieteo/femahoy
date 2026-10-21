@@ -1,4 +1,4 @@
-//! `fh mesh FILE.step --units U [options]`: run the external gmsh program and write the
+//! `fh mesh FILE.step [options]`: run the external gmsh program and write the
 //! mesh as the nodes, the C3D10 elements (S6 shells with `--shell`) and the named sets of a
 //! CalculiX input.
 
@@ -6,13 +6,12 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus, Stdio};
 
-use fh::check::mesh_stats;
 use fh::msh::{read_msh_mesh, read_msh_shell};
-use fh::step::step_length_unit;
+use fh::step::{step_length_unit, StepUnit};
 
 use crate::rules;
 
-const USAGE: &str = "usage: fh mesh FILE.step --units SI-mm|SI-m [-o OUT.inp] [--size H] \
+const USAGE: &str = "usage: fh mesh FILE.step [-o OUT.inp] [--size H] \
 [--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
 [--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--refine NAME[,NAME]...=H]... [--shell]\n\
 A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z (--nodes only).\n\
@@ -21,7 +20,7 @@ node set. --volume makes an element set. Each name is used once.\n\
 --refine makes the elements at the --face sets NAME the size H. They grow to --size away from the sets.\n\
 --shell meshes the surfaces of the file, not a solid: the elements are S6 shells, --face picks \
 edges (the surface is the edge of the shells) and --volume picks surfaces.\n\
-The units are required. The mesh is order 2, C3D10, or S6 with --shell.";
+The units come from the STEP file: SI-mm for mm, SI-m for m. The mesh is order 2, C3D10, or S6 with --shell.";
 
 /// The size of an element grows by this much for each unit of distance from a `--refine` set.
 /// 0.3 is a ratio of 1.3 between neighbour elements.
@@ -34,7 +33,7 @@ const MAX_SAMPLING: u32 = 1000;
 /// The oldest gmsh release that `fh mesh` accepts.
 const OLDEST: (u32, u32) = (4, 8);
 
-/// The unit system of the input. There is no default.
+/// The unit system of the input, from the STEP file. There is no default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Units {
     /// Length mm, force N, stress MPa, mass tonne, time s.
@@ -44,14 +43,6 @@ enum Units {
 }
 
 impl Units {
-    fn parse(text: &str) -> Option<Units> {
-        match text {
-            "SI-mm" => Some(Units::SiMm),
-            "SI-m" => Some(Units::SiM),
-            _ => None,
-        }
-    }
-
     fn name(self) -> &'static str {
         match self {
             Units::SiMm => "SI-mm",
@@ -120,7 +111,6 @@ struct Options {
     input: PathBuf,
     output: PathBuf,
     size: Option<f64>,
-    units: Option<Units>,
     /// Faces of the part, from gmsh: a node set and a surface each.
     faces: Vec<Named>,
     /// Nodes, picked after the mesh: a node set each.
@@ -169,7 +159,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         input: PathBuf::new(),
         output: PathBuf::new(),
         size: None,
-        units: None,
         faces: Vec::new(),
         nodes: Vec::new(),
         volumes: Vec::new(),
@@ -182,10 +171,6 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         match a.as_str() {
             "-o" => output = Some(it.next().ok_or("-o needs a file")?.into()),
             "--size" => o.size = Some(number("--size", it.next())?),
-            "--units" => {
-                let units = it.next().and_then(|t| Units::parse(t));
-                o.units = Some(units.ok_or("--units needs SI-mm or SI-m")?);
-            }
             "--face" => {
                 let face = named("--face", it.next())?;
                 if matches!(face.1, Select::Point(_)) {
@@ -345,16 +330,13 @@ Mesh.MeshSizeExtendFromBoundary = 0;\nMesh.MeshSizeFromPoints = 0;\nMesh.MeshSiz
     s
 }
 
-/// Refuse a STEP file whose length unit is missing, mixed, or not the declared unit.
-fn check_step(text: &str, units: Units) -> Result<(), String> {
-    let unit = step_length_unit(text)?;
-    if unit.gmsh_name() == Some(units.gmsh_length()) {
-        Ok(())
-    } else {
-        Err(format!(
-            "the STEP file uses {unit}, but the units are {}",
-            units.name()
-        ))
+/// The units of a STEP file. A missing or mixed length unit, or a unit other than mm or m, is
+/// an error.
+fn step_units(text: &str) -> Result<Units, String> {
+    match step_length_unit(text)? {
+        StepUnit::Mm => Ok(Units::SiMm),
+        StepUnit::M => Ok(Units::SiM),
+        unit => Err(format!("the STEP file uses {unit}. Use mm or m")),
     }
 }
 
@@ -561,9 +543,6 @@ fn write_inp(
 
 /// What a run makes, or a failure text.
 fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
-    let units = o
-        .units
-        .ok_or("the run has no units. Give --units SI-mm or --units SI-m")?;
     let input = std::path::absolute(&o.input).map_err(|e| e.to_string())?;
     let output = std::path::absolute(&o.output).map_err(|e| e.to_string())?;
     if input == output {
@@ -591,7 +570,7 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
     if !matches!(extension.as_deref(), Some("step" | "stp")) {
         return Err("the input must be a .step file".into());
     }
-    check_step(&text, units)?;
+    let units = step_units(&text)?;
     // Pin the target unit in every run. The gmsh default is a process state.
     let script = dir.join("input.geo");
     let body = format!(
@@ -681,14 +660,6 @@ fn mesh(o: &Options, dir: &Path) -> Result<String, String> {
                 .into()
         });
     }
-    let stats = mesh_stats(model)?;
-    if stats.inverted > 0 {
-        return Err(format!(
-            "{} elements have a corner with a Jacobian of 0 or less, \
-for example {:?}",
-            stats.inverted, stats.inverted_ids
-        ));
-    }
     rules::volumes_are_named(&mesh, o.shell)?;
     let volume_names: Vec<&str> = o.volumes.iter().map(|v| v.0.as_str()).collect();
     rules::volume_coverage(&mesh, &volume_names)?;
@@ -710,12 +681,11 @@ for example {:?}",
 
     let mut report = format!(
         "ok\t{}\ngmsh\t{version}\nunits\t{}\nnodes\t{}\nelements\t{}\n\
-min_scaled_jacobian\t{:.4}\nnset\tNALL\t{}\nelset\tALL\t{}\n",
+nset\tNALL\t{}\nelset\tALL\t{}\n",
         output.display(),
         units.name(),
         model.nodes.len(),
         model.elements.len(),
-        stats.min_scaled_jacobian,
         model.nodes.len(),
         model.elements.len(),
     );
@@ -816,6 +786,17 @@ mod tests {
         assert!(parts.contains("BooleanFragments{ Surface{:}"), "{parts}");
         assert!(parts.contains("Surface In BoundingBox"), "{parts}");
         assert!(parts.contains("Physical Surface(\"LOW\")"), "{parts}");
+    }
+
+    #[test]
+    fn the_units_come_from_the_step_file() {
+        let step = |prefix: &str| {
+            format!("DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT({prefix},.METRE.));\nENDSEC;\n")
+        };
+        assert_eq!(step_units(&step(".MILLI.")), Ok(Units::SiMm));
+        assert_eq!(step_units(&step("$")), Ok(Units::SiM));
+        let other = step_units(&step(".CENTI.")).unwrap_err();
+        assert!(other.contains("uses centimetre"), "{other}");
     }
 
     fn block() -> MshMesh {

@@ -38,5 +38,5 @@ The chat moved the centre of the sphere to (100, 100, 100) to get a mesh with no
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh part.step --units SI-mm --size 3 --face SX=x:0 --face SY=y:0 --face SZ=z:0 --face INNER=box:-1,-1,-1,11,11,11 --nodes PX=point:20,0,0`.
+The mesh in `job.inp` comes from `fh mesh part.step --size 3 --face SX=x:0 --face SY=y:0 --face SZ=z:0 --face INNER=box:-1,-1,-1,11,11,11 --nodes PX=point:20,0,0`.
 `part.step` is 1/8 of the shell: the intersection of the shell with the box from (0, 0, 0) to (30, 30, 30).
