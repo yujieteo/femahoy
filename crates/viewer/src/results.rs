@@ -97,6 +97,9 @@ pub struct Results {
     pub multibody: bool,
     pub mesh: RenderMesh,
     pub steps: Vec<Step>,
+    /// True when the points of a step are not the points of the first step, for example the
+    /// particles of a LAMMPS run. The displacement is then the true motion.
+    pub moves: bool,
 }
 
 /// The attribute `name` of the `Collection` element, or `None` when it is absent.
@@ -207,8 +210,9 @@ pub fn is_plain_file_name(name: &str) -> bool {
 }
 
 /// Read the results of a run. `pvd` is the text of `results.pvd`. `read` gives the bytes of a
-/// file that `results.pvd` names. Each step must have the mesh of the first step. A step with no
-/// displacement field `U` (a heat transfer step) has a displacement of zero.
+/// file that `results.pvd` names. Each step must have the cells of the first step. A step with no
+/// displacement field `U` (a heat transfer step) has a displacement of zero. When the points of a
+/// step are not the points of the first step, the displacement of each node adds its move.
 pub fn load(
     pvd_name: &str,
     pvd: &str,
@@ -223,6 +227,7 @@ pub fn load(
     }
     let mut first: Option<Grid> = None;
     let mut steps = Vec::with_capacity(entries.len());
+    let mut moves = false;
     for entry in entries {
         let file = entry.file.as_str();
         if !is_plain_file_name(file) {
@@ -243,7 +248,10 @@ pub fn load(
             return fail(file, "the grid has no point or no cell");
         }
         if let Some(f) = &first {
-            if f.points != grid.points || f.cells != grid.cells || f.cell_types != grid.cell_types {
+            if f.points.len() != grid.points.len()
+                || f.cells != grid.cells
+                || f.cell_types != grid.cell_types
+            {
                 return fail(
                     file,
                     format!("the mesh is not the mesh of {}", steps_file(&steps)),
@@ -254,7 +262,7 @@ pub fn load(
             return fail(file, "a point coordinate is not a finite number");
         }
         let fields = fields_of(&grid, file)?;
-        let displacement = match grid.point_field("U") {
+        let mut displacement = match grid.point_field("U") {
             None => vec![[0.0; 3]; grid.points.len()],
             Some(u) => match (u.as_f64(), u.components) {
                 (Some(u), 3) => u.as_chunks::<3>().0.to_vec(),
@@ -266,6 +274,14 @@ pub fn load(
                 }
             },
         };
+        if let Some(f) = first.as_ref().filter(|f| f.points != grid.points) {
+            moves = true;
+            for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(&f.points) {
+                for k in 0..3 {
+                    u[k] += p[k] - p0[k];
+                }
+            }
+        }
         steps.push(Step {
             time: entry.time,
             file: entry.file.clone(),
@@ -292,6 +308,7 @@ pub fn load(
         multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
         mesh,
         steps,
+        moves,
     })
 }
 
@@ -333,8 +350,12 @@ pub fn nice_scale(raw: f64) -> f64 {
 
 /// The automatic scale factor: the largest displacement of all steps shows as
 /// `AUTO_SCALE_FRACTION` of the model size. For a multibody run it is never below 1, so the
-/// motion of a mechanism shows at true scale. A model with no displacement gives 1.
+/// motion of a mechanism shows at true scale. A model with no displacement gives 1, and a model
+/// whose points move gives 1, the true motion.
 pub fn auto_scale(results: &Results) -> f64 {
+    if results.moves {
+        return 1.0;
+    }
     let size = results
         .mesh
         .bounds
@@ -564,6 +585,27 @@ mod tests {
         assert!((f64::from(moved[tip][2] - r.mesh.positions[tip][2]) - scale * u3).abs() < 1e-5);
         // Scale 0 is the undeformed shape.
         assert_eq!(deformed_positions(&r.mesh, step, 0.0), r.mesh.positions);
+    }
+
+    /// LAMMPS particles move: the displacement is the move of the points, at the true scale.
+    #[test]
+    fn moved_points_are_the_displacement_at_scale_1() {
+        let dir = fixture_dir().join("../particles-2step");
+        let r = crate::load_run(&dir).unwrap();
+        assert!(r.moves && !crate::load_run(&fixture_dir()).unwrap().moves);
+        assert_eq!(auto_scale(&r), 1.0);
+        assert!(r.steps[0].displacement.iter().all(|u| *u == [0.0; 3]));
+        // Both particles move 0.5 in x from time 0 to time 0.5.
+        assert!(r.steps[1]
+            .displacement
+            .iter()
+            .all(|u| *u == [0.5, 0.0, 0.0]));
+        let grid = read_vtu(&std::fs::read(dir.join("step-2.vtu")).unwrap()).unwrap();
+        let moved = deformed_positions(&r.mesh, &r.steps[1], 1.0);
+        for (i, p) in moved.iter().enumerate() {
+            let want = grid.points[r.mesh.source_node[i] as usize];
+            assert_eq!(p.map(f64::from), want, "position {i}");
+        }
     }
 
     /// The positions that the shader bands agree with the bands of the legend.

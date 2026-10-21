@@ -13,16 +13,16 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the agent**: 1 focused agent that plans and does the work.
-- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, a preCICE case folder for fluid-structure interaction, a topology case folder for topology optimization, and a Chrono case folder for multibody dynamics.
+- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, a preCICE case folder for fluid-structure interaction, a LAMMPS case folder for particles, a topology case folder for topology optimization, and a Chrono case folder for multibody dynamics.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
-- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD, GetDP for electromagnetics and acoustics, and Project Chrono for multibody dynamics. preCICE couples OpenFOAM and CalculiX for fluid-structure interaction.
+- The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD, GetDP for electromagnetics and acoustics, LAMMPS for particles, and Project Chrono for multibody dynamics. preCICE couples OpenFOAM and CalculiX for fluid-structure interaction.
 
 ---
 
 ## 2. Separate programs
 
-- CalculiX, gmsh, OpenFOAM, GetDP, preCICE and the preCICE adapters stay separate programs. femahoy never links or bundles them, because they are GPL or LGPL.
+- CalculiX, gmsh, OpenFOAM, GetDP, LAMMPS, preCICE and the preCICE adapters stay separate programs. femahoy never links or bundles them, because they are GPL or LGPL.
 - Project Chrono is BSD-3-Clause, but it also stays a separate program: a Python with PyChrono. Thus femahoy has no dependency on it.
 
 ---
@@ -84,6 +84,7 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 - A preCICE case folder (`precice-config.xml`, the OpenFOAM case `fluid` and the CalculiX input `solid/job.inp`) is the input for fluid-structure interaction. preCICE, OpenFOAM and CalculiX read and check it.
 - A topology case folder (`job.inp` and `topology.toml`) is the input for topology optimization. `job.inp` is CalculiX input with no material. `fh` adds 1 material for each element, and CalculiX reads and checks the input.
 - A Chrono case folder (`chrono.py`, a PyChrono script) is the input for multibody dynamics. Python runs the script.
+- A LAMMPS case folder (`case.lmp`) is the input for particles. LAMMPS reads and checks it.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel. It reads only the length unit of a STEP file.
@@ -129,6 +130,10 @@ Reason: the design variables of CalculiX are node coordinates and orientations, 
 Project Chrono is the multibody solver. It is a separate program that the user installs, as section 2 says.
 
 Reason: the other solvers do not solve mechanisms with joints and large rigid motion, for example the actuator linkage of a control surface. PyChrono has builds for macOS (Apple Silicon) and Linux.
+
+LAMMPS is the particle solver (SPH, DEM). It is a separate program that the user installs, as section 2 says.
+
+Reason: the mesh solvers do not solve a free surface with a large motion or a granular flow. LAMMPS has packages for macOS (Apple Silicon) and Linux. DualSPHysics does not run on Apple Silicon.
 
 ### 6.1 Limits of the `ccx` process
 
