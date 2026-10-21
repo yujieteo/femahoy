@@ -66,6 +66,17 @@ For a sound request at 1 frequency, for example a radiating or vibrating surface
 
 This setup agrees with the analytical radiation of a pulsating sphere (the validation case `acoustics-pulsating-sphere`).
 
+## Topology optimization
+
+For a request to find the stiffest layout of a fraction of the material in a design region, write a topology case folder and solve it with `fh run CASE`.
+
+1. `job.inp`: the mesh, the supports and 1 `*STATIC` step with the loads. Write no material and no section: each element is a design element, and `fh` writes its material and its section. Use solid or 2D elements of about equal size, not shells or beams.
+2. `topology.toml`: `volume` (the fraction of the volume that the material fills, for example 0.5), `radius` (the filter radius, in the length unit of the mesh, at least 1.5 element sizes), `young`, `poisson` and, for 2D elements, `thickness` (default 1).
+3. Solve: `fh run CASE`. Each iteration solves the model with `ccx` and prints the compliance, the volume fraction and the largest change of a density. The loop stops when no density changes by more than 0.01, after about 100 iterations. Thus use a mesh that `ccx` solves in about 1 s.
+4. Results: the last row of `topology/history.txt` holds the compliance of the last design. The page shows the cell field `density`: 1 is material and 0 is void.
+
+This loop agrees with the published result of the MBB beam (the validation case `topology-mbb-beam`): 60 x 20 elements, `volume = 0.5` and `radius = 2.4` give a compliance of 216.81, as in Andreassen et al. (2011).
+
 ## Choose the CalculiX solver
 
 The default solver SPOOLES is direct. Its memory grows faster than the model, and a run that reaches the memory limit stops. `ccx` writes the number of equations of a run in `job.log`, in the folder of `job.dat` that `fh run` prints: the line `number of equations`, then the value on the next line. The sizes below are measured on a Mac with 16 GB of RAM (13.6 GiB limit) for linear static steps. Scale them with the RAM.

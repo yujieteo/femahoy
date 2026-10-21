@@ -56,13 +56,14 @@ fn validate_runs_every_case() {
         "plasticity-sphere",
         "scordelis-lo-roof",
         "team7-eddy-current",
+        "topology-mbb-beam",
         "warpage-2p5d-frame",
         "warpage-thick-copper",
     ] {
         let row = format!("{id}\tpass\n");
         assert!(stdout.contains(&row), "{id} missing in {stdout}");
     }
-    assert!(stdout.contains("15 cases: 15 pass, 0 fail"), "{stdout}");
+    assert!(stdout.contains("17 cases: 17 pass, 0 fail"), "{stdout}");
     // One row per quantity: computed, reference, tolerance, margin.
     assert!(stdout.contains("u_x_tip"), "{stdout}");
     assert!(stdout.contains("margin"), "{stdout}");

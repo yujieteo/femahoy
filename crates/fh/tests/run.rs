@@ -405,3 +405,96 @@ fn a_failed_getdp_fails_the_run_with_its_error_lines() {
     assert_eq!(calls, "getdp case.pro -msh case.msh -solve #1 -pos #1\n");
     let _ = fs::remove_dir_all(&dir);
 }
+
+/// The half MBB beam of `nx` x `ny` square elements, as `validation/cases/topology-mbb-beam`
+/// writes it, with no print request.
+fn mbb_beam(nx: u32, ny: u32) -> String {
+    let node = |i: u32, j: u32| i * (ny + 1) + j + 1;
+    let mut text = String::from("*NODE\n");
+    for i in 0..=nx {
+        for j in 0..=ny {
+            text += &format!("{}, {i}, {j}\n", node(i, j));
+        }
+    }
+    text += "*ELEMENT, TYPE=CPE4, ELSET=BEAM\n";
+    for i in 0..nx {
+        for j in 0..ny {
+            let corners = [
+                node(i, j),
+                node(i + 1, j),
+                node(i + 1, j + 1),
+                node(i, j + 1),
+            ];
+            text += &format!("{}, {:?}\n", i * ny + j + 1, corners).replace(['[', ']'], "");
+        }
+    }
+    text += "*NSET, NSET=SYMMETRY\n";
+    for j in 0..=ny {
+        text += &format!("{},\n", node(0, j));
+    }
+    text + &format!(
+        "*BOUNDARY\nSYMMETRY, 1, 1\n{}, 2, 2\n*STEP\n*STATIC\n*CLOAD\n{}, 2, -1.0\n*END STEP\n",
+        node(nx, 0),
+        node(0, ny)
+    )
+}
+
+/// The real ccx solves each iteration of a small topology case. The loop stops when no density
+/// changes by more than 0.01, the compliance falls, and the page gets the density of each element.
+#[test]
+fn fh_run_optimizes_a_topology_case_with_ccx_in_each_iteration() {
+    let Some(solver) = ccx_solver() else { return };
+    let dir = scratch("run-topology");
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("job.inp"), mbb_beam(12, 4)).unwrap();
+    let settings = "volume = 0.5\nradius = 1.5\nyoung = 1.0\npoisson = 0.3\n";
+    fs::write(case.join("topology.toml"), settings).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", &solver)
+        .output()
+        .unwrap();
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(shown.contains("\n  iteration 1 compliance "), "{shown}");
+
+    let run = dir.join("state/runs/run-000001");
+    let work = run.join("out/topology");
+    let paths = format!(
+        "fh run: text results {0}/history.txt (each iteration), {0}/solve/ccx/job.dat (the last \
+         solve)",
+        work.display()
+    );
+    assert_eq!(shown.lines().last(), Some(paths.as_str()), "{shown}");
+    assert!(run.join("in/topology.toml").is_file());
+    assert!(dir.join("state/previews/1/input.inp").is_file());
+    let history = fs::read_to_string(work.join("history.txt")).unwrap();
+    let rows: Vec<Vec<f64>> = (history.lines().skip(1))
+        .map(|l| l.split_whitespace().map(|w| w.parse().unwrap()).collect())
+        .collect();
+    assert!(history.starts_with("# iteration compliance volume change\n"));
+    let (first, last) = (&rows[0], &rows[rows.len() - 1]);
+    assert!(rows.len() > 5 && last[3] <= 0.01, "{history}");
+    assert!(last[1] < 0.5 * first[1], "{history}");
+
+    let grid = fh_core::vtu::read_vtu(&fs::read(run.join("out/step-1.vtu")).unwrap()).unwrap();
+    let density = grid
+        .cell_field("density")
+        .unwrap()
+        .as_f64()
+        .unwrap()
+        .to_vec();
+    assert_eq!(density.len(), 48);
+    // The page draws only 3D cells: the 2D elements go to the page as hexahedra (VTK type 12).
+    assert_eq!(grid.cell_types, vec![12; 48]);
+    assert!(
+        density.iter().all(|x| (0.0..=1.0).contains(x)),
+        "{density:?}"
+    );
+    let mean = density.iter().sum::<f64>() / 48.0;
+    assert!((mean - last[2]).abs() < 1e-6, "{mean} {history}");
+    assert!(grid.point_field("U").is_some());
+    let _ = fs::remove_dir_all(&dir);
+}

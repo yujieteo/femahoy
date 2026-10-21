@@ -1,0 +1,22 @@
+# The half MBB beam: the minimum compliance of 60 x 20 elements with 50 % of the volume. The
+# reference is c = 216.81 of the 88 line code with the sensitivity filter: E. Andreassen,
+# A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in
+# MATLAB using 88 lines of code", Struct. Multidisc. Optim. 43 (2011) 1-16, figure 3, top left.
+# derivation.md gives the model and the loop.
+#
+# The model is the topology case 60x20: the SIMP loop of fh with ccx. The tolerance
+# (derivation.md, "Tolerance"):
+# - The same loop with an exact solver of the reference element gives 216.8137, and the loop
+#   with ccx gives the same 4 decimals. Thus the solver adds no error.
+# - The stop rule (no density changes by more than 0.01) is at its limit in the last iterations.
+#   A change in the last digit of a result can stop the loop some iterations earlier or later.
+#   From iteration 95 to 106, c is 216.67 to 217.06, at most 0.12 % from the reference.
+# rel_tol = 0.12 %, rounded up to 0.2 %.
+rel_tol = 0.002
+abs_tol = 0.0
+
+[compliance]
+value = 216.81
+case = "60x20"
+file = "history.txt"
+column = "compliance"

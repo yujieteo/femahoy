@@ -13,7 +13,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - The **engine** is the `fh` command-line program.
 - The **main interface** is a visual chat, like ChatGPT or Codex. A 3D viewport is beside the chat.
 - The **chat is the agent**: 1 focused agent that plans and does the work.
-- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD and a GetDP case folder for electromagnetics and acoustics.
+- The **input** is CalculiX `.inp` text for structures, an OpenFOAM case folder for CFD, a GetDP case folder for electromagnetics and acoustics, and a topology case folder for topology optimization.
 - **Agent-facing output** is plain text lines.
 - **Results** are VTU files with a PVD collection, so ParaView can open them.
 - The **solvers** are CalculiX (`ccx`) for structures, OpenFOAM for CFD and GetDP for electromagnetics and acoustics.
@@ -80,6 +80,7 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 - CalculiX `.inp` is the input format for structures. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
 - An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
 - A GetDP case folder (`case.pro`, and `case.geo` or `case.msh`) is the input for electromagnetics and acoustics. gmsh meshes `case.geo`, and GetDP reads and checks the case.
+- A topology case folder (`job.inp` and `topology.toml`) is the input for topology optimization. `job.inp` is CalculiX input with no material. `fh` adds 1 material for each element, and CalculiX reads and checks the input.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel. It reads only the length unit of a STEP file.
@@ -113,6 +114,10 @@ Reason: a real problem needs CFD: a basic airfoil with control surfaces. Calculi
 GetDP is the solver for electromagnetics and acoustics. It is a separate program that the user installs, as section 2 says.
 
 Reason: CalculiX and OpenFOAM do not solve electromagnetic problems or the Helmholtz equation of acoustics. GetDP reads the meshes of gmsh, and its binaries run on macOS and Linux.
+
+Topology optimization is a SIMP loop in `fh` around `ccx` (`crates/fh/src/topology.rs`). Each iteration solves the model with `ccx`, reads the strain energy of each element and changes the densities.
+
+Reason: the design variables of CalculiX are node coordinates and orientations, not densities. The loop of Andreassen et al. (2011) is short, and `ccx` gives all the values that it needs.
 
 ### 6.1 Limits of the `ccx` process
 

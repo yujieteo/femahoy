@@ -17,7 +17,7 @@
 //! ends, also on SIGKILL, the pipe closes and the guard kills the group. Thus `ccx` never
 //! lives longer than `fh`. OpenFOAM runs with the same limits ([`supervise`]).
 
-mod frd;
+pub(crate) mod frd;
 mod sys;
 
 use std::fs;
