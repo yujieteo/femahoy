@@ -74,7 +74,7 @@ The tolerance stops these errors:
 
 - No `NLGEOM` (small strains): the length is 18.88 mm and the radius 6.05 mm. `length` is 2.78 mm away, and `radius` 0.97 mm.
 - No hardening: ccx stops with `*ERROR: no convergence in incplas`, thus the case cannot run.
-- `C3D8` in place of `C3D8R` (mesh 6 6 64 with no grading): the radius is 5.82 mm, 1.20 mm away. The length is 20.84 mm, 0.82 mm away: it passes alone.
+- `C3D8` in place of `C3D8R` (mesh 6 6 64 with no grading): the radius is 5.82 mm, 1.20 mm away. The length is 20.84 mm, 0.82 mm away: it also fails.
 - The stable increment of the start (mesh 6 6 64 with no grading, 1.11e-8 s): ccx stops with `*ERROR: no convergence in incplas`.
 
 The coarse mesh (4 4 27) passes. Its largest part of the tolerance is 83 % (`radius`).
