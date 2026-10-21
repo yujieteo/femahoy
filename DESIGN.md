@@ -46,7 +46,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
         |                                  |
       reads                                | runs fh commands
         |                                  v
-   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, Chrono
+   state folder <---- writes ----- fh run ----> ccx, OpenFOAM, GetDP, preCICE, Chrono
  (previews, runs, results)
 ```
 
@@ -81,6 +81,7 @@ Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport
 - CalculiX `.inp` is the input format for structures. CalculiX reads and checks it. The small reader of `fh` is for the preview only (`docs/reference/inp.md`).
 - An OpenFOAM case folder is the input for CFD. OpenFOAM reads and checks it.
 - A GetDP case folder (`case.pro`, and `case.geo` or `case.msh`) is the input for electromagnetics and acoustics. gmsh meshes `case.geo`, and GetDP reads and checks the case.
+- A preCICE case folder (`precice-config.xml`, the OpenFOAM case `fluid` and the CalculiX input `solid/job.inp`) is the input for fluid-structure interaction. preCICE, OpenFOAM and CalculiX read and check it.
 - A topology case folder (`job.inp` and `topology.toml`) is the input for topology optimization. `job.inp` is CalculiX input with no material. `fh` adds 1 material for each element, and CalculiX reads and checks the input.
 - A Chrono case folder (`chrono.py`, a PyChrono script) is the input for multibody dynamics. Python runs the script.
 - `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
