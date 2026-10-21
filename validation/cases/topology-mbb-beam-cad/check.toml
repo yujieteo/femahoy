@@ -1,23 +1,29 @@
 # The CAD of the half MBB beam: the solid of the density 0.5 or more of the last design, meshed
-# by gmsh and solved by ccx. The case 60x20 is the same as in topology-mbb-beam. The reference is
-# c = 216.81 of the 88 line code with the sensitivity filter: E. Andreassen, A. Clausen,
-# M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using
-# 88 lines of code", Struct. Multidisc. Optim. 43 (2011) 1-16, figure 3, top left. The loop gives
-# the same value (topology-mbb-beam). derivation.md gives the model.
+# by gmsh and solved by ccx. The case 60x20 is the same as in topology-mbb-beam. derivation.md
+# gives the model.
 #
-# The tolerance (derivation.md, "Tolerance"): the solid has no gray material. An element with a
-# density from 0.5 to 1 has the stiffness x^3 E0 in the loop and E0 in the solid. Thus the solid
-# is stiffer than the last design:
-# - The threshold at 0.5 on the elements of the loop: c = 193.27, -10.86 % from the reference.
+# The reference is c = 193.27, the threshold result of the same design: the 1200 CPE4 elements of
+# the loop mesh, the 588 elements with a density of 0.5 or more with E0 = 1.6/1.69 and the other
+# 612 with Emin = 1e-9 E0, poisson 0.3/1.3, solved by ccx. The compliance is the displacement of
+# the load node under the load 1: 193.2735.
+#
+# The tolerance (derivation.md, "Tolerance"):
 # - The smooth boundary and the mesh of the check: c = 190.48, -1.45 % from the threshold.
-# - 3 mesh algorithms of gmsh give 190.27 to 190.48: 0.11 %.
+# - 3 mesh algorithms of gmsh at the size 0.5 (meshadapt, del2d, front2d) give 190.27 to
+#   190.48: 0.11 %.
 # - The stop rule of the loop: 0.12 % (topology-mbb-beam).
-# The sum is 12.5 %. rel_tol = 12.5 %, rounded up to 15 % for other versions of gmsh and ccx.
-rel_tol = 0.15
+# The sum is 1.68 %, rounded up to 2 %. The case gives 190.48, -1.45 % from 193.27. The owner
+# approved this tolerance.
+#
+# The physical check: the solid has no gray material, thus its compliance must be lower than the
+# compliance of the loop, 216.81 (Andreassen et al. 2011; the loop gives 216.8137). The pass band
+# 193.27 +/- 2 % (189.40 to 197.14) is below 216.81. Thus a CAD compliance at or above 216.81
+# fails the case.
+rel_tol = 0.02
 abs_tol = 0.0
 
 [cad_compliance]
-value = 216.81
+value = 193.27
 case = "60x20"
 file = "cad/check.txt"
 column = "compliance"

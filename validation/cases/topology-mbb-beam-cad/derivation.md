@@ -1,14 +1,18 @@
 # topology-mbb-beam-cad derivation
 
 This case checks the CAD of a topology run: the solid that `fh run` makes from the last design, and the check of this solid with `ccx`.
-The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the loop.
-The solid has no gray material. Thus its compliance is lower than the compliance of the loop, and the tolerance comes from this difference, not from a model error.
+The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the threshold of the same design at 0.5 on the elements of the loop.
+The solid has no gray material. Thus its compliance must be lower than the compliance of the loop.
 
 ## Source
 
 E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, https://doi.org/10.1007/s00158-010-0594-7.
 
-Figure 3, top left, gives c = 216.81 for the sensitivity filter. This is the check value. The loop of `fh` gives 216.8137 on this problem (`topology-mbb-beam/derivation.md`).
+Figure 3, top left, gives c = 216.81 for the sensitivity filter. This is the compliance of the loop. The loop of `fh` gives 216.8137 on this problem (`topology-mbb-beam/derivation.md`).
+
+## Check value
+
+The check value is c = 193.27, the threshold result of the same design. The model has the 1200 `CPE4` elements of the loop mesh. The 588 elements with a density of 0.5 or more have E0 = 1.6/1.69, and the other 612 elements have Emin = 1e-9 E0. The Poisson ratio is 0.3/1.3. `ccx` solves this model. The compliance is the displacement of the load node under the load 1: 193.2735.
 
 ## Model
 
@@ -48,17 +52,17 @@ At the size 0.5, the 3 mesh algorithms of gmsh for triangles (`meshadapt`, `del2
 
 ## Tolerance
 
-The tolerance is `rel_tol = 0.15` and `abs_tol = 0`.
+The tolerance is `rel_tol = 0.02` and `abs_tol = 0`. The owner approved this tolerance.
 
 | Item | Difference |
 |---|---:|
-| The threshold at 0.5 (no gray material) | -10.86 % |
-| The smooth boundary and the mesh of the check | -1.45 % |
-| A different mesh of the same size (3 algorithms of gmsh) | 0.11 % |
+| The smooth boundary and the mesh of the check against the threshold (190.48 against 193.27) | -1.45 % |
+| A different mesh at the size 0.5 (`meshadapt`, `del2d`, `front2d` give 190.27 to 190.48) | 0.11 % |
 | The stop rule of the loop (`topology-mbb-beam`) | 0.12 % |
-| Sum of the magnitudes | 12.54 % |
+| Sum of the magnitudes | 1.68 % |
 
-`rel_tol` is 12.54 %, rounded up to 15 % for other versions of gmsh and `ccx`. The case gives 190.48, 12.15 % below the reference.
+`rel_tol` is 1.68 %, rounded up to 2 %. The case gives 190.48, -1.45 % from 193.27.
+The pass band 193.27 +/- 2 % (189.40 to 197.14) is below the loop compliance 216.81. Thus a CAD compliance at or above 216.81 fails the case. This is the physical check: the solid has no gray material, thus its compliance must be lower than the compliance of the loop.
 The tolerance does not hide a large error of the CAD. For example, a part that the supports do not hold stops the check, and a thickness of 2 instead of 1 halves c (-56 %).
 
 ## Run time
