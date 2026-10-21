@@ -14,6 +14,7 @@ use crate::rules;
 const USAGE: &str = "usage: fh mesh FILE.step [-o OUT.inp] [--size H] \
 [--face NAME=SELECTION]... [--nodes NAME=SELECTION]... \
 [--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]... [--refine NAME[,NAME]...=H]... [--shell]\n\
+OUT.inp is FILE with the extension .inp by default.\n\
 A selection is x:V, y:V or z:V (a plane), box:X0,Y0,Z0,X1,Y1,Z1, or point:X,Y,Z (--nodes only).\n\
 --face makes a node set and a surface of the faces of the part in the selection. --nodes makes a \
 node set. --volume makes an element set. Each name is used once.\n\

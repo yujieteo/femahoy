@@ -148,4 +148,4 @@ The Inter font is under the SIL Open Font License 1.1, in `crates/viewer/fonts` 
 Each entry is a rule that is in force. The owner decided each of them.
 
 ### D-30 A requirement stays only if a real run showed the need
-A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.
+A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. A rule that prevents a security fault, a licence or trademark fault, or a loss of data also stays. Its reason names that fault. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.

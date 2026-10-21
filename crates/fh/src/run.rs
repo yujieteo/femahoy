@@ -29,7 +29,12 @@ use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
 
-const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]";
+const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]\n\
+--timeout has no limit by default. --memory is 85 % of the RAM by default. At a limit, fh run \
+stops the solver. For a case, the limit counts all the programs.\n\
+CASE is an OpenFOAM case folder with system/controlDict. fh run starts blockMesh (when the case \
+has system/blockMeshDict and no constant/polyMesh), then the application of system/controlDict, \
+then foamToVTK.";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
