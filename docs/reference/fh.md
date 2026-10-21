@@ -5,7 +5,7 @@
 ## `fh mesh`
 
 ```text
-fh mesh FILE.step --units SI-mm|SI-m [-o OUT.inp] [--size H]
+fh mesh FILE.step [-o OUT.inp] [--size H]
   [--face NAME=SEL]... [--nodes NAME=SEL]... [--volume NAME=box:X0,Y0,Z0,X1,Y1,Z1]...
   [--refine NAME[,NAME]...=H]... [--shell]
 ```
@@ -16,7 +16,6 @@ Source: [mesh.rs](../../crates/fh/src/mesh.rs).
 |---|---|
 | `-o` | Input path with the extension changed to `.inp`. |
 | `--size` | No value by default. Positive finite number, sent as gmsh `-clmax`. |
-| `--units` | Required: `SI-mm` or `SI-m`. STEP units must match. |
 | `--face NAME=SEL` | Repeatable. A node set `NAME` and a surface `NAME` of the faces of the part that lie fully inside the selection. |
 | `--nodes NAME=SEL` | Repeatable. A node set of the nodes in the selection. |
 | `--volume NAME=box:...` | Repeatable. An element set of the elements of the bodies that lie fully inside the box. |

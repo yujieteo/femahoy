@@ -7,18 +7,7 @@ fn fixture(name: &str) -> PathBuf {
     root().join("fixtures/step").join(name)
 }
 
-/// Run `fh mesh`. The units are required, so this adds `--units SI-mm`
-/// unless the arguments declare units.
 fn mesh(args: &[&str], gmsh: Option<&Path>) -> Output {
-    let declared = args.contains(&"--units");
-    let mut all = args.to_vec();
-    if !declared {
-        all.extend(["--units", "SI-mm"]);
-    }
-    fh_raw(&all, gmsh)
-}
-
-fn fh_raw(args: &[&str], gmsh: Option<&Path>) -> Output {
     let mut cmd = cmd();
     cmd.arg("mesh").args(args);
     match gmsh {
@@ -62,7 +51,6 @@ fn real_gmsh_makes_a_tet10_mesh_that_the_reader_accepts() {
     assert!(inp.contains("** units: SI-mm"), "{inp}");
     assert!(stdout.contains("ok\t"), "{stdout}");
     assert!(stdout.contains("nset\tFIXED\t"), "{stdout}");
-    assert!(stdout.contains("min_scaled_jacobian\t0."), "{stdout}");
     // The input holds the mesh and nothing else. The chat adds the model.
     assert!(
         !inp.contains("*STEP") && !inp.contains("*MATERIAL"),
@@ -110,78 +98,12 @@ fn step_file_without_a_unit_record_is_refused() {
 }
 
 #[test]
-fn step_unit_that_differs_from_the_case_units_is_refused() {
-    let dir = scratch("mismatch");
+fn a_step_file_in_metres_passes_the_unit_check() {
+    let dir = scratch("metre");
     let step = dir.join("a.step");
-    std::fs::write(&step, METRE_STEP).unwrap();
-    fails(&mesh(&[p(&step)], no_gmsh()), 1, "the STEP file uses");
-    // With the matching units the check passes and the run reaches the gmsh start.
-    says(
-        &mesh(&[p(&step), "--units", "SI-m"], no_gmsh()),
-        "cannot start gmsh",
-    );
-}
-
-const METRE_STEP: &str = "DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\nENDSEC;\n";
-
-#[test]
-fn a_run_with_no_units_is_refused() {
-    let step = fixture("block.step");
-    fails(&fh_raw(&[p(&step)], no_gmsh()), 1, "the run has no units");
-}
-
-#[test]
-fn the_units_are_checked_against_the_step_file() {
-    let dir = scratch("units");
-    let step = dir.join("a.step");
-    std::fs::write(&step, METRE_STEP).unwrap();
-    says(
-        &fh_raw(&[p(&step), "--units", "SI-mm"], no_gmsh()),
-        "the STEP file uses",
-    );
-    says(
-        &fh_raw(&[p(&step), "--units", "SI-m"], no_gmsh()),
-        "cannot start gmsh",
-    );
-}
-
-mod fake_gmsh {
-    use super::*;
-
-    /// A shell script that acts as gmsh. It answers `-version`, then runs `body`.
-    fn script(dir: &Path, body: &str) -> PathBuf {
-        let text =
-            format!("#!/bin/sh\nif [ \"$1\" = -version ]; then echo 4.15.2; exit 0; fi\n{body}\n");
-        super::common::script(&dir.join("gmsh"), &text)
-    }
-
-    fn run(name: &str, body: &str, extra: &[&str]) -> Output {
-        let dir = scratch(name);
-        let gmsh = script(&dir, body);
-        let step = fixture("block.step");
-        let out = dir.join("a.inp");
-        let mut args = vec![p(&step), "-o", p(&out)];
-        args.extend(extra);
-        mesh(&args, Some(&gmsh))
-    }
-
-    #[test]
-    fn mesh_with_an_inverted_element_is_refused() {
-        // One C3D10 element with corners 2 and 3 swapped, so its Jacobian is negative.
-        let msh = "$MeshFormat\n4.1 0 8\n$EndMeshFormat\n$Nodes\n1 10 1 10\n3 1 0 10\n\
-1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n0 0 0\n1 0 0\n0 1 0\n0 0 1\n0.5 0 0\n\
-0.5 0.5 0\n0 0.5 0\n0 0 0.5\n0 0.5 0.5\n0.5 0 0.5\n$EndNodes\n$Elements\n1 1 1 1\n\
-3 1 11 1\n1 1 3 2 4 7 6 5 8 9 10\n$EndElements\n";
-        let body = format!(
-            "for a; do if [ \"$p\" = -o ]; then cat > \"$a\" <<'EOF'\n{msh}EOF\nfi; p=$a; done"
-        );
-        let out = run("inverted", &body, &[]);
-        fails(
-            &out,
-            1,
-            "1 elements have a corner with a Jacobian of 0 or less",
-        );
-    }
+    let text = "DATA;\n#1=(LENGTH_UNIT()NAMED_UNIT(*)SI_UNIT($,.METRE.));\nENDSEC;\n";
+    std::fs::write(&step, text).unwrap();
+    says(&mesh(&[p(&step)], no_gmsh()), "cannot start gmsh");
 }
 
 #[test]

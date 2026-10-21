@@ -9,7 +9,7 @@ use std::process::ExitCode;
 
 fn usage() -> &'static str {
     "usage: fh [-h | --help] <command>\n\ncommands:\n  \
-         mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE --units U [options] [-o OUT.inp])\n  \
+         mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE [options] [-o OUT.inp])\n  \
          validate  run the validation suite (fh validate [--root DIR])\n  \
          run       solve a CalculiX input or an OpenFOAM case (fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB])\n  \
          report    write 1 HTML file with a text, the viewer and the results of runs (fh report TEXT.html -o REPORT.html --run RUN...)\n  \

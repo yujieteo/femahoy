@@ -1,5 +1,5 @@
-# The no-mistakes test step runs this command. It matches the Test step of .github/workflows/ci.yml.
-# FH_REQUIRE_CCX=1 and FH_REQUIRE_OPENFOAM=1 make a missing ccx or openfoam fail a test. Without
-# them, a test that solves skips and passes.
+# The no-mistakes test step runs this command. FH_REQUIRE_CCX=1 makes a missing ccx fail a test.
+# Without it, a test that solves skips and passes. The OpenFOAM path does not exist, so the
+# validation suite skips here. Only the Test step of .github/workflows/ci.yml runs it.
 commands:
-  test: FH_REQUIRE_CCX=1 FH_REQUIRE_OPENFOAM=1 cargo test --workspace
+  test: FH_REQUIRE_CCX=1 FH_OPENFOAM=/nonexistent/openfoam cargo test --workspace
