@@ -19,4 +19,4 @@ Do not add a dependency unless the owner approves it. Every dependency must be u
 
 ## 3. Bugs
 
-Write a failing test that reproduces the bug first. Show the failing output. Fix the bug. Show the passing output.
+A bug fix adds a test only when the bug can come back. Write that test first. Show the failing output. Fix the bug. Show the passing output.
