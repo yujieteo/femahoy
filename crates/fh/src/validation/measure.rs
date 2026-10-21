@@ -1,21 +1,25 @@
-//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP and topology cases of a case with
-//! OpenFOAM, GetDP and the topology loop, and read one number per reference from the text results.
+//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, Chrono and topology cases of a case
+//! with their solvers and the topology loop, and read one number per reference from the text
+//! results.
 
 use std::path::Path;
 
 use super::fixture::{Case, Field, Op, Quantity};
 use super::run::Solve;
 use crate::ccx::Ccx;
+use crate::chrono::{self, Chrono};
 use crate::foam::{self, Foam};
 use crate::getdp::{self, GetDp};
 use crate::topology;
 
-/// Runs `ccx`, OpenFOAM, GetDP or the topology loop in a scratch folder on the input of a case.
+/// Runs `ccx`, OpenFOAM, GetDP, Chrono or the topology loop in a scratch folder on the input of a
+/// case.
 #[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
     foam: Foam,
     getdp: GetDp,
+    chrono: Chrono,
 }
 
 impl Solve for Subprocess {
@@ -46,7 +50,8 @@ impl Subprocess {
             .collect()
     }
 
-    /// Solve the OpenFOAM, GetDP or topology case of each check at the same time, each in its own
+    /// Solve the OpenFOAM, GetDP, Chrono or topology case of each check at the same time, each in
+    /// its own
     /// folder in `run`, and read the value of each check in the last row of its table.
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
@@ -75,6 +80,11 @@ impl Subprocess {
                             solved
                                 .map(|()| topology::WORK)
                                 .map_err(|e| format!("topology {folder}: {e}"))
+                        } else if chrono::is_case(&dir) {
+                            let solved = self.chrono.run(&dir, &out);
+                            solved
+                                .map(|()| chrono::WORK)
+                                .map_err(|e| format!("chrono {folder}: {e}"))
                         } else {
                             let solved = self.foam.run(&dir, &out);
                             solved

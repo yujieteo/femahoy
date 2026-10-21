@@ -322,7 +322,8 @@ pub fn nice_scale(raw: f64) -> f64 {
 }
 
 /// The automatic scale factor: the largest displacement of all steps shows as
-/// `AUTO_SCALE_FRACTION` of the model size. A model with no displacement gives 1.
+/// `AUTO_SCALE_FRACTION` of the model size. It is never below 1, so a larger displacement, for
+/// example the motion of a mechanism, shows at true scale. A model with no displacement gives 1.
 pub fn auto_scale(results: &Results) -> f64 {
     let size = results
         .mesh
@@ -334,7 +335,7 @@ pub fn auto_scale(results: &Results) -> f64 {
         .map(Step::max_displacement)
         .fold(0.0, f64::max);
     if max > 0.0 {
-        nice_scale(AUTO_SCALE_FRACTION * size / max)
+        nice_scale(AUTO_SCALE_FRACTION * size / max).max(1.0)
     } else {
         1.0
     }
@@ -494,6 +495,18 @@ mod tests {
         let (a, b) = (&r.steps[0], &r.steps[1]);
         let ratio = b.max_displacement() / a.max_displacement();
         assert!((ratio - 2.0).abs() < 1e-9, "ratio {ratio}");
+    }
+
+    /// A displacement larger than a tenth of the model, for example the motion of a mechanism,
+    /// shows at true scale. A small displacement shows larger.
+    #[test]
+    fn the_automatic_scale_is_never_below_1() {
+        let mut r = crate::load_run(&fixture_dir()).unwrap();
+        assert!(auto_scale(&r) > 1.0);
+        for step in &mut r.steps {
+            step.displacement.iter_mut().flatten().for_each(|u| *u *= 1e3);
+        }
+        assert_eq!(auto_scale(&r), 1.0);
     }
 
     #[test]

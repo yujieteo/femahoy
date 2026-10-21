@@ -1,5 +1,6 @@
-//! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, or a GetDP
-//! case with GetDP, or optimize the topology of a CalculiX model, and show the progress.
+//! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, a GetDP case
+//! with GetDP, or a Chrono case with Project Chrono, or optimize the topology of a CalculiX model,
+//! and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
@@ -10,6 +11,8 @@
 //!   `fh::getdp` for the programs that it starts. GetDP is `$FH_GETDP`, else `getdp` on `PATH`.
 //! - `fh run CASE` optimizes the topology case folder (`job.inp` and `topology.toml`) with a loop
 //!   of CalculiX solves. See `fh::topology`.
+//! - `fh run CASE` gives Chrono the case folder (`chrono.py`, see `fh::chrono`). The Python of
+//!   PyChrono is `$FH_PYCHRONO`, else `python3` on `PATH`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
@@ -30,6 +33,7 @@ use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
 use fh::ccx::{result_frames, CancelToken, Ccx};
+use fh::chrono::{self, Chrono};
 use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
@@ -44,7 +48,9 @@ then foamToVTK.\n\
 CASE is also a GetDP case folder with case.pro. fh run starts gmsh (when the case has case.geo), \
 then getdp with the first Resolution and the first PostOperation of case.pro.\n\
 CASE is also a topology case folder with job.inp and topology.toml. fh run solves job.inp with \
-ccx in each iteration of the loop.";
+ccx in each iteration of the loop.\n\
+CASE is also a Chrono case folder with chrono.py. fh run starts python3 chrono.py, with the Python \
+of PyChrono.";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -106,6 +112,7 @@ enum Solver {
     OpenFoam,
     GetDp,
     Topology,
+    Chrono,
 }
 
 /// The real path of the `.inp` file or the case folder that `fh run` solves.
@@ -115,14 +122,17 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     let inp = full
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("inp"));
-    let case = foam::is_case(&full) || getdp::is_case(&full) || topology::is_case(&full);
+    let case = foam::is_case(&full)
+        || getdp::is_case(&full)
+        || chrono::is_case(&full)
+        || topology::is_case(&full);
     if (full.is_file() && inp) || case {
         Ok(full)
     } else {
         Err(format!(
             "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
-             system/controlDict), a GetDP case folder (with case.pro) or a topology case folder \
-             (with topology.toml)"
+             system/controlDict), a GetDP case folder (with case.pro), a Chrono case folder (with \
+             chrono.py) or a topology case folder (with topology.toml)"
         ))
     }
 }
@@ -152,6 +162,13 @@ fn report(run: &str, out: &Path, seconds: f64, solver: Solver) {
                 out.join(getdp::WORK).display()
             ),
             "Print a field to a .pos file in the PostOperation",
+        ),
+        Solver::Chrono => (
+            format!(
+                "{0}/log.python (output of chrono.py), the files that chrono.py names in {0}",
+                out.join(chrono::WORK).display()
+            ),
+            "Write the motion to a .pos file with the view U in chrono.py",
         ),
         Solver::Ccx => (
             format!(
@@ -186,6 +203,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Solver::GetDp
     } else if topology::is_case(&file) {
         Solver::Topology
+    } else if chrono::is_case(&file) {
+        Solver::Chrono
     } else {
         Solver::Ccx
     };
@@ -234,6 +253,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             getdp.timeout = o.timeout;
             getdp.memory_limit = o.memory.unwrap_or(getdp.memory_limit);
             getdp.run_with(&run.input, &run.out, &cancel, on_program)
+        }
+        Solver::Chrono => {
+            let mut chrono = Chrono::new();
+            chrono.timeout = o.timeout;
+            chrono.memory_limit = o.memory.unwrap_or(chrono.memory_limit);
+            chrono.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Ccx | Solver::Topology => {
             let mut ccx = Ccx::new();
