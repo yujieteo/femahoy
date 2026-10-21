@@ -38,4 +38,4 @@ The area of the face is 20 x 10 = 200 mm2. The total force is 100 MPa x 200 mm2 
 ## Files
 
 `bar.step` comes from `python scripts/cad/bar.py bar.step`.
-The mesh in `job.inp` comes from `fh mesh bar.step --units SI-mm --size 8 --face SUPPORT=x:0 --face SYM_Y=y:0 --face SYM_Z=z:0 --face LOAD=x:100`.
+The mesh in `job.inp` comes from `fh mesh bar.step --size 8 --face SUPPORT=x:0 --face SYM_Y=y:0 --face SYM_Z=z:0 --face LOAD=x:100`.

@@ -44,5 +44,5 @@ Most of the time was the last solve: 400 implicit increments of 0.25 µs. The ch
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh part.step --units SI-mm --size 5 --face FIXED=x:0 --face END=x:200`.
+The mesh in `job.inp` comes from `fh mesh part.step --size 5 --face FIXED=x:0 --face END=x:200`.
 `part.step` is a box of 200 x 10 x 10 mm with a corner at the origin.

@@ -41,5 +41,5 @@ The chat run found 2 gaps:
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh part.step --units SI-mm --size 5 --face BASE=x:0 --face TIP=x:100 --face Y0=y:0 --face Y1=y:10 --face Z0=z:0 --face Z1=z:10`.
+The mesh in `job.inp` comes from `fh mesh part.step --size 5 --face BASE=x:0 --face TIP=x:100 --face Y0=y:0 --face Y1=y:10 --face Z0=z:0 --face Z1=z:10`.
 `part.step` is a box of 100 x 10 x 10 mm with a corner at the origin.

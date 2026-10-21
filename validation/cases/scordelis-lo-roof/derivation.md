@@ -48,7 +48,7 @@ The mesh file `part.inp` comes from these commands in this folder. `job.inp` inc
 
 ```
 fh-python part.py
-fh mesh part.step --units SI-mm --shell --size 1250 -o part.inp \
+fh mesh part.step --shell --size 1250 -o part.inp \
   --nodes END0=x:0 --nodes END1=x:50000 \
   --nodes TIP=point:25000,16069.69024216,19151.11107797
 ```
