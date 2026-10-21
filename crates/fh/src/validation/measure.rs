@@ -1,6 +1,6 @@
-//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono and topology cases
-//! of a case with their programs and the topology loop, and read one number per reference from the
-//! text results.
+//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS and
+//! topology cases of a case with their programs and the topology loop, and read one number per
+//! reference from the text results.
 
 use std::path::Path;
 
@@ -10,11 +10,12 @@ use crate::ccx::Ccx;
 use crate::chrono::{self, Chrono};
 use crate::foam::{self, Foam};
 use crate::getdp::{self, GetDp};
+use crate::lammps::{self, Lammps};
 use crate::precice::{self, Precice};
 use crate::topology;
 
-/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono or the topology loop in a scratch folder on the
-/// input of a case.
+/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or the topology loop in a scratch folder
+/// on the input of a case.
 #[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
@@ -22,6 +23,7 @@ pub struct Subprocess {
     getdp: GetDp,
     chrono: Chrono,
     precice: Precice,
+    lammps: Lammps,
 }
 
 impl Solve for Subprocess {
@@ -52,9 +54,9 @@ impl Subprocess {
             .collect()
     }
 
-    /// Solve the OpenFOAM, GetDP, preCICE, Chrono or topology case of each check at the same time,
-    /// each in its own folder in `run`, and read the value of each check in the last row of its
-    /// table.
+    /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or topology case of each check at the
+    /// same time, each in its own folder in `run`, and read the value of each check in the last
+    /// row of its table.
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
@@ -75,6 +77,11 @@ impl Subprocess {
                             solved
                                 .map(|()| getdp::WORK)
                                 .map_err(|e| format!("getdp {folder}: {e}"))
+                        } else if lammps::is_case(&dir) {
+                            let solved = self.lammps.run(&dir, &out);
+                            solved
+                                .map(|()| lammps::WORK)
+                                .map_err(|e| format!("lmp {folder}: {e}"))
                         } else if topology::is_case(&dir) {
                             let cancel = crate::ccx::CancelToken::new();
                             let solved =

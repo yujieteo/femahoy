@@ -14,7 +14,7 @@ fh serve
 1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, see "Get `ccx`" below).
 2. `fh serve` starts a local daemon and opens the page in the browser (on a system that is not macOS, it only prints the address). Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Stop the daemon with Ctrl+C.
 
-For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folder for CFD (see "Get OpenFOAM" below), a GetDP case folder for electromagnetics or acoustics (see "Get GetDP" below), a preCICE case folder for fluid-structure interaction (see "Get preCICE" below), a topology case folder (`job.inp` and `topology.toml`) for topology optimization with `ccx`, or a Chrono case folder for multibody dynamics (see "Get PyChrono" below). `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer and the results of runs. The file opens with a double-click, and the chat uses it for its report.
+For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folder for CFD (see "Get OpenFOAM" below), a GetDP case folder for electromagnetics or acoustics (see "Get GetDP" below), a preCICE case folder for fluid-structure interaction (see "Get preCICE" below), a LAMMPS case folder for particles (see "Get LAMMPS" below), a topology case folder (`job.inp` and `topology.toml`) for topology optimization with `ccx`, or a Chrono case folder for multibody dynamics (see "Get PyChrono" below). `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer and the results of runs. The file opens with a double-click, and the chat uses it for its report.
 
 ## Get `ccx`
 
@@ -73,6 +73,15 @@ For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folde
 
 `./Allwmake` puts the OpenFOAM adapter in the user library folder of OpenFOAM (`$FOAM_USER_LIBBIN`). The fluid solver loads it from there. `fh` uses `$FH_CCX_PRECICE`. If `FH_CCX_PRECICE` is not set, it uses `ccx_preCICE` on PATH. The validation case is tested with preCICE 3.4.1, the CalculiX adapter 2.20.2 and the OpenFOAM adapter 1.4.0.
 
+## Get LAMMPS
+
+`fh` starts LAMMPS as a separate program for particles (SPH, DEM). You install it.
+
+- macOS: `brew install lammps`, then `export FH_LAMMPS=lmp_serial`.
+- Debian, Ubuntu: `sudo apt-get install lammps`. This puts `lmp` on PATH.
+
+`fh` uses `$FH_LAMMPS`. If `FH_LAMMPS` is not set, it uses `lmp` on PATH. The validation case is tested with LAMMPS 30 Sep 2026 on macOS and 7 Feb 2024 (Ubuntu 24.04) on Linux.
+
 ## Environment variables
 
 - `FH_GMSH`: the gmsh program of `fh mesh`, and of `fh run` and `fh validate` for a GetDP case.
@@ -81,6 +90,7 @@ For your own model, give `fh run` a CalculiX `.inp` file, an OpenFOAM case folde
 - `FH_GETDP`: the `getdp` program of `fh run` and `fh validate`.
 - `FH_PYCHRONO`: the Python with PyChrono of `fh run` and `fh validate`.
 - `FH_CCX_PRECICE`: the `ccx_preCICE` program (CalculiX with the preCICE adapter) of `fh run` and `fh validate`.
+- `FH_LAMMPS`: the `lmp` program of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
 - `FH_NO_OPEN`: a value that is not empty and not `0` stops `fh serve` from opening the browser.

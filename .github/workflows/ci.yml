@@ -73,6 +73,13 @@ jobs:
           tar xzf adapter.tgz
           (cd openfoam-adapter-1.4.0 && openfoam2512 ./Allwmake)
           ccx_preCICE -v || true
+      # fh starts LAMMPS for the particle case (README.md). The Ubuntu package has the SPH package.
+      # FH_REQUIRE_LAMMPS=1 makes each test that solves through the real LAMMPS fail if LAMMPS is
+      # absent.
+      - name: Install LAMMPS
+        run: |
+          sudo apt-get install -y --no-install-recommends lammps
+          lmp -h | head -3
       # Only the browser uses the window layer of the viewer, so the wasm build checks it.
       - name: Test
         run: |
@@ -85,3 +92,4 @@ jobs:
           FH_REQUIRE_GETDP: "1"
           FH_REQUIRE_PYCHRONO: "1"
           FH_REQUIRE_PRECICE: "1"
+          FH_REQUIRE_LAMMPS: "1"

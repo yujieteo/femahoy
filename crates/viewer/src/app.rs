@@ -144,13 +144,12 @@ impl ViewerApp {
 }
 
 impl Shown {
-    /// The bounds of the mesh and of the arrows of the loads, for the first view.
+    /// The bounds of the mesh, of the moved points and of the arrows of the loads, for the first view.
     fn view_bounds(&self) -> Option<Bounds> {
-        let mut b = self.mesh().bounds?;
-        let p = match &self.body {
-            Body::Preview(p) => p,
-            Body::Results(_, _, Loads { preview: Ok(p), .. }) => p,
-            Body::Results(..) => return Some(b),
+        let (mut b, p) = match &self.body {
+            Body::Preview(p) => (p.mesh.bounds?, p),
+            Body::Results(r, _, Loads { preview: Ok(p), .. }) => (results::view_bounds(r)?, p),
+            Body::Results(r, ..) => return results::view_bounds(r),
         };
         for (tail, head) in p.items.iter().filter_map(|i| p.arrow(i)) {
             for x in [tail, head] {
