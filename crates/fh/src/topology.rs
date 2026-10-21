@@ -34,7 +34,7 @@ use fh_core::inp::{flatten, parse};
 use fh_core::vtu::Field;
 use toml_edit::{Document, TableLike};
 
-use crate::ccx::{frd, prepare_run_dir, write_frames, CancelToken, Ccx};
+use crate::ccx::{frd, prepare_run_dir, stage_input, write_frames, CancelToken, Ccx};
 
 /// The folder of the files of the loop in a run folder.
 pub const WORK: &str = "topology";
@@ -53,6 +53,20 @@ const ITERATIONS: usize = 500;
 /// True when `dir` is a topology case: it has `topology.toml`.
 pub fn is_case(dir: &Path) -> bool {
     dir.join(SETTINGS).is_file()
+}
+
+/// Copy the topology case `case` into `dir`: `topology.toml`, and `job.inp` with its `*INCLUDE`
+/// files. Each copy is read-only.
+pub(crate) fn copy_case(case: &Path, dir: &Path) -> Result<(), String> {
+    stage_input(&case.join("job.inp"), dir, "job.inp")?;
+    let copy = || -> std::io::Result<()> {
+        let dst = dir.join(SETTINGS);
+        fs::copy(case.join(SETTINGS), &dst)?;
+        let mut perms = fs::metadata(&dst)?.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&dst, perms)
+    };
+    copy().map_err(|e| format!("case copy: {}: {e}", case.display()))
 }
 
 /// The keys of `topology.toml`.

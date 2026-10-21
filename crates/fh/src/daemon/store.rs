@@ -88,8 +88,11 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     let input = if foam::is_case(source) {
         foam::copy_case(source, &dir.join(IN_DIR), true)?;
         dir.join(IN_DIR)
-    } else if getdp::is_case(source) || topology::is_case(source) {
+    } else if getdp::is_case(source) {
         getdp::copy_case(source, &dir.join(IN_DIR), true)?;
+        dir.join(IN_DIR)
+    } else if topology::is_case(source) {
+        topology::copy_case(source, &dir.join(IN_DIR))?;
         dir.join(IN_DIR)
     } else {
         stage(source, &dir.join(IN_DIR))?;

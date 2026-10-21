@@ -299,6 +299,30 @@ fn the_page_reads_the_run_and_preview_folders() {
     assert!(preview.contains("write a relative path"), "{preview}");
 }
 
+/// A topology case keeps the `*INCLUDE` files of its `job.inp` that are in a subfolder.
+#[test]
+fn a_topology_run_copies_the_include_files_of_its_job() {
+    let lab = Lab::new("topology-include");
+    let case = lab.dir.join("project");
+    let mesh = "*NODE\n1, 0, 0, 0\n";
+    let rest = "*BOUNDARY\n1, 1, 3\n";
+    fs::create_dir_all(case.join("mesh")).unwrap();
+    fs::write(case.join("mesh/part.inp"), mesh).unwrap();
+    fs::write(
+        case.join("job.inp"),
+        format!("*INCLUDE, INPUT=mesh/part.inp\n{rest}"),
+    )
+    .unwrap();
+    fs::write(case.join("topology.toml"), "volume = 0.5\nradius = 1.5\n").unwrap();
+
+    let run = new_run(&lab.state(), &case).unwrap();
+    assert!(run.input.join("topology.toml").is_file());
+    let bearer = lab.bearer();
+    let auth = [("Authorization", bearer.as_str())];
+    let input = lab.get(&format!("/api/v1/runs/{}/input", run.id), &auth);
+    assert_eq!((input.status, input.text()), (200, format!("{mesh}{rest}")));
+}
+
 /// The solve of a case that asks for no field (no `*NODE FILE`, no `*EL FILE`) ends with code 0
 /// and a `results.pvd` with no step file. The viewer shows such a run as an error, so the list
 /// leaves it out.
