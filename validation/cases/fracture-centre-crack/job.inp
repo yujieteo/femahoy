@@ -1,0 +1,24 @@
+** units: SI-mm
+** 1/4 of a steel plate of 100 x 300 mm with a centre crack of 50 mm, in plane strain.
+** 100 MPa of tension on the top edge. mesh.py writes mesh.inp: the mesh, the sets, and the
+** equation that makes U2 of the node set KI equal to the stress intensity factor K_I.
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+*SOLID SECTION, ELSET=PLATE, MATERIAL=STEEL
+1.0
+*STEP
+*STATIC
+*BOUNDARY
+LIGAMENT, 2, 2
+LEFT, 1, 1
+*DLOAD
+TOP, P2, -100.0
+*NODE PRINT, NSET=KI
+U
+*NODE FILE, OUTPUT=3D
+U
+*EL FILE
+S
+*END STEP
