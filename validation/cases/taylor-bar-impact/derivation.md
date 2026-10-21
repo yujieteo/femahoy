@@ -55,7 +55,7 @@ The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the rad
 
 ## Tolerance
 
-The tolerance is `abs_tol = 0.85` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of very different sizes (10.74 mm and 3.82 mm).
+The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of very different sizes (10.74 mm and 3.82 mm).
 
 | Cause | Basis | Length | Radius |
 |---|---|---:|---:|
@@ -63,12 +63,12 @@ The tolerance is `abs_tol = 0.85` (mm) and `rel_tol = 0`, the same for both chec
 | The model and the reference | The extrapolated value against DYNA3D. DYNA3D used its own element and mesh. On the same page, the Ansys results differ from DYNA3D by up to 5 % in the radius and 7 % in the length | 0.08 mm | 0.25 mm |
 | Sum | | 0.37 mm | 0.80 mm |
 
-`abs_tol` is the larger sum, 0.80 mm, rounded up to 0.85 mm.
+`abs_tol` is the larger sum, 0.80 mm.
 
 | Check | Model (mm) | Reference (mm) | Difference (mm) | Part of the tolerance |
 |---|---:|---:|---:|---:|
-| `length` (u3) | -11.106 | -10.74 | -0.366 | 43 % |
-| `radius` (u1) | 3.523 | 3.82 | -0.297 | 35 % |
+| `length` (u3) | -11.106 | -10.74 | -0.366 | 46 % |
+| `radius` (u1) | 3.523 | 3.82 | -0.297 | 37 % |
 
 The tolerance stops these errors:
 
@@ -77,7 +77,7 @@ The tolerance stops these errors:
 - `C3D8` in place of `C3D8R` (mesh 6 6 64 with no grading): the radius is 5.82 mm, 1.20 mm away. The length is 20.84 mm, 0.82 mm away: it passes alone.
 - The stable increment of the start (mesh 6 6 64 with no grading, 1.11e-8 s): ccx stops with `*ERROR: no convergence in incplas`.
 
-The coarse mesh (4 4 27) passes. Its largest part of the tolerance is 78 % (`radius`).
+The coarse mesh (4 4 27) passes. Its largest part of the tolerance is 83 % (`radius`).
 
 ## Not in the check
 

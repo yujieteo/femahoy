@@ -8,9 +8,9 @@
 # The tolerance is in mm, the same for both checks (derivation.md, "Tolerance"):
 # - The mesh error of the radius, from 3 meshes: 0.55 mm.
 # - The extrapolated model and the reference differ by 0.25 mm in the radius.
-# abs_tol = 0.55 + 0.25 = 0.80 mm, rounded up.
+# abs_tol = 0.55 + 0.25 = 0.80 mm.
 rel_tol = 0.0
-abs_tol = 0.85
+abs_tol = 0.80
 
 [length]
 value = -10.74
