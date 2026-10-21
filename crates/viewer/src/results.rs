@@ -389,6 +389,19 @@ pub fn deformed_positions(mesh: &RenderMesh, step: &Step, scale: f64) -> Vec<[f3
         .collect()
 }
 
+/// The bounds of the first view. When the points move, the bounds also hold the moved points of
+/// all steps, at scale 1.
+pub fn view_bounds(results: &Results) -> Option<mesh::Bounds> {
+    if !results.moves {
+        return results.mesh.bounds;
+    }
+    let mut points = results.mesh.positions.clone();
+    for step in &results.steps {
+        points.extend(deformed_positions(&results.mesh, step, 1.0));
+    }
+    mesh::bounds(&points)
+}
+
 /// The smallest and the largest value of a field.
 pub fn range(field: &ScalarField) -> (f64, f64) {
     field
@@ -606,6 +619,18 @@ mod tests {
             let want = grid.points[r.mesh.source_node[i] as usize];
             assert_eq!(p.map(f64::from), want, "position {i}");
         }
+    }
+
+    /// The first view holds the particles of all steps, and not only of the first step.
+    #[test]
+    fn view_bounds_hold_the_moved_points_of_all_steps() {
+        let r = crate::load_run(&fixture_dir().join("../particles-2step")).unwrap();
+        let first = r.mesh.bounds.unwrap();
+        let b = view_bounds(&r).unwrap();
+        assert_eq!(b.min, first.min);
+        assert_eq!(b.max, [first.max[0] + 0.5, first.max[1], first.max[2]]);
+        let fixed = crate::load_run(&fixture_dir()).unwrap();
+        assert_eq!(view_bounds(&fixed), fixed.mesh.bounds);
     }
 
     /// The positions that the shader bands agree with the bands of the legend.
