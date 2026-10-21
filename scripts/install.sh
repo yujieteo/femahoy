@@ -59,14 +59,9 @@ if ! command -v cargo >/dev/null 2>&1; then
   missing+=("Rust (cargo and rustup): curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain none")
 elif command -v rustup >/dev/null 2>&1; then
   if ! rustup toolchain list 2>/dev/null | grep -q "^$toolchain-"; then
-    missing+=("Rust $toolchain: rustup toolchain install $toolchain --profile minimal --component rustfmt,clippy --target $wasm")
+    missing+=("Rust $toolchain: rustup toolchain install $toolchain --profile minimal --target $wasm")
   else
     installed=$(rustup component list --toolchain "$toolchain" --installed 2>/dev/null || true)
-    for component in rustfmt clippy; do
-      if ! grep -q "^$component-" <<<"$installed"; then
-        missing+=("$component of Rust $toolchain: rustup component add $component --toolchain $toolchain")
-      fi
-    done
     if ! grep -qx "rust-std-$wasm" <<<"$installed"; then
       missing+=("the $wasm target of Rust $toolchain: rustup target add $wasm --toolchain $toolchain")
     fi

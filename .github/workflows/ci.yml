@@ -13,7 +13,6 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
       # The validation cases are tested with ccx 2.23 (README.md). The Ubuntu package is older,
