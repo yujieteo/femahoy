@@ -1,0 +1,39 @@
+# The hole of minimum stress concentration in a plate under the biaxial remote stress sx = 1,
+# sy = 0.5. The optimum is the ellipse with the axis ratio a/b = sx/sy = 2 (power 2 of the
+# superellipse), and its hoop stress is sx + sy = 1.5 at each point of the edge. No hole shape
+# gives a lower peak: G. P. Cherepanov, "Inverse problems of the plane theory of elasticity",
+# J. Appl. Math. Mech. 38 (1974) 915-931, and the hoop stress of C. E. Inglis, "Stresses in a
+# plate due to the presence of cracks and sharp corners", Trans. Inst. Naval Archit. 55 (1913)
+# 219-241. derivation.md gives the model, the loop and the studies.
+#
+# The model is the shape case L40: the loop of fh with gmsh and ccx changes the ratio and the
+# power of the superellipse hole to make the largest von Mises stress on the edge a minimum.
+# The tolerance (derivation.md, "Tolerance"):
+# - The stop rule: the loop stops when the simplex is smaller than 0.001 of each range. This is
+#   0.15 % of the ratio and 0.12 % of the power. The peak increases by at most 1 per unit of
+#   ratio and 1.9 per unit of power, thus by at most 0.5 % at the stop.
+# - The plate of half side 40, not an infinite plate: -0.05 % of the peak, and a shift of the
+#   optimum of about 0.1 %.
+# - The mesh: below 0.01 % of the peak at the optimum (0.025 to 0.00625 at the edge).
+# The ratio and the power get at most 0.25 %, and the peak gets -0.06 % to +0.5 %.
+# rel_tol = 0.5 %.
+rel_tol = 0.005
+abs_tol = 0.0
+
+[ratio]
+value = 2.0
+case = "L40"
+file = "optimum.txt"
+column = "ratio"
+
+[power]
+value = 2.0
+case = "L40"
+file = "optimum.txt"
+column = "power"
+
+[objective]
+value = 1.5
+case = "L40"
+file = "optimum.txt"
+column = "objective"

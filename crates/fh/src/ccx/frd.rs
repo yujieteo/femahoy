@@ -72,9 +72,18 @@ pub struct Frd {
     points: Vec<[f64; 3]>,
     cell_types: Vec<u8>,
     cells: Vec<Vec<u32>>,
+    /// The node number of each point.
+    pub nodes: Vec<u32>,
     /// The element number of each cell.
     pub elements: Vec<u32>,
     pub frames: Vec<Frame>,
+}
+
+impl Frame {
+    /// The field `name` of the frame, with a value for each point of the file.
+    pub fn field(&self, name: &str) -> Option<&Field> {
+        self.fields.iter().find(|f| f.name == name)
+    }
 }
 
 impl Frd {
@@ -218,6 +227,7 @@ pub fn read(text: &str) -> Result<Frd, String> {
                     };
                     index.insert(id, frd.points.len() as u32);
                     frd.points.push([xyz[0], xyz[1], xyz[2]]);
+                    frd.nodes.push(id);
                 }
                 Block::Elements => {
                     let number = cell(line, 3, 10).and_then(|s| s.trim().parse().ok());
@@ -323,8 +333,13 @@ mod tests {
         }
         text += " 9999\n";
         let frd = read(&text).unwrap();
+        assert_eq!(frd.nodes, [7]);
         assert_eq!(frd.elements, [1]);
         assert_eq!(frd.frames.len(), 1);
+        assert_eq!(
+            frd.frames[0].field("MISES").unwrap().as_f64(),
+            Some(&[2.0][..])
+        );
         let grid = frd.grid(&frd.frames[0]);
         assert_eq!(frd.frames[0].time, 2.0);
         let s = grid.point_field("S").unwrap();

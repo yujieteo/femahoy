@@ -1,5 +1,5 @@
-//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS and
-//! topology cases of a case with their programs and the topology loop, and read one number per
+//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, topology
+//! and shape optimization cases of a case with their programs and loops, and read one number per
 //! reference from the text results.
 
 use std::path::Path;
@@ -11,6 +11,7 @@ use crate::chrono::{self, Chrono};
 use crate::foam::{self, Foam};
 use crate::getdp::{self, GetDp};
 use crate::lammps::{self, Lammps};
+use crate::optimize;
 use crate::precice::{self, Precice};
 use crate::topology;
 
@@ -89,6 +90,13 @@ impl Subprocess {
                             solved
                                 .map(|_| topology::WORK)
                                 .map_err(|e| format!("topology {folder}: {e}"))
+                        } else if optimize::is_case(&dir) {
+                            let cancel = crate::ccx::CancelToken::new();
+                            let solved =
+                                optimize::run_with(&self.solver, &dir, &out, &cancel, &mut |_| {});
+                            solved
+                                .map(|()| optimize::WORK)
+                                .map_err(|e| format!("optimize {folder}: {e}"))
                         } else if chrono::is_case(&dir) {
                             let solved = self.chrono.run(&dir, &out);
                             solved

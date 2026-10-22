@@ -1,7 +1,7 @@
 //! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, a GetDP case
 //! with GetDP, a preCICE case with OpenFOAM and CalculiX coupled by preCICE, a Chrono case with
-//! Project Chrono, or a LAMMPS case with LAMMPS, or optimize the topology of a CalculiX model, and
-//! show the progress.
+//! Project Chrono, or a LAMMPS case with LAMMPS, or optimize the topology or the shape of a
+//! CalculiX model, and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
@@ -17,6 +17,8 @@
 //!   `$FH_LAMMPS`, else `lmp` on `PATH`.
 //! - `fh run CASE` optimizes the topology case folder (`job.inp` and `topology.toml`) with a loop
 //!   of CalculiX solves. See `fh::topology`.
+//! - `fh run CASE` optimizes the shape case folder (`optimize.toml`, `mesh.geo` and `job.inp`)
+//!   with a loop of gmsh meshes and CalculiX solves. See `fh::optimize`.
 //! - `fh run CASE` gives Chrono the case folder (`chrono.py`, see `fh::chrono`). The Python of
 //!   PyChrono is `$FH_PYCHRONO`, else `python3` on `PATH`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
@@ -44,6 +46,7 @@ use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
 use fh::lammps::{self, Lammps};
+use fh::optimize;
 use fh::precice::{self, Precice};
 use fh::topology;
 
@@ -60,6 +63,8 @@ CalculiX input solid/job.inp. fh run starts blockMesh (as for OpenFOAM), then th
 of fluid and ccx_preCICE in solid at the same time, then foamToVTK.\n\
 CASE is also a topology case folder with job.inp and topology.toml. fh run solves job.inp with \
 ccx in each iteration of the loop.\n\
+CASE is also a shape optimization case folder with optimize.toml, mesh.geo and job.inp. fh run \
+starts gmsh and ccx for each design of the loop.\n\
 CASE is also a Chrono case folder with chrono.py. fh run starts python3 chrono.py, with the Python \
 of PyChrono.\n\
 CASE is also a LAMMPS case folder with case.lmp. fh run starts lmp -in case.lmp, then shows each \
@@ -126,6 +131,7 @@ enum Solver {
     GetDp,
     Precice,
     Topology,
+    Optimize,
     Chrono,
     Lammps,
 }
@@ -142,7 +148,8 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
         || chrono::is_case(&full)
         || precice::is_case(&full)
         || lammps::is_case(&full)
-        || topology::is_case(&full);
+        || topology::is_case(&full)
+        || optimize::is_case(&full);
     if (full.is_file() && inp) || case {
         Ok(full)
     } else {
@@ -150,7 +157,8 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
             "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
              system/controlDict), a GetDP case folder (with case.pro), a preCICE case folder \
              (with precice-config.xml), a Chrono case folder (with chrono.py), a LAMMPS case \
-             folder (with case.lmp) or a topology case folder (with topology.toml)"
+             folder (with case.lmp), a topology case folder (with topology.toml) or a shape \
+             optimization case folder (with optimize.toml)"
         ))
     }
 }
@@ -231,6 +239,16 @@ fn report(
                 "Add *NODE FILE or *EL FILE to the *STEP of job.inp to write a field",
             )
         }
+        Solver::Optimize => (
+            format!(
+                "{0}/{1} (each solve), {0}/{2} (the best design), {0}/solve/ccx/job.dat (the \
+                 last solve)",
+                out.join(optimize::WORK).display(),
+                optimize::HISTORY,
+                optimize::OPTIMUM
+            ),
+            "Add *NODE FILE or *EL FILE to the *STEP of job.inp to write a field",
+        ),
     };
     println!("fh run: text results {results}");
     if result_frames(out) == 0 {
@@ -279,6 +297,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Solver::Lammps
     } else if topology::is_case(&file) {
         Solver::Topology
+    } else if optimize::is_case(&file) {
+        Solver::Optimize
     } else if chrono::is_case(&file) {
         Solver::Chrono
     } else {
@@ -349,7 +369,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             lammps.memory_limit = o.memory.unwrap_or(lammps.memory_limit);
             lammps.run_with(&run.input, &run.out, &cancel, on_program)
         }
-        Solver::Ccx | Solver::Topology => {
+        Solver::Ccx | Solver::Topology | Solver::Optimize => {
             let mut ccx = Ccx::new();
             ccx.timeout = o.timeout.or(ccx.timeout);
             ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
@@ -361,6 +381,20 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
                     );
                 })
                 .map(|o| end = Some(o))
+            } else if solver == Solver::Optimize {
+                optimize::run_with(&ccx, &run.input, &run.out, &cancel, &mut |s| {
+                    let values: Vec<String> = s
+                        .variables
+                        .iter()
+                        .map(|(name, value)| format!("{name} {value:.6}"))
+                        .collect();
+                    println!(
+                        "  solve {} {} objective {:.6e}",
+                        s.number,
+                        values.join(" "),
+                        s.objective
+                    );
+                })
             } else {
                 ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
                     println!("  progress step {} increment {}", p.step, p.increment);

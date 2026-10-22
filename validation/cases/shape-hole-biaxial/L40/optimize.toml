@@ -1,0 +1,8 @@
+# The loop changes the hole shape to make the largest von Mises stress on the hole edge (the node
+# set HOLE) a minimum. Each variable is a DefineConstant of mesh.geo.
+field = "MISES"
+set = "HOLE"
+
+[variables]
+ratio = { start = 1.0, low = 1.0, high = 4.0 }
+power = { start = 3.0, low = 1.6, high = 4.0 }
