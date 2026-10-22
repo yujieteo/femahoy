@@ -4,6 +4,8 @@
 //! with each `*INCLUDE` file, in `<run-dir>/ccx`. Then it converts every nodal field of the
 //! `.frd` file into one VTU file for each increment and each mode in the file, and writes
 //! `results.pvd` in the run folder.
+//! After a `*STEADY STATE DYNAMICS` step, it writes `<run-dir>/ccx/rms.txt`, the RMS of the
+//! response of each node that the step prints (see [`rms`]).
 //! `ccx` is GPL, so femahoy only starts it as a separate program.
 //!
 //! # Limits
@@ -19,6 +21,7 @@
 //! lives longer than `fh`. OpenFOAM runs with the same limits ([`supervise`]).
 
 pub(crate) mod frd;
+pub mod rms;
 mod sys;
 
 use std::fs;
@@ -36,6 +39,8 @@ use crate::vtu::{write_pvd, write_vtu};
 pub use sys::total_memory;
 
 pub const PVD_FILE: &str = "results.pvd";
+/// The RMS table of a steady state step in `<run-dir>/ccx`.
+pub const RMS_FILE: &str = "rms.txt";
 /// A run puts this file in a run folder that it made. It clears only a folder that has the
 /// file.
 const RUN_MARKER: &str = ".fh-run";
@@ -174,6 +179,20 @@ pub(crate) fn write_frames(
     atomic(PVD_FILE, write_pvd(&entries, units, multibody).as_bytes())
 }
 
+/// Write `rms.txt` in `work` from `job.dat`, when the input `text` has a steady state step.
+fn write_rms(work: &Path, text: &str) -> Result<(), String> {
+    if !text.to_ascii_uppercase().contains("*STEADY STATE DYNAMICS") {
+        return Ok(());
+    }
+    let dat = fs::read_to_string(work.join(format!("{JOB}.dat")))
+        .map_err(|e| format!("{JOB}.dat: {e}"))?;
+    let sets = rms::of_dat(&dat).map_err(|e| format!("{JOB}.dat: {e}"))?;
+    if sets.is_empty() {
+        return Ok(());
+    }
+    fs::write(work.join(RMS_FILE), rms::table(&sets)).map_err(|e| format!("{RMS_FILE}: {e}"))
+}
+
 /// The number of result frames that `results.pvd` in the run folder `out` lists. A run folder
 /// with no `results.pvd` has none.
 pub fn result_frames(out: &Path) -> usize {
@@ -300,6 +319,7 @@ impl Ccx {
         if !status.success() || log.contains("*ERROR") {
             return Err(ccx_failure(status, &log, &log_file));
         }
+        write_rms(&work, &flat.text)?;
         let file = work.join(format!("{JOB}.frd"));
         let bytes = fs::read(&file).map_err(|e| format!("{JOB}.frd: {e}"))?;
         let results = frd::read(&String::from_utf8_lossy(&bytes))?;
