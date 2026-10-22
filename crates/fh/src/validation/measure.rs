@@ -13,6 +13,7 @@ use crate::getdp::{self, GetDp};
 use crate::lammps::{self, Lammps};
 use crate::precice::{self, Precice};
 use crate::topology;
+use crate::Solver;
 
 /// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or the topology loop in a scratch folder
 /// on the input of a case.
@@ -72,38 +73,50 @@ impl Subprocess {
                 .map(|folder| {
                     scope.spawn(move || {
                         let (dir, out) = (input.join(folder), run.join(folder));
-                        if getdp::is_case(&dir) {
-                            let solved = self.getdp.run(&dir, &out);
-                            solved
-                                .map(|()| getdp::WORK)
-                                .map_err(|e| format!("getdp {folder}: {e}"))
-                        } else if lammps::is_case(&dir) {
-                            let solved = self.lammps.run(&dir, &out);
-                            solved
-                                .map(|()| lammps::WORK)
-                                .map_err(|e| format!("lmp {folder}: {e}"))
-                        } else if topology::is_case(&dir) {
-                            let cancel = crate::ccx::CancelToken::new();
-                            let solved =
-                                topology::run_with(&self.solver, &dir, &out, &cancel, &mut |_| {});
-                            solved
-                                .map(|_| topology::WORK)
-                                .map_err(|e| format!("topology {folder}: {e}"))
-                        } else if chrono::is_case(&dir) {
-                            let solved = self.chrono.run(&dir, &out);
-                            solved
-                                .map(|()| chrono::WORK)
-                                .map_err(|e| format!("chrono {folder}: {e}"))
-                        } else if precice::is_case(&dir) {
-                            let solved = self.precice.run(&dir, &out);
-                            solved
-                                .map(|()| precice::WORK)
-                                .map_err(|e| format!("precice {folder}: {e}"))
-                        } else {
-                            let solved = self.foam.run(&dir, &out);
-                            solved
-                                .map(|()| foam::WORK)
-                                .map_err(|e| format!("openfoam {folder}: {e}"))
+                        match crate::solver(&dir) {
+                            Some(Solver::GetDp) => {
+                                let solved = self.getdp.run(&dir, &out);
+                                solved
+                                    .map(|()| getdp::WORK)
+                                    .map_err(|e| format!("getdp {folder}: {e}"))
+                            }
+                            Some(Solver::Lammps) => {
+                                let solved = self.lammps.run(&dir, &out);
+                                solved
+                                    .map(|()| lammps::WORK)
+                                    .map_err(|e| format!("lmp {folder}: {e}"))
+                            }
+                            Some(Solver::Topology) => {
+                                let cancel = crate::ccx::CancelToken::new();
+                                let solved = topology::run_with(
+                                    &self.solver,
+                                    &dir,
+                                    &out,
+                                    &cancel,
+                                    &mut |_| {},
+                                );
+                                solved
+                                    .map(|_| topology::WORK)
+                                    .map_err(|e| format!("topology {folder}: {e}"))
+                            }
+                            Some(Solver::Chrono) => {
+                                let solved = self.chrono.run(&dir, &out);
+                                solved
+                                    .map(|()| chrono::WORK)
+                                    .map_err(|e| format!("chrono {folder}: {e}"))
+                            }
+                            Some(Solver::Precice) => {
+                                let solved = self.precice.run(&dir, &out);
+                                solved
+                                    .map(|()| precice::WORK)
+                                    .map_err(|e| format!("precice {folder}: {e}"))
+                            }
+                            _ => {
+                                let solved = self.foam.run(&dir, &out);
+                                solved
+                                    .map(|()| foam::WORK)
+                                    .map_err(|e| format!("openfoam {folder}: {e}"))
+                            }
                         }
                     })
                 })
