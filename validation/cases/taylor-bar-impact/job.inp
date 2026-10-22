@@ -1,0 +1,37 @@
+** units: SI-mm
+** Taylor bar: a copper bar, radius 3.2 mm and length 32.4 mm, hits a rigid frictionless wall at
+** 227 m/s. A quarter of the bar with 2 symmetry planes. The wall holds u3 = 0 on the face z = 0
+** and lets it slide in x and y. The step ends at 80 us, when the bar is almost at rest.
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=COPPER
+*ELASTIC
+117000.0, 0.35
+*DENSITY
+8.93E-9
+** Isotropic hardening: yield stress 400 MPa, hardening modulus 100 MPa.
+*PLASTIC
+400.0, 0.0
+900.0, 5.0
+*SOLID SECTION, ELSET=BAR, MATERIAL=COPPER
+*INITIAL CONDITIONS, TYPE=VELOCITY
+NALL, 3, -227000.0
+WALL, 3, 0.0
+*BOUNDARY
+SYMX, 1
+SYMY, 2
+WALL, 3
+*STEP, NLGEOM, INC=1000000
+** Explicit. ccx keeps the stable increment of the start, 1.1e-8 s, but the elements at the wall
+** become flat. Thus the 4th value sets the increment to 4e-9 s.
+*DYNAMIC, EXPLICIT
+4.0E-9, 8.0E-5, 1.0E-12, 4.0E-9
+** ccx has 1 output frequency, the last FREQUENCY of the step: 2500 increments are 10 us.
+*NODE FILE, FREQUENCY=2500
+U
+*EL FILE, FREQUENCY=2500
+S, PEEQ
+*NODE PRINT, NSET=TOP, FREQUENCY=2500
+U
+*NODE PRINT, NSET=RIM, FREQUENCY=2500
+U
+*END STEP
