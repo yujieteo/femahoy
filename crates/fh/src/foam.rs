@@ -10,16 +10,17 @@
 //! 2. `setFields`, when the case has `system/setFieldsDict`, for example to put the water in an
 //!    `interFoam` case;
 //! 3. the application that `system/controlDict` names, for example `simpleFoam`;
-//! 4. `foamToVTK` for the last time, with `-allRegions` when the case has
-//!    `constant/regionProperties`.
+//! 4. `foamToVTK` for each time that the case writes, `0` included, with `-allRegions` when
+//!    the case has `constant/regionProperties`.
 //!
 //! Each program writes its output to `<run-dir>/foam/log.<program>`, or
 //! `log.<program>.<region>` for 1 region. The function objects of the case write their text
-//! results to `<run-dir>/foam/postProcessing`. Then the run writes the cell fields of the last
-//! time (for example `U`, `p` and `nut`) to `step-1.vtu` and `results.pvd`. A case with regions
-//! gives 1 grid with the cells of all regions. A region with no field of a name has the value 0
-//! there, for example `U` in a solid. The VTU file has no point fields, because the viewer takes
-//! a point field `U` as a displacement.
+//! results to `<run-dir>/foam/postProcessing`. Then the run writes the cell fields of each time
+//! (for example `U`, `p` and `nut`) to `step-N.vtu`, in the order of the times, and
+//! `results.pvd`. The case sets the times (`writeInterval` in `system/controlDict`). A case
+//! with regions gives 1 grid for each time with the cells of all regions. A region with no
+//! field of a name has the value 0 there, for example `U` in a solid. The VTU files have no
+//! point fields, because the viewer takes a point field `U` as a displacement.
 //!
 //! OpenFOAM is GPL, so femahoy only starts it as a separate program. A run has the limits of a
 //! run of `ccx` (see [`crate::ccx`]). The time limit counts all the programs of a run.
@@ -41,10 +42,9 @@ pub const WORK: &str = "foam";
 const CASE_DIRS: [&str; 3] = ["system", "constant", "0"];
 /// The file of a case with regions, for example a fluid and a solid.
 const REGIONS: &str = "constant/regionProperties";
-/// The last program of a run: the cell fields of the last time as 1 legacy VTK file.
-pub(crate) const TO_VTK: [&str; 6] = [
+/// The last program of a run: the cell fields of each time as 1 legacy VTK file.
+pub(crate) const TO_VTK: [&str; 5] = [
     "foamToVTK",
-    "-latestTime",
     "-legacy",
     "-ascii",
     "-no-boundary",
@@ -365,22 +365,18 @@ impl Foam {
     }
 }
 
-/// The 1 `.vtk` file in the folder `dir`.
-fn vtk_file(dir: &Path) -> Result<PathBuf, String> {
+/// The `.vtk` files in the folder `dir`, 1 for each time.
+fn vtk_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     let files: Vec<PathBuf> = fs::read_dir(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "vtk"))
         .collect();
-    match <[PathBuf; 1]>::try_from(files) {
-        Ok([file]) => Ok(file),
-        Err(files) => Err(format!(
-            "{} holds {} .vtk files, expected 1",
-            dir.display(),
-            files.len()
-        )),
+    if files.is_empty() {
+        return Err(format!("{} holds no .vtk file", dir.display()));
     }
+    Ok(files)
 }
 
 /// 1 grid with the cells of all `regions`. A region with no field of a name has the value 0
@@ -421,11 +417,12 @@ fn merge(regions: Vec<Grid>) -> Grid {
     all
 }
 
-/// Write the cell fields of the file of `foamToVTK` in `work/VTK`, or of the file in the folder
-/// of each region, to `step-1.vtu` and `results.pvd` in `run_dir`.
+/// Write the cell fields of each file of `foamToVTK` in `work/VTK` (1 for each time), or of
+/// the files in the folder of each region, to `step-N.vtu`, in the order of the times, and
+/// `results.pvd` in `run_dir`.
 pub(crate) fn write_result(work: &Path, run_dir: &Path) -> Result<(), String> {
     let vtk = work.join("VTK");
-    let files = if work.join(REGIONS).is_file() {
+    let dirs = if work.join(REGIONS).is_file() {
         let mut dirs: Vec<PathBuf> = fs::read_dir(&vtk)
             .map_err(|e| format!("{}: {e}", vtk.display()))?
             .flatten()
@@ -436,24 +433,37 @@ pub(crate) fn write_result(work: &Path, run_dir: &Path) -> Result<(), String> {
             return Err(format!("{} has no folder of a region", vtk.display()));
         }
         dirs.sort();
-        dirs.iter().map(|d| vtk_file(d)).collect::<Result<_, _>>()?
+        dirs
     } else {
-        vec![vtk_file(&vtk)?]
+        vec![vtk]
     };
-    let mut time = 0.0;
-    let mut grids = Vec::new();
-    for file in &files {
-        let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-        let (t, grid) = read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-        time = t;
-        grids.push(grid);
+    // The frames of each region, in the order of the times.
+    let mut regions = Vec::with_capacity(dirs.len());
+    for dir in &dirs {
+        let mut frames = Vec::new();
+        for file in vtk_files(dir)? {
+            let text = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+            frames.push(read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?);
+        }
+        frames.sort_by(|a, b| a.0.total_cmp(&b.0));
+        regions.push(frames);
     }
-    write_frames(
-        run_dir,
-        "unspecified",
-        false,
-        std::iter::once((time, merge(grids))),
-    )
+    let times = regions[0].len();
+    if let Some(dir) = dirs.iter().zip(&regions).find(|(_, f)| f.len() != times) {
+        return Err(format!(
+            "{} holds {} .vtk files, expected {times} as in {}",
+            dir.0.display(),
+            dir.1.len(),
+            dirs[0].display()
+        ));
+    }
+    let mut regions: Vec<_> = regions.into_iter().map(Vec::into_iter).collect();
+    let frames = (0..times).map(|_| {
+        let (time, grids): (Vec<f64>, Vec<Grid>) =
+            regions.iter_mut().filter_map(Iterator::next).unzip();
+        (time[0], merge(grids))
+    });
+    write_frames(run_dir, "unspecified", false, frames)
 }
 
 #[cfg(test)]

@@ -8,6 +8,9 @@ use crate::results::{self, Results, ScalarField, Step};
 /// `density`.
 const DEFAULT_FIELDS: [&str; 4] = ["density", "MISES", "U magnitude", "NT"];
 
+/// The time in seconds that a playing animation shows each step.
+pub const PLAY_SECONDS: f64 = 0.25;
+
 /// New vertex data: the drawn position of each render position, and the position and the
 /// contour position (0 to 1) of each triangle corner (three per triangle, see `face_vertices`).
 pub struct Geometry {
@@ -42,6 +45,8 @@ pub struct ViewState {
     pub ghost: bool,
     /// The contour field, or `None` for plain faces.
     pub field: Option<String>,
+    /// While the steps play: the time (in seconds) when the current step started to show.
+    pub playing: Option<f64>,
 }
 
 /// What the contour shows for the selected step.
@@ -72,7 +77,21 @@ impl ViewState {
             scale: results::auto_scale(results),
             ghost: true,
             field,
+            playing: None,
         }
+    }
+
+    /// At the time `now` of a playing animation, go to the next step when the current step has
+    /// shown for `PLAY_SECONDS`. The first step comes after the last. Gives the time to the
+    /// next change, or `None` when the steps do not play.
+    pub fn play(&mut self, now: f64, steps: usize) -> Option<f64> {
+        let since = self.playing?;
+        if now - since < PLAY_SECONDS {
+            return Some(since + PLAY_SECONDS - now);
+        }
+        self.step = (self.step + 1) % steps.max(1);
+        self.playing = Some(now);
+        Some(PLAY_SECONDS)
     }
 
     pub fn current<'a>(&self, results: &'a Results) -> &'a Step {
@@ -214,6 +233,25 @@ mod tests {
         // The geometry uses the selected step: the moved positions are x + scale * U.
         let want = results::deformed_positions(&r.mesh, &r.steps[0], v.scale);
         assert_eq!(first.positions, want);
+    }
+
+    #[test]
+    fn a_playing_animation_shows_each_step_in_turn() {
+        let r = fixture();
+        let mut v = ViewState::new(&r);
+        assert_eq!(v.play(10.0, 2), None, "the steps do not play at first");
+        v.playing = Some(10.0);
+        let wait = v.play(10.1, 2).unwrap();
+        assert!((wait - (PLAY_SECONDS - 0.1)).abs() < 1e-9, "{wait}");
+        assert_eq!(v.step, 1, "a step shows for PLAY_SECONDS");
+        assert_eq!(v.play(10.0 + PLAY_SECONDS, 2), Some(PLAY_SECONDS));
+        assert_eq!(
+            (v.step, v.playing),
+            (0, Some(10.0 + PLAY_SECONDS)),
+            "the first step comes after the last"
+        );
+        v.play(10.0 + 2.0 * PLAY_SECONDS, 2);
+        assert_eq!(v.step, 1);
     }
 
     #[test]

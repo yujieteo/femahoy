@@ -2,7 +2,8 @@
 //!
 //! [`Ccx::run`] gives the user's `ccx` (`$FH_CCX`, else `ccx` on PATH) the input file as it is,
 //! with each `*INCLUDE` file, in `<run-dir>/ccx`. Then it converts every nodal field of the
-//! `.frd` file into one VTU file for each step, and writes `results.pvd` in the run folder.
+//! `.frd` file into one VTU file for each increment and each mode in the file, and writes
+//! `results.pvd` in the run folder.
 //! `ccx` is GPL, so femahoy only starts it as a separate program.
 //!
 //! # Limits

@@ -188,15 +188,15 @@ fn fh_run_solves_a_validation_input_and_writes_the_result_files() {
 }
 
 /// A fake `openfoam`. It writes its arguments to CALLS, and the files that each program writes:
-/// the mesh, a time folder, and a legacy VTK file with 1 hexahedron and its cell fields. With
-/// FAIL as its program, it fails as OpenFOAM does.
+/// the mesh, a time folder, and for the times 100 and 0 a legacy VTK file with 1 hexahedron and
+/// its cell fields (U x is the time / 100). With FAIL as its program, it fails as OpenFOAM does.
 const FAKE_OPENFOAM: &str = r#"#!/bin/sh
 echo "$@" >> CALLS
 case "$1" in
 blockMesh) mkdir -p constant/polyMesh ;;
 FAIL) printf '\n--> FOAM FATAL ERROR: (openfoam-2512)\nUnknown solver FAIL\n\n    From main\n' ; exit 1 ;;
 simpleFoam) mkdir -p 100 ;;
-foamToVTK) mkdir -p VTK && printf '# vtk DataFile Version 2.0\ncase\nASCII\nDATASET UNSTRUCTURED_GRID\nFIELD FieldData 1\nTimeValue 1 1 float\n100\nPOINTS 8 float\n0 0 0 1 0 0 1 1 0 0 1 0\n0 0 1 1 0 1 1 1 1 0 1 1\nCELLS 1 9\n8 0 1 2 3 4 5 6 7\nCELL_TYPES 1\n12\nCELL_DATA 1\nFIELD FieldData 2\np 1 1 float\n-0.5\nU 3 1 float\n1 0.25 0\n' > VTK/case_100.vtk ;;
+foamToVTK) mkdir -p VTK && for t in 100 0; do printf '# vtk DataFile Version 2.0\ncase\nASCII\nDATASET UNSTRUCTURED_GRID\nFIELD FieldData 1\nTimeValue 1 1 float\n%s\nPOINTS 8 float\n0 0 0 1 0 0 1 1 0 0 1 0\n0 0 1 1 0 1 1 1 1 0 1 1\nCELLS 1 9\n8 0 1 2 3 4 5 6 7\nCELL_TYPES 1\n12\nCELL_DATA 1\nFIELD FieldData 2\np 1 1 float\n-0.5\nU 3 1 float\n%s 0.25 0\n' $t $((t / 100)) > VTK/case_$t.vtk; done ;;
 esac
 echo End
 "#;
@@ -233,7 +233,7 @@ fn fh_run_foam(dir: &std::path::Path, case: &std::path::Path) -> std::process::O
 }
 
 /// `fh run CASE` solves a copy of the case with blockMesh, the application of the case and
-/// foamToVTK, and writes the cell fields of the last time to the VTU file of the page.
+/// foamToVTK, and writes the cell fields of each time to a VTU file of the page, in time order.
 #[test]
 fn fh_run_solves_an_openfoam_case_with_each_program_in_turn() {
     let (dir, case) = foam_lab("run-foam", "simpleFoam");
@@ -256,7 +256,7 @@ fn fh_run_solves_an_openfoam_case_with_each_program_in_turn() {
     let calls = fs::read_to_string(dir.join("calls")).unwrap();
     let work = fs::canonicalize(&work).unwrap();
     let want = format!(
-        "blockMesh -case {0}\nsimpleFoam -case {0}\nfoamToVTK -latestTime -legacy -ascii \
+        "blockMesh -case {0}\nsimpleFoam -case {0}\nfoamToVTK -legacy -ascii \
          -no-boundary -no-point-data -case {0}\n",
         work.display()
     );
@@ -277,20 +277,24 @@ fn fh_run_solves_an_openfoam_case_with_each_program_in_turn() {
 
     let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
     assert!(
-        pvd.contains("step-1.vtu") && pvd.contains("timestep=\"100\""),
+        pvd.contains("timestep=\"0\" part=\"0\" file=\"step-1.vtu\"")
+            && pvd.contains("timestep=\"100\" part=\"0\" file=\"step-2.vtu\""),
         "{pvd}"
     );
-    let grid = fh_core::vtu::read_vtu(&fs::read(run.join("out/step-1.vtu")).unwrap()).unwrap();
-    assert_eq!((grid.points.len(), grid.cells.len()), (8, 1));
-    assert!(
-        grid.point_data.is_empty(),
-        "a point field U moves the mesh in the viewer"
-    );
-    let u = grid.cell_field("U").unwrap();
-    assert_eq!(
-        (u.components, u.values.as_slice()),
-        (3, &[1.0, 0.25, 0.0][..])
-    );
+    for (step, x) in [(1, 0.0), (2, 1.0)] {
+        let vtu = fs::read(run.join(format!("out/step-{step}.vtu"))).unwrap();
+        let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
+        assert_eq!((grid.points.len(), grid.cells.len()), (8, 1));
+        assert!(
+            grid.point_data.is_empty(),
+            "a point field U moves the mesh in the viewer"
+        );
+        let u = grid.cell_field("U").unwrap();
+        assert_eq!(
+            (u.components, u.values.as_slice()),
+            (3, &[x, 0.25, 0.0][..])
+        );
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 
