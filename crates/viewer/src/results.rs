@@ -149,9 +149,7 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
     ];
     for (location, data, count) in groups {
         for field in data.iter() {
-            let Some(values) = field.as_f64() else {
-                continue;
-            };
+            let values = &field.values;
             let c = field.components.max(1);
             if values.len() != c * count {
                 return fail(
@@ -264,15 +262,8 @@ pub fn load(
         let fields = fields_of(&grid, file)?;
         let mut displacement = match grid.point_field("U") {
             None => vec![[0.0; 3]; grid.points.len()],
-            Some(u) => match (u.as_f64(), u.components) {
-                (Some(u), 3) => u.as_chunks::<3>().0.to_vec(),
-                _ => {
-                    return fail(
-                        file,
-                        "the displacement field U must have 3 float components",
-                    )
-                }
-            },
+            Some(u) if u.components == 3 => u.values.as_chunks::<3>().0.to_vec(),
+            Some(_) => return fail(file, "the displacement field U must have 3 components"),
         };
         if let Some(f) = first.as_ref().filter(|f| f.points != grid.points) {
             moves = true;
@@ -512,9 +503,12 @@ mod tests {
         let r = crate::load_run(&dir).unwrap();
         for step in &r.steps {
             let grid = read_vtu(&std::fs::read(dir.join(&step.file)).unwrap()).unwrap();
-            let array = |f: Option<&Field>| f.unwrap().as_f64().unwrap().to_vec();
+            let array = |f: Option<&Field>| f.unwrap().values.clone();
             let (u, rf) = (array(grid.point_field("U")), array(grid.point_field("RF")));
-            let (s, mises) = (array(grid.cell_field("S")), array(grid.cell_field("MISES")));
+            let (s, mises) = (
+                array(grid.point_field("S")),
+                array(grid.point_field("MISES")),
+            );
             let comp = |name: &str| &step.field(name).unwrap().values;
             let mag = |v: &[f64]| (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
             let close = |got: f64, want: f64, what: &str| {
@@ -535,9 +529,9 @@ mod tests {
             let names = ["S11", "S22", "S33", "S12", "S23", "S13"];
             for e in 0..mises.len() {
                 for (k, name) in names.iter().enumerate() {
-                    assert_eq!(comp(name)[e], s[6 * e + k], "{name} cell {e}");
+                    assert_eq!(comp(name)[e], s[6 * e + k], "{name} point {e}");
                 }
-                assert_eq!(comp("MISES")[e], mises[e], "MISES cell {e}");
+                assert_eq!(comp("MISES")[e], mises[e], "MISES point {e}");
             }
         }
         // The second step doubles the load of the linear model.

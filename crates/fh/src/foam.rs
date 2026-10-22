@@ -369,9 +369,12 @@ mod tests {
         assert_eq!(grid.cells, vec![vec![0, 1, 2, 3, 4, 5, 6, 7]]);
         assert_eq!(grid.cell_types, vec![12]);
         assert!(grid.point_data.is_empty());
-        assert_eq!(grid.cell_field("p").unwrap().as_f64(), Some(&[-0.5][..]));
+        assert_eq!(grid.cell_field("p").unwrap().values.as_slice(), &[-0.5][..]);
         let u = grid.cell_field("U").unwrap();
-        assert_eq!((u.components, u.as_f64()), (3, Some(&[1.0, 0.25, 0.0][..])));
+        assert_eq!(
+            (u.components, u.values.as_slice()),
+            (3, &[1.0, 0.25, 0.0][..])
+        );
     }
 
     #[test]

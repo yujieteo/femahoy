@@ -178,7 +178,7 @@ fn fh_run_solves_a_validation_input_and_writes_the_result_files() {
     assert!(pvd.contains("step-1.vtu") && pvd.contains("SI-mm"), "{pvd}");
 
     let grid = fh_core::vtu::read_vtu(&fs::read(results.join("step-1.vtu")).unwrap()).unwrap();
-    let field = |name: &str| grid.point_field(name).unwrap().as_f64().unwrap().to_vec();
+    let field = |name: &str| grid.point_field(name).unwrap().values.clone();
     let stress = mean_of_first(&field("S"), 6);
     assert!((stress - 100.0).abs() < 1e-3, "S xx {stress}");
     let tip = field("U").iter().step_by(3).fold(0.0_f64, |m, v| m.max(*v));
@@ -287,7 +287,10 @@ fn fh_run_solves_an_openfoam_case_with_each_program_in_turn() {
         "a point field U moves the mesh in the viewer"
     );
     let u = grid.cell_field("U").unwrap();
-    assert_eq!((u.components, u.as_f64()), (3, Some(&[1.0, 0.25, 0.0][..])));
+    assert_eq!(
+        (u.components, u.values.as_slice()),
+        (3, &[1.0, 0.25, 0.0][..])
+    );
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -397,7 +400,7 @@ fn fh_run_solves_a_getdp_case_with_gmsh_then_getdp() {
         assert_eq!((grid.points.len(), grid.cell_types.clone()), (4, vec![10]));
         assert!(grid.point_data.is_empty());
         let j = grid.cell_field("j").unwrap();
-        assert_eq!((j.components, j.as_f64()), (3, Some(&want[..])));
+        assert_eq!((j.components, j.values.as_slice()), (3, &want[..]));
     }
     let _ = fs::remove_dir_all(&dir);
 }
@@ -497,12 +500,7 @@ fn fh_run_optimizes_a_topology_case_with_ccx_in_each_iteration() {
     assert!(last[1] < 0.5 * first[1], "{history}");
 
     let grid = fh_core::vtu::read_vtu(&fs::read(run.join("out/step-1.vtu")).unwrap()).unwrap();
-    let density = grid
-        .cell_field("density")
-        .unwrap()
-        .as_f64()
-        .unwrap()
-        .to_vec();
+    let density = grid.cell_field("density").unwrap().values.clone();
     assert_eq!(density.len(), 48);
     // The page draws only 3D cells: the 2D elements go to the page as hexahedra (VTK type 12).
     assert_eq!(grid.cell_types, vec![12; 48]);
@@ -617,7 +615,7 @@ fn fh_run_solves_a_chrono_case_with_python() {
     assert_eq!(grid.points, vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
     assert!(grid.cell_data.is_empty());
     let u = grid.point_field("U").unwrap();
-    assert_eq!(u.as_f64(), Some(&[0.0, 0.0, 0.0, -1.0, 1.0, 0.0][..]));
+    assert_eq!(u.values.as_slice(), &[0.0, 0.0, 0.0, -1.0, 1.0, 0.0][..]);
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -698,7 +696,7 @@ fn fh_run_solves_a_lammps_case_and_shows_the_particles() {
     assert_eq!(grid.points[8], [0.25, 0.25, -0.25]);
     assert_eq!(grid.points[14], [0.75, 0.75, 0.25]);
     let speed = grid.cell_field("speed").unwrap();
-    assert_eq!(speed.as_f64(), Some(&[1.0, 2.0][..]));
+    assert_eq!(speed.values.as_slice(), &[1.0, 2.0][..]);
     assert!(grid.cell_field("id").is_none() && grid.point_data.is_empty());
     let _ = fs::remove_dir_all(&dir);
 }

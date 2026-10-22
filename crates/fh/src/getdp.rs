@@ -407,18 +407,18 @@ mod tests {
         assert!(grid.point_data.is_empty());
         let b = grid.cell_field("b").unwrap();
         assert_eq!(
-            (b.components, b.as_f64()),
-            (3, Some(&[1.0, 0.0, 1.0, 2.0, 0.0, 0.0][..]))
+            (b.components, b.values.as_slice()),
+            (3, &[1.0, 0.0, 1.0, 2.0, 0.0, 0.0][..])
         );
         assert_eq!(
-            grid.cell_field("loss").unwrap().as_f64(),
-            Some(&[2.5, 0.0][..])
+            grid.cell_field("loss").unwrap().values.as_slice(),
+            &[2.5, 0.0][..]
         );
         // The imaginary part. The real view has no step 2.
         let (time, grid) = &frames[1];
         assert_eq!(*time, 1.0);
         let b = grid.cell_field("b").unwrap();
-        assert_eq!(b.as_f64(), Some(&[0.0, 0.0, 8.0, 0.0, 0.0, 0.0][..]));
+        assert_eq!(b.values.as_slice(), &[0.0, 0.0, 8.0, 0.0, 0.0, 0.0][..]);
         assert!(grid.cell_field("loss").is_none());
     }
 
@@ -440,7 +440,7 @@ mod tests {
         let want = [
             0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,
         ];
-        assert_eq!((u.components, u.as_f64()), (3, Some(&want[..])));
+        assert_eq!((u.components, u.values.as_slice()), (3, &want[..]));
     }
 
     #[test]

@@ -29,18 +29,13 @@ fn address_limits(requested: u64, inherited_hard: u64) -> [u64; 2] {
     [requested.min(inherited_hard); 2]
 }
 
-/// Thread count of `ccx`: `FH_THREADS` when set and above 0, else the CPU count.
+/// Thread count of `ccx`: the CPU count.
 #[cfg_attr(
     not(all(target_os = "linux", target_pointer_width = "64")),
     allow(dead_code)
 )]
 fn solver_threads() -> usize {
-    std::env::var("FH_THREADS")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .filter(|&n| n > 0)
-        .or_else(|| std::thread::available_parallelism().ok().map(|n| n.get()))
-        .unwrap_or(1)
+    std::thread::available_parallelism().map_or(1, |n| n.get())
 }
 
 /// Resident memory in bytes from the text of `/proc/<pid>/status`. `VmRSS` is in kB for

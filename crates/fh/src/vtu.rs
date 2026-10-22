@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-use fh_core::vtu::{Field, Grid, PvdEntry, Values};
+use fh_core::vtu::{Field, Grid, PvdEntry};
 
 fn err<T>(message: impl Into<String>) -> Result<T, String> {
     Err(message.into())
@@ -25,7 +25,6 @@ enum Source<'a> {
     Offsets(&'a [Vec<u32>]),
     Bytes(&'a [u8]),
     F64(&'a [f64]),
-    I32(&'a [i32]),
 }
 
 struct Array<'a> {
@@ -77,22 +76,17 @@ impl Array<'_> {
             }
             Source::Bytes(b) => w.write_all(b),
             Source::F64(v) => emit(w, v.iter(), |x| x.to_le_bytes()),
-            Source::I32(v) => emit(w, v.iter(), |x| x.to_le_bytes()),
         }
     }
 }
 
 fn field_array(f: &Field) -> Array<'_> {
-    let (type_name, bytes, source) = match &f.values {
-        Values::F64(v) => ("Float64", 8 * v.len() as u64, Source::F64(v)),
-        Values::I32(v) => ("Int32", 4 * v.len() as u64, Source::I32(v)),
-    };
     Array {
         name: escape(&f.name),
-        type_name,
+        type_name: "Float64",
         components: f.components,
-        bytes,
-        source,
+        bytes: 8 * f.values.len() as u64,
+        source: Source::F64(&f.values),
     }
 }
 
@@ -114,7 +108,7 @@ fn check(grid: &Grid) -> Result<(), String> {
         ("cell", &grid.cell_data, grid.cells.len()),
     ] {
         for f in list {
-            if f.components == 0 || n.checked_mul(f.components) != Some(f.values.count()) {
+            if f.components == 0 || n.checked_mul(f.components) != Some(f.values.len()) {
                 return err(format!("{kind} field {} has the wrong length", f.name));
             }
         }

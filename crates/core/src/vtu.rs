@@ -22,28 +22,12 @@ fn err<T>(message: impl Into<String>) -> Result<T, String> {
     Err(message.into())
 }
 
-/// Array values. Floats hold fields. Integers hold sets and ids.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Values {
-    F64(Vec<f64>),
-    I32(Vec<i32>),
-}
-
-impl Values {
-    pub fn count(&self) -> usize {
-        match self {
-            Values::F64(v) => v.len(),
-            Values::I32(v) => v.len(),
-        }
-    }
-}
-
-/// A named array with one or more components per point or cell.
+/// A named array of floats with one or more components per point or cell.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     pub name: String,
     pub components: usize,
-    pub values: Values,
+    pub values: Vec<f64>,
 }
 
 impl Field {
@@ -51,21 +35,7 @@ impl Field {
         Field {
             name: name.into(),
             components,
-            values: Values::F64(values),
-        }
-    }
-    pub fn i32(name: &str, values: Vec<i32>) -> Self {
-        Field {
-            name: name.into(),
-            components: 1,
-            values: Values::I32(values),
-        }
-    }
-    /// The float values, or `None` for an integer array.
-    pub fn as_f64(&self) -> Option<&[f64]> {
-        match &self.values {
-            Values::F64(v) => Some(v),
-            Values::I32(_) => None,
+            values,
         }
     }
 }
@@ -145,7 +115,6 @@ fn whole(h: &Header, raw: &[u8], width: usize) -> Result<(), String> {
 fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, String> {
     let width = match h.type_name.as_str() {
         "Int64" => 8,
-        "Int32" => 4,
         "UInt8" => 1,
         t => return err(format!("array {}: unsupported type {t}", h.name)),
     };
@@ -154,7 +123,6 @@ fn ints(h: &Header, raw: &[u8]) -> Result<Vec<i64>, String> {
         .chunks_exact(width)
         .map(|c| match width {
             8 => i64::from_le_bytes(c.try_into().unwrap_or([0; 8])),
-            4 => i64::from(i32::from_le_bytes(c.try_into().unwrap_or([0; 4]))),
             _ => i64::from(c[0]),
         })
         .collect())
@@ -290,8 +258,7 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, String> {
     for h in headers.iter().filter(|h| h.section.ends_with("Data")) {
         let raw = block(data, h)?;
         let values = match h.type_name.as_str() {
-            "Float64" => Values::F64(floats(h, &raw)?),
-            "Int32" => Values::I32(ints(h, &raw)?.into_iter().map(|v| v as i32).collect()),
+            "Float64" => floats(h, &raw)?,
             t => return err(format!("array {}: unsupported type {t}", h.name)),
         };
         let n = if h.section == "PointData" {
@@ -299,11 +266,11 @@ pub fn read_vtu(bytes: &[u8]) -> Result<Grid, String> {
         } else {
             n_cells
         };
-        if n.checked_mul(h.components) != Some(values.count()) {
+        if n.checked_mul(h.components) != Some(values.len()) {
             return err(format!(
                 "array {} has {} values, not {n} x {}",
                 h.name,
-                values.count(),
+                values.len(),
                 h.components
             ));
         }

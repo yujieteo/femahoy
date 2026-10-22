@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 pub use report::report;
 pub use serve::{default_state_dir, serve};
-pub use store::{new_preview, new_run, Run};
+pub use store::{new_preview, new_run};
 
 /// `n` random bytes as hex digits, from `/dev/urandom`.
 pub(crate) fn random_hex(n: usize) -> Result<String, String> {

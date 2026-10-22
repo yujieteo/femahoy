@@ -1,11 +1,11 @@
-use fh::msh::read_msh;
+use fh::msh::read_msh_mesh;
 
 const TET10: &str = include_str!("data/tet10.msh");
 const SHELL6: &str = include_str!("data/shell6.msh");
 
 #[test]
 fn tet10_midside_nodes_follow_the_inp_order() {
-    let m = read_msh(TET10).unwrap();
+    let m = read_msh_mesh(TET10).unwrap().model;
     let e = &m.elements[0];
     assert_eq!(e.element_type, "C3D10");
     let xyz = |id: u32| m.nodes.iter().find(|n| n.id == id).unwrap().xyz;
@@ -28,7 +28,7 @@ fn tet10_midside_nodes_follow_the_inp_order() {
 fn a_surface_group_becomes_an_element_surface() {
     // The triangle 1 2 3 is face S1 (corners 1 2 3) of the tet. A volume group gives no
     // element surface.
-    let tet = fh::msh::read_msh_mesh(TET10).unwrap();
+    let tet = read_msh_mesh(TET10).unwrap();
     assert_eq!(tet.model.element_surface("fixed").unwrap().faces, [(2, 1)]);
     assert!(tet.model.element_surface("body").is_none());
     assert!(tet.unnamed_volumes.is_empty() && tet.inner_surfaces.is_empty());
