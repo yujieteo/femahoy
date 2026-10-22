@@ -140,7 +140,7 @@ fn quantity(name: &str) -> Quantity {
 }
 
 /// The contour fields of a grid: the magnitude and the components of each vector field,
-/// the components of `S`, and each scalar field. Integer arrays (ids and sets) are not fields.
+/// the components of `S`, and each scalar field.
 fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
     let mut out = Vec::new();
     let groups = [
