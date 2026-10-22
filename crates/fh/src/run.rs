@@ -24,7 +24,7 @@
 //! - `fh run CASE` gives Meep the case folder (`meep_case.py`, see `fh::meep`). The Python of
 //!   Meep is `$FH_MEEP`, else `python3` on `PATH`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
-//! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
+//! - `--timeout SECONDS` sets the time limit of the run.
 //!
 //! Each run has its own folder in the state folder (`$FH_STATE`, see `fh::daemon::new_run`): the
 //! copy of the input, the solver files, and the VTU and PVD files. The page of `fh serve`
@@ -52,10 +52,11 @@ use fh::meep::{self, Meep};
 use fh::optimize;
 use fh::precice::{self, Precice};
 use fh::topology;
+use fh::Solver;
 
-const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB]\n\
---timeout has no limit by default. --memory is 85 % of the RAM by default. At a limit, fh run \
-stops the solver. For a case, the limit counts all the programs.\n\
+const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS]\n\
+--timeout has no limit by default. The memory limit is 85 % of the RAM. At a limit, fh run stops \
+the solver. For a case, the limit counts all the programs.\n\
 CASE is an OpenFOAM case folder with system/controlDict. fh run starts blockMesh (when the case \
 has system/blockMeshDict and no constant/polyMesh, and blockMesh -region R for each \
 system/R/blockMeshDict), then setFields (when the case has system/setFieldsDict), then the \
@@ -85,8 +86,6 @@ const CANCELLED: u8 = 130;
 struct Options {
     target: Option<PathBuf>,
     timeout: Option<Duration>,
-    /// The memory limit in bytes.
-    memory: Option<u64>,
 }
 
 /// A number above 0 that is finite.
@@ -115,10 +114,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
                         .map_err(|_| format!("--timeout is too large\n{USAGE}"))?,
                 );
             }
-            "--memory" => {
-                let mib = positive(&value("a number of MiB")?, "--memory")?;
-                o.memory = Some((mib * f64::from(1 << 20)) as u64);
-            }
             s if s.starts_with('-') => return Err(format!("unknown option: {s}\n{USAGE}")),
             s if o.target.is_none() => o.target = Some(s.into()),
             s => return Err(format!("unexpected argument: {s}\n{USAGE}")),
@@ -130,20 +125,6 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(o)
 }
 
-/// The solver of a run.
-#[derive(Clone, Copy, PartialEq)]
-enum Solver {
-    Ccx,
-    OpenFoam,
-    GetDp,
-    Precice,
-    Topology,
-    Optimize,
-    Chrono,
-    Lammps,
-    Meep,
-}
-
 /// The real path of the `.inp` file or the case folder that `fh run` solves.
 fn resolve(path: &Path) -> Result<PathBuf, String> {
     let shown = path.display();
@@ -151,15 +132,7 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     let inp = full
         .extension()
         .is_some_and(|e| e.eq_ignore_ascii_case("inp"));
-    let case = foam::is_case(&full)
-        || getdp::is_case(&full)
-        || chrono::is_case(&full)
-        || meep::is_case(&full)
-        || precice::is_case(&full)
-        || lammps::is_case(&full)
-        || topology::is_case(&full)
-        || optimize::is_case(&full);
-    if (full.is_file() && inp) || case {
+    if (full.is_file() && inp) || fh::solver(&full).is_some() {
         Ok(full)
     } else {
         Err(format!(
@@ -312,25 +285,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let state =
         default_state_dir().ok_or_else(|| format!("no home folder, so set FH_STATE\n{USAGE}"))?;
     let file = resolve(o.target.as_deref().expect("parse needs a model"))?;
-    let solver = if foam::is_case(&file) {
-        Solver::OpenFoam
-    } else if getdp::is_case(&file) {
-        Solver::GetDp
-    } else if precice::is_case(&file) {
-        Solver::Precice
-    } else if lammps::is_case(&file) {
-        Solver::Lammps
-    } else if topology::is_case(&file) {
-        Solver::Topology
-    } else if optimize::is_case(&file) {
-        Solver::Optimize
-    } else if chrono::is_case(&file) {
-        Solver::Chrono
-    } else if meep::is_case(&file) {
-        Solver::Meep
-    } else {
-        Solver::Ccx
-    };
+    let solver = fh::solver(&file).unwrap_or(Solver::Ccx);
     // The name of the model in the page: the input file.
     let title = file.file_name().unwrap_or_default().to_string_lossy();
     // The page shows a CalculiX model before the solve.
@@ -369,43 +324,36 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Solver::OpenFoam => {
             let mut foam = Foam::new();
             foam.timeout = o.timeout;
-            foam.memory_limit = o.memory.unwrap_or(foam.memory_limit);
             foam.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::GetDp => {
             let mut getdp = GetDp::new();
             getdp.timeout = o.timeout;
-            getdp.memory_limit = o.memory.unwrap_or(getdp.memory_limit);
             getdp.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Chrono => {
             let mut chrono = Chrono::new();
             chrono.timeout = o.timeout;
-            chrono.memory_limit = o.memory.unwrap_or(chrono.memory_limit);
             chrono.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Meep => {
             let mut meep = Meep::new();
             meep.timeout = o.timeout;
-            meep.memory_limit = o.memory.unwrap_or(meep.memory_limit);
             meep.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Precice => {
             let mut precice = Precice::new();
             precice.foam.timeout = o.timeout;
-            precice.foam.memory_limit = o.memory.unwrap_or(precice.foam.memory_limit);
             precice.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Lammps => {
             let mut lammps = Lammps::new();
             lammps.timeout = o.timeout;
-            lammps.memory_limit = o.memory.unwrap_or(lammps.memory_limit);
             lammps.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Ccx | Solver::Topology | Solver::Optimize => {
             let mut ccx = Ccx::new();
             ccx.timeout = o.timeout.or(ccx.timeout);
-            ccx.memory_limit = o.memory.unwrap_or(ccx.memory_limit);
             if solver == Solver::Topology {
                 topology::run_with(&ccx, &run.input, &run.out, &cancel, &mut |i| {
                     println!(

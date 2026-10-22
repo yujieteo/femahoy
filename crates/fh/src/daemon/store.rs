@@ -29,7 +29,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::ccx::{input_text, result_frames, stage_input};
-use crate::{chrono, foam, getdp, lammps, meep, optimize, precice, topology};
+use crate::{foam, getdp, precice, topology, Solver};
 
 use super::message::{bad, fail, Failure};
 
@@ -89,26 +89,27 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
             Err(e) => return Err(err(e)),
         }
     };
-    let input = if foam::is_case(source) {
-        foam::copy_case(source, &dir.join(IN_DIR), true)?;
-        dir.join(IN_DIR)
-    } else if getdp::is_case(source)
-        || chrono::is_case(source)
-        || lammps::is_case(source)
-        || optimize::is_case(source)
-        || meep::is_case(source)
-    {
-        getdp::copy_case(source, &dir.join(IN_DIR), true)?;
-        dir.join(IN_DIR)
-    } else if topology::is_case(source) {
-        topology::copy_case(source, &dir.join(IN_DIR))?;
-        dir.join(IN_DIR)
-    } else if precice::is_case(source) {
-        precice::copy_case(source, &dir.join(IN_DIR), true)?;
-        dir.join(IN_DIR)
-    } else {
-        stage(source, &dir.join(IN_DIR))?;
-        dir.join(IN_DIR).join(INPUT_FILE)
+    let input = match crate::solver(source) {
+        Some(Solver::OpenFoam) => {
+            foam::copy_case(source, &dir.join(IN_DIR), true)?;
+            dir.join(IN_DIR)
+        }
+        Some(Solver::GetDp | Solver::Chrono | Solver::Lammps | Solver::Optimize | Solver::Meep) => {
+            getdp::copy_case(source, &dir.join(IN_DIR), true)?;
+            dir.join(IN_DIR)
+        }
+        Some(Solver::Topology) => {
+            topology::copy_case(source, &dir.join(IN_DIR))?;
+            dir.join(IN_DIR)
+        }
+        Some(Solver::Precice) => {
+            precice::copy_case(source, &dir.join(IN_DIR), true)?;
+            dir.join(IN_DIR)
+        }
+        Some(Solver::Ccx) | None => {
+            stage(source, &dir.join(IN_DIR))?;
+            dir.join(IN_DIR).join(INPUT_FILE)
+        }
     };
     fs::write(
         dir.join(SOURCE_FILE),
@@ -237,20 +238,11 @@ impl Store {
     /// has no input text for the page, so it gives no bytes. A topology case gives its `job.inp`.
     pub(crate) fn input_file(&self, run: &str) -> Result<Vec<u8>, Failure> {
         let input = self.run_dir(run)?.join(IN_DIR);
-        if foam::is_case(&input)
-            || getdp::is_case(&input)
-            || precice::is_case(&input)
-            || chrono::is_case(&input)
-            || lammps::is_case(&input)
-            || optimize::is_case(&input)
-            || meep::is_case(&input)
-        {
-            return Ok(Vec::new());
+        match crate::solver(&input) {
+            Some(Solver::Topology) => flat_text(&input.join("job.inp")),
+            Some(_) => Ok(Vec::new()),
+            None => flat_text(&input.join(INPUT_FILE)),
         }
-        if topology::is_case(&input) {
-            return flat_text(&input.join("job.inp"));
-        }
-        flat_text(&input.join(INPUT_FILE))
     }
 
     /// The bytes of one file in the run folder of a run, for the viewer. `name` is a plain
