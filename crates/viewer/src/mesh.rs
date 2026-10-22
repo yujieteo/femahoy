@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use fh_core::inp::Model;
 use fh_core::vtu::{
-    VTK_HEXAHEDRON, VTK_QUADRATIC_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_QUADRATIC_WEDGE, VTK_TETRA,
-    VTK_WEDGE,
+    VTK_HEXAHEDRON, VTK_QUAD, VTK_QUADRATIC_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_QUADRATIC_WEDGE,
+    VTK_TETRA, VTK_TRIANGLE, VTK_WEDGE,
 };
 
 /// Angle in degrees between two surface normals above which an edge is a feature edge.
@@ -258,6 +258,8 @@ pub fn vtk_element_type(cell_type: u8) -> Option<&'static str> {
         VTK_QUADRATIC_TETRA => Some("C3D10"),
         VTK_QUADRATIC_HEXAHEDRON => Some("C3D20"),
         VTK_QUADRATIC_WEDGE => Some("C3D15"),
+        VTK_TRIANGLE => Some("S3"),
+        VTK_QUAD => Some("S4"),
         _ => None,
     }
 }
@@ -537,10 +539,32 @@ mod tests {
             (VTK_QUADRATIC_TETRA, "C3D10"),
             (VTK_QUADRATIC_HEXAHEDRON, "C3D20"),
             (VTK_QUADRATIC_WEDGE, "C3D15"),
+            (VTK_TRIANGLE, "S3"),
+            (VTK_QUAD, "S4"),
         ] {
             assert_eq!(vtk_element_type(cell), Some(name));
             assert!(shape(name).is_some());
         }
-        assert_eq!(vtk_element_type(5), None);
+        assert_eq!(vtk_element_type(fh_core::vtu::VTK_LINE), None);
+    }
+
+    #[test]
+    fn a_grid_of_quad_and_triangle_cells_has_triangles() {
+        let grid = fh_core::vtu::Grid {
+            points: vec![
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [2.0, 0.0, 0.0],
+            ],
+            cell_types: vec![VTK_QUAD, VTK_TRIANGLE],
+            cells: vec![vec![0, 1, 2, 3], vec![1, 4, 2]],
+            point_data: vec![],
+            cell_data: vec![],
+        };
+        let m = build_grid(&grid);
+        assert!(m.triangle_cell.contains(&0));
+        assert!(m.triangle_cell.contains(&1));
     }
 }
