@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::app::{Content, ContentSlot, ViewerApp, INTER};
+use crate::app::{Content, ContentSlot, ViewerApp};
 use crate::{preview, results, RESULTS_FILE};
 
 /// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer.
@@ -83,13 +83,6 @@ async fn model(token: &str, path: &str, name: &str) -> Result<Box<preview::Previ
     let mut p = preview::build(&fh_core::inp::parse(&input), &fh_core::inp::units(&input));
     p.title = name.to_owned();
     Ok(Box::new(p))
-}
-
-/// The font of the page: the page uses the font of the viewer, so it loads no font from the
-/// network.
-#[wasm_bindgen]
-pub fn font() -> Vec<u8> {
-    INTER.to_vec()
 }
 
 /// The viewer on the canvas of the page.

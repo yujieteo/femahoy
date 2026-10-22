@@ -7,14 +7,19 @@
 //! - The text, an HTML file that the agent writes, with an x-y plot of each curve file (see
 //!   [`crate::curve`]) after it. The template shows it beside the viewer.
 //! - The viewer files of `fh serve` (`fh_viewer.js` and `fh_viewer_bg.wasm`), so the report
-//!   uses the same viewer.
+//!   uses the same viewer. With `--viewer FILE`, the report has no viewer files: it loads the
+//!   script FILE, a path from the folder of the report. FILE sets `window.fhViewer` to an object
+//!   with the gzip of each viewer file in base64, under its daemon path (for example
+//!   `/viewer/fh_viewer.js`). Many reports in 1 folder then share 1 copy of the viewer
+//!   (`scripts/validation-reports.py`).
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
 //!   and each step file. Each file is a `script` element that holds its bytes in base64, with
 //!   the daemon path of the file in `data-path`. A small script in the template answers the
 //!   fetches of the viewer from these elements. A report with no run has no viewer.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
-//! the text of the agent cannot run a script or load a file.
+//! the text of the agent cannot run a script or load a file. The fonts are in the template as
+//! `data:` URLs ([`font_faces`]).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,8 +36,10 @@ use crate::curve::escape;
 use crate::fit::read_curve;
 
 const USAGE: &str =
-    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]...\n\
-     Name at least 1 run or 1 curve.";
+    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... \
+     [--viewer FILE.js]\n\
+     Name at least 1 run or 1 curve. --viewer loads the viewer from the script FILE.js beside \
+     the report, which sets window.fhViewer, instead of a copy in the report.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
@@ -40,10 +47,12 @@ struct Options {
     out: PathBuf,
     runs: Vec<String>,
     curves: Vec<PathBuf>,
+    viewer: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let (mut text, mut out, mut runs, mut curves) = (None, None, Vec::<String>::new(), Vec::new());
+    let mut viewer = None;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let mut value = |what: &str| {
@@ -54,6 +63,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         match arg.as_str() {
             "-o" => out = Some(PathBuf::from(value("a file")?)),
             "--curve" => curves.push(PathBuf::from(value("a curve file")?)),
+            "--viewer" => viewer = Some(value("a script file")?),
             "--run" => {
                 let run = value("a run")?;
                 if !runs.contains(&run) {
@@ -71,6 +81,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             out,
             runs,
             curves,
+            viewer,
         }),
         _ => Err(USAGE.into()),
     }
@@ -90,6 +101,33 @@ fn base64(out: &mut String, bytes: &[u8]) {
             });
         }
     }
+}
+
+/// The `@font-face` rules of the fonts of the site style (`fonts/`, SIL Open Font License 1.1):
+/// Source Serif 4 for the titles and DM Sans for the text. The fonts are `data:` URLs, so the
+/// page of `fh serve` and a report load no font file.
+pub(super) fn font_faces() -> String {
+    let mut css = String::new();
+    for (family, weight, bytes) in [
+        (
+            "Source Serif 4",
+            "400",
+            &include_bytes!("fonts/source-serif-4.woff2")[..],
+        ),
+        (
+            "DM Sans",
+            "100 1000",
+            &include_bytes!("fonts/dm-sans.woff2")[..],
+        ),
+    ] {
+        css.push_str(&format!(
+            "@font-face {{ font-family: \"{family}\"; font-weight: {weight}; src: \
+             url(data:font/woff2;base64,"
+        ));
+        base64(&mut css, bytes);
+        css.push_str(") format(\"woff2\"); }\n");
+    }
+    css
 }
 
 /// Add the file `bytes` that the viewer fetches from the daemon path `path` to `out`.
@@ -134,7 +172,18 @@ fn build(o: &Options) -> Result<String, String> {
         let label = escape(&format!("{run} · {}", short(source)));
         options.push_str(&format!("<option value=\"{run}\">{label}</option>"));
     }
-    let page = TEMPLATE.replace("NONCE", &random_hex(16)?);
+    let nonce = random_hex(16)?;
+    let shared = match (&o.viewer, o.runs.is_empty()) {
+        (Some(file), false) => format!(
+            "<script src=\"{}\" nonce=\"{nonce}\"></script>",
+            escape(file)
+        ),
+        _ => String::new(),
+    };
+    let page = TEMPLATE
+        .replace("NONCE", &nonce)
+        .replace("/*FONTS*/", &font_faces())
+        .replace("<!--VIEWER-->", &shared);
     let (head, tail) = page
         .split_once("<!--DATA-->")
         .ok_or("report.html has no data mark")?;
@@ -142,7 +191,7 @@ fn build(o: &Options) -> Result<String, String> {
     let mut html = head
         .replace("<!--OPTIONS-->", &options)
         .replace("<!--TEXT-->", &text);
-    if !o.runs.is_empty() {
+    if !o.runs.is_empty() && o.viewer.is_none() {
         let viewer = viewer_dir().ok_or(
             "the wasm viewer is not built. Run scripts/build-viewer.sh, or set FH_VIEWER to its \
              folder",

@@ -194,3 +194,25 @@ fn a_bad_curve_gives_no_report() {
     );
     assert!(!lab.out().exists());
 }
+
+/// With `--viewer`, the report loads the shared viewer script beside it, by the nonce of its
+/// script. It holds the files of the run and no copy of the viewer, so it needs no built viewer.
+#[test]
+fn a_report_with_a_shared_viewer_holds_no_viewer() {
+    let lab = Lab::new("report-shared-viewer");
+    fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
+    let out = lab.report(&["--run", "run-000001", "--viewer", "viewer.js"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert!(!html.contains("data-path=\"/viewer/"), "no viewer");
+    assert!(html.contains("data-path=\"/api/v1/runs/run-000001/files/step-1.vtu\">"));
+    let nonce = html
+        .split("<script src=\"viewer.js\" nonce=\"")
+        .nth(1)
+        .expect("script");
+    let nonce = &nonce[..nonce.find('"').unwrap()];
+    assert!(
+        html.contains(&format!("script-src 'nonce-{nonce}'")),
+        "policy"
+    );
+}

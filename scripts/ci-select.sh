@@ -9,8 +9,9 @@
 # openems), `all=1` when the full suite runs, else `cases=<id> ...`, the cases of the selected
 # solvers.
 # A changed case selects the solver of that case. A changed solver module selects its solver and
-# each solver whose module uses it. A Markdown file or a file in docs/ selects no solver. Each
-# other path (shared code, Cargo files, CI) selects every solver.
+# each solver whose module uses it. A Markdown file, a file in docs/ or a report in
+# validation/reports/ selects no solver. Each other path (shared code, Cargo files, CI) selects
+# every solver.
 set -euo pipefail
 
 every="ccx openfoam getdp precice chrono lammps meep openems"
@@ -45,7 +46,7 @@ if [ "${1:-}" = --all ]; then
 else
   while IFS= read -r path; do
     case $path in
-      *.md | docs/*) ;;
+      *.md | docs/* | validation/reports/*) ;;
       validation/cases/*/*)
         id=${path#validation/cases/}
         id=${id%%/*}
