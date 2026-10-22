@@ -26,7 +26,8 @@ def outer(la):
 
 
 def pressure(la, steps=4000):
-    """Simpson's rule. The integrand is smooth: at l = 1 it has the finite limit mu0."""
+    """Simpson's rule. The integrand is smooth: at l = 1 it has the finite limit
+    sum mu_p alpha_p = 2 mu0."""
     lb = outer(la)
     h = (la - lb) / steps
     f = [dw(lb + k * h) / ((lb + k * h) ** 2 - 1) for k in range(steps + 1)]

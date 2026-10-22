@@ -30,7 +30,7 @@ With w(λ) = W(λ, 1/λ, 1), the stresses are σ_θ - σ_r = λ w'(λ). The equi
 
 p = ∫ from λ_b to λ_a of w'(λ) / (λ² - 1) dλ, λ_b² - 1 = (A/B)² (λ_a² - 1)
 
-For the Ogden energy, w'(λ) = Σ μ_p (λ^(α_p - 1) - λ^(-α_p - 1)). At λ = 1, the integrand has the finite limit μ0.
+For the Ogden energy, w'(λ) = Σ μ_p (λ^(α_p - 1) - λ^(-α_p - 1)). At λ = 1, the integrand has the finite limit Σ μ_p α_p = 2 μ0.
 `reference.py` calculates the integral with Simpson's rule and 4000 intervals. For the Neo-Hooke energy, the same code agrees with the closed form p = μ0 [ln(λ_a/λ_b) + 1/(2 λ_b²) - 1/(2 λ_a²)] to 1e-15.
 
 For A = 10 mm and B = 20 mm, p has a maximum of 0.229790 MPa at λ_a = 2.566. Then p decreases to 0.217814 MPa at λ_a = 4.455, and increases again because of the term with α = 5.
