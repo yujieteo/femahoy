@@ -203,15 +203,15 @@ fn block_of(field: &Field) -> (&'static str, usize, usize) {
         Field::S => ("stresses", 2, 6),
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
-        // `mode_value` and `last_row` read these. They have no block of a set.
-        Field::Freq | Field::Buckle | Field::Table { .. } => ("", 0, 0),
+        // `mode_value`, `last_row` and `rms_values` read these. They have no block of a set.
+        Field::Freq | Field::Buckle | Field::ARms | Field::Table { .. } => ("", 0, 0),
     }
 }
 
 /// The column of a component in the values of a row.
 fn column_of(q: &Quantity) -> Result<usize, String> {
     let column = match (&q.field, q.component) {
-        (Field::U | Field::RF | Field::Cstr, c @ 1..=3) => c as usize - 1,
+        (Field::U | Field::RF | Field::Cstr | Field::ARms, c @ 1..=3) => c as usize - 1,
         (Field::NT, 1) => 0,
         (Field::S, 11) => 0,
         (Field::S, 22) => 1,
@@ -280,6 +280,24 @@ fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
     }
 }
 
+/// The RMS of the acceleration of one component at each node of the set, over the frequencies of the last steady
+/// state step.
+fn rms_values(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
+    let column = column_of(q)?;
+    let sets = crate::ccx::rms::of_dat(dat)?;
+    let set = sets
+        .iter()
+        .find(|s| s.set.eq_ignore_ascii_case(&q.set))
+        .ok_or_else(|| {
+            format!(
+                "no displacements of a *STEADY STATE DYNAMICS step for set `{}` in the .dat file. \
+                 Add *NODE PRINT of U for it to that step",
+                q.set
+            )
+        })?;
+    Ok(set.nodes.iter().map(|(_, _, a)| a[column]).collect())
+}
+
 /// The value in column `column` of the row of `mode` in the last table `title` of the `.dat`
 /// text. A row has `width` numbers, and the first is the mode. The table ends at the first line
 /// after its rows that is not a row.
@@ -313,7 +331,8 @@ fn mode_value(
 
 /// Reduce the values of the set to the one number of the quantity. The `.dat` text holds the
 /// values at the end of each increment that the print request asks for. The last block counts.
-/// A frequency or a buckling factor comes from the last table of its step.
+/// A frequency or a buckling factor comes from the last table of its step. An RMS comes from all
+/// the frequencies of the last steady state step.
 fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
     match q.field {
         Field::Freq => {
@@ -326,7 +345,10 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
         }
         _ => {}
     }
-    let picked = values_of(dat, q)?;
+    let picked = match q.field {
+        Field::ARms => rms_values(dat, q)?,
+        _ => values_of(dat, q)?,
+    };
     // f64::max drops a NaN, so the check comes before the reduction.
     if let Some(v) = picked.iter().find(|v| !v.is_finite()) {
         return Err(format!(

@@ -236,13 +236,21 @@ fn report(
             ),
             "Write a field to a .pos file in meep_case.py",
         ),
-        Solver::Ccx => (
-            format!(
-                "{0}/ccx/job.dat (print requests), {0}/ccx/job.sta (steps)",
-                out.display()
-            ),
-            "Add *NODE FILE or *EL FILE to a *STEP to write a field",
-        ),
+        Solver::Ccx => {
+            let rms = out.join("ccx").join(fh::ccx::RMS_FILE);
+            let rms = if rms.exists() {
+                format!(", {} (RMS of a steady state step)", rms.display())
+            } else {
+                String::new()
+            };
+            (
+                format!(
+                    "{0}/ccx/job.dat (print requests), {0}/ccx/job.sta (steps){rms}",
+                    out.display()
+                ),
+                "Add *NODE FILE or *EL FILE to a *STEP to write a field",
+            )
+        }
         Solver::Topology => {
             if let Some(end) = topology {
                 print_cad(end);

@@ -11,8 +11,9 @@ Other files in the folder (`derivation.md`, the STEP file, scripts) are document
 
 Sources: [check reader](../../crates/fh/src/validation/fixture.rs),
 [pass rule](../../crates/fh/src/validation/run.rs),
-[validation command](../../crates/fh/src/validate.rs), and
-[measurements](../../crates/fh/src/validation/measure.rs).
+[validation command](../../crates/fh/src/validate.rs),
+[measurements](../../crates/fh/src/validation/measure.rs), and
+[RMS](../../crates/fh/src/ccx/rms.rs).
 
 ## Fields
 
@@ -34,6 +35,8 @@ A check of `U`, `RF`, `S` or `NT` has these 5 keys. All are required.
 A check of `FREQ` or `BUCKLE` has 3 keys: `value`, `field` and `mode` (the mode number, 1 or more).
 `FREQ` is the frequency in cycles per time from the eigenvalue table of `*FREQUENCY`.
 `BUCKLE` is the buckling factor from the table of `*BUCKLE`.
+
+A check of `A_RMS` has the 5 keys of `U`. The value of each node of the set is the RMS of the acceleration (2 pi f)^2 U, over the frequencies of the last `*STEADY STATE DYNAMICS` step. `job.inp` prints `U` of the set in that step. When the amplitude of the load or of the base motion is the square root of a PSD, it is the RMS of the random response. See [random-vibration-cantilever](../../validation/cases/random-vibration-cantilever/check.toml).
 
 A check of `CSTR` (contact stress, from `*CONTACT PRINT`) has 4 keys: `value`, `field`, `component` and `op`. Component 1 is the pressure, 2 and 3 are the shear stresses. It has no `set`: ccx writes the contact stress of all contact elements.
 
