@@ -15,7 +15,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - The **chat is the agent**: 1 focused agent that plans and does the work.
 - The **analysis types**, their **solvers** and their **input** are in the table of section 6.
 - **Agent-facing output** is plain text lines.
-- **Results** are VTU files with a PVD collection, so ParaView can open them.
+- **Results** are VTU files with a PVD collection, so ParaView can open them, and curves: CSV files of x-y values.
 
 ---
 
@@ -64,9 +64,11 @@ Reason: a web page on another origin must not use the daemon, and a key in the b
 
 - **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the Inter font.
 - **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls.
-- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer and the results of the runs that the agent names. The file opens with a double-click and needs no daemon and no network. The agent writes no PDF, image or viewer code.
+- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer, the results of the runs and an x-y plot of each curve that the agent names. `fh` draws each plot as inline SVG, with the reference points of the curve over it. The file opens with a double-click and needs no daemon and no network. The agent writes no PDF, image, plot or viewer code.
 
 Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport needs the GPU, and egui hosts it well.
+
+Reason of the plots: many analysis types give a curve, not a field, for example an S11 over the frequency, the front of a dam break over the time or a mesh study. The viewer shows only fields, so a report showed a curve only as a table. `fh` draws the plot, so the agent still writes no image code.
 
 ### 4.3 Agent
 
@@ -136,6 +138,10 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 - The run folder has `step-N.vtu` (the last increment of step N) for each step, the PVD collection, and the `ccx` files in `ccx/`.
 - VTU: binary data appended raw.
 - Atomic write: a writer writes a temporary file and renames it when complete. A reader never sees a partial file, because a run can die at any time.
+- A curve is a CSV file of x-y values: the x and y quantities with their units, 1 or more series, and reference points with their source (`crates/fh/src/curve.rs`). A run, a script of the agent or the agent writes it.
+- `fh fit` fits a model to a curve by least squares: a polynomial, a power law (the Paris law), and Neo-Hooke and Mooney-Rivlin in uniaxial tension. It prints the parameters, R^2, the largest residual, the range of the points and, for a hyperelastic model, the `*HYPERELASTIC` lines of CalculiX.
+
+Reason of the fit: the parameters of a model often come from a test curve, for example the constants of a rubber or C and m of the Paris law. Each model is linear in its parameters, or in ln x and ln y, so the fit needs no start value and no new dependency. The `*HYPERELASTIC` lines use the same constants as `ccx`: a C3D8 element of `ccx` gives the stress of the fit.
 
 ---
 

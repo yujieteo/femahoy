@@ -1,0 +1,38 @@
+# Curve fit: `fh fit poly2` of the data set Pontius of the Statistical Reference Datasets (StRD) of
+# NIST, 40 measured deflections of a load cell at 20 loads. The references are the certified
+# values of the source: the 3 parameters of y = B0 + B1 x + B2 x^2 (c0, c1 and c2 of fh fit) and
+# R-squared. NIST computed them in 500-digit arithmetic and gives 15 digits.
+# https://www.itl.nist.gov/div898/strd/lls/data/Pontius.shtml
+#
+# The fit has no mesh and no time step, thus no discretization error. The tolerance
+# (derivation.md, "Tolerance"):
+# - The certified values are rounded to 15 digits: 5e-15 or less.
+# - The round-off of the fit in 64-bit numbers: 6.4e-13 or less on this machine (c0). Another
+#   processor or compiler can add the terms in another order, so allow 100 times that.
+# rel_tol = 6.4e-11 + 5e-15, rounded up to 1e-10.
+rel_tol = 1e-10
+abs_tol = 0
+
+[c0]
+value = 0.673565789473684E-03
+case = "pontius"
+file = "fit.txt"
+column = "c0"
+
+[c1]
+value = 0.732059160401003E-06
+case = "pontius"
+file = "fit.txt"
+column = "c1"
+
+[c2]
+value = -0.316081871345029E-14
+case = "pontius"
+file = "fit.txt"
+column = "c2"
+
+[r2]
+value = 0.999999900178537
+case = "pontius"
+file = "fit.txt"
+column = "r2"

@@ -48,7 +48,7 @@ The OpenFOAM case is the folder `n40`. The units are SI.
 | Top | `totalPressure` 0 for `p_rgh`, `pressureInletOutletVelocity` for `U`, `inletOutlet` for `alpha.water` |
 | Start | at rest. `setFields` puts alpha.water = 1 in the cells of the column (`boxToCell`) |
 | Front | the largest x of a cell centre with alpha.water > 0.5. The function object `front` (`fieldExtents`) writes it after each time step |
-| Output | at the end, the function object `frontTimes` (`systemCall`) starts `awk -f system/front.awk`. It writes `front.txt`: 1 row with the 3 values of the check |
+| Output | at the end, the function object `frontTimes` (`systemCall`) starts `awk -f system/front.awk`. It writes `front.txt`: 1 row with the 3 values of the check. It also writes the curve `front.csv` for `fh report --curve`: the front at each step and the measured points |
 
 The run stops at t = 0.18 s. Then the front is at Z = 4.5, before the wall at x = 5a.
 
@@ -79,7 +79,7 @@ Mesh, with `maxCo` and `maxAlphaCo` 0.5:
 | 80 | 80000 | 1.8756 | 2.5926 | 3.2203 |
 | Measured | | 1.83 | 2.51 | 3.11 |
 
-From n = 20 to n = 80, the values change by 0.5 % or less, with no monotonic trend. Thus an extrapolation is not possible. The mesh error of n = 40 is the difference to n = 80: 0.0146 for `T_389` (0.47 % of the reference), 0.0070 for `T_300` (0.28 %) and 0.0039 for `T_211` (0.21 %).
+From n = 20 to n = 80, the values change by 0.5 % or less, with no monotonic trend. `mesh.csv` holds the values of `T_389` as a curve for `fh report --curve`. Thus an extrapolation is not possible. The mesh error of n = 40 is the difference to n = 80: 0.0146 for `T_389` (0.47 % of the reference), 0.0070 for `T_300` (0.28 %) and 0.0039 for `T_211` (0.21 %).
 
 Time step and walls, with n = 40. For these rows, edit `maxCo` and `maxAlphaCo` in `system/controlDict`, or the type of `walls` in `0/U`:
 

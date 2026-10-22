@@ -12,7 +12,8 @@ fn usage() -> &'static str {
          mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE [options] [-o OUT.inp])\n  \
          validate  run the validation suite of DIR/validation/cases, DIR is . by default (fh validate [--root DIR])\n  \
          run       solve a CalculiX input, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, topology or shape optimization case (fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB])\n  \
-         report    write 1 HTML file with a text, the viewer and the results of runs (fh report TEXT.html -o REPORT.html --run RUN...)\n  \
+         report    write 1 HTML file with a text, the viewer, the results of runs and plots of curves (fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]...)\n  \
+         fit       fit a model to a curve by least squares (fh fit MODEL CURVE.csv [--series NAME] [-o OUT.csv])\n  \
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve)\n"
 }
 
@@ -28,6 +29,7 @@ fn main() -> ExitCode {
         Some("validate") => validate::run(&args[1..]),
         Some("run") => run::run(&args[1..]),
         Some("report") => fh::daemon::report(&args[1..]),
+        Some("fit") => fh::fit::command(&args[1..]),
         Some("serve") => fh::daemon::serve(&args[1..]),
         _ => {
             eprintln!("fh: unknown argument: {}", args.join(" "));

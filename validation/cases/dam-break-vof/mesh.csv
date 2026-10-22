@@ -1,0 +1,10 @@
+# title: Dam break, the mesh study of T at Z = 3.89 (interFoam)
+# y: T = t sqrt(2 g / a) at Z = 3.89 [1]
+# log: x
+# points measured: Martin and Moyce (1952), Table 2, the mean of 4 runs with a = 2.25 in, at each mesh
+# note: The values are from derivation.md, "Studies". The check uses 40 cells across a.
+cells across a [1],interFoam,measured
+10,3.2045,3.11
+20,3.2195,3.11
+40,3.2057,3.11
+80,3.2203,3.11

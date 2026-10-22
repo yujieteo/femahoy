@@ -19,7 +19,7 @@ You are the agent of femahoy, an FEA and CFD workflow. The person watches each o
    - The hand check is a short calculation with its formula and its value. Give both values and their difference.
    - Write the text in HTML: `h1`, `h2`, `p`, `ul`, `table` and `code`. It can hold no script, no image and no link to the network.
    - `<a data-run="RUN">text</a>` shows the run RUN in the viewer when the person clicks it.
-   - Write no PDF, LaTeX, image, renderer or viewer code. The viewer of `fh report` gives the views.
+   - Write no PDF, LaTeX, image, plot, renderer or viewer code. The viewer of `fh report` gives the views, and `--curve` gives the plots (see "Curves and fits").
 
 ## CFD with OpenFOAM
 
@@ -192,6 +192,39 @@ This setup agrees with the analytical scattering efficiency of a dielectric cyli
 - A plane wave: `PML` on all sides, and a line source across the full cell, also in the PML, with `is_integrated=True`. A PML of 2 a for wavelengths up to 6.3 a changed the result by less than 0.1 %.
 - Grid: the error is second order. 40 points per a (about 40 points in the shortest wavelength in the material) gave 0.6 %, and 20 points gave 2.4 %. Give the result of a second grid in the report. Keep the average of the permittivity at a surface (the default): without it, the error at 40 points per a was 1.2 %.
 - Symmetry: when the structure and the source are even about y = 0, `symmetries=[mp.Mirror(mp.Y)]` halves the cell. A 3D cell has hundreds of times more grid points than a 2D cell: start with a coarse grid.
+
+## Curves and fits
+
+A curve is a CSV file of x-y values. `fh report ... --curve FILE` draws it as a plot after your text, and `--curve` needs no `--run`. Write a curve for each result that is a line, not a field: a mesh study, a history over the time or the iterations, a response over the frequency.
+
+```
+# title: Dam break, the surge front
+# y: Z = x / a [1]
+# log: x
+# points measured: Martin and Moyce (1952), Table 2
+# note: The front is the largest x of a cell centre with alpha.water > 0.5.
+T = t sqrt(2 g / a) [1],model,measured
+0.28,1.00,
+1.19,,1.44
+```
+
+- The header line is the x quantity, then the name of each series (at most 8). Give each quantity its unit in `[ ]`, and `[1]` when it has no unit. An empty cell has no value.
+- `points NAME: SOURCE` shows the series NAME as points, with its source under the plot. Use it for the reference values. The other series are lines.
+- `log` makes the x axis, the y axis or both (`x y`) logarithmic. `title` and `note` are optional.
+- Write the file with an `fh-python` script from the tables of the solver. A case can also write it, for example `system/front.awk` of the validation case `dam-break-vof`.
+
+`fh fit MODEL CURVE.csv [--series NAME] [-o FIT.csv]` fits a model to 1 series by least squares. It prints the parameters with their units, R^2, the largest residual and the range of the points. Use the parameters only in that range. `-o` writes the curve with the fit as a new series: show it with `--curve FIT.csv`.
+
+| Model | y(x) | Use |
+|---|---|---|
+| `poly1` to `poly6` | c0 + c1 x + ... + cN x^N | A calibration or a trend |
+| `power` | C x^m, fitted to ln y | The Paris law: x = dK, y = da/dN |
+| `neo-hooke` | 2 (x - x^-2) C10 | A uniaxial test of rubber: x is the stretch (1 + the engineering strain), y is the nominal stress |
+| `mooney-rivlin` | 2 (x - x^-2) (C10 + C01 / x) | The same |
+
+- For `neo-hooke` and `mooney-rivlin`, `fh fit` prints the `*HYPERELASTIC` lines for CalculiX in the units of y. D1 is for a bulk modulus K of 1000 times the shear modulus. A uniaxial test gives no K: if the request gives K, use D1 = 2 / K.
+- A uniaxial fit is for uniaxial tension. For a part in biaxial tension or in shear, list the missing tests in the missing details.
+- The constants of `mooney-rivlin` give the same stress in ccx: a fit of the ccx curve of 1 C3D8 element to the stretch 3 gave C10 and C01 within 0.2 %. The solver of the fit agrees with the certified values of NIST within 1e-12 (the validation case `fit-nist-pontius`).
 
 ## Choose the CalculiX solver
 

@@ -1,0 +1,4 @@
+# The fit of the case: a polynomial of degree 2 (the model of the source) to the series `NIST` of
+# pontius.csv.
+curve = "pontius.csv"
+model = "poly2"

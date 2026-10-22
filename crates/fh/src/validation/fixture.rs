@@ -1,7 +1,7 @@
 //! The check file of a case: `validation/cases/<id>/check.toml` (see `docs/reference/check-toml.md`).
 //!
 //! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP, preCICE, Chrono, LAMMPS,
-//! Meep, topology or shape optimization cases in subfolders.
+//! Meep, topology, shape optimization or fit cases in subfolders.
 
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, TableLike};
@@ -134,16 +134,18 @@ impl Case {
                     crate::lammps::is_case,
                     crate::topology::is_case,
                     crate::optimize::is_case,
+                    crate::fit::is_case,
                 ];
                 if !solvers.iter().any(|is_case| is_case(&case)) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
-                        "{}, {}, {}, {}, {}, {}, {} or {} not found",
+                        "{}, {}, {}, {}, {}, {}, {}, {} or {} not found",
                         pro.display(),
                         case.join("chrono.py").display(),
                         case.join("meep_case.py").display(),
                         case.join("topology.toml").display(),
                         case.join("optimize.toml").display(),
+                        case.join("fit.toml").display(),
                         dict.display(),
                         case.join("precice-config.xml").display(),
                         case.join("case.lmp").display()
