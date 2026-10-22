@@ -21,8 +21,9 @@ A report above 5 MB is made again with only the last step of each run (`fh repor
 A report above 10 MB is not kept: the index names its size.
 
 The reports share 1 copy of the wasm viewer, validation/reports/viewer.js. A report opens with a
-double-click when viewer.js is beside it. outcomes.tsv keeps the result of each case, so a run
-for some cases keeps the lines of the other cases. index.html links all the reports.
+double-click when viewer.js is beside it. outcomes.tsv keeps the result of each case and the
+version of femahoy that made its report, so a run for some cases keeps the lines of the other
+cases. index.html links all the reports and shows the version of each.
 
 Needs `fh` (target/release/fh, or $FH_BIN) and the wasm viewer (target/release/viewer, or
 $FH_VIEWER, from scripts/build-viewer.sh). The runs go to a temporary state folder.
@@ -323,7 +324,7 @@ def read_outcomes():
 
 
 def write_outcomes(outcomes):
-    lines = ["case\tresult\tdetail\tbytes"]
+    lines = ["case\tresult\tdetail\tbytes\tversion"]
     lines += ["\t".join([c, *outcomes[c]]) for c in sorted(outcomes)]
     (OUT / "outcomes.tsv").write_text("\n".join(lines) + "\n")
 
@@ -351,7 +352,7 @@ code { font: 0.95em ui-monospace, monospace; overflow-wrap: anywhere; }
 """
 
 
-def write_index(outcomes, version):
+def write_index(outcomes):
     faces = "".join(
         f'@font-face {{ font-family: "{family}"; font-weight: {weight}; src: url(data:font/woff2;base64,'
         f'{base64.b64encode((FONTS / file).read_bytes()).decode()}) format("woff2"); }}\n'
@@ -360,11 +361,11 @@ def write_index(outcomes, version):
     )
     rows = []
     for case in sorted(p.name for p in CASES.iterdir() if (p / "check.toml").is_file()):
-        result, detail, size = outcomes.get(case, ["not run", "", ""])
+        result, detail, size, version = outcomes.get(case, ["not run", "", "", ""])
         name = f'<a href="{case}.html">{case}</a>' if (OUT / f"{case}.html").is_file() else case
         size = f"{int(size) / 1e6:.2f} MB" if size else ""
         note = f"<small>{esc(detail)}</small>" if detail else ""
-        rows.append(f"<tr><td>{name}</td><td>{esc(result)}{note}</td><td class=n>{size}</td></tr>")
+        rows.append(f"<tr><td>{name}</td><td>{esc(result)}{note}</td><td class=n>{size}</td><td>{esc(version)}</td></tr>")
     passed = sum(1 for o in outcomes.values() if o[0] == "pass")
     (OUT / "index.html").write_text(f"""<!doctype html>
 <html lang="en">
@@ -379,9 +380,9 @@ def write_index(outcomes, version):
 <body>
 <main>
 <h1>Validation reports</h1>
-<p class="lede">1 report for each validation case of femahoy: the checks, the derivation and a 3D view of the runs. {passed} of {len(rows)} cases pass. Made by <code>scripts/validation-reports.py</code>, femahoy {esc(version)}.</p>
+<p class="lede">1 report for each validation case of femahoy: the checks, the derivation and a 3D view of the runs. {passed} of {len(rows)} cases pass. Made by <code>scripts/validation-reports.py</code>.</p>
 <table>
-<thead><tr><th>Case</th><th>Result</th><th class=n>Report</th></tr></thead>
+<thead><tr><th>Case</th><th>Result</th><th class=n>Report</th><th>Version</th></tr></thead>
 <tbody>
 {chr(10).join(rows)}
 </tbody>
@@ -424,15 +425,15 @@ def main(args):
                 print(f"{case}: {missing}", flush=True)
                 if r.returncode != 0:
                     report.unlink(missing_ok=True)
-                    outcomes[case] = ["fail", r.stderr.strip(), ""]
+                    outcomes[case] = ["fail", r.stderr.strip(), "", version]
                     continue
-                outcomes[case] = [*missing.split(": ", 1), str(report.stat().st_size)]
+                outcomes[case] = [*missing.split(": ", 1), str(report.stat().st_size), version]
                 continue
             try:
                 runs, curves, nofield = solve(case, tmp, env)
             except RuntimeError as e:
                 report.unlink(missing_ok=True)
-                outcomes[case] = ["fail", str(e).replace("\n", " "), ""]
+                outcomes[case] = ["fail", str(e).replace("\n", " "), "", version]
                 print(f"{case}: {e}", flush=True)
                 continue
             page.write_text(text(case, status, rows, runs, nofield, version))
@@ -445,7 +446,7 @@ def main(args):
                 r = fh("report", page, "-o", report, *args, "--last-step", env=env)
             if r.returncode != 0:
                 report.unlink(missing_ok=True)
-                outcomes[case] = ["fail", r.stderr.strip(), ""]
+                outcomes[case] = ["fail", r.stderr.strip(), "", version]
                 print(f"{case}: {r.stderr.strip()}", flush=True)
                 continue
             result = status.split(":", 1)
@@ -455,13 +456,13 @@ def main(args):
             if size > LIMIT:
                 report.unlink()
                 pending = f"Report pending: {size / 1e6:.1f} MB, above the {LIMIT / 1e6:.0f} MB limit."
-                outcomes[case] = [result[0], f"{pending} {detail}".strip(), ""]
+                outcomes[case] = [result[0], f"{pending} {detail}".strip(), "", version]
                 continue
-            outcomes[case] = [result[0], detail, str(size)]
+            outcomes[case] = [result[0], detail, str(size), version]
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         write_outcomes(outcomes)
-        write_index(outcomes, version)
+        write_index(outcomes)
 
 
 if __name__ == "__main__":
