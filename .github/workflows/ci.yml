@@ -7,7 +7,8 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # The preCICE packages and the cached OpenFOAM packages are for Ubuntu 24.04 (noble).
+    runs-on: ubuntu-24.04
     # A validation case has no time limit. This limit stops a hung solve. It is about 3 times the
     # time of the job (21 minutes).
     timeout-minutes: 65
@@ -42,16 +43,43 @@ jobs:
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
           ccx -v | head -3
       # fh starts OpenFOAM for the CFD case (README.md). The OpenCFD Debian repository has the
-      # same release v2512 as the macOS app. FH_REQUIRE_OPENFOAM=1 makes each test that solves
-      # through the real OpenFOAM fail if OpenFOAM is absent.
+      # same release v2512 as the macOS app. Its files come from SourceForge mirrors, which are slow
+      # and sometimes fail, so the cache keeps its packages, also openfoam2512-dev for the preCICE
+      # step. This step downloads them only on a cache miss, with 3 apt retries (the runner image
+      # sets 1). apt checks them with the OpenCFD key when it downloads them. Then a local
+      # repository of the cached packages replaces the OpenCFD repository. FH_REQUIRE_OPENFOAM=1
+      # makes each test that solves through the real OpenFOAM fail if OpenFOAM is absent.
+      - name: Restore the OpenFOAM packages
+        id: openfoam-cache
+        if: steps.select.outputs.openfoam == '1'
+        uses: actions/cache/restore@v6
+        with:
+          path: /tmp/openfoam-debs
+          key: openfoam2512-noble-debs
       - name: Install OpenFOAM
         if: steps.select.outputs.openfoam == '1'
         run: |
-          curl -fsSL https://dl.openfoam.com/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openfoam.gpg
-          echo "deb [signed-by=/usr/share/keyrings/openfoam.gpg] https://dl.openfoam.com/repos/deb $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/openfoam.list
+          debs=/tmp/openfoam-debs
+          if [ ! -d "$debs" ]; then
+            curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors --connect-timeout 30 https://dl.openfoam.com/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openfoam.gpg
+            echo "deb [signed-by=/usr/share/keyrings/openfoam.gpg] https://dl.openfoam.com/repos/deb noble main" | sudo tee /etc/apt/sources.list.d/openfoam.list
+            sudo apt-get update -o Acquire::Retries=3
+            mkdir -p /tmp/apt/partial
+            sudo apt-get install -y --download-only --no-install-recommends -o Acquire::Retries=3 -o Dir::Cache::Archives=/tmp/apt openfoam2512 openfoam2512-dev
+            mkdir "$debs"
+            cp /tmp/apt/openfoam*.deb "$debs"
+            (cd "$debs" && dpkg-scanpackages . > Packages)
+          fi
+          echo "deb [trusted=yes] file:$debs ./" | sudo tee /etc/apt/sources.list.d/openfoam.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
+      - name: Save the OpenFOAM packages
+        if: steps.select.outputs.openfoam == '1' && steps.openfoam-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/openfoam-debs
+          key: openfoam2512-noble-debs
       # fh mesh, the topology CAD check of a ccx case and the GetDP cases use gmsh.
       - name: Install gmsh
         if: steps.select.outputs.ccx == '1' || steps.select.outputs.getdp == '1'
@@ -60,16 +88,30 @@ jobs:
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
           "$HOME/.nix-profile/bin/gmsh" -version
       # fh starts GetDP for the electromagnetic and acoustic cases (README.md). GetDP has
-      # no package, so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1
-      # makes each test that solves through the real GetDP fail if GetDP is absent.
+      # no package, so its binary comes from getdp.info, checked with its SHA-256. getdp.info
+      # sometimes does not connect, so the cache keeps the archive. FH_REQUIRE_GETDP=1 makes each
+      # test that solves through the real GetDP fail if GetDP is absent.
+      - name: Restore the GetDP archive
+        id: getdp-cache
+        if: steps.select.outputs.getdp == '1'
+        uses: actions/cache/restore@v6
+        with:
+          path: /tmp/getdp.tgz
+          key: getdp-3.5.0-Linux64c
       - name: Install GetDP
         if: steps.select.outputs.getdp == '1'
         run: |
-          curl -fsSL -o /tmp/getdp.tgz https://getdp.info/bin/Linux/getdp-3.5.0-Linux64c.tgz
+          [ -f /tmp/getdp.tgz ] || curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors --connect-timeout 30 -o /tmp/getdp.tgz https://getdp.info/bin/Linux/getdp-3.5.0-Linux64c.tgz
           echo "d3c28fa18f20d6147b4c7367d4dd802e9f7ddb58c608688bbb71919dbca8041d  /tmp/getdp.tgz" | sha256sum -c
           tar xzf /tmp/getdp.tgz -C "$HOME"
           echo "$HOME/getdp-3.5.0-Linux64/bin" >> "$GITHUB_PATH"
           "$HOME/getdp-3.5.0-Linux64/bin/getdp" -version
+      - name: Save the GetDP archive
+        if: steps.select.outputs.getdp == '1' && steps.getdp-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/getdp.tgz
+          key: getdp-3.5.0-Linux64c
       # fh starts the Python of PyChrono for the multibody case (README.md). PyChrono is not on
       # PyPI, so micromamba installs it from conda-forge. FH_REQUIRE_PYCHRONO=1 makes each test
       # that solves through the real PyChrono fail if PyChrono is absent.
@@ -91,25 +133,43 @@ jobs:
           echo "FH_MEEP=$HOME/pymeep/bin/python" >> "$GITHUB_ENV"
           "$HOME/pymeep/bin/python" -c "import meep"
       # fh couples OpenFOAM and CalculiX through preCICE for the FSI case (README.md). The packages
-      # of preCICE and of ccx_preCICE come from their GitHub releases, checked with their SHA-256.
-      # OpenFOAM loads its adapter as a library, so this step builds it. FH_REQUIRE_PRECICE=1 makes
-      # each test that solves through the real preCICE fail if ccx_preCICE is absent.
+      # of preCICE and of ccx_preCICE come from their GitHub releases, checked with their SHA-256,
+      # and the cache keeps them. OpenFOAM loads its adapter as a library, so this step builds it.
+      # FH_REQUIRE_PRECICE=1 makes each test that solves through the real preCICE fail if
+      # ccx_preCICE is absent.
+      - name: Restore the preCICE packages
+        id: precice-cache
+        if: steps.select.outputs.precice == '1'
+        uses: actions/cache/restore@v6
+        with:
+          path: /tmp/precice
+          key: precice-3.4.1-calculix-adapter-2.20.2-openfoam-adapter-1.4.0
       - name: Install preCICE
         if: steps.select.outputs.precice == '1'
         working-directory: /tmp
         run: |
-          curl -fsSLO https://github.com/precice/precice/releases/download/v3.4.1/libprecice3_3.4.1_noble.deb
-          curl -fsSLO https://github.com/precice/calculix-adapter/releases/download/v2.20.2/calculix-precice3_2.20.2-1_amd64_noble.deb
-          curl -fsSL -o adapter.tgz https://github.com/precice/openfoam-adapter/releases/download/v1.4.0/openfoam-adapter-1.4.0-OpenFOAMv1812-v2606-newer.tar.gz
+          if [ ! -d precice ]; then
+            mkdir precice
+            curl -fsSL --retry 3 --retry-delay 10 --retry-all-errors --connect-timeout 30 --fail-early --output-dir precice \
+              -O https://github.com/precice/precice/releases/download/v3.4.1/libprecice3_3.4.1_noble.deb \
+              -O https://github.com/precice/calculix-adapter/releases/download/v2.20.2/calculix-precice3_2.20.2-1_amd64_noble.deb \
+              -o adapter.tgz https://github.com/precice/openfoam-adapter/releases/download/v1.4.0/openfoam-adapter-1.4.0-OpenFOAMv1812-v2606-newer.tar.gz
+          fi
           sha256sum -c <<EOF
-          3a36a40254acae06409d067381df1b68c309cc4ffb1b1d15590e1fa5359be888  libprecice3_3.4.1_noble.deb
-          a95804768d7fec9f3bc52cabd404a36709fbd0955ae330e4c8877041ae1af6b0  calculix-precice3_2.20.2-1_amd64_noble.deb
-          399c89ab0fc5dfcff87f77433dddb60d4de0b2071de9b78b0e756e4079fd6a21  adapter.tgz
+          3a36a40254acae06409d067381df1b68c309cc4ffb1b1d15590e1fa5359be888  precice/libprecice3_3.4.1_noble.deb
+          a95804768d7fec9f3bc52cabd404a36709fbd0955ae330e4c8877041ae1af6b0  precice/calculix-precice3_2.20.2-1_amd64_noble.deb
+          399c89ab0fc5dfcff87f77433dddb60d4de0b2071de9b78b0e756e4079fd6a21  precice/adapter.tgz
           EOF
-          sudo apt-get install -y --no-install-recommends ./libprecice3_3.4.1_noble.deb ./calculix-precice3_2.20.2-1_amd64_noble.deb openfoam2512-dev
-          tar xzf adapter.tgz
+          sudo apt-get install -y --no-install-recommends ./precice/libprecice3_3.4.1_noble.deb ./precice/calculix-precice3_2.20.2-1_amd64_noble.deb openfoam2512-dev
+          tar xzf precice/adapter.tgz
           (cd openfoam-adapter-1.4.0 && openfoam2512 ./Allwmake)
           ccx_preCICE -v || true
+      - name: Save the preCICE packages
+        if: steps.select.outputs.precice == '1' && steps.precice-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/precice
+          key: precice-3.4.1-calculix-adapter-2.20.2-openfoam-adapter-1.4.0
       # fh starts LAMMPS for the particle case (README.md). The Ubuntu package has the SPH package.
       # FH_REQUIRE_LAMMPS=1 makes each test that solves through the real LAMMPS fail if LAMMPS is
       # absent.
