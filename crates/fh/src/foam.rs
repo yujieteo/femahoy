@@ -5,8 +5,10 @@
 //! else `openfoam` on PATH) there for each program in turn:
 //!
 //! 1. `blockMesh`, when the case has `system/blockMeshDict` and no `constant/polyMesh`;
-//! 2. the application that `system/controlDict` names, for example `simpleFoam`;
-//! 3. `foamToVTK` for the last time.
+//! 2. `setFields`, when the case has `system/setFieldsDict`, for example to put the water in an
+//!    `interFoam` case;
+//! 3. the application that `system/controlDict` names, for example `simpleFoam`;
+//! 4. `foamToVTK` for the last time.
 //!
 //! Each program writes its output to `<run-dir>/foam/log.<program>`. The function objects of
 //! the case write their text results to `<run-dir>/foam/postProcessing`. Then the run writes the
@@ -278,6 +280,9 @@ impl Foam {
         let mut programs: Vec<Vec<&str>> = Vec::new();
         if work.join("system/blockMeshDict").is_file() && !work.join("constant/polyMesh").exists() {
             programs.push(vec!["blockMesh"]);
+        }
+        if work.join("system/setFieldsDict").is_file() {
+            programs.push(vec!["setFields"]);
         }
         programs.push(vec![&app]);
         programs.push(TO_VTK.to_vec());

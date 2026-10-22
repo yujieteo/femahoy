@@ -1,0 +1,46 @@
+# Pagano (1970), square [0/90/0] plates, simply supported, load q0 sin(pi x/a) sin(pi y/a).
+# THIN: a/h = 100, composite shells. THICK: a/h = 4, 3D layers. Each value is the exact 3D
+# elasticity solution at the nodes or the integration points of the set (`python3 pagano.py`).
+# Budget: shell model 0.17 %, mesh 0.17 %, exact values 0.001 %. See derivation.md.
+rel_tol = 0.005
+abs_tol = 0.0
+
+# Deflection in z of the centre of THIN, in mm.
+[w_thin]
+value = -0.0621031
+set = "THIN_CENTRE"
+field = "U"
+component = 3
+op = "value"
+
+# sigma_xx at the point of the centre element nearest the centre of the bottom face, in MPa.
+[sx_thin]
+value = 4.62032
+set = "THIN_BOTTOM"
+field = "S"
+component = 11
+op = "max"
+
+# Deflection in z of the centre of the mid-plane of THICK, in mm.
+[w_thick]
+value = -0.0183398
+set = "THICK_CENTRE"
+field = "U"
+component = 3
+op = "value"
+
+# sigma_xx at the point of the centre element nearest the centre of the bottom face, in MPa.
+[sx_thick]
+value = 10.3419
+set = "THICK_BOTTOM"
+field = "S"
+component = 11
+op = "max"
+
+# tau_xz at the edge x = 0, mean of the 8 points of the element of the core on the mid-plane, in MPa.
+[txz_thick]
+value = -1.01034
+set = "THICK_EDGE"
+field = "S"
+component = 13
+op = "mean"

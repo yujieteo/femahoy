@@ -87,7 +87,7 @@ impl Subprocess {
                             let solved =
                                 topology::run_with(&self.solver, &dir, &out, &cancel, &mut |_| {});
                             solved
-                                .map(|()| topology::WORK)
+                                .map(|_| topology::WORK)
                                 .map_err(|e| format!("topology {folder}: {e}"))
                         } else if chrono::is_case(&dir) {
                             let solved = self.chrono.run(&dir, &out);

@@ -124,8 +124,9 @@ preCICE couples OpenFOAM and CalculiX for fluid-structure interaction. `fh run` 
 Reason: the flow on a soft part changes its shape, and the shape changes the flow. preCICE couples the 2 solvers that femahoy already uses, so femahoy needs no third solver.
 
 Topology optimization is a SIMP loop in `fh` around `ccx` (`crates/fh/src/topology.rs`). Each iteration solves the model with `ccx`, reads the strain energy of each element and changes the densities.
+For 2D elements, `fh` then writes the solid of the last design as a STEP file with gmsh, and `ccx` checks the solid with the loads of the case.
 
-Reason: the design variables of CalculiX are node coordinates and orientations, not densities. The loop of Andreassen et al. (2011) is short, and `ccx` gives all the values that it needs.
+Reason: the design variables of CalculiX are node coordinates and orientations, not densities. The loop of Andreassen et al. (2011) is short, and `ccx` gives all the values that it needs. A density field is not a part. The STEP file is the geometry that a CAD program can use.
 
 Project Chrono is the multibody solver. It is a separate program that the user installs, as section 2 says.
 

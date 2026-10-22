@@ -9,8 +9,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     # A validation case has no time limit. This limit stops a hung solve. It is about 3 times the
-    # time of the job (18 minutes).
-    timeout-minutes: 55
+    # time of the job (21 minutes).
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs

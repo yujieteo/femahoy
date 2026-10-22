@@ -1,0 +1,9 @@
+# The half MBB beam of Andreassen et al. (2011), figure 3, top left: 50 % of the volume, and the
+# filter radius 0.04 times the width of 60 elements.
+volume = 0.5
+radius = 2.4
+# The reference element is the plane stress square with E0 = 1 and nu = 0.3. The plane strain
+# element CPE4 with young = E0 (1 + 2 nu) / (1 + nu)^2 = 1.6 / 1.69 and poisson = nu / (1 + nu)
+# = 0.3 / 1.3 has the same stiffness matrix (derivation.md).
+young = 0.9467455621301775
+poisson = 0.23076923076923078

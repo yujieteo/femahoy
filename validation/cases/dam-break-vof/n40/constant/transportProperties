@@ -1,0 +1,7 @@
+FoamFile { version 2.0; format ascii; class dictionary; object transportProperties; }
+
+// Water and air at 20 C.
+phases          (water air);
+water { transportModel Newtonian; nu 1e-06; rho 998; }
+air { transportModel Newtonian; nu 1.5e-05; rho 1.2; }
+sigma           0.073;

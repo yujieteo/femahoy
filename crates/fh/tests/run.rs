@@ -4,7 +4,7 @@
 //! fake `gmsh` and a fake `getdp`, the Chrono tests a fake Python, and the LAMMPS tests a fake
 //! `lmp`.
 mod common;
-use common::{ccx_solver, p, root, scratch, script, stderr, stdout};
+use common::{ccx_solver, p, real_gmsh, root, scratch, script, stderr, stdout};
 
 use std::fs;
 use std::path::PathBuf;
@@ -315,6 +315,22 @@ fn a_failed_openfoam_program_fails_the_run_with_its_fatal_error() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A case with `system/setFieldsDict` gets its initial fields from setFields after the mesh, for
+/// example the water column of an interFoam case.
+#[test]
+fn fh_run_sets_the_initial_fields_with_set_fields() {
+    let (dir, case) = foam_lab("run-foam-set-fields", "interFoam");
+    fs::write(case.join("system/setFieldsDict"), "regions ();\n").unwrap();
+    let out = fh_run_foam(&dir, &case);
+    let shown = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{shown}{}", stderr(&out));
+    assert!(
+        shown.contains("  program blockMesh\n  program setFields\n  program interFoam\n"),
+        "{shown}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A fake `gmsh` and a fake `getdp`. They write their arguments to CALLS. gmsh writes the mesh.
 /// getdp writes a view with 1 tetrahedron and a complex vector, or, when `case.pro` holds FAIL,
 /// fails as GetDP does.
@@ -497,6 +513,58 @@ fn fh_run_optimizes_a_topology_case_with_ccx_in_each_iteration() {
     let mean = density.iter().sum::<f64>() / 48.0;
     assert!((mean - last[2]).abs() < 1e-6, "{mean} {history}");
     assert!(grid.point_field("U").is_some());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// With gmsh, a topology run writes the CAD of its last design: the STEP file of the solid of the
+/// density 0.5 or more, and its check with ccx.
+#[test]
+fn fh_run_writes_the_cad_of_the_last_design_and_checks_it_with_ccx() {
+    let Some(solver) = ccx_solver() else { return };
+    let Some(gmsh) = real_gmsh() else {
+        eprintln!("skipped: gmsh is not installed");
+        return;
+    };
+    let dir = scratch("run-topology-cad");
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("job.inp"), mbb_beam(24, 8)).unwrap();
+    let settings = "volume = 0.5\nradius = 1.5\nyoung = 1.0\npoisson = 0.3\nthickness = 2\n";
+    fs::write(case.join("topology.toml"), settings).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", &solver)
+        .env("FH_GMSH", &gmsh)
+        .output()
+        .unwrap();
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    let work = dir.join("state/runs/run-000001/out/topology");
+    let line =
+        format!(
+        "fh run: CAD {} (the solid of the density 0.5 or more, 2 thick). The check with ccx gives \
+         the compliance ",
+        fs::canonicalize(work.join("cad/design.step")).unwrap().display()
+    );
+    assert!(shown.contains(&line), "{shown}");
+    let step = fs::read_to_string(work.join("cad/design.step")).unwrap();
+    assert!(step.starts_with("ISO-10303-21;"));
+    assert_eq!(step.matches("MANIFOLD_SOLID_BREP").count(), 1);
+
+    let history = fs::read_to_string(work.join("history.txt")).unwrap();
+    let last = history.lines().last().unwrap().split_whitespace().nth(1);
+    let last: f64 = last.unwrap().parse().unwrap();
+    let check = fs::read_to_string(work.join("cad/check.txt")).unwrap();
+    assert!(check.starts_with("# compliance volume\n"), "{check}");
+    let row: Vec<f64> = (check.lines().nth(1).unwrap().split_whitespace())
+        .map(|w| w.parse().unwrap())
+        .collect();
+    // The solid has the full material where the last design has elements of a density between
+    // 0.5 and 1. Thus the solid is stiffer, and its volume is more than 50 %.
+    assert!(row[0] > 0.6 * last && row[0] < last, "{check}{history}");
+    assert!((0.5..0.6).contains(&row[1]), "{check}");
+    assert!(work.join("cad/solve/ccx/job.dat").is_file());
     let _ = fs::remove_dir_all(&dir);
 }
 

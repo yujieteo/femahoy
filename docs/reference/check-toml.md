@@ -41,7 +41,7 @@ A table check of an OpenFOAM, GetDP, preCICE, LAMMPS, topology or Chrono case ha
 | Key | Rule |
 |---|---|
 | `case` | The name of the subfolder with the OpenFOAM, GetDP, preCICE, LAMMPS, topology or Chrono case. |
-| `file` | The path of a text table in the case folder after the solve, for example `postProcessing/forceCoeffs/0/coefficient.dat`. A function object of OpenFOAM, the PostOperation of GetDP, a `watch-point` of preCICE, a `print` of LAMMPS or `chrono.py` writes it. In a preCICE case, the path starts with `fluid/` or `solid/`. For a topology case, the path is in the folder of the loop: `history.txt`, with the column `compliance`. |
+| `file` | The path of a text table in the case folder after the solve, for example `postProcessing/forceCoeffs/0/coefficient.dat`. A function object of OpenFOAM, the PostOperation of GetDP, a `watch-point` of preCICE, a `print` of LAMMPS or `chrono.py` writes it. In a preCICE case, the path starts with `fluid/` or `solid/`. For a topology case, the path is in the folder of the loop: `history.txt`, with the column `compliance`, or `cad/check.txt`, with the columns `compliance` and `volume` of the solid of the last design. |
 | `column` | The name of the column in the header line: the last line that starts with `#`, else the first line. The value is the number in this column of the last row. |
 
 Each column must hold 1 number. A function object writes a vector field as `(x y z)`: use the function object `components` to make the fields `Ux`, `Uy` and `Uz`.

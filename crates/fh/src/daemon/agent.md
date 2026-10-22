@@ -27,7 +27,7 @@ For a flow request, write an OpenFOAM case folder and solve it with `fh run CASE
 
 1. Case: write `system/controlDict`, `system/fvSchemes`, `system/fvSolution`, `system/blockMeshDict`, the files of `constant` and the start fields in `0`. Name the solver in `controlDict`, for example `application simpleFoam;`. A 2D case has 1 cell in z, and a patch of type `empty` on the front and the back.
 2. Forces: add the function object `forceCoeffs` (type `forceCoeffs`) to `controlDict`, with `patches`, `liftDir`, `dragDir`, `magUInf`, `lRef`, `Aref` and `CofR`.
-3. Solve: `fh run CASE`. `fh run` starts `blockMesh` when the case has no mesh, then the solver, then `foamToVTK`. A failure shows the error of OpenFOAM and the path of its log.
+3. Solve: `fh run CASE`. `fh run` starts `blockMesh` when the case has no mesh, then `setFields` when the case has `system/setFieldsDict`, then the solver, then `foamToVTK`. A failure shows the error of OpenFOAM and the path of its log.
 4. Read the numbers: `fh run` prints the folder of the logs (`log.<program>`) and of `postProcessing`. The last row of `postProcessing/forceCoeffs/0/coefficient.dat` holds the coefficients of the last iteration. The last line that starts with `#` names the columns. The page shows the cell fields of the last time, for example `U` and `p`.
 
 This setup agrees with the measured data of the NACA 0012 airfoil at a Reynolds number of 6 million (the validation case `naca0012-ladson`): `simpleFoam` with the `SpalartAllmaras` model, `nuTilda` = 3 nu in the free stream and 0 on the wall, `freestreamVelocity` and `freestreamPressure` on a far field 500 chords away, a first cell with y+ below 1, and 1500 iterations with relaxation factors 0.9 and `consistent yes`.
@@ -36,6 +36,12 @@ It also agrees with the measured lift and pitching moment of the NACA 23012 with
 The setup below agrees with the de Vahl Davis bench mark for natural convection in a square cavity (the validation case `cavity-devahldavis`).
 It is `buoyantBoussinesqSimpleFoam` with `simulationType laminar` on a uniform mesh of 129 x 129 cells. It uses `bounded Gauss linear` for `div(phi,U)` and `div(phi,T)`, the relaxation factors 0.2 for `p_rgh`, 0.8 for `U` and 0.95 for `T`, and 2000 iterations.
 To get the Nusselt number, add the function object `grad` of `T`, then a `surfaceFieldValue` with `operation areaNormalAverage` of `grad(T)` on the wall patch. For the largest velocity on a line, add the function object `components` of `U`, then a `surfaceFieldValue` with `operation max` of `Ux` or `Uy` on a `sampledSurface` of type `cuttingPlane`. A mesh with an odd number of cells puts a row of cell centres on each centre line.
+
+For a free surface of water and air, for example a dam break or a tank that sloshes, use `interFoam` (volume of fluid).
+Write `phases (water air);` and the 2 fluids in `constant/transportProperties`, `constant/g`, and `alpha.water`, `p_rgh` and `U` in `0`. Put the water in `alpha.water` with `boxToCell` in `system/setFieldsDict`.
+On an open top, use `totalPressure` for `p_rgh`, `pressureInletOutletVelocity` for `U` and `inletOutlet` for `alpha.water`. On a wall, use `fixedFluxPressure`, `noSlip` and `zeroGradient`.
+This setup agrees with the measured surge front of the Martin and Moyce dam break (the validation case `dam-break-vof`): square cells, MULES with `cAlpha 1` and `MULESCorr yes`, and `adjustTimeStep yes` with `maxCo` and `maxAlphaCo` 0.5.
+To get the front or the height of the water, add the function object `fieldExtents` of `alpha.water` with `threshold 0.5`. It writes the extents of the cell centres of the water after each time step.
 
 ## Electromagnetics with GetDP
 
@@ -87,8 +93,9 @@ For a request to find the stiffest layout of a fraction of the material in a des
 2. `topology.toml`: `volume` (the fraction of the volume that the material fills, for example 0.5), `radius` (the filter radius, in the length unit of the mesh, at least 1.5 element sizes), `young`, `poisson` and, for 2D elements, `thickness` (default 1).
 3. Solve: `fh run CASE`. Each iteration solves the model with `ccx` and prints the compliance, the volume fraction and the largest change of a density. The loop stops when no density changes by more than 0.01, after about 100 iterations. Thus use a mesh that `ccx` solves in about 1 s.
 4. Results: the last row of `topology/history.txt` holds the compliance of the last design. The page shows the cell field `density`: 1 is material and 0 is void.
+5. CAD: for 2D elements (`CPS` or `CPE`), the run also writes the solid of the density 0.5 or more to `topology/cad/design.step` (in mm), with its gmsh script `design.geo`. This needs gmsh. Then `ccx` solves the solid with the same supports and loads, and `topology/cad/check.txt` holds its compliance. The solid has no gray material, thus its compliance is lower than the compliance of the loop. If the supports do not hold each part of the solid, the run has no check: use a finer mesh or a larger `radius`. A run with 3D solid elements (for example `C3D8` or `C3D10`) gives no CAD yet, and `fh run` prints the reason. For a half model, mirror the solid in gmsh with `Symmetry` and `Duplicata`, then join the 2 halves with `BooleanUnion`.
 
-This loop agrees with the published result of the MBB beam (the validation case `topology-mbb-beam`): 60 x 20 elements, `volume = 0.5` and `radius = 2.4` give a compliance of 216.81, as in Andreassen et al. (2011).
+This loop agrees with the published result of the MBB beam (the validation case `topology-mbb-beam`): 60 x 20 elements, `volume = 0.5` and `radius = 2.4` give a compliance of 216.81, as in Andreassen et al. (2011). The solid of this design gives 190.48, 12 % lower (the validation case `topology-mbb-beam-cad`).
 
 ## Multibody dynamics with Project Chrono
 
@@ -168,6 +175,17 @@ Use shells for a thin part.
 - Section: `*SHELL SECTION, ELSET=ALL, MATERIAL=STEEL`, then the thickness on the next line. A shell node has 6 degrees of freedom: `FIXED, 1, 6` clamps it.
 - `*DSLOAD` on an edge surface: `NAME, P, 1.0` is a pressure of 1 MPa on the edge face. The force is P times the thickness times the length of the edge.
 - On a symmetry plane, fix the normal translation and 1 rotation about an axis in the plane. For the plane x = c, fix DOF 1 and 5. Do not fix 2 rotations at the nodes of 1 plane: ccx then made the roof 8 times too stiff.
+
+## Composite laminates
+
+- Ply: `*ELASTIC, TYPE=ENGINEERING CONSTANTS`, with `E1, E2, E3, nu12, nu13, nu23, G12, G13` on the first line and `G23, 0.0` on the second. Axis 1 is the fibre.
+- Ply angle θ: 1 `*ORIENTATION` for each angle, `cos θ, sin θ, 0, -sin θ, cos θ, 0`. The first point is on axis 1.
+- Composite shell (`S8R` or `S6` only): `*SHELL SECTION, ELSET=..., COMPOSITE`, then 1 line for each layer: `thickness, , material, orientation`. The first layer is on the negative side of the normal.
+- A composite shell is too stiff when the laminate is thick. Its deflection was 1 % low at span/thickness 50, 6 % low at 20 and 16 % low at 10. Its transverse shear stress was wrong by a factor of up to 3.
+- Thus, below a span/thickness of 50, or for the shear stress between the plies, use `C3D20R` with 3 elements across each ply and 1 `*SOLID SECTION, ..., ORIENTATION=...` for each ply angle.
+- `*EL PRINT` gives the stress of an element with an orientation in the axes of the ply (11 is along the fibre) and adds the name of the orientation at the end of each line. Use these stresses for a ply failure index, for example Tsai-Wu or Hashin, in an `fh-python` script. `GLOBAL=YES` gives x, y, z.
+
+This setup agrees within 0.2 % with the exact 3D solution of Pagano (1970) for [0/90/0] plates under a sine load, with shells at span/thickness 100 and with 3D layers at 4 (the validation case `laminate-pagano`).
 
 ## Cracks and fatigue
 
