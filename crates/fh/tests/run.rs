@@ -884,7 +884,7 @@ fn fh_run_solves_an_openems_case_with_python() {
     let vtu = fs::read(run.join("out/step-1.vtu")).unwrap();
     let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
     assert_eq!(grid.cell_types, vec![9]);
-    assert_eq!(grid.cell_field("D").unwrap().as_f64(), Some(&[2.5][..]));
+    assert_eq!(grid.cell_field("D").unwrap().values, vec![2.5]);
     let _ = fs::remove_dir_all(&dir);
 }
 
