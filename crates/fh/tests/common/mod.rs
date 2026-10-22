@@ -83,16 +83,31 @@ pub fn getdp_solver() -> Option<PathBuf> {
 /// `None` with a message, and the test does not solve. With `FH_REQUIRE_PYCHRONO=1`, as in CI, a
 /// missing PyChrono fails the test.
 pub fn pychrono_solver() -> Option<PathBuf> {
-    let exe = PathBuf::from(std::env::var_os("FH_PYCHRONO").unwrap_or_else(|| "python3".into()));
-    let import = Command::new(&exe).args(["-c", "import pychrono"]).output();
+    python_with("FH_PYCHRONO", "pychrono", "PyChrono")
+}
+
+/// The Python of Meep (`FH_MEEP`, else `python3` on PATH) when it imports Meep, as for PyChrono.
+/// `FH_REQUIRE_MEEP=1` makes a missing Meep fail the test.
+pub fn meep_solver() -> Option<PathBuf> {
+    python_with("FH_MEEP", "meep", "Meep")
+}
+
+/// The Python of `$<var>` (else `python3` on PATH) when it imports `module`, the module of the
+/// solver `name`.
+fn python_with(var: &str, module: &str, name: &str) -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os(var).unwrap_or_else(|| "python3".into()));
+    let import = Command::new(&exe)
+        .args(["-c", &format!("import {module}")])
+        .output();
     let found = import.is_ok_and(|o| o.status.success());
     if !found {
+        let require = format!("FH_REQUIRE_{}", name.to_uppercase());
         assert!(
-            std::env::var_os("FH_REQUIRE_PYCHRONO").is_none_or(|v| v != "1"),
-            "FH_REQUIRE_PYCHRONO=1, but {} does not import pychrono",
+            std::env::var_os(&require).is_none_or(|v| v != "1"),
+            "{require}=1, but {} does not import {module}",
             exe.display()
         );
-        eprintln!("skipped: no Python with PyChrono. Set FH_PYCHRONO");
+        eprintln!("skipped: no Python with {name}. Set {var}");
     }
     found.then_some(exe)
 }

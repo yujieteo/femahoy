@@ -1,6 +1,7 @@
 mod common;
 use common::{
-    ccx_solver, getdp_solver, lammps_solver, openfoam_solver, p, precice_solver, pychrono_solver,
+    ccx_solver, getdp_solver, lammps_solver, meep_solver, openfoam_solver, p, precice_solver,
+    pychrono_solver,
 };
 use std::process::{Command, Output};
 
@@ -29,14 +30,24 @@ fn text(bytes: Vec<u8>) -> String {
 
 #[test]
 fn validate_runs_every_case() {
-    let (Some(solver), Some(openfoam), Some(getdp), Some(precice), Some(pychrono), Some(lammps)) = (
+    let (
+        Some(solver),
+        Some(openfoam),
+        Some(getdp),
+        Some(precice),
+        Some(pychrono),
+        Some(lammps),
+        Some(meep),
+    ) = (
         ccx_solver(),
         openfoam_solver(),
         getdp_solver(),
         precice_solver(),
         pychrono_solver(),
         lammps_solver(),
-    ) else {
+        meep_solver(),
+    )
+    else {
         return;
     };
     let out = Command::new(env!("CARGO_BIN_EXE_fh"))
@@ -45,6 +56,7 @@ fn validate_runs_every_case() {
         .env("FH_OPENFOAM", openfoam)
         .env("FH_GETDP", getdp)
         .env("FH_PYCHRONO", pychrono)
+        .env("FH_MEEP", meep)
         .env("FH_CCX_PRECICE", precice)
         .env("FH_LAMMPS", lammps)
         .output()

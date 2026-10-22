@@ -1,6 +1,6 @@
 # The no-mistakes test step runs this command. FH_REQUIRE_CCX=1 makes a missing ccx fail a test.
-# Without it, a test that solves skips and passes. The OpenFOAM, GetDP, PyChrono and LAMMPS paths
-# do not exist, so the validation suite skips here. Only CI (.github/workflows/ci.yml) runs it.
+# Without it, a test that solves skips and passes. The OpenFOAM, GetDP, PyChrono, LAMMPS and Meep
+# paths do not exist, so the validation suite skips here. Only CI (.github/workflows/ci.yml) runs it.
 # The wasm build checks the window layer of the viewer, as CI does.
 commands:
-  test: cargo build -p fh-viewer --lib --target wasm32-unknown-unknown && FH_REQUIRE_CCX=1 FH_OPENFOAM=/nonexistent/openfoam FH_GETDP=/nonexistent/getdp FH_PYCHRONO=/nonexistent/python FH_LAMMPS=/nonexistent/lmp cargo test --workspace
+  test: cargo build -p fh-viewer --lib --target wasm32-unknown-unknown && FH_REQUIRE_CCX=1 FH_OPENFOAM=/nonexistent/openfoam FH_GETDP=/nonexistent/getdp FH_PYCHRONO=/nonexistent/python FH_LAMMPS=/nonexistent/lmp FH_MEEP=/nonexistent/python cargo test --workspace

@@ -80,6 +80,16 @@ jobs:
           "$HOME/.nix-profile/bin/micromamba" create -y -q -p "$HOME/pychrono" -c conda-forge pychrono=10.0.0 python=3.12
           echo "FH_PYCHRONO=$HOME/pychrono/bin/python" >> "$GITHUB_ENV"
           "$HOME/pychrono/bin/python" -c "import pychrono"
+      # fh starts the Python of Meep for the optics case (README.md). Meep is GPL, so it stays a
+      # separate program. micromamba installs it from conda-forge. FH_REQUIRE_MEEP=1 makes each test
+      # that solves through the real Meep fail if Meep is absent.
+      - name: Install Meep
+        if: steps.select.outputs.meep == '1'
+        run: |
+          nix profile install nixpkgs#micromamba
+          "$HOME/.nix-profile/bin/micromamba" create -y -q -p "$HOME/pymeep" -c conda-forge "pymeep=1.35.0=nompi*" python=3.12
+          echo "FH_MEEP=$HOME/pymeep/bin/python" >> "$GITHUB_ENV"
+          "$HOME/pymeep/bin/python" -c "import meep"
       # fh couples OpenFOAM and CalculiX through preCICE for the FSI case (README.md). The packages
       # of preCICE and of ccx_preCICE come from their GitHub releases, checked with their SHA-256.
       # OpenFOAM loads its adapter as a library, so this step builds it. FH_REQUIRE_PRECICE=1 makes
@@ -118,6 +128,7 @@ jobs:
           FH_REQUIRE_OPENFOAM: ${{ steps.select.outputs.openfoam }}
           FH_REQUIRE_GETDP: ${{ steps.select.outputs.getdp }}
           FH_REQUIRE_PYCHRONO: ${{ steps.select.outputs.chrono }}
+          FH_REQUIRE_MEEP: ${{ steps.select.outputs.meep }}
           FH_REQUIRE_PRECICE: ${{ steps.select.outputs.precice }}
           FH_REQUIRE_LAMMPS: ${{ steps.select.outputs.lammps }}
       # validate_runs_every_case of the Test step needs every solver. When only some solvers are

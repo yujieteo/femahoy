@@ -1,0 +1,41 @@
+# A plane wave in air scatters on an infinite dielectric cylinder: radius a, index 2, with the
+# electric field along the axis. The references are the scattering efficiencies Q of the
+# analytical series solution (Bohren and Huffman 1983, chapter 8) at the size parameters
+# x = 2 pi a / wavelength = 1, 2, 2.5 and 3. derivation.md gives the formulas, and reference.py
+# computes the values.
+#
+# The model is the Meep case res40: FDTD with 40 grid points per a, 41 size parameters from 1 to
+# 3 in 1 pulse. The tolerance (derivation.md, "Tolerance"):
+# - The grid error is second order. At 40 points per a, the error is 3.3e-3 of Q at x = 2.5 and
+#   8.1e-4 or less at the other 3 checks. The sizes of the cell and the PML change Q by 7e-4 or
+#   less.
+# - rel_tol = 0.01 is 3 times the largest error. An index of 2.02 changes Q by 1.1e-2 to 8.2e-2.
+#   Cells with no average of the permittivity at the surface change Q at x = 3 by -1.2e-2. 20
+#   grid points per a give -1.4e-2 at x = 2.5. Each fails.
+# - abs_tol = 0: no reference value is near 0.
+rel_tol = 0.01
+abs_tol = 0
+
+[q_x1]
+value = 2.862930
+case = "res40"
+file = "cylinder.txt"
+column = "Q1"
+
+[q_x2]
+value = 4.293232
+case = "res40"
+file = "cylinder.txt"
+column = "Q2"
+
+[q_x2_5]
+value = 3.613747
+case = "res40"
+file = "cylinder.txt"
+column = "Q2.5"
+
+[q_x3]
+value = 2.582972
+case = "res40"
+file = "cylinder.txt"
+column = "Q3"

@@ -1,8 +1,8 @@
 //! `fh run`: one solve with the real ccx on the input of a validation case, and the stop of
 //! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
 //! OpenFOAM tests use a fake `openfoam` that writes the files of each program, the GetDP tests a
-//! fake `gmsh` and a fake `getdp`, the Chrono tests a fake Python, and the LAMMPS tests a fake
-//! `lmp`.
+//! fake `gmsh` and a fake `getdp`, the Chrono and Meep tests a fake Python, and the LAMMPS tests a
+//! fake `lmp`.
 mod common;
 use common::{ccx_solver, p, real_gmsh, root, scratch, script, stderr, stdout};
 
@@ -774,5 +774,59 @@ fn a_failed_lammps_fails_the_run_with_its_error_lines() {
         "{errors}"
     );
     assert!(errors.contains("out/lammps/log.lmp"), "{errors}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake Python with Meep. It writes its arguments to CALLS and a scalar view of 1 square with
+/// 2 steps. When `meep_case.py` holds FAIL, it fails as a Python with no Meep.
+const FAKE_MEEP: &str = r#"#!/bin/sh
+echo python "$@" >> CALLS
+if grep -q FAIL meep_case.py; then echo "ModuleNotFoundError: No module named 'meep'" >&2; exit 1; fi
+printf 'View "Ez" {\nSQ(0,0,0,1,0,0,1,1,0,0,1,0){1,1,1,1,-2,-2,-2,-2};\nTIME{0,0.5};\n};\n' > field.pos
+"#;
+
+/// `fh run CASE` starts `meep_case.py` with the Python of Meep and writes each step of its view
+/// to a VTU file of the page. A Python with no Meep ends the run with the install step.
+#[test]
+fn fh_run_solves_a_meep_case_with_python() {
+    let dir = scratch("run-meep");
+    let calls = p(&dir.join("calls")).to_owned();
+    script(&dir.join("python"), &FAKE_MEEP.replace("CALLS", &calls));
+    let fh_run = |case: &str, text: &str| {
+        let case = dir.join(case);
+        fs::create_dir_all(&case).unwrap();
+        fs::write(case.join("meep_case.py"), text).unwrap();
+        Command::new(env!("CARGO_BIN_EXE_fh"))
+            .args(["run", p(&case)])
+            .env("FH_STATE", dir.join("state"))
+            .env("FH_MEEP", dir.join("python"))
+            .output()
+            .unwrap()
+    };
+    let out = fh_run("case", "import meep\n");
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(shown.contains("  program python\n"), "{shown}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(calls, "python meep_case.py\n");
+    let run = dir.join("state/runs/run-000001");
+    assert!(run.join("out/meep/log.python").is_file(), "{shown}");
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    assert!(
+        pvd.contains("units=\"unspecified\"") && !pvd.contains("multibody"),
+        "{pvd}"
+    );
+    let vtu = fs::read(run.join("out/step-2.vtu")).unwrap();
+    let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
+    let ez = grid.cell_field("Ez").unwrap();
+    assert_eq!(ez.values.as_slice(), &[-2.0][..]);
+
+    let out = fh_run("fail", "FAIL\n");
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors.contains("has no Meep. Install Meep (README.md) and set FH_MEEP"),
+        "{errors}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
