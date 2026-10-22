@@ -61,6 +61,28 @@ impl Lab {
     }
 }
 
+/// The bytes of the file under the daemon path `path` in the report `html`: raw deflate in base64.
+fn file(html: &str, path: &str) -> Option<Vec<u8>> {
+    let start = html.find(&format!("data-path=\"{path}\">"))? + path.len() + 13;
+    let text = &html[start..start + html[start..].find('<')?];
+    let digit = |c: u8| match c {
+        b'A'..=b'Z' => c - b'A',
+        b'a'..=b'z' => c - b'a' + 26,
+        b'0'..=b'9' => c - b'0' + 52,
+        b'+' => 62,
+        _ => 63,
+    };
+    let mut bytes = Vec::new();
+    for chunk in text.trim_end_matches('=').as_bytes().chunks(4) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, c)| n | u32::from(digit(*c)) << (18 - 6 * i));
+        bytes.extend_from_slice(&n.to_be_bytes()[1..chunk.len()]);
+    }
+    Some(miniz_oxide::inflate::decompress_to_vec(&bytes).expect("raw deflate"))
+}
+
 fn stderr(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
@@ -75,15 +97,18 @@ fn the_report_holds_the_text_the_viewer_and_the_run() {
     let html = fs::read_to_string(lab.out()).unwrap();
     assert!(html.contains("<h1>A320 barrel</h1>"), "text");
     assert!(html.contains("a320/job.inp"), "name of the run");
-    // The base64 of the bytes of each file, under the daemon path of the file.
-    for (path, base64) in [
-        ("/viewer/fh_viewer.js", "ZXhwb3J0IGRlZmF1bHQgMTs="),
-        ("/viewer/fh_viewer_bg.wasm", "ZmFrZSB3YXNt"),
-        ("/api/v1/runs/run-000001/input", "Kk5PREUKMSwgMCwgMCwgMAo="),
-        ("/api/v1/runs/run-000001/files/step-1.vtu", "ZmFrZSB2dHU="),
+    // The bytes of each file, under the daemon path of the file.
+    for (path, bytes) in [
+        ("/viewer/fh_viewer.js", &b"export default 1;"[..]),
+        ("/viewer/fh_viewer_bg.wasm", b"fake wasm"),
+        ("/api/v1/runs/run-000001/input", b"*NODE\n1, 0, 0, 0\n"),
+        ("/api/v1/runs/run-000001/files/step-1.vtu", b"fake vtu"),
     ] {
-        let element = format!("data-path=\"{path}\">{base64}</script>");
-        assert!(html.contains(&element), "{path} in the report");
+        assert_eq!(
+            file(&html, path).as_deref(),
+            Some(bytes),
+            "{path} in the report"
+        );
     }
     assert!(
         html.contains("data-path=\"/api/v1/runs/run-000001/files/results.pvd\">"),
@@ -189,6 +214,37 @@ fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
     let html = fs::read_to_string(lab.out()).unwrap();
     assert!(html.contains("<h1>A320 barrel</h1>"), "text");
     assert!(!html.contains("data-path="), "no files");
+}
+
+/// With `--last-step`, the report holds only the last step of the run, and its `results.pvd`
+/// names only that step.
+#[test]
+fn the_last_step_option_keeps_only_the_last_step() {
+    let lab = Lab::new("report-last-step");
+    let out = lab.dir.join("state/runs/run-000001/out");
+    fs::write(
+        out.join("results.pvd"),
+        "<VTKFile type=\"Collection\"><Collection units=\"SI-mm\">\
+         <DataSet timestep=\"1\" part=\"0\" file=\"step-1.vtu\"/>\
+         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/></Collection></VTKFile>",
+    )
+    .unwrap();
+    fs::write(out.join("step-2.vtu"), b"last vtu").unwrap();
+    let out = lab.report(&["--run", "run-000001", "--last-step"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    let base = "/api/v1/runs/run-000001/files";
+    assert_eq!(file(&html, &format!("{base}/step-1.vtu")), None);
+    assert_eq!(
+        file(&html, &format!("{base}/step-2.vtu")).as_deref(),
+        Some(&b"last vtu"[..])
+    );
+    let pvd = String::from_utf8(file(&html, &format!("{base}/results.pvd")).unwrap()).unwrap();
+    assert_eq!(
+        pvd,
+        "<VTKFile type=\"Collection\"><Collection units=\"SI-mm\">\
+         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/></Collection></VTKFile>"
+    );
 }
 
 /// A bad curve file gives no report, and the message names the file and the line.

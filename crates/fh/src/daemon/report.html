@@ -84,7 +84,7 @@ header { flex: none; padding: 0.75rem 1rem; }
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
-// `fhViewer` to the gzip of each viewer file in base64, under its daemon path.
+// `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
@@ -98,11 +98,9 @@ const decode = (base64) => {
 
 window.fetch = async (request) => {
   const path = new URL(request.url ?? request, location.href).pathname;
-  const e = files.get(path);
-  if (e) return new Response(decode(e.textContent));
-  const gzip = window.fhViewer?.[path];
-  if (gzip) return new Response(new Blob([decode(gzip)]).stream().pipeThrough(new DecompressionStream("gzip")));
-  return new Response("no such file", { status: 404 });
+  const base64 = files.get(path)?.textContent ?? window.fhViewer?.[path];
+  if (!base64) return new Response("no such file", { status: 404 });
+  return new Response(new Blob([decode(base64)]).stream().pipeThrough(new DecompressionStream("deflate-raw")));
 };
 
 async function start() {

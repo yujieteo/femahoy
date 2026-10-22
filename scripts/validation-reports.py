@@ -16,7 +16,8 @@ cases. For each case:
 A case that cannot run (its solver does not start on this computer) gets no report. The index
 names the case and the reason. A case that fails gets its report, which shows the failure. An
 input that writes no field (a CalculiX input with no *NODE FILE and no *EL FILE) has no 3D view.
-A report above 5 MB is not kept: the index names its size, and the report waits for a decision.
+A report above 5 MB is made again with only the last step of each run (`fh report --last-step`).
+A report above 10 MB is not kept: the index names its size.
 
 The reports share 1 copy of the wasm viewer, validation/reports/viewer.js. A report opens with a
 double-click when viewer.js is beside it. outcomes.tsv keeps the result of each case, so a run
@@ -28,7 +29,6 @@ Only the Python standard library.
 """
 
 import base64
-import gzip
 import html
 import json
 import os
@@ -38,6 +38,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
+import zlib
 from datetime import date
 from pathlib import Path
 
@@ -48,8 +49,10 @@ FONTS = ROOT / "crates/fh/src/daemon/fonts"
 FH = Path(os.environ.get("FH_BIN") or ROOT / "target/release/fh")
 VIEWER = Path(os.environ.get("FH_VIEWER") or ROOT / "target/release/viewer")
 VIEWER_FILES = ["fh_viewer.js", "fh_viewer_bg.wasm"]
-# The largest report that the repository keeps, in bytes.
-LIMIT = 5_000_000
+# A report above SMALL bytes keeps only the last step of each run. The repository keeps no report
+# above LIMIT bytes.
+SMALL = 5_000_000
+LIMIT = 10_000_000
 
 
 def esc(text):
@@ -236,7 +239,7 @@ def solve(case, tmp, env):
     return runs, curves, nofield
 
 
-def text(case, status, rows, runs, nofield, version):
+def text(case, status, rows, runs, nofield, version, last_step=False):
     checks = tomllib.loads((CASES / case / "check.toml").read_text())
     result = status.split(":", 1)[0]
     body = [
@@ -261,7 +264,8 @@ def text(case, status, rows, runs, nofield, version):
         body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{trs}</tbody></table>")
     if runs:
         links = ", ".join(f'<a data-run="{run}">{esc(name)}</a>' for run, name in runs)
-        body.append(f"<p>The 3D view shows the run of each input: {links}.</p>")
+        last = " Only the last step of each run is in this report, to keep the file small." if last_step else ""
+        body.append(f"<p>The 3D view shows the run of each input: {links}.{last}</p>")
     if nofield:
         names = ", ".join(f"<code>{esc(n)}</code>" for n in nofield)
         body.append(f"<p>{names} writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), "
@@ -273,12 +277,17 @@ def text(case, status, rows, runs, nofield, version):
     return title + "\n" + "\n".join(body) + "\n" + rest
 
 
+def deflate(data):
+    """Raw deflate, the format of the files in a report (`deflate-raw` of DecompressionStream)."""
+    c = zlib.compressobj(9, zlib.DEFLATED, -15)
+    return c.compress(data) + c.flush()
+
+
 def write_viewer():
-    files = {f"/viewer/{n}": base64.b64encode(gzip.compress((VIEWER / n).read_bytes(), 9, mtime=0)).decode()
-             for n in VIEWER_FILES}
+    files = {f"/viewer/{n}": base64.b64encode(deflate((VIEWER / n).read_bytes())).decode() for n in VIEWER_FILES}
     (OUT / "viewer.js").write_text(
         "// The wasm viewer of femahoy for the reports in this folder (fh report --viewer).\n"
-        "// The gzip of each file in base64, under its daemon path. scripts/validation-reports.py\n"
+        "// Each file as raw deflate in base64, under its daemon path. scripts/validation-reports.py\n"
         "// writes this file.\n"
         f"window.fhViewer = {json.dumps(files)};\n"
     )
@@ -403,6 +412,9 @@ def main(args):
             if runs:
                 args += ["--viewer", "viewer.js"]
             r = fh("report", page, "-o", report, *args, env=env)
+            if r.returncode == 0 and runs and report.stat().st_size > SMALL:
+                page.write_text(text(case, status, rows, runs, nofield, version, last_step=True))
+                r = fh("report", page, "-o", report, *args, "--last-step", env=env)
             if r.returncode != 0:
                 report.unlink(missing_ok=True)
                 outcomes[case] = ["fail", r.stderr.strip(), ""]
