@@ -49,7 +49,7 @@ else
         ;;
       crates/fh/src/chrono.rs) add chrono ;;
       crates/fh/src/lammps.rs) add lammps ;;
-      crates/fh/src/precice.rs) add precice ;;
+      crates/fh/src/precice.rs) add precice openfoam ;;
       crates/fh/src/topology.rs) add ccx ;;
       crates/fh/src/foam.rs) add openfoam precice ;;
       crates/fh/src/getdp.rs) add getdp chrono lammps precice ;;
