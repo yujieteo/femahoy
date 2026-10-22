@@ -38,7 +38,7 @@ use crate::fit::read_curve;
 const USAGE: &str =
     "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... \
      [--viewer FILE.js]\n\
-     Name at least 1 run or 1 curve. --viewer loads the viewer from the script FILE.js beside \
+     A report with no run and no curve is the text only. --viewer loads the viewer from the script FILE.js beside \
      the report, which sets window.fhViewer, instead of a copy in the report.";
 const TEMPLATE: &str = include_str!("report.html");
 
@@ -76,7 +76,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         }
     }
     match (text, out) {
-        (Some(text), Some(out)) if !runs.is_empty() || !curves.is_empty() => Ok(Options {
+        (Some(text), Some(out)) => Ok(Options {
             text,
             out,
             runs,
@@ -236,11 +236,15 @@ pub fn report(args: &[String]) -> Result<ExitCode, String> {
         Ok(bytes) => {
             let curves = o.curves.iter().map(|c| c.display().to_string());
             let parts: Vec<String> = o.runs.iter().cloned().chain(curves).collect();
+            let with = if parts.is_empty() {
+                "the text only".to_owned()
+            } else {
+                parts.join(", ")
+            };
             println!(
-                "fh report: wrote {} ({:.1} MiB) with {}",
+                "fh report: wrote {} ({:.1} MiB) with {with}",
                 o.out.display(),
                 bytes as f64 / f64::from(1 << 20),
-                parts.join(", ")
             );
             ExitCode::SUCCESS
         }

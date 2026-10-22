@@ -112,7 +112,7 @@ fn a_run_without_results_gives_no_report() {
     let out = lab.report(&["--run", "run-000009"]);
     assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
     assert!(!lab.out().exists());
-    let out = lab.report(&[]);
+    let out = lab.fh(&[p(&lab.dir.join("text.html"))]);
     assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
     assert!(
         stderr(&out).contains("usage: fh report"),
@@ -177,6 +177,18 @@ fn a_report_of_curves_needs_no_run() {
     let html = fs::read_to_string(lab.out()).unwrap();
     assert!(html.contains("<figure class=\"curve\">"));
     assert!(!html.contains("data-path=\"/viewer/"), "no viewer");
+}
+
+/// A report with no run and no curve is the text only, with no viewer.
+#[test]
+fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
+    let lab = Lab::new("report-text-only");
+    fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
+    let out = lab.report(&[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert!(html.contains("<h1>A320 barrel</h1>"), "text");
+    assert!(!html.contains("data-path="), "no files");
 }
 
 /// A bad curve file gives no report, and the message names the file and the line.

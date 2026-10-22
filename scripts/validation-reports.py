@@ -14,7 +14,9 @@ cases. For each case:
    then derivation.md, then the runs.
 
 A case that cannot run (its solver does not start on this computer) gets no report. The index
-names the case and the reason. A case that fails gets its report, which shows the failure.
+names the case and the reason. A case that fails gets its report, which shows the failure. An
+input that writes no field (a CalculiX input with no *NODE FILE and no *EL FILE) has no 3D view.
+A report above 5 MB is not kept: the index names its size, and the report waits for a decision.
 
 The reports share 1 copy of the wasm viewer, validation/reports/viewer.js. A report opens with a
 double-click when viewer.js is beside it. outcomes.tsv keeps the result of each case, so a run
@@ -46,6 +48,8 @@ FONTS = ROOT / "crates/fh/src/daemon/fonts"
 FH = Path(os.environ.get("FH_BIN") or ROOT / "target/release/fh")
 VIEWER = Path(os.environ.get("FH_VIEWER") or ROOT / "target/release/viewer")
 VIEWER_FILES = ["fh_viewer.js", "fh_viewer_bg.wasm"]
+# The largest report that the repository keeps, in bytes.
+LIMIT = 5_000_000
 
 
 def esc(text):
@@ -204,8 +208,8 @@ def curve_files(files):
 
 
 def solve(case, tmp, env):
-    """The runs and the curves of the inputs of the case."""
-    runs, curves = [], curve_files((CASES / case).glob("*.csv"))
+    """The runs, the curves, and the inputs with no field."""
+    runs, curves, nofield = [], curve_files((CASES / case).glob("*.csv")), []
     for target in inputs(case):
         name = target.relative_to(CASES / case).as_posix()
         fit = target / "fit.toml"
@@ -224,12 +228,15 @@ def solve(case, tmp, env):
         if not m:
             tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-5:])
             raise RuntimeError(f"fh run {name}: {tail}")
+        if "has no field to show" in r.stdout + r.stderr:
+            nofield.append(name)
+            continue
         runs.append((m[1], name))
         curves += curve_files((Path(env["FH_STATE"]) / "runs" / m[1] / "out").rglob("*.csv"))
-    return runs, curves
+    return runs, curves, nofield
 
 
-def text(case, status, rows, runs, version):
+def text(case, status, rows, runs, nofield, version):
     checks = tomllib.loads((CASES / case / "check.toml").read_text())
     result = status.split(":", 1)[0]
     body = [
@@ -255,6 +262,10 @@ def text(case, status, rows, runs, version):
     if runs:
         links = ", ".join(f'<a data-run="{run}">{esc(name)}</a>' for run, name in runs)
         body.append(f"<p>The 3D view shows the run of each input: {links}.</p>")
+    if nofield:
+        names = ", ".join(f"<code>{esc(n)}</code>" for n in nofield)
+        body.append(f"<p>{names} writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), "
+                    "so this report has no 3D view of it.</p>")
     body.append(f"<p>Made by <code>scripts/validation-reports.py</code> on {date.today()}, femahoy {esc(version)}.</p>")
     derivation = markdown((CASES / case / "derivation.md").read_text())
     # The result goes after the title of derivation.md.
@@ -375,18 +386,19 @@ def main(args):
             status, rows = validate(case, tmp, env)
             if status.startswith("cannot run"):
                 report.unlink(missing_ok=True)
-                outcomes[case] = ["cannot run", status.split(":", 1)[1].strip(), ""]
+                why = re.sub(r"^cannot run \S+: ", "", status.split(":", 1)[1].strip())
+                outcomes[case] = ["cannot run", why, ""]
                 print(f"{case}: {status}", flush=True)
                 continue
             try:
-                runs, curves = solve(case, tmp, env)
+                runs, curves, nofield = solve(case, tmp, env)
             except RuntimeError as e:
                 report.unlink(missing_ok=True)
                 outcomes[case] = ["fail", str(e).replace("\n", " "), ""]
                 print(f"{case}: {e}", flush=True)
                 continue
             page = tmp / f"{case}.text.html"
-            page.write_text(text(case, status, rows, runs, version))
+            page.write_text(text(case, status, rows, runs, nofield, version))
             args = [a for run, _ in runs for a in ("--run", run)] + [a for c in curves for a in ("--curve", c)]
             if runs:
                 args += ["--viewer", "viewer.js"]
@@ -397,8 +409,15 @@ def main(args):
                 print(f"{case}: {r.stderr.strip()}", flush=True)
                 continue
             result = status.split(":", 1)
-            outcomes[case] = [result[0], result[1].strip() if len(result) > 1 else "", str(report.stat().st_size)]
-            print(f"{case}: {result[0]}, {report.stat().st_size} bytes", flush=True)
+            detail = result[1].strip() if len(result) > 1 else ""
+            size = report.stat().st_size
+            print(f"{case}: {result[0]}, {size} bytes", flush=True)
+            if size > LIMIT:
+                report.unlink()
+                pending = f"Report pending: {size / 1e6:.1f} MB, above the {LIMIT / 1e6:.0f} MB limit."
+                outcomes[case] = [result[0], f"{pending} {detail}".strip(), ""]
+                continue
+            outcomes[case] = [result[0], detail, str(size)]
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         write_outcomes(outcomes)
