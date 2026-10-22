@@ -181,16 +181,14 @@ ABSOLUTE = re.compile(r"(?<![\w:/.])/(?:[^\s/]+/)+([^\s/]+)")
 
 
 def local(text):
-    """text with the home folder as ~ and each other absolute path as its last part."""
-    return ABSOLUTE.sub(r"\1", HOME.sub("~", text))
+    """text as 1 line, with the home folder as ~ and each other absolute path as its last part.
+    The output of fh goes into the reports through this function: the paths of this computer are
+    wrong for each other reader, and a line break or a tab breaks outcomes.tsv."""
+    return " ".join(ABSOLUTE.sub(r"\1", HOME.sub("~", text)).split())
 
 
 def fh(*args, env):
-    """Run fh. Its output goes into the reports, and the paths of this computer are wrong for each
-    other reader, so the output has no absolute path (local)."""
-    r = subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True)
-    r.stdout, r.stderr = local(r.stdout), local(r.stderr)
-    return r
+    return subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True)
 
 
 def not_installed(status):
@@ -218,7 +216,7 @@ def validate(case, tmp, env):
             rows.append([f[1]] + [float(x.split("=")[1]) for x in f[2:]])
     if status is None:
         status = "fail: " + (r.stderr.strip() or r.stdout.strip() or f"fh validate exit {r.returncode}")
-    return status, rows
+    return local(status), rows
 
 
 def inputs(case):
@@ -326,7 +324,7 @@ def read_outcomes():
     if not path.is_file():
         return {}
     lines = path.read_text().splitlines()[1:]
-    return {f[0]: f[1:] for f in (line.split("\t") for line in lines)}
+    return {f[0]: (f[1:] + [""] * 4)[:4] for f in (line.split("\t") for line in lines if line)}
 
 
 def write_outcomes(outcomes):
@@ -439,7 +437,7 @@ def main(args):
                 runs, curves, nofield = solve(case, tmp, env)
             except RuntimeError as e:
                 report.unlink(missing_ok=True)
-                outcomes[case] = ["fail", str(e).replace("\n", " "), "", version]
+                outcomes[case] = ["fail", str(e), "", version]
                 print(f"{case}: {e}", flush=True)
                 continue
             page.write_text(text(case, status, rows, runs, nofield, version))
@@ -467,6 +465,7 @@ def main(args):
             outcomes[case] = [result[0], detail, str(size), version]
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+        outcomes = {c: [local(f) for f in o] for c, o in outcomes.items()}
         write_outcomes(outcomes)
         write_index(outcomes)
 
