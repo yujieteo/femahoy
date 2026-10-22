@@ -10,6 +10,7 @@
 //! <state>/runs/<run>/in/topology.toml or the read-only copy of a topology case
 //! <state>/runs/<run>/in/chrono.py ... or the read-only copy of a Chrono case
 //! <state>/runs/<run>/in/case.lmp ...  or the read-only copy of a LAMMPS case
+//! <state>/runs/<run>/in/optimize.toml or the read-only copy of an optimization case
 //! <state>/runs/<run>/out/             run folder of the solver. `results.pvd` is the last
 //!                                     file that a run writes, so a run has results when it lists
 //!                                     a step
@@ -27,7 +28,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::ccx::{input_text, result_frames, stage_input};
-use crate::{chrono, foam, getdp, lammps, precice, topology};
+use crate::{chrono, foam, getdp, lammps, optimize, precice, topology};
 
 use super::message::{bad, fail, Failure};
 
@@ -72,8 +73,8 @@ fn stage(input: &Path, dir: &Path) -> Result<(), String> {
 }
 
 /// Make the folder of a new run in `state` and copy `source` into it: an input file and its
-/// `*INCLUDE` files, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or topology case. A later
-/// change of a file does not change the run.
+/// `*INCLUDE` files, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, topology or optimization
+/// case. A later change of a file does not change the run.
 pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     let runs = state.join(RUNS_DIR);
     let err = |e| format!("run folder: {e}");
@@ -90,7 +91,11 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     let input = if foam::is_case(source) {
         foam::copy_case(source, &dir.join(IN_DIR), true)?;
         dir.join(IN_DIR)
-    } else if getdp::is_case(source) || chrono::is_case(source) || lammps::is_case(source) {
+    } else if getdp::is_case(source)
+        || chrono::is_case(source)
+        || lammps::is_case(source)
+        || optimize::is_case(source)
+    {
         getdp::copy_case(source, &dir.join(IN_DIR), true)?;
         dir.join(IN_DIR)
     } else if topology::is_case(source) {
@@ -226,8 +231,8 @@ impl Store {
     }
 
     /// The text of the copy of the input that a run solves, for the page. It holds the text of
-    /// the include files. An OpenFOAM, GetDP, preCICE, Chrono or LAMMPS case has no input text
-    /// for the page, so it gives no bytes. A topology case gives its `job.inp`.
+    /// the include files. An OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or optimization case has no
+    /// input text for the page, so it gives no bytes. A topology case gives its `job.inp`.
     pub(crate) fn input_file(&self, run: &str) -> Result<Vec<u8>, Failure> {
         let input = self.run_dir(run)?.join(IN_DIR);
         if foam::is_case(&input)
@@ -235,6 +240,7 @@ impl Store {
             || precice::is_case(&input)
             || chrono::is_case(&input)
             || lammps::is_case(&input)
+            || optimize::is_case(&input)
         {
             return Ok(Vec::new());
         }

@@ -568,6 +568,64 @@ fn fh_run_writes_the_cad_of_the_last_design_and_checks_it_with_ccx() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// gmsh and the real ccx solve each design of a coarse copy of the case `shape-hole-biaxial` with
+/// 1 variable. The loop finds the ellipse with a/b = 2, and the page shows the best design.
+#[test]
+fn fh_run_optimizes_the_shape_of_a_hole_with_gmsh_and_ccx() {
+    let (Some(solver), Some(gmsh)) = (ccx_solver(), real_gmsh()) else {
+        return;
+    };
+    let dir = scratch("run-optimize");
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    let source = root().join("validation/cases/shape-hole-biaxial/L40");
+    let geo = fs::read_to_string(source.join("mesh.geo")).unwrap();
+    fs::write(case.join("mesh.geo"), geo.replace("h = 0.025;", "h = 0.2;")).unwrap();
+    fs::copy(source.join("job.inp"), case.join("job.inp")).unwrap();
+    let settings = "field = \"MISES\"\nset = \"HOLE\"\n[variables]\n\
+                    ratio = { start = 1.0, low = 1.0, high = 4.0 }\n";
+    fs::write(case.join("optimize.toml"), settings).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", &solver)
+        .env("FH_GMSH", &gmsh)
+        .output()
+        .unwrap();
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(
+        shown.contains("\n  solve 1 ratio 1.000000 objective "),
+        "{shown}"
+    );
+
+    let run = dir.join("state/runs/run-000001");
+    let work = run.join("out/optimize");
+    let paths = format!(
+        "fh run: text results {0}/history.txt (each solve), {0}/optimum.txt (the best design), \
+         {0}/solve/ccx/job.dat (the last solve)",
+        work.display()
+    );
+    assert_eq!(shown.lines().last(), Some(paths.as_str()), "{shown}");
+    assert!(run.join("in/optimize.toml").is_file());
+    let optimum = fs::read_to_string(work.join("optimum.txt")).unwrap();
+    let best: Vec<f64> = (optimum.lines().nth(1).unwrap().split_whitespace())
+        .map(|w| w.parse().unwrap())
+        .collect();
+    assert!(
+        optimum.starts_with("# solve ratio objective\n"),
+        "{optimum}"
+    );
+    assert!(
+        (best[1] - 2.0).abs() < 0.05 && (best[2] - 1.5).abs() < 0.03,
+        "{optimum}"
+    );
+
+    let grid = fh_core::vtu::read_vtu(&fs::read(run.join("out/step-1.vtu")).unwrap()).unwrap();
+    assert!(grid.point_field("U").is_some());
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A fake Python with PyChrono. It writes its arguments to CALLS, and the view `U` of 1 bar that
 /// turns about its first end. When `chrono.py` holds FAIL, it fails as a Python with no PyChrono.
 const FAKE_PYTHON: &str = r#"#!/bin/sh

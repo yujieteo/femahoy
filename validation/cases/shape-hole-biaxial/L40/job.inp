@@ -1,0 +1,23 @@
+** No units: E = 1000 and nu = 0.3. The far edges move so that the remote stress is sx = 1 and
+** sy = 0.5: ux = 40 * (1 - 0.3 * 0.5) / 1000 and uy = 40 * (0.5 - 0.3) / 1000.
+** The plane stress section is thin (0.01), because ccx expands each 2D element to a layer of
+** this thickness, and a thick layer gets a stress SZZ that is not 0.
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=M
+*ELASTIC
+1000.0, 0.3
+*SOLID SECTION, ELSET=PLATE, MATERIAL=M
+0.01
+*STEP
+*STATIC
+*BOUNDARY
+XSYM, 1, 1
+YSYM, 2, 2
+*BOUNDARY
+RIGHT, 1, 1, 0.034
+TOP, 2, 2, 0.008
+*NODE FILE
+U
+*EL FILE
+S
+*END STEP
