@@ -321,8 +321,16 @@ pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
         } else {
             lo + (hi - lo) * t
         };
+        let y = f.model.value(&f.params, x);
+        if curve.log_y && y <= 0.0 {
+            return Err(format!(
+                "the fit is {} at x = {}: the log axis y needs values above 0",
+                short(y),
+                short(x)
+            ));
+        }
         let mut values = vec![None; curve.series.len()];
-        values.push(Some(f.model.value(&f.params, x)));
+        values.push(Some(y));
         out.rows.push((x, values));
     }
     let params = parameters(f, curve).join(", ");

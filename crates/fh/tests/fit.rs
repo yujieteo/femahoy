@@ -68,3 +68,19 @@ fn a_bad_model_or_series_is_an_error() {
         String::from_utf8_lossy(&run.stderr).contains("no series `other`. The series are: test")
     );
 }
+
+/// `-o` writes no curve that `fh report` cannot read: a fit at or below 0 on a log y axis.
+#[test]
+fn a_fit_at_or_below_0_on_a_log_y_axis_is_an_error() {
+    let dir = scratch("fit-log-y");
+    let (curve, out) = (dir.join("test.csv"), dir.join("fit.csv"));
+    fs::write(&curve, "# y: a [1]\n# log: y\nx [1],test\n1,10\n2,1\n3,0.5\n").unwrap();
+    let run = fh(&["poly1", p(&curve), "-o", p(&out)]);
+    assert_eq!(run.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("the log axis y needs values above 0"),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(!out.exists());
+}
