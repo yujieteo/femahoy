@@ -1,7 +1,7 @@
 //! The check file of a case: `validation/cases/<id>/check.toml` (see `docs/reference/check-toml.md`).
 //!
-//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP, preCICE, Chrono or topology
-//! cases in subfolders.
+//! A case is a CalculiX case (`job.inp`) or a set of OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or
+//! topology cases in subfolders.
 
 use std::path::{Path, PathBuf};
 use toml_edit::{Document, Item, TableLike};
@@ -24,7 +24,7 @@ pub enum Field {
     Freq,
     /// The buckling factor of a mode, from a `*BUCKLE` step.
     Buckle,
-    /// A column of a text table that an OpenFOAM, GetDP or topology case writes, for example the
+    /// A column of a text table that an OpenFOAM, GetDP, LAMMPS or topology case writes, for example the
     /// column `Cl` of `postProcessing/forceCoeffs/0/coefficient.dat` of a function object of
     /// OpenFOAM.
     Table {
@@ -52,7 +52,7 @@ pub enum Op {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Quantity {
     /// The name of the set that the print request of the input names. For `Table`, the subfolder
-    /// of the OpenFOAM, GetDP or topology case.
+    /// of the OpenFOAM, GetDP, LAMMPS or topology case.
     pub set: String,
     pub field: Field,
     pub component: u32,
@@ -67,7 +67,7 @@ pub struct Reference {
 }
 
 impl Reference {
-    /// True when the check reads a table of an OpenFOAM, GetDP or topology case.
+    /// True when the check reads a table of an OpenFOAM, GetDP, LAMMPS or topology case.
     fn table(&self) -> bool {
         matches!(self.quantity.field, Field::Table { .. })
     }
@@ -95,14 +95,14 @@ fn located(file: &Path, line: Option<usize>, message: &str) -> String {
 }
 
 impl Case {
-    /// True when the checks are tables of the OpenFOAM, GetDP, preCICE or topology cases in the
-    /// subfolders.
+    /// True when the checks are tables of the OpenFOAM, GetDP, preCICE, LAMMPS or topology cases
+    /// in the subfolders.
     pub fn tables(&self) -> bool {
         self.references.iter().any(Reference::table)
     }
 
     /// Load `<dir>/check.toml`. The file `<dir>/job.inp` must exist, or, when the checks are
-    /// tables, the OpenFOAM, GetDP, preCICE or topology case of each check.
+    /// tables, the OpenFOAM, GetDP, preCICE, LAMMPS or topology case of each check.
     pub fn load(dir: &Path) -> Result<Case, String> {
         let file = dir.join("check.toml");
         let text =
@@ -130,17 +130,19 @@ impl Case {
                     crate::getdp::is_case,
                     crate::chrono::is_case,
                     crate::precice::is_case,
+                    crate::lammps::is_case,
                     crate::topology::is_case,
                 ];
                 if !solvers.iter().any(|is_case| is_case(&case)) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
-                        "{}, {}, {}, {} or {} not found",
+                        "{}, {}, {}, {}, {} or {} not found",
                         pro.display(),
                         case.join("chrono.py").display(),
                         case.join("topology.toml").display(),
                         dict.display(),
-                        case.join("precice-config.xml").display()
+                        case.join("precice-config.xml").display(),
+                        case.join("case.lmp").display()
                     );
                     return Err(reader.err(None, missing));
                 }
@@ -243,7 +245,7 @@ impl Reader<'_> {
 
     /// One check: the `[name]` table with `value`, `set`, `field`, `component` and `op`, or
     /// with `value`, `field` and `mode` for `FREQ` and `BUCKLE`, or with `value`, `case`, `file`
-    /// and `column` for a table of an OpenFOAM, GetDP or topology case.
+    /// and `column` for a table of an OpenFOAM, GetDP, LAMMPS or topology case.
     fn reference(&self, name: &str, item: &Item) -> Result<Reference, String> {
         let table = item
             .as_table_like()

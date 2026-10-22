@@ -1,0 +1,84 @@
+# Dam break: a water column of width a and height 2a falls on a dry floor (Martin and Moyce
+# 1952, n^2 = 2, a = 2.25 in). 2D SPH of LAMMPS: Tait water, Lucy kernel, artificial viscosity.
+# The walls are 3 layers of fixed particles. derivation.md gives the source and the studies.
+# Output: front.txt, the time T = t sqrt(2 g / a) at which the surge front is at Z = x / a.
+# T is 1.19 at Z = 1.44, as in the source. particles.dump: the water, for the viewer.
+
+units           si
+dimension       2
+boundary        f f p
+atom_style      sph
+atom_modify     map array
+
+# n particles across a. h is the kernel radius.
+variable        a equal 0.05715
+variable        n index 40
+variable        dx equal ${a}/${n}
+variable        h equal 3.0*${dx}
+variable        rho0 equal 1000.0
+variable        c0 equal 20.0
+variable        alpha index 0.05
+variable        g equal 9.81
+variable        cfl index 0.025
+variable        dt equal ${cfl}*${h}/${c0}
+variable        L equal 6.0*${a}
+variable        w equal 3.0*${dx}
+
+region          box block -${w} $(v_L+v_w) -${w} $(3.0*v_a) -$(0.5*v_dx) $(0.5*v_dx) units box
+create_box      2 box
+lattice         sq ${dx} origin 0.5 0.5 0.0
+region          water block 0 ${a} 0 $(2.0*v_a) INF INF units box
+region          left block -${w} 0 -${w} $(2.5*v_a) INF INF units box
+region          floor block 0 ${L} -${w} 0 INF INF units box
+region          wall union 2 left floor
+create_atoms    1 region water
+create_atoms    2 region wall
+group           water type 1
+group           wall type 2
+mass            * $(v_rho0*v_dx*v_dx)
+
+# The water starts at rest with the hydrostatic density of the Tait equation.
+variable        B equal ${rho0}*${c0}*${c0}/7.0
+variable        rhoi atom ${rho0}*(1.0+${rho0}*${g}*(2.0*${a}-y)/${B})^(1.0/7.0)
+set             group wall sph/rho ${rho0}
+set             group water sph/rho v_rhoi
+
+pair_style      sph/taitwater
+pair_coeff      * * ${rho0} ${c0} ${alpha} ${h}
+neighbor        $(0.3*v_h) bin
+neigh_modify    every 1 delay 0 check yes
+
+fix             gravity water gravity ${g} vector 0 -1 0
+fix             move water sph
+fix             fixed wall sph/stationary
+fix             plane all enforce2d
+timestep        ${dt}
+
+variable        Z equal (bound(water,xmax)+0.5*${dx})/${a}
+variable        T equal time*sqrt(2.0*${g}/${a})
+compute         rho all sph/rho/atom
+variable        speed atom sqrt(vx*vx+vy*vy)
+variable        p atom ${B}*((c_rho/${rho0})^7-1.0)
+thermo_style    custom step time v_T v_Z
+thermo          1000
+dump            particles water custom 4000 particles.dump id x y z v_speed v_p
+dump_modify     particles time yes colname v_speed speed colname v_p p
+
+fix             stop all halt 1 v_Z >= 1.44 error continue
+run             100000
+unfix           stop
+variable        T0 equal $(v_T)
+
+variable        Zs index 2.11 3.00 3.89
+variable        k index 1 2 3
+label           next
+fix             stop all halt 1 v_Z >= ${Zs} error continue
+run             100000
+unfix           stop
+variable        T${k} equal $(v_T-v_T0+1.19)
+print           "front at Z = ${Zs}: T = $(v_T-v_T0+1.19:%.4f)"
+next            Zs k
+jump            SELF next
+
+print           "# T_211 T_300 T_389" file front.txt
+print           "$(v_T1:%.4f) $(v_T2:%.4f) $(v_T3:%.4f)" append front.txt

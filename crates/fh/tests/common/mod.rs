@@ -114,6 +114,21 @@ pub fn precice_solver() -> Option<PathBuf> {
     found.then_some(exe)
 }
 
+/// `lmp` (`FH_LAMMPS`, else `lmp` on PATH) when it starts. Else `None` with a message, and the
+/// test does not solve. With `FH_REQUIRE_LAMMPS=1`, as in CI, a missing LAMMPS fails the test.
+pub fn lammps_solver() -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os("FH_LAMMPS").unwrap_or_else(|| "lmp".into()));
+    let found = Command::new(&exe).arg("-h").output().is_ok();
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_LAMMPS").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_LAMMPS=1, but lmp does not start"
+        );
+        eprintln!("skipped: lmp does not start. Set FH_LAMMPS");
+    }
+    found.then_some(exe)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

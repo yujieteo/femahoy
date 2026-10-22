@@ -84,10 +84,10 @@ fn a_number_that_is_not_finite_is_refused() {
     }
 }
 
-/// A check with `case` reads a column of a table in the subfolder of an OpenFOAM or GetDP case.
-/// The case has no `job.inp`.
+/// A check with `case` reads a column of a table in the subfolder of an OpenFOAM, GetDP or LAMMPS
+/// case. The case has no `job.inp`.
 #[test]
-fn a_table_check_names_an_openfoam_or_getdp_case() {
+fn a_table_check_names_an_openfoam_getdp_or_lammps_case() {
     let dir = tmp("openfoam");
     std::fs::create_dir_all(dir.join("a4/system")).unwrap();
     std::fs::write(
@@ -97,6 +97,8 @@ fn a_table_check_names_an_openfoam_or_getdp_case() {
     .unwrap();
     std::fs::create_dir_all(dir.join("em")).unwrap();
     std::fs::write(dir.join("em/case.pro"), "").unwrap();
+    std::fs::create_dir_all(dir.join("sph")).unwrap();
+    std::fs::write(dir.join("sph/case.lmp"), "").unwrap();
     let check = |name: &str, case: &str, file: &str| {
         format!(
             "[{name}]\nvalue = 0.4\ncase = \"{case}\"\nfile = \"{file}\"\ncolumn = \"{name}\"\n"
@@ -111,8 +113,14 @@ fn a_table_check_names_an_openfoam_or_getdp_case() {
         .unwrap();
         Case::load(&dir)
     };
-    let case = load(&(check("Cl", "a4", coefficients) + &check("Cd", "em", "b.txt"))).unwrap();
+    let case = load(
+        &(check("Cl", "a4", coefficients)
+            + &check("Cd", "em", "b.txt")
+            + &check("Z", "sph", "front.txt")),
+    )
+    .unwrap();
     assert!(case.tables());
+    assert_eq!(case.references[2].quantity.set, "sph");
     assert_eq!(case.input, dir);
     assert_eq!(case.references[1].quantity.set, "em");
     assert_eq!(
@@ -125,8 +133,9 @@ fn a_table_check_names_an_openfoam_or_getdp_case() {
 
     let missing = load(&check("Cl", "a10", coefficients)).unwrap_err();
     assert!(
-        missing.contains("a10/system/controlDict or ")
-            && missing.contains("a10/precice-config.xml not found"),
+        missing.contains("a10/system/controlDict, ")
+            && missing.contains("a10/precice-config.xml or ")
+            && missing.contains("a10/case.lmp not found"),
         "{missing}"
     );
     let outside = load(&check("Cl", "../a4", coefficients)).unwrap_err();

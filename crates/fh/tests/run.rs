@@ -1,7 +1,8 @@
 //! `fh run`: one solve with the real ccx on the input of a validation case, and the stop of
 //! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
 //! OpenFOAM tests use a fake `openfoam` that writes the files of each program, the GetDP tests a
-//! fake `gmsh` and a fake `getdp`, and the Chrono tests a fake Python.
+//! fake `gmsh` and a fake `getdp`, the Chrono tests a fake Python, and the LAMMPS tests a fake
+//! `lmp`.
 mod common;
 use common::{ccx_solver, p, root, scratch, script, stderr, stdout};
 
@@ -563,5 +564,91 @@ fn a_python_with_no_pychrono_fails_the_run_with_the_install_step() {
         "{errors}"
     );
     assert!(errors.contains("out/chrono/log.python"), "{errors}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake `lmp`. It writes its arguments to CALLS and a dump of 2 particles 0.5 apart in 2
+/// snapshots, or, when `case.lmp` holds FAIL, fails as LAMMPS does.
+const FAKE_LMP: &str = r#"#!/bin/sh
+echo lmp "$@" >> CALLS
+if grep -q FAIL case.lmp; then
+  printf 'ERROR: Unknown command: FAIL (../input.cpp:314)\nLast input line: FAIL\n'; exit 1
+fi
+for t in 0 0.5; do
+  printf 'ITEM: TIME\n%s\nITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n2\n' $t
+  printf 'ITEM: BOX BOUNDS ff ff pp\n0 1\n0 1\n-0.1 0.1\nITEM: ATOMS id x y z speed\n'
+  printf '1 %s 0 0 1\n2 %s 0.5 0 2\n' $t $t
+done > particles.dump
+"#;
+
+/// A LAMMPS case with `text` in `case.lmp`, and the fake `lmp`.
+fn lammps_lab(name: &str, text: &str) -> (PathBuf, PathBuf) {
+    let dir = scratch(name);
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("case.lmp"), text).unwrap();
+    let calls = p(&dir.join("calls")).to_owned();
+    script(&dir.join("lmp"), &FAKE_LMP.replace("CALLS", &calls));
+    (dir, case)
+}
+
+fn fh_run_lammps(dir: &std::path::Path, case: &std::path::Path) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_LAMMPS", dir.join("lmp"))
+        .output()
+        .unwrap()
+}
+
+/// `fh run CASE` runs `case.lmp` with lmp and writes each snapshot of the dump to a VTU file of
+/// the page: each particle is a cube at its position in the snapshot.
+#[test]
+fn fh_run_solves_a_lammps_case_and_shows_the_particles() {
+    let (dir, case) = lammps_lab("run-lammps", "run 10\n");
+    let out = fh_run_lammps(&dir, &case);
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(shown.contains("  program lmp\n"), "{shown}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(calls, "lmp -in case.lmp -log none\n");
+    let run = dir.join("state/runs/run-000001");
+    assert!(run.join("out/lammps/log.lmp").is_file(), "{shown}");
+    assert!(fs::metadata(run.join("in/case.lmp"))
+        .unwrap()
+        .permissions()
+        .readonly());
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    assert!(
+        pvd.contains("timestep=\"0.5\" part=\"0\" file=\"step-2.vtu\""),
+        "{pvd}"
+    );
+    let vtu = fs::read(run.join("out/step-2.vtu")).unwrap();
+    let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
+    assert_eq!(grid.cell_types, vec![12, 12]);
+    // The side of a cube is 0.5, the distance of the particles. Particle 2 is at (0.5, 0.5, 0).
+    assert_eq!(grid.points[8], [0.25, 0.25, -0.25]);
+    assert_eq!(grid.points[14], [0.75, 0.75, 0.25]);
+    let speed = grid.cell_field("speed").unwrap();
+    assert_eq!(speed.as_f64(), Some(&[1.0, 2.0][..]));
+    assert!(grid.cell_field("id").is_none() && grid.point_data.is_empty());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A LAMMPS error ends the run with the error line, the line of the script and the log path.
+#[test]
+fn a_failed_lammps_fails_the_run_with_its_error_lines() {
+    let (dir, case) = lammps_lab("run-lammps-fail", "FAIL\n");
+    let out = fh_run_lammps(&dir, &case);
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors.contains(
+            "lmp failed (exit status: 1): ERROR: Unknown command: FAIL (../input.cpp:314) | \
+             Last input line: FAIL. Correct case.lmp"
+        ),
+        "{errors}"
+    );
+    assert!(errors.contains("out/lammps/log.lmp"), "{errors}");
     let _ = fs::remove_dir_all(&dir);
 }
