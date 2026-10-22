@@ -187,12 +187,12 @@ fn largest(results: &frd::Frd, name: &str, set: &str, ids: &[u32]) -> Result<f64
     let field = frame.field(name).ok_or_else(|| {
         format!("job.frd has no field {name}. Add *EL FILE with S (for MISES) to the step")
     })?;
-    let values = field
-        .as_f64()
-        .filter(|_| field.components == 1)
-        .ok_or_else(|| {
-            format!("the field {name} has more than 1 value at each node: use for example MISES")
-        })?;
+    if field.components != 1 {
+        return Err(format!(
+            "the field {name} has more than 1 value at each node: use for example MISES"
+        ));
+    }
+    let values = &field.values;
     let index: HashMap<u32, usize> = (results.nodes.iter().enumerate())
         .map(|(i, id)| (*id, i))
         .collect();
