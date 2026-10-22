@@ -111,6 +111,11 @@ fn settings(text: &str) -> Result<Settings, String> {
         if !identifier(name) {
             return Err(bad("needs a name of letters, digits and _"));
         }
+        if ["solve", "objective"].contains(&name) {
+            return Err(bad(
+                "has a name of a column of the history: use a different name",
+            ));
+        }
         let keys = item
             .as_table_like()
             .ok_or_else(|| bad("must be a table { start = S, low = L, high = H }"))?;
@@ -210,10 +215,8 @@ fn largest(results: &frd::Frd, name: &str, set: &str, ids: &[u32]) -> Result<f64
 }
 
 /// Minimize `f` in the box [0, 1]^n with the Nelder-Mead method from `start`, and give the best
-/// point. The point `k + 1` of the first simplex moves variable `k` by [`STEP`]. When the move
-/// does not change the value, variable `k` has no effect: the error names it.
+/// point. The point `k + 1` of the first simplex moves variable `k` by [`STEP`].
 fn minimize(
-    names: &[String],
     start: &[f64],
     f: &mut dyn FnMut(&[f64]) -> Result<f64, String>,
 ) -> Result<Vec<f64>, String> {
@@ -223,14 +226,6 @@ fn minimize(
         let mut u = start.to_vec();
         u[k] += if u[k] + STEP <= 1.0 { STEP } else { -STEP };
         let value = f(&u)?;
-        if value == simplex[0].1 {
-            return Err(format!(
-                "the variable {} does not change the objective. Define it in mesh.geo with \
-                 DefineConstant[ {0} = ... ];, so that gmsh takes its value, and use it in the \
-                 geometry",
-                names[k]
-            ));
-        }
         simplex.push((u, value));
     }
     let mut calls = n + 1;
@@ -427,11 +422,10 @@ pub fn run_with(
         }
         Ok(value)
     };
-    let names: Vec<String> = s.variables.iter().map(|v| v.name.clone()).collect();
     let start_point: Vec<f64> = (s.variables.iter())
         .map(|v| (v.start - v.low) / (v.high - v.low))
         .collect();
-    minimize(&names, &start_point, &mut objective)?;
+    minimize(&start_point, &mut objective)?;
     let best = best.expect("the loop solves the start");
     let header = history.lines().next().unwrap_or_default();
     fs::write(work.join(OPTIMUM), format!("{header}\n{}", row(&best))).map_err(folder)?;
@@ -498,6 +492,13 @@ mod tests {
                 .contains("unknown key `step`")
         );
         assert!(error(SETTINGS_TEXT.replace("ratio =", "\"2a\" =")).contains("letters, digits"));
+        for column in ["solve", "objective"] {
+            assert!(
+                error(SETTINGS_TEXT.replace("ratio =", &format!("{column} ="))).contains(&format!(
+                    "variable `{column}` has a name of a column of the history"
+                ))
+            );
+        }
         let none = SETTINGS_TEXT[..SETTINGS_TEXT.find("ratio").unwrap()].to_owned();
         assert!(error(none).contains("has no variable"));
     }
@@ -516,13 +517,12 @@ mod tests {
     /// has one at its optimum, and it stops in the tolerance.
     #[test]
     fn the_search_finds_the_minimum_of_a_kinked_function_in_the_box() {
-        let names = ["a".to_owned(), "b".to_owned()];
         let mut calls = 0;
         let mut f = |u: &[f64]| {
             calls += 1;
             Ok((u[0] - 0.3).abs().max(2.0 * (u[1] - 0.6).abs()) + 0.1 * (u[0] - 0.3).powi(2))
         };
-        let best = minimize(&names, &[0.9, 0.95], &mut f).unwrap();
+        let best = minimize(&[0.9, 0.95], &mut f).unwrap();
         assert!(
             (best[0] - 0.3).abs() < 2e-3 && (best[1] - 0.6).abs() < 2e-3,
             "{best:?}"
@@ -533,19 +533,7 @@ mod tests {
             assert!(u.iter().all(|v| (0.0..=1.0).contains(v)), "{u:?}");
             Ok(u[0] + (u[1] - 0.5).powi(2))
         };
-        let best = minimize(&names, &[0.5, 0.95], &mut f).unwrap();
+        let best = minimize(&[0.5, 0.95], &mut f).unwrap();
         assert!(best[0] < 2e-3 && (best[1] - 0.5).abs() < 0.05, "{best:?}");
-    }
-
-    #[test]
-    fn a_variable_with_no_effect_is_an_error() {
-        let names = ["ratio".to_owned(), "power".to_owned()];
-        let mut f = |u: &[f64]| Ok(u[0]);
-        let error = minimize(&names, &[0.0, 1.0], &mut f).unwrap_err();
-        assert!(
-            error.contains("the variable power does not change"),
-            "{error}"
-        );
-        assert!(error.contains("DefineConstant[ power = ... ]"), "{error}");
     }
 }
