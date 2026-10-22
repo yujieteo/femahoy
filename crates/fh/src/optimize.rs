@@ -11,6 +11,7 @@
 //!   `*EL FILE` with `S`);
 //! - `set`: a node set of the model;
 //! - `[variables]`: for each variable of `mesh.geo`, `name = { start = S, low = L, high = H }`.
+//!   `solve` and `objective` are columns of the tables, so they cannot be variable names.
 //!
 //! The loop minimizes the largest value of `field` at the nodes of `set` in the last step, with
 //! the Nelder-Mead method in the box of the variables. For each design, gmsh writes `mesh.inp`
