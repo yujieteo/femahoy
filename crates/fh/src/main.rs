@@ -11,7 +11,7 @@ fn usage() -> &'static str {
     "usage: fh [-h | --help] <command>\n\ncommands:\n  \
          mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE [options] [-o OUT.inp])\n  \
          validate  run the validation suite of DIR/validation/cases, DIR is . by default (fh validate [--root DIR])\n  \
-         run       solve a CalculiX input, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or topology case (fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB])\n  \
+         run       solve a CalculiX input, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, openEMS or topology case (fh run MODEL.inp|CASE [--timeout SECONDS] [--memory MIB])\n  \
          report    write 1 HTML file with a text, the viewer and the results of runs (fh report TEXT.html -o REPORT.html --run RUN...)\n  \
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve)\n"
 }

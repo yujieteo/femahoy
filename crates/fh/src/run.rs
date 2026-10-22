@@ -1,7 +1,7 @@
 //! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, a GetDP case
 //! with GetDP, a preCICE case with OpenFOAM and CalculiX coupled by preCICE, a Chrono case with
-//! Project Chrono, or a LAMMPS case with LAMMPS, or optimize the topology of a CalculiX model, and
-//! show the progress.
+//! Project Chrono, a LAMMPS case with LAMMPS, or an openEMS case with openEMS, or optimize the
+//! topology of a CalculiX model, and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
@@ -19,6 +19,8 @@
 //!   of CalculiX solves. See `fh::topology`.
 //! - `fh run CASE` gives Chrono the case folder (`chrono.py`, see `fh::chrono`). The Python of
 //!   PyChrono is `$FH_PYCHRONO`, else `python3` on `PATH`.
+//! - `fh run CASE` gives openEMS the case folder (`openems.py`, see `fh::openems`). The Python of
+//!   openEMS is `$FH_OPENEMS`, else `python3` on `PATH`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` and `--memory MIB` set the limits of the run.
 //!
@@ -44,6 +46,7 @@ use fh::daemon::{default_state_dir, new_preview, new_run};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
 use fh::lammps::{self, Lammps};
+use fh::openems::{self, OpenEms};
 use fh::precice::{self, Precice};
 use fh::topology;
 
@@ -63,7 +66,9 @@ ccx in each iteration of the loop.\n\
 CASE is also a Chrono case folder with chrono.py. fh run starts python3 chrono.py, with the Python \
 of PyChrono.\n\
 CASE is also a LAMMPS case folder with case.lmp. fh run starts lmp -in case.lmp, then shows each \
-snapshot of the text dump files (*.dump).";
+snapshot of the text dump files (*.dump).\n\
+CASE is also an openEMS case folder with openems.py. fh run starts python3 openems.py, with the \
+Python of openEMS.";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -128,6 +133,7 @@ enum Solver {
     Topology,
     Chrono,
     Lammps,
+    OpenEms,
 }
 
 /// The real path of the `.inp` file or the case folder that `fh run` solves.
@@ -140,6 +146,7 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
     let case = foam::is_case(&full)
         || getdp::is_case(&full)
         || chrono::is_case(&full)
+        || openems::is_case(&full)
         || precice::is_case(&full)
         || lammps::is_case(&full)
         || topology::is_case(&full);
@@ -150,7 +157,8 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
             "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
              system/controlDict), a GetDP case folder (with case.pro), a preCICE case folder \
              (with precice-config.xml), a Chrono case folder (with chrono.py), a LAMMPS case \
-             folder (with case.lmp) or a topology case folder (with topology.toml)"
+             folder (with case.lmp), an openEMS case folder (with openems.py) or a topology case \
+             folder (with topology.toml)"
         ))
     }
 }
@@ -210,6 +218,13 @@ fn report(
                 out.join(lammps::WORK).display()
             ),
             "Write a text dump in case.lmp: dump ID GROUP custom N particles.dump id x y z ...",
+        ),
+        Solver::OpenEms => (
+            format!(
+                "{0}/log.python (output of openems.py), the files that openems.py names in {0}",
+                out.join(openems::WORK).display()
+            ),
+            "Write a field to a .pos file in openems.py",
         ),
         Solver::Ccx => (
             format!(
@@ -281,6 +296,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Solver::Topology
     } else if chrono::is_case(&file) {
         Solver::Chrono
+    } else if openems::is_case(&file) {
+        Solver::OpenEms
     } else {
         Solver::Ccx
     };
@@ -336,6 +353,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             chrono.timeout = o.timeout;
             chrono.memory_limit = o.memory.unwrap_or(chrono.memory_limit);
             chrono.run_with(&run.input, &run.out, &cancel, on_program)
+        }
+        Solver::OpenEms => {
+            let mut openems = OpenEms::new();
+            openems.timeout = o.timeout;
+            openems.memory_limit = o.memory.unwrap_or(openems.memory_limit);
+            openems.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Precice => {
             let mut precice = Precice::new();

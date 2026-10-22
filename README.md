@@ -82,6 +82,24 @@ For your own model, give `fh run` a CalculiX `.inp` file or the case folder of a
 
 `fh` uses `$FH_LAMMPS`. If `FH_LAMMPS` is not set, it uses `lmp` on PATH. The validation case is tested with LAMMPS 30 Sep 2026 on macOS and 7 Feb 2024 (Ubuntu 24.04) on Linux.
 
+## Get openEMS
+
+`fh` starts openEMS for antennas: a Python with the modules of openEMS (`CSXCAD` and `openEMS`) runs the `openems.py` of the case. openEMS is GPL-3.0, so it is a separate program that you install. It has no package for macOS or PyPI, so you build it from source with its script `update_openEMS.sh`. The build takes about 5 minutes.
+
+1. Get the source: `git clone --depth 1 --branch v0.37.0 --recurse-submodules --shallow-submodules https://github.com/thliebig/openEMS-Project.git`, then `cd openEMS-Project`.
+2. Build it:
+   - macOS (Apple Silicon), with Nix:
+
+     ```sh
+     nix develop --impure --expr 'with import (builtins.getFlake "nixpkgs") {}; mkShell { packages = [ cmake boost hdf5 cgal gmp mpfr vtk python312 pkg-config zlib ]; }' \
+       --command ./update_openEMS.sh ~/opt/openEMS --python --disable-GUI --with-tinyxml --skip-dep-check
+     ```
+
+   - Ubuntu 24.04: install the packages of the step "Install openEMS" in `.github/workflows/ci.yml`, then `./update_openEMS.sh ~/opt/openEMS --python --disable-GUI --with-tinyxml --skip-dep-check`.
+3. `export FH_OPENEMS=~/opt/openEMS/venv/bin/python`.
+
+`fh` uses `$FH_OPENEMS`. If `FH_OPENEMS` is not set, it uses `python3` on PATH. The validation case is tested with openEMS 0.37.0 on macOS and Linux.
+
 ## Environment variables
 
 - `FH_GMSH`: the gmsh program of `fh mesh`, and of `fh run` and `fh validate` for a GetDP case.
@@ -91,6 +109,7 @@ For your own model, give `fh run` a CalculiX `.inp` file or the case folder of a
 - `FH_PYCHRONO`: the Python with PyChrono of `fh run` and `fh validate`.
 - `FH_CCX_PRECICE`: the `ccx_preCICE` program (CalculiX with the preCICE adapter) of `fh run` and `fh validate`.
 - `FH_LAMMPS`: the `lmp` program of `fh run` and `fh validate`.
+- `FH_OPENEMS`: the Python with openEMS of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
 - `FH_NO_OPEN`: a value that is not empty and not `0` stops `fh serve` from opening the browser.

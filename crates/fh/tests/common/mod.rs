@@ -129,6 +129,26 @@ pub fn lammps_solver() -> Option<PathBuf> {
     found.then_some(exe)
 }
 
+/// The Python of openEMS (`FH_OPENEMS`, else `python3` on PATH) when it imports openEMS. Else
+/// `None` with a message, and the test does not solve. With `FH_REQUIRE_OPENEMS=1`, as in CI, a
+/// missing openEMS fails the test.
+pub fn openems_solver() -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os("FH_OPENEMS").unwrap_or_else(|| "python3".into()));
+    let import = Command::new(&exe)
+        .args(["-c", "import CSXCAD, openEMS"])
+        .output();
+    let found = import.is_ok_and(|o| o.status.success());
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_OPENEMS").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_OPENEMS=1, but {} does not import openEMS",
+            exe.display()
+        );
+        eprintln!("skipped: no Python with openEMS. Set FH_OPENEMS");
+    }
+    found.then_some(exe)
+}
+
 pub fn cmd() -> Command {
     Command::new(env!("CARGO_BIN_EXE_fh"))
 }

@@ -1,5 +1,5 @@
-//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS and
-//! topology cases of a case with their programs and the topology loop, and read one number per
+//! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, openEMS
+//! and topology cases of a case with their programs and the topology loop, and read one number per
 //! reference from the text results.
 
 use std::path::Path;
@@ -11,17 +11,19 @@ use crate::chrono::{self, Chrono};
 use crate::foam::{self, Foam};
 use crate::getdp::{self, GetDp};
 use crate::lammps::{self, Lammps};
+use crate::openems::{self, OpenEms};
 use crate::precice::{self, Precice};
 use crate::topology;
 
-/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or the topology loop in a scratch folder
-/// on the input of a case.
+/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, openEMS or the topology loop in a scratch
+/// folder on the input of a case.
 #[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
     foam: Foam,
     getdp: GetDp,
     chrono: Chrono,
+    openems: OpenEms,
     precice: Precice,
     lammps: Lammps,
 }
@@ -54,8 +56,8 @@ impl Subprocess {
             .collect()
     }
 
-    /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS or topology case of each check at the
-    /// same time, each in its own folder in `run`, and read the value of each check in the last
+    /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, openEMS or topology case of each check at
+    /// the same time, each in its own folder in `run`, and read the value of each check in the last
     /// row of its table.
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
@@ -94,6 +96,11 @@ impl Subprocess {
                             solved
                                 .map(|()| chrono::WORK)
                                 .map_err(|e| format!("chrono {folder}: {e}"))
+                        } else if openems::is_case(&dir) {
+                            let solved = self.openems.run(&dir, &out);
+                            solved
+                                .map(|()| openems::WORK)
+                                .map_err(|e| format!("openems {folder}: {e}"))
                         } else if precice::is_case(&dir) {
                             let solved = self.precice.run(&dir, &out);
                             solved
