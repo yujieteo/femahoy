@@ -134,6 +134,7 @@ fn a_table_check_names_an_openfoam_getdp_or_lammps_case() {
     let missing = load(&check("Cl", "a10", coefficients)).unwrap_err();
     assert!(
         missing.contains("a10/system/controlDict, ")
+            && missing.contains("a10/openems.py, ")
             && missing.contains("a10/precice-config.xml or ")
             && missing.contains("a10/case.lmp not found"),
         "{missing}"

@@ -1,7 +1,7 @@
 mod common;
 use common::{
-    ccx_solver, getdp_solver, lammps_solver, meep_solver, openfoam_solver, p, precice_solver,
-    pychrono_solver,
+    ccx_solver, getdp_solver, lammps_solver, meep_solver, openems_solver, openfoam_solver, p,
+    precice_solver, pychrono_solver,
 };
 use std::process::{Command, Output};
 
@@ -38,6 +38,7 @@ fn validate_runs_every_case() {
         Some(pychrono),
         Some(lammps),
         Some(meep),
+        Some(openems),
     ) = (
         ccx_solver(),
         openfoam_solver(),
@@ -46,6 +47,7 @@ fn validate_runs_every_case() {
         pychrono_solver(),
         lammps_solver(),
         meep_solver(),
+        openems_solver(),
     )
     else {
         return;
@@ -59,6 +61,7 @@ fn validate_runs_every_case() {
         .env("FH_MEEP", meep)
         .env("FH_CCX_PRECICE", precice)
         .env("FH_LAMMPS", lammps)
+        .env("FH_OPENEMS", openems)
         .output()
         .expect("run fh");
     let stdout = text(out.stdout);

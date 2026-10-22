@@ -3,4 +3,4 @@
 # not exist, so each test that solves skips and passes.
 # The wasm build checks the window layer of the viewer, as CI does.
 commands:
-  test: cargo build -p fh-viewer --lib --target wasm32-unknown-unknown && FH_CCX=/nonexistent/ccx FH_OPENFOAM=/nonexistent/openfoam FH_GETDP=/nonexistent/getdp FH_PYCHRONO=/nonexistent/python FH_LAMMPS=/nonexistent/lmp FH_MEEP=/nonexistent/python cargo test --workspace
+  test: cargo build -p fh-viewer --lib --target wasm32-unknown-unknown && FH_CCX=/nonexistent/ccx FH_OPENFOAM=/nonexistent/openfoam FH_GETDP=/nonexistent/getdp FH_PYCHRONO=/nonexistent/python FH_LAMMPS=/nonexistent/lmp FH_MEEP=/nonexistent/python FH_OPENEMS=/nonexistent/python cargo test --workspace

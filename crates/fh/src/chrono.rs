@@ -12,7 +12,8 @@
 //! the bodies at true scale.
 //!
 //! Chrono stays a separate program, as each other solver. A run has the limits of a run of `ccx`
-//! (see [`crate::ccx`]). Meep runs its script in the same way (see [`crate::meep`]).
+//! (see [`crate::ccx`]). Meep and openEMS run their scripts in the same way (see
+//! [`crate::meep`] and [`crate::openems`]).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,7 +26,7 @@ use crate::getdp;
 /// The folder of the Chrono files in a run folder.
 pub const WORK: &str = "chrono";
 
-/// A solver that a Python script of the case drives: Chrono, or Meep.
+/// A solver that a Python script of the case drives: Chrono, Meep or openEMS.
 pub(crate) struct Script {
     /// The script of a case, for example `chrono.py`.
     pub file: &'static str,

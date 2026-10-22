@@ -4,10 +4,11 @@
 //! through OpenFOAM (`$FH_OPENFOAM`, else `openfoam` on PATH), GetDP (`$FH_GETDP`, else `getdp`
 //! on PATH), OpenFOAM and CalculiX coupled by preCICE (`$FH_CCX_PRECICE`, else `ccx_preCICE` on
 //! PATH), Chrono (`$FH_PYCHRONO`, else `python3` on PATH), LAMMPS (`$FH_LAMMPS`, else `lmp` on
-//! PATH), Meep (`$FH_MEEP`, else `python3` on PATH) or the topology and shape optimization loops
-//! around `ccx`. A table shows every quantity with its computed value, reference, tolerance and
-//! margin. A bad fixture, a case that fails or a case that cannot run gives exit code 1. A case
-//! whose solver does not start cannot run, and its line tells how to install that solver.
+//! PATH), Meep (`$FH_MEEP`, else `python3` on PATH), openEMS (`$FH_OPENEMS`, else `python3` on
+//! PATH) or the topology and shape optimization loops around `ccx`. A table shows every quantity
+//! with its computed value, reference, tolerance and margin. A bad fixture, a case that fails or a
+//! case that cannot run gives exit code 1. A case whose solver does not start cannot run, and its
+//! line tells how to install that solver.
 
 use fh::validation::{load_all, run_case_with, Case, Outcome, Report, Subprocess};
 use std::path::PathBuf;

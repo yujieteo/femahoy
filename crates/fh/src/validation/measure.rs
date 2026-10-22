@@ -1,6 +1,6 @@
 //! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep,
-//! topology and shape optimization and fit cases of a case with their programs, loops and
-//! `fh fit`, and read one number per reference from the text results.
+//! openEMS, topology and shape optimization and fit cases of a case with their programs, loops
+//! and `fh fit`, and read one number per reference from the text results.
 
 use std::path::Path;
 
@@ -12,13 +12,14 @@ use crate::foam::{self, Foam};
 use crate::getdp::{self, GetDp};
 use crate::lammps::{self, Lammps};
 use crate::meep::{self, Meep};
+use crate::openems::{self, OpenEms};
 use crate::optimize;
 use crate::precice::{self, Precice};
 use crate::topology;
 use crate::Solver;
 
-/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep or the topology loop in a scratch
-/// folder on the input of a case.
+/// Runs `ccx`, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS or the topology loop in a
+/// scratch folder on the input of a case.
 #[derive(Default)]
 pub struct Subprocess {
     solver: Ccx,
@@ -26,6 +27,7 @@ pub struct Subprocess {
     getdp: GetDp,
     chrono: Chrono,
     meep: Meep,
+    openems: OpenEms,
     precice: Precice,
     lammps: Lammps,
 }
@@ -58,9 +60,9 @@ impl Subprocess {
             .collect()
     }
 
-    /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep or topology case of each check at
-    /// the same time, each in its own folder in `run`, and read the value of each check in the
-    /// last row of its table.
+    /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS or topology case of each
+    /// check at the same time, each in its own folder in `run`, and read the value of each check in
+    /// the last row of its table.
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
@@ -132,6 +134,12 @@ impl Subprocess {
                                     solved
                                         .map(|()| meep::WORK)
                                         .map_err(|e| format!("meep {folder}: {e}"))
+                                }
+                                Some(Solver::OpenEms) => {
+                                    let solved = self.openems.run(&dir, &out);
+                                    solved
+                                        .map(|()| openems::WORK)
+                                        .map_err(|e| format!("openems {folder}: {e}"))
                                 }
                                 Some(Solver::Precice) => {
                                     let solved = self.precice.run(&dir, &out);

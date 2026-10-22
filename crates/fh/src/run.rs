@@ -1,7 +1,7 @@
 //! `fh run`: solve a CalculiX input with CalculiX, an OpenFOAM case with OpenFOAM, a GetDP case
 //! with GetDP, a preCICE case with OpenFOAM and CalculiX coupled by preCICE, a Chrono case with
-//! Project Chrono, a LAMMPS case with LAMMPS, or a Meep case with Meep, or optimize the topology or
-//! the shape of a CalculiX model, and show the progress.
+//! Project Chrono, a LAMMPS case with LAMMPS, a Meep case with Meep, or an openEMS case with
+//! openEMS, or optimize the topology or the shape of a CalculiX model, and show the progress.
 //!
 //! - `fh run MODEL.inp` gives CalculiX the input as it is, with each file that it includes
 //!   (`*INCLUDE`). CalculiX is `$FH_CCX`, else `ccx` on `PATH`.
@@ -23,6 +23,8 @@
 //!   PyChrono is `$FH_PYCHRONO`, else `python3` on `PATH`.
 //! - `fh run CASE` gives Meep the case folder (`meep_case.py`, see `fh::meep`). The Python of
 //!   Meep is `$FH_MEEP`, else `python3` on `PATH`.
+//! - `fh run CASE` gives openEMS the case folder (`openems.py`, see `fh::openems`). The Python of
+//!   openEMS is `$FH_OPENEMS`, else `python3` on `PATH`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` sets the time limit of the run.
 //!
@@ -49,6 +51,7 @@ use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
 use fh::lammps::{self, Lammps};
 use fh::meep::{self, Meep};
+use fh::openems::{self, OpenEms};
 use fh::optimize;
 use fh::precice::{self, Precice};
 use fh::topology;
@@ -76,7 +79,9 @@ of PyChrono.\n\
 CASE is also a LAMMPS case folder with case.lmp. fh run starts lmp -in case.lmp, then shows each \
 snapshot of the text dump files (*.dump).\n\
 CASE is also a Meep case folder with meep_case.py. fh run starts python3 meep_case.py, with the \
-Python of Meep.";
+Python of Meep.\n\
+CASE is also an openEMS case folder with openems.py. fh run starts python3 openems.py, with the \
+Python of openEMS.";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -139,8 +144,9 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
             "{shown}: fh run takes a CalculiX input file (.inp), an OpenFOAM case folder (with \
              system/controlDict), a GetDP case folder (with case.pro), a preCICE case folder \
              (with precice-config.xml), a Chrono case folder (with chrono.py), a LAMMPS case \
-             folder (with case.lmp), a Meep case folder (with meep_case.py), a topology case \
-             folder (with topology.toml) or a shape optimization case folder (with optimize.toml)"
+             folder (with case.lmp), a Meep case folder (with meep_case.py), an openEMS case \
+             folder (with openems.py), a topology case folder (with topology.toml) or a shape \
+             optimization case folder (with optimize.toml)"
         ))
     }
 }
@@ -208,6 +214,13 @@ fn report(
                 out.join(meep::WORK).display()
             ),
             "Write a field to a .pos file in meep_case.py",
+        ),
+        Solver::OpenEms => (
+            format!(
+                "{0}/log.python (output of openems.py), the files that openems.py names in {0}",
+                out.join(openems::WORK).display()
+            ),
+            "Write a field to a .pos file in openems.py",
         ),
         Solver::Ccx => {
             let rms = out.join("ccx").join(fh::ccx::RMS_FILE);
@@ -340,6 +353,11 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             let mut meep = Meep::new();
             meep.timeout = o.timeout;
             meep.run_with(&run.input, &run.out, &cancel, on_program)
+        }
+        Solver::OpenEms => {
+            let mut openems = OpenEms::new();
+            openems.timeout = o.timeout;
+            openems.run_with(&run.input, &run.out, &cancel, on_program)
         }
         Solver::Precice => {
             let mut precice = Precice::new();

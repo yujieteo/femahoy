@@ -12,6 +12,7 @@
 //! <state>/runs/<run>/in/case.lmp ...  or the read-only copy of a LAMMPS case
 //! <state>/runs/<run>/in/optimize.toml or the read-only copy of an optimization case
 //! <state>/runs/<run>/in/meep_case.py  or the read-only copy of a Meep case
+//! <state>/runs/<run>/in/openems.py .. or the read-only copy of an openEMS case
 //! <state>/runs/<run>/out/             run folder of the solver. `results.pvd` is the last
 //!                                     file that a run writes, so a run has results when it lists
 //!                                     a step
@@ -74,7 +75,7 @@ fn stage(input: &Path, dir: &Path) -> Result<(), String> {
 }
 
 /// Make the folder of a new run in `state` and copy `source` into it: an input file and its
-/// `*INCLUDE` files, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, topology or
+/// `*INCLUDE` files, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS, topology or
 /// optimization case. A later change of a file does not change the run.
 pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     let runs = state.join(RUNS_DIR);
@@ -94,7 +95,14 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
             foam::copy_case(source, &dir.join(IN_DIR), true)?;
             dir.join(IN_DIR)
         }
-        Some(Solver::GetDp | Solver::Chrono | Solver::Lammps | Solver::Optimize | Solver::Meep) => {
+        Some(
+            Solver::GetDp
+            | Solver::Chrono
+            | Solver::Lammps
+            | Solver::Optimize
+            | Solver::Meep
+            | Solver::OpenEms,
+        ) => {
             getdp::copy_case(source, &dir.join(IN_DIR), true)?;
             dir.join(IN_DIR)
         }
@@ -234,8 +242,9 @@ impl Store {
     }
 
     /// The text of the copy of the input that a run solves, for the page. It holds the text of
-    /// the include files. An OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep or optimization case
-    /// has no input text for the page, so it gives no bytes. A topology case gives its `job.inp`.
+    /// the include files. An OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS or
+    /// optimization case has no input text for the page, so it gives no bytes. A topology case
+    /// gives its `job.inp`.
     pub(crate) fn input_file(&self, run: &str) -> Result<Vec<u8>, Failure> {
         let input = self.run_dir(run)?.join(IN_DIR);
         match crate::solver(&input) {
