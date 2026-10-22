@@ -176,14 +176,20 @@ def nest(items, a, b):
 # The cases.
 
 
+HOME = re.compile(re.escape(str(Path.home())) + r"(?![\w/])")
 ABSOLUTE = re.compile(r"(?<![\w:/.])/(?:[^\s/]+/)+([^\s/]+)")
 
 
+def local(text):
+    """text with the home folder as ~ and each other absolute path as its last part."""
+    return ABSOLUTE.sub(r"\1", HOME.sub("~", text))
+
+
 def fh(*args, env):
-    """Run fh. Each absolute path in its output becomes its last part: the output goes into the
-    reports, and the paths of this computer are wrong for each other reader."""
+    """Run fh. Its output goes into the reports, and the paths of this computer are wrong for each
+    other reader, so the output has no absolute path (local)."""
     r = subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True)
-    r.stdout, r.stderr = ABSOLUTE.sub(r"\1", r.stdout), ABSOLUTE.sub(r"\1", r.stderr)
+    r.stdout, r.stderr = local(r.stdout), local(r.stderr)
     return r
 
 
