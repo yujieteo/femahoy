@@ -839,7 +839,7 @@ fn fh_run_solves_a_meep_case_with_python() {
 /// 1 quad. When `openems.py` holds FAIL, it fails as a Python with no openEMS.
 const FAKE_OPENEMS: &str = r#"#!/bin/sh
 echo python "$@" >> CALLS
-if grep -q FAIL openems.py; then echo "ModuleNotFoundError: No module named 'openEMS'" >&2; exit 1; fi
+if grep -q FAIL openems.py; then echo "ModuleNotFoundError: No module named 'CSXCAD'" >&2; exit 1; fi
 printf '# f_res\n1e9\n' > dipole.txt
 printf 'View "D" {\nSQ(0,0,0,1,0,0,1,1,0,0,1,0){1,2,3,4};\n};\n' > pattern.pos
 "#;

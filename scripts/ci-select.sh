@@ -51,7 +51,7 @@ else
         id=${id%%/*}
         if [ -d "validation/cases/$id" ]; then add "$(case_solver "validation/cases/$id")"; else add all; fi
         ;;
-      crates/fh/src/chrono.rs) add chrono meep ;;
+      crates/fh/src/chrono.rs) add chrono meep openems ;;
       crates/fh/src/lammps.rs) add lammps ;;
       crates/fh/src/meep.rs) add meep ;;
       crates/fh/src/openems.rs) add openems ;;

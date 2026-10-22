@@ -14,24 +14,29 @@
 //! openEMS is GPL, so femahoy only starts it as a separate program. A run has the limits of a
 //! run of `ccx` (see [`crate::ccx`]).
 
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::ccx::{default_memory_limit, prepare_run_dir, supervise, CancelToken, Program};
-use crate::getdp;
+use crate::ccx::{default_memory_limit, CancelToken};
+use crate::chrono::{run_script, Script};
 
 /// The folder of the openEMS files in a run folder.
 pub const WORK: &str = "openems";
 
-/// What to do when Python has no openEMS.
-const INSTALL: &str = "Install openEMS with its Python interface (README.md) and set FH_OPENEMS \
-                       to its Python";
+const SCRIPT: Script = Script {
+    file: "openems.py",
+    module: "CSXCAD",
+    name: "openEMS",
+    install: "Install openEMS with its Python interface (README.md) and set FH_OPENEMS to its \
+              Python",
+    work: WORK,
+    units: "SI-m",
+    multibody: false,
+};
 
 /// True when `dir` is an openEMS case: it has `openems.py`.
 pub fn is_case(dir: &Path) -> bool {
-    dir.join("openems.py").is_file()
+    dir.join(SCRIPT.file).is_file()
 }
 
 /// The Python of openEMS, with the limits of its runs.
@@ -78,46 +83,9 @@ impl OpenEms {
         cancel: &CancelToken,
         on_program: &mut dyn FnMut(&str),
     ) -> Result<(), String> {
-        let start = Instant::now();
-        let case =
-            fs::canonicalize(case).map_err(|e| format!("{}: case folder: {e}", case.display()))?;
-        if !is_case(&case) {
-            return Err(format!(
-                "{} is not an openEMS case: it has no openems.py",
-                case.display()
-            ));
-        }
-        let run_dir = prepare_run_dir(run_dir, &case)?;
-        let work = run_dir.join(WORK);
-        getdp::copy_case(&case, &work, false)?;
-        let python = Program {
-            name: "python",
-            install: INSTALL,
-        };
-        on_program(python.name);
-        let log_file = work.join("log.python");
-        let folder = |e: std::io::Error| format!("run folder: {e}");
-        let log = fs::File::create(&log_file).map_err(folder)?;
-        let mut cmd = Command::new(&self.exe);
-        cmd.arg("openems.py")
-            .current_dir(&work)
-            .stdin(Stdio::null())
-            .stdout(log.try_clone().map_err(folder)?)
-            .stderr(log);
-        let limits = (start, self.timeout, self.memory_limit);
-        let status = supervise(&python, &mut cmd, limits, cancel, &mut || {})?;
-        if !status.success() {
-            let log = fs::read_to_string(&log_file).unwrap_or_default();
-            if log.contains("No module named 'openEMS'") || log.contains("No module named 'CSXCAD'")
-            {
-                return Err(format!(
-                    "{} has no openEMS. {INSTALL}. The full output is in {}",
-                    self.exe.display(),
-                    log_file.display()
-                ));
-            }
-            return Err(getdp::failure(python.name, status, &log, &log_file));
-        }
-        getdp::write_views(&work, &run_dir, "SI-m", false)
+        let limits = (Instant::now(), self.timeout, self.memory_limit);
+        run_script(
+            &SCRIPT, &self.exe, limits, case, run_dir, cancel, on_program,
+        )
     }
 }
