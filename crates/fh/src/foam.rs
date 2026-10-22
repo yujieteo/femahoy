@@ -116,12 +116,6 @@ fn regions_to_mesh(work: &Path) -> Result<Vec<String>, String> {
         {
             continue;
         }
-        if !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
-            return Err(format!(
-                "{}: a region name has only letters, digits and _",
-                entry.path().display()
-            ));
-        }
         regions.push(name);
     }
     regions.sort();
