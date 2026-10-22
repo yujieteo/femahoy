@@ -49,9 +49,10 @@ jobs:
       # sets 1). apt checks them with the OpenCFD key when it downloads them. Then a local
       # repository of the cached packages replaces the OpenCFD repository. FH_REQUIRE_OPENFOAM=1
       # makes each test that solves through the real OpenFOAM fail if OpenFOAM is absent.
-      - name: Cache the OpenFOAM packages
+      - name: Restore the OpenFOAM packages
+        id: openfoam-cache
         if: steps.select.outputs.openfoam == '1'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: /tmp/openfoam-debs
           key: openfoam2512-noble-debs
@@ -73,6 +74,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
+      - name: Save the OpenFOAM packages
+        if: steps.select.outputs.openfoam == '1' && steps.openfoam-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/openfoam-debs
+          key: openfoam2512-noble-debs
       # fh mesh, the topology CAD check of a ccx case and the GetDP cases use gmsh.
       - name: Install gmsh
         if: steps.select.outputs.ccx == '1' || steps.select.outputs.getdp == '1'
@@ -84,9 +91,10 @@ jobs:
       # no package, so its binary comes from getdp.info, checked with its SHA-256. getdp.info
       # sometimes does not connect, so the cache keeps the archive. FH_REQUIRE_GETDP=1 makes each
       # test that solves through the real GetDP fail if GetDP is absent.
-      - name: Cache the GetDP archive
+      - name: Restore the GetDP archive
+        id: getdp-cache
         if: steps.select.outputs.getdp == '1'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: /tmp/getdp.tgz
           key: getdp-3.5.0-Linux64c
@@ -98,6 +106,12 @@ jobs:
           tar xzf /tmp/getdp.tgz -C "$HOME"
           echo "$HOME/getdp-3.5.0-Linux64/bin" >> "$GITHUB_PATH"
           "$HOME/getdp-3.5.0-Linux64/bin/getdp" -version
+      - name: Save the GetDP archive
+        if: steps.select.outputs.getdp == '1' && steps.getdp-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/getdp.tgz
+          key: getdp-3.5.0-Linux64c
       # fh starts the Python of PyChrono for the multibody case (README.md). PyChrono is not on
       # PyPI, so micromamba installs it from conda-forge. FH_REQUIRE_PYCHRONO=1 makes each test
       # that solves through the real PyChrono fail if PyChrono is absent.
@@ -113,9 +127,10 @@ jobs:
       # and the cache keeps them. OpenFOAM loads its adapter as a library, so this step builds it.
       # FH_REQUIRE_PRECICE=1 makes each test that solves through the real preCICE fail if
       # ccx_preCICE is absent.
-      - name: Cache the preCICE packages
+      - name: Restore the preCICE packages
+        id: precice-cache
         if: steps.select.outputs.precice == '1'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: /tmp/precice
           key: precice-3.4.1-calculix-adapter-2.20.2-openfoam-adapter-1.4.0
@@ -139,6 +154,12 @@ jobs:
           tar xzf precice/adapter.tgz
           (cd openfoam-adapter-1.4.0 && openfoam2512 ./Allwmake)
           ccx_preCICE -v || true
+      - name: Save the preCICE packages
+        if: steps.select.outputs.precice == '1' && steps.precice-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/precice
+          key: precice-3.4.1-calculix-adapter-2.20.2-openfoam-adapter-1.4.0
       # fh starts LAMMPS for the particle case (README.md). The Ubuntu package has the SPH package.
       # FH_REQUIRE_LAMMPS=1 makes each test that solves through the real LAMMPS fail if LAMMPS is
       # absent.
