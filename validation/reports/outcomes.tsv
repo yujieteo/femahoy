@@ -1,0 +1,33 @@
+case	result	detail	bytes
+acoustics-pulsating-sphere	pass		774733
+bar-pressure	pass		123924
+buckling-column	pass		123138
+cavity-devahldavis	pass		2663936
+cht-heated-channel	pass		660375
+contact-hertz	pass		125138
+dam-break-martin-moyce	pass		2334689
+dam-break-vof	pass		4268111
+dipole-king-middleton	pass		269404
+dynamics-bar-step	pass		126658
+fit-nist-pontius	pass		134534
+fracture-centre-crack	pass		286990
+frequency-cantilever	pass		123756
+heat-fin	pass		181279
+hyperelastic-tube	pass		4352284
+laminate-pagano	pass		594335
+naca0012-ladson	pass		9337840
+naca23012-flap	pass		9784119
+optics-mie-cylinder	cannot run	meep res40: cannot start /Users/yj/.local/share/pymeep/bin/python: No such file or directory (os error 2). Install Meep (README.md) and set FH_MEEP to its Python	
+plasticity-sphere	pass		123880
+random-vibration-cantilever	pass		1217726
+scordelis-lo-roof	pass		125349
+shape-hole-biaxial	pass		884151
+slider-crank	cannot run	chrono 60rpm: cannot start /Users/yj/.local/share/pychrono/bin/python: No such file or directory (os error 2). Install PyChrono (README.md) and set FH_PYCHRONO to its Python	
+taylor-bar-impact	pass		4257959
+team7-eddy-current	pass		2997599
+topology-mbb-beam	pass		213338
+topology-mbb-beam-cad	pass		214645
+turek-hron-fsi1	cannot run	precice fsi1: cannot start ccx_preCICE: No such file or directory (os error 2). Install preCICE and its CalculiX adapter (README.md) and put ccx_preCICE on PATH, or set FH_CCX_PRECICE	
+warpage-2p5d-frame	pass		619626
+warpage-thick-copper	pass		131416
+wedge-oblique-shock	pass		1321475
