@@ -381,8 +381,11 @@ def main(args):
         sys.exit(f"validation-reports: no {FH}. Run cargo build --release -p fh, or set FH_BIN")
     if not (VIEWER / VIEWER_FILES[1]).is_file():
         sys.exit(f"validation-reports: no viewer in {VIEWER}. Run scripts/build-viewer.sh, or set FH_VIEWER")
-    version = subprocess.run(["git", "-C", ROOT, "describe", "--always", "--dirty"],
-                             capture_output=True, text=True).stdout.strip()
+    git = lambda *a: subprocess.run(["git", "-C", ROOT, *a], capture_output=True, text=True).stdout.strip()
+    # A change in validation/reports, the output of this script, does not make the code dirty.
+    version = git("rev-parse", "--short", "HEAD")
+    if git("status", "--porcelain", "--", ".", ":!validation/reports"):
+        version += "-dirty"
     OUT.mkdir(exist_ok=True)
     write_viewer()
     outcomes = read_outcomes()
