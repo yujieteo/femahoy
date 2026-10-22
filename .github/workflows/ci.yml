@@ -52,19 +52,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
-      # fh starts gmsh and GetDP for the electromagnetic and acoustic cases (README.md). GetDP has
-      # no package, so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1
-      # makes each test that solves through the real GetDP fail if GetDP is absent.
-      - name: Install gmsh and GetDP
-        if: steps.select.outputs.getdp == '1'
+      # fh mesh, the topology CAD check of a ccx case and the GetDP cases use gmsh.
+      - name: Install gmsh
+        if: steps.select.outputs.ccx == '1' || steps.select.outputs.getdp == '1'
         run: |
           nix profile install nixpkgs#gmsh
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          "$HOME/.nix-profile/bin/gmsh" -version
+      # fh starts GetDP for the electromagnetic and acoustic cases (README.md). GetDP has
+      # no package, so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1
+      # makes each test that solves through the real GetDP fail if GetDP is absent.
+      - name: Install GetDP
+        if: steps.select.outputs.getdp == '1'
+        run: |
           curl -fsSL -o /tmp/getdp.tgz https://getdp.info/bin/Linux/getdp-3.5.0-Linux64c.tgz
           echo "d3c28fa18f20d6147b4c7367d4dd802e9f7ddb58c608688bbb71919dbca8041d  /tmp/getdp.tgz" | sha256sum -c
           tar xzf /tmp/getdp.tgz -C "$HOME"
           echo "$HOME/getdp-3.5.0-Linux64/bin" >> "$GITHUB_PATH"
-          "$HOME/.nix-profile/bin/gmsh" -version
           "$HOME/getdp-3.5.0-Linux64/bin/getdp" -version
       # fh starts the Python of PyChrono for the multibody case (README.md). PyChrono is not on
       # PyPI, so micromamba installs it from conda-forge. FH_REQUIRE_PYCHRONO=1 makes each test
