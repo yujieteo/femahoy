@@ -22,11 +22,27 @@ T_tip = 20 + 80 / (cosh 1 + 0.025 sinh 1) = 70.8757 °C.
 
 `*FILM` in ccx 2.23 refuses a surface name. Thus `job.inp` has 1 line `E, Fn, 20.0, 0.05` for each element face of the surfaces `TIP`, `Y0`, `Y1`, `Z0` and `Z1`.
 
+## Mesh study
+
+Each mesh comes from the command of "Files" with another `--size`. The model is the same as in `job.inp`, with 1 `*FILM` line for each element face of the new mesh.
+
+| Size (mm) | Nodes of `TIP` | Mean of the nodes, the check (°C) | Mean of the area (°C) |
+|---:|---:|---:|---:|
+| 10 | 13 | 70.8706 | 70.8837 |
+| 5 (this case) | 37 | 70.8776 | 70.8837 |
+| 2.5 | 101 | 70.8789 | 70.8837 |
+| 1.25 | 353 | 70.8810 | 70.8837 |
+
+The mean of the area is the integral of the order-2 temperature on the tip face, divided by the area. It changes by less than 0.0001 °C from size 10 to size 1.25. Thus the mesh error of the temperature is less than 0.0001 °C.
+The check gives the same weight to each node of `TIP`. The nodes on the edges of the face are colder than the centre, and a finer mesh has a smaller fraction of them. Thus the mean of the nodes increases to the mean of the area. With size 5 it is 0.006 °C lower.
+The mean of the area is 0.008 °C higher than the fin theory. This is the difference between the solid and the fin theory.
+
 ## Tolerance
 
 The tolerance is 0.1 °C (`abs_tol = 0.1`), 0.2 % of the 50.9 °C difference between the tip and the air.
 The fin theory has 1 temperature in each section. In the solid, the tip face changes from 70.84 °C at the corners to 70.90 °C at the centre: the Biot number h (t/2) / k is 0.00125.
 Thus the check is the mean of the tip face. The mean is 70.8776 °C (+0.002 °C) with a mesh of size 5 mm.
+It is the sum of 3 parts ("Mesh study"): the solid against the fin theory +0.008 °C, the mean of the nodes -0.006 °C and the mesh less than 0.0001 °C.
 
 ## Chat run
 

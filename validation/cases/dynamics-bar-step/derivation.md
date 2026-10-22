@@ -21,9 +21,27 @@ The wave comes back from the fixed end at t = 2L/c. Then the end is at 2 F L / (
 c = 5172 m/s and 2L/c = 77.337 µs. The reference is 2 · 1000 · 200 / (210000 · 100) = 0.0190476 mm.
 The check is the mean u1 of the face `END` at the end of the step.
 
+## Mesh study
+
+Each mesh comes from the command of "Files" with another `--size`. The model is the same as in `job.inp`.
+ccx uses its stable increment, thus a finer mesh also has a smaller time increment.
+
+| Size (mm) | Elements | Increment (s) | Time | u1 (mm) | Difference |
+|---:|---:|---:|---:|---:|---:|
+| 10 | 408 | 5.32e-8 | 4 s | 0.0186896 | -1.88 % |
+| 7 | 556 | 7.34e-8 | 4 s | 0.0187101 | -1.77 % |
+| 5 (this case) | 794 | 4.64e-8 | 7 s | 0.0187435 | -1.60 % |
+| 3.3 | 3830 | 2.08e-8 | 33 s | 0.0187887 | -1.36 % |
+| 2.5 | 7256 | 1.86e-8 | 139 s | 0.0187850 | -1.38 % |
+
+The times are the times of `fh validate` on a Mac with 10 cores and other work.
+Along the bar, each mesh has about 200/size elements. The sizes 10, 7 and 5 have only 1 or 2 elements across the section. Thus they have almost the same number of elements.
+The 2 finest meshes differ by 0.02 %. Thus the mesh error of this case is about 0.23 % (0.00004 mm), the difference from the mean of the 2 finest meshes.
+The other 1.37 % comes from the 3D bar, not from the mesh: the 3D bar has lateral inertia. The implicit chat run with size 2.5 mm gives -1.33 % ("Tolerance").
+
 ## Tolerance
 
-The tolerance is 3 % (`rel_tol = 0.03`).
+The tolerance is 3 % (`rel_tol = 0.03`). It holds the mesh error of about 0.23 % and the 1.37 % of the 3D bar ("Mesh study").
 The peak of the 1D theory has a sharp corner at t = 2L/c. The 3D bar has lateral inertia, and the mesh cannot carry a step. Thus the corner is round and the peak is lower:
 
 | Model | u1 (mm) | Difference |
