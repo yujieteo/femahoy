@@ -108,3 +108,21 @@ fn a_fit_of_a_curve_with_8_series_is_an_error() {
     );
     assert!(!out.exists());
 }
+
+/// The error of the curve with the fit names no line: the line is not a line of the input file.
+#[test]
+fn a_second_fit_of_the_same_model_names_no_line() {
+    let dir = scratch("fit-twice");
+    let (curve, out) = (dir.join("test.csv"), dir.join("fit.csv"));
+    fs::write(&curve, "# y: a [1]\nx [1],a,poly1 fit\n1,1,1\n2,2,2\n").unwrap();
+    let run = fh(&["poly1", p(&curve), "--series", "a", "-o", p(&out)]);
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(1));
+    assert!(
+        stderr.contains(
+            "fh fit: the curve with the fit: each series needs its own name, not `poly1 fit`"
+        ),
+        "{stderr}"
+    );
+    assert!(!out.exists());
+}

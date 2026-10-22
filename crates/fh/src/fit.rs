@@ -333,7 +333,13 @@ pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
         short(f.range.0),
         short(f.range.1)
     ));
-    Curve::parse(&out.to_csv(), &out.title)
+    Curve::parse(&out.to_csv(), &out.title).map_err(|e| {
+        let message = match e.split_once(": ") {
+            Some((line, rest)) if line.starts_with("line ") => rest,
+            _ => &e,
+        };
+        format!("the curve with the fit: {message}")
+    })
 }
 
 /// Read a curve file. Its title is the name of the file when it has no `# title:`.
