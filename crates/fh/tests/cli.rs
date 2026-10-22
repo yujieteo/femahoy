@@ -58,6 +58,7 @@ fn validate_runs_every_case() {
         "cavity-devahldavis",
         "contact-hertz",
         "dam-break-martin-moyce",
+        "dam-break-vof",
         "dynamics-bar-step",
         "fracture-centre-crack",
         "frequency-cantilever",
