@@ -13,8 +13,9 @@ cases. For each case:
 3. `fh report --viewer viewer.js` writes validation/reports/CASE.html: a table of the checks,
    then derivation.md, then the runs.
 
-A case that cannot run (its solver does not start on this computer) gets no report. The index
-names the case and the reason. A case that fails gets its report, which shows the failure. An
+A case that cannot run (its solver is not installed on this computer) gets a report of the text
+only: the checks of check.toml and derivation.md. The report and the index name the solver and
+how to install it. A case that fails gets its report, which shows the failure. An
 input that writes no field (a CalculiX input with no *NODE FILE and no *EL FILE) has no 3D view.
 A report above 5 MB is made again with only the last step of each run (`fh report --last-step`).
 A report above 10 MB is not kept: the index names its size.
@@ -174,8 +175,25 @@ def nest(items, a, b):
 # The cases.
 
 
+ABSOLUTE = re.compile(r"(?<![\w:/.])/(?:[^\s/]+/)+([^\s/]+)")
+
+
 def fh(*args, env):
-    return subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True)
+    """Run fh. Each absolute path in its output becomes its last part: the output goes into the
+    reports, and the paths of this computer are wrong for each other reader."""
+    r = subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True)
+    r.stdout, r.stderr = ABSOLUTE.sub(r"\1", r.stdout), ABSOLUTE.sub(r"\1", r.stderr)
+    return r
+
+
+def not_installed(status):
+    """The status "not run: ..." of a case whose solver is not installed, or None."""
+    hint = re.search(r"Install .*?(?=\. The full output|\.?$)", status)
+    if not status.startswith("cannot run") or not hint:
+        return None
+    exe = re.search(r"cannot start (\S+):", status)
+    solver = exe[1] if exe and not exe[1].startswith("python") else hint[0].split()[1]
+    return f"not run: {solver} is not installed on the machine that made this report. {hint[0]}."
 
 
 def validate(case, tmp, env):
@@ -241,20 +259,23 @@ def solve(case, tmp, env):
 
 def text(case, status, rows, runs, nofield, version, last_step=False):
     checks = tomllib.loads((CASES / case / "check.toml").read_text())
+    rel, abs_ = checks.get("rel_tol", 0), checks.get("abs_tol", 0)
     result = status.split(":", 1)[0]
-    body = [
-        "<h2>Result</h2>",
-        f"<p><strong>{esc(result.capitalize())}.</strong> "
-        f"A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, "
-        f"with rel_tol = {checks.get('rel_tol', 0)} and abs_tol = {checks.get('abs_tol', 0)} "
-        f"(<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>",
-    ]
-    if status != "pass":
+    rule = (f"A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, "
+            f"with rel_tol = {rel} and abs_tol = {abs_} (<code>check.toml</code>).")
+    columns = ["Check", "Computed", "Reference", "Tolerance", "Margin"]
+    if result == "not run":
+        notice, _, hint = status.partition(". ")
+        lead = f"<strong>Not run{esc(notice[len(result):])}.</strong> {esc(hint)} {rule}"
+        columns = ["Check", "Reference", "Tolerance"]
+        rows = [[k, v["value"], rel * abs(v["value"]) + abs_] for k, v in checks.items() if isinstance(v, dict)]
+    else:
+        lead = f"<strong>{esc(result.capitalize())}.</strong> {rule} <code>fh validate</code> gives the computed values."
+    body = ["<h2>Result</h2>", f"<p>{lead}</p>"]
+    if result not in ("pass", "not run"):
         body.append(f"<pre><code>{esc(status)}</code></pre>")
     if rows:
-        head = "".join(f'<th style="text-align:{a}">{h}</th>' for h, a in [
-            ("Check", "left"), ("Computed", "right"), ("Reference", "right"),
-            ("Tolerance", "right"), ("Margin", "right")])
+        head = "".join(f'<th style="text-align:{"left" if h == "Check" else "right"}">{h}</th>' for h in columns)
         trs = "".join(
             f"<tr><td><code>{esc(r[0])}</code></td>"
             + "".join(f'<td style="text-align:right">{v:.6g}</td>' for v in r[1:])
@@ -396,11 +417,16 @@ def main(args):
             print(f"{case}: fh validate", flush=True)
             report = OUT / f"{case}.html"
             status, rows = validate(case, tmp, env)
-            if status.startswith("cannot run"):
-                report.unlink(missing_ok=True)
-                why = re.sub(r"^cannot run \S+: ", "", status.split(":", 1)[1].strip())
-                outcomes[case] = ["cannot run", why, ""]
-                print(f"{case}: {status}", flush=True)
+            page = tmp / f"{case}.text.html"
+            if missing := not_installed(status):
+                page.write_text(text(case, missing, [], [], [], version))
+                r = fh("report", page, "-o", report, env=env)
+                print(f"{case}: {missing}", flush=True)
+                if r.returncode != 0:
+                    report.unlink(missing_ok=True)
+                    outcomes[case] = ["fail", r.stderr.strip(), ""]
+                    continue
+                outcomes[case] = [*missing.split(": ", 1), str(report.stat().st_size)]
                 continue
             try:
                 runs, curves, nofield = solve(case, tmp, env)
@@ -409,7 +435,6 @@ def main(args):
                 outcomes[case] = ["fail", str(e).replace("\n", " "), ""]
                 print(f"{case}: {e}", flush=True)
                 continue
-            page = tmp / f"{case}.text.html"
             page.write_text(text(case, status, rows, runs, nofield, version))
             args = [a for run, _ in runs for a in ("--run", run)] + [a for c in curves for a in ("--curve", c)]
             if runs:
