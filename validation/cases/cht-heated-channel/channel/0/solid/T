@@ -1,0 +1,25 @@
+FoamFile { version 2.0; format ascii; class volScalarField; object T; }
+
+dimensions      [0 0 0 1 0 0 0];
+internalField   uniform 300;
+boundaryField
+{
+    "interface.*"
+    {
+        type            compressible::turbulentTemperatureRadCoupledMixed;
+        Tnbr            T;
+        kappaMethod     solidThermo;
+        value           $internalField;
+    }
+    // The heat flux into the wall, 120 W/m2.
+    "heater.*"
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            flux;
+        q               uniform 120;
+        kappaMethod     solidThermo;
+        value           $internalField;
+    }
+    adiabatic { type zeroGradient; }
+    frontAndBack { type empty; }
+}

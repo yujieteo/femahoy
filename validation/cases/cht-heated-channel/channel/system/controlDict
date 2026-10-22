@@ -1,0 +1,55 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+
+application     chtMultiRegionSimpleFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         2000;
+deltaT          1;
+writeControl    timeStep;
+writeInterval   2000;
+writeFormat     ascii;
+writePrecision  10;
+timePrecision   6;
+runTimeModifiable false;
+
+functions
+{
+    // The interface temperature: the average on the window 38 <= x <= 42 mm.
+    interfaceT
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        region          fluid;
+        regionType      patch;
+        name            interface_window;
+        operation       areaAverage;
+        fields          (T);
+        writeFields     false;
+    }
+    // The temperature of the heated face: the average on the window.
+    heaterT
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        region          solid;
+        regionType      patch;
+        name            heater_window;
+        operation       areaAverage;
+        fields          (T);
+        writeFields     false;
+    }
+    // The bulk temperature at the outlet: the mass flow average.
+    outletT
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        region          fluid;
+        regionType      patch;
+        name            outlet;
+        operation       weightedAverage;
+        weightField     phi;
+        fields          (T);
+        writeFields     false;
+    }
+}
