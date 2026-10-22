@@ -1,0 +1,70 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+
+// From the free stream at t = 0 to the steady state. The free stream goes through the domain in
+// 0.6, and the values of the checks are steady after t = 1.5. A Courant number of 0.5 gives
+// oscillations of up to 7 % in p behind the shock, 0.2 gives none.
+application     rhoCentralFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         2;
+deltaT          1e-4;
+adjustTimeStep  yes;
+maxCo           0.2;
+writeControl    adjustable;
+writeInterval   2;
+writeFormat     ascii;
+writePrecision  10;
+timePrecision   6;
+runTimeModifiable false;
+
+functions
+{
+    // The field Ma.
+    Ma
+    {
+        type            MachNo;
+        libs            (fieldFunctionObjects);
+        writeControl    writeTime;
+    }
+    // The shock angle from the area A between the wedge and the shock for 0 < x < 1:
+    // A = (tan(beta) - tan(15))/2. A is the integral of the pressure rise over the jump of the
+    // theory, (p - 1)/(2.4675 - 1), thus the area of a sharp shock with the same rise. The
+    // weighted averages give the part of A in the domain for 0 < x < 1, which has the area
+    // 1 - tan(15)/2.
+    shockAngle
+    {
+        type            exprField;
+        libs            (fieldFunctionObjects);
+        field           beta;
+        expression      "radToDeg()*atan(tan(15*degToRad()) + (2 - tan(15*degToRad()))*weightAverage(pos().x() > 0 ? (p - 1)/1.4675 : 0)/weightAverage(pos().x() > 0 ? 1 : 0))";
+        writeControl    none;
+    }
+    // The region behind the shock and away from it: 0.25 < x and y < x/2. The shock is at
+    // y = 0.752 x.
+    region2
+    {
+        type            exprField;
+        libs            (fieldFunctionObjects);
+        field           behind;
+        expression      "pos().x() > 0.25 && pos().y() < 0.5*pos().x() ? 1 : 0";
+        writeControl    none;
+    }
+    shock
+    {
+        type            volFieldValue;
+        libs            (fieldFunctionObjects);
+        operation       max;
+        fields          (beta);
+        writeFields     false;
+    }
+    state2
+    {
+        type            volFieldValue;
+        libs            (fieldFunctionObjects);
+        operation       weightedVolAverage;
+        weightField     behind;
+        fields          (Ma p T rho);
+        writeFields     false;
+    }
+}

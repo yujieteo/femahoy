@@ -1,0 +1,24 @@
+FoamFile { version 2.0; format ascii; class dictionary; object blockMeshDict; }
+
+// The domain of the NPARC wedge case: inflow at x = -0.5, outflow at x = 1, far field at y = 1.
+// The wedge starts at the origin with the angle 15 degrees: y = x tan(15) for x > 0. Before it,
+// y = 0 is a symmetry plane. Square cells of 0.01 (grid B of the NPARC study), 1 cell thick in z.
+vertices
+(
+    (-0.5 0 0) (0 0 0) (1 0.2679491924 0) (1 1 0) (0 1 0) (-0.5 1 0)
+    (-0.5 0 0.01) (0 0 0.01) (1 0.2679491924 0.01) (1 1 0.01) (0 1 0.01) (-0.5 1 0.01)
+);
+blocks
+(
+    hex (0 1 4 5 6 7 10 11) (50 100 1) simpleGrading (1 1 1)
+    hex (1 2 3 4 7 8 9 10) (100 100 1) simpleGrading (1 1 1)
+);
+boundary
+(
+    inlet { type patch; faces ((0 6 11 5)); }
+    outlet { type patch; faces ((2 3 9 8)); }
+    top { type patch; faces ((5 11 10 4) (4 10 9 3)); }
+    symmetry { type symmetryPlane; faces ((0 1 7 6)); }
+    wedge { type wall; faces ((1 2 8 7)); }
+    frontAndBack { type empty; faces ((0 5 4 1) (1 4 3 2) (6 7 10 11) (7 8 9 10)); }
+);
