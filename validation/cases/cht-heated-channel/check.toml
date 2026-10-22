@@ -1,0 +1,43 @@
+# Conjugate heat transfer: laminar air flow between 2 plastic walls of finite thickness. A heater
+# on the outer face of each wall gives a uniform heat flux on 20 <= x <= 80 mm. The heat goes
+# through the wall into the air. The model is the half channel (a symmetry plane on the centre
+# line) and 1 wall, as 2 regions of chtMultiRegionSimpleFoam. derivation.md gives the setup and
+# the mesh study.
+#
+# The references are exact. At the station x = 40 mm, the flow and the temperature are fully
+# developed: Nu = 140/17 (Shah and London 1978, parallel plates heated on the 2 sides), the
+# temperature in the wall is linear across it, and the energy balance gives the bulk
+# temperature. The outlet bulk temperature comes from the energy balance of the full channel.
+# - interface_T: the interface temperature at x = 40 mm, the average on 38 <= x <= 42 mm.
+# - heater_T: the temperature of the heated face at x = 40 mm, the average on the same window.
+# - outlet_T: the mass flow average of the temperature at the outlet.
+#
+# The model has 10 cells across the half channel and 10 across the wall, 2000 iterations. The
+# tolerance comes from the mesh study, not from the difference between the model and the
+# reference (derivation.md, "Tolerance"):
+# - The mesh error against the extrapolated value of 3 meshes is 0.0040 K. With the factor of
+#   safety 1.25 of the grid convergence index, 0.0051 K.
+# - The model against the exact solution (heat that leaves through the inlet, the ends of the
+#   heater, the kinetic energy): 0.0003 K.
+# - The iteration error: below 1e-7 K.
+# abs_tol = 0.0051 K + 0.0003 K = 0.0054 K, rounded up. All the values are in K, thus rel_tol = 0.
+rel_tol = 0
+abs_tol = 0.006
+
+[interface_T]
+value = 312.90435
+case = "channel"
+file = "postProcessing/fluid/interfaceT/0/surfaceFieldValue.dat"
+column = "areaAverage(T)"
+
+[heater_T]
+value = 313.38435
+case = "channel"
+file = "postProcessing/solid/heaterT/0/surfaceFieldValue.dat"
+column = "areaAverage(T)"
+
+[outlet_T]
+value = 330.0
+case = "channel"
+file = "postProcessing/fluid/outletT/0/surfaceFieldValue.dat"
+column = "weightedAverage(T)"

@@ -4,17 +4,22 @@
 //! copies these 3 folders to `<run-dir>/foam` and starts the user's `openfoam` (`$FH_OPENFOAM`,
 //! else `openfoam` on PATH) there for each program in turn:
 //!
-//! 1. `blockMesh`, when the case has `system/blockMeshDict` and no `constant/polyMesh`;
+//! 1. `blockMesh`, when the case has `system/blockMeshDict` and no `constant/polyMesh`, and
+//!    `blockMesh -region <region>` for each folder `system/<region>` with a `blockMeshDict` and
+//!    no `constant/<region>/polyMesh`;
 //! 2. `setFields`, when the case has `system/setFieldsDict`, for example to put the water in an
 //!    `interFoam` case;
 //! 3. the application that `system/controlDict` names, for example `simpleFoam`;
-//! 4. `foamToVTK` for the last time.
+//! 4. `foamToVTK` for the last time, with `-allRegions` when the case has
+//!    `constant/regionProperties`.
 //!
-//! Each program writes its output to `<run-dir>/foam/log.<program>`. The function objects of
-//! the case write their text results to `<run-dir>/foam/postProcessing`. Then the run writes the
-//! cell fields of the last time (for example `U`, `p` and `nut`) to `step-1.vtu` and
-//! `results.pvd`. The VTU file has no point fields, because the viewer takes a point field `U`
-//! as a displacement.
+//! Each program writes its output to `<run-dir>/foam/log.<program>`, or
+//! `log.<program>.<region>` for 1 region. The function objects of the case write their text
+//! results to `<run-dir>/foam/postProcessing`. Then the run writes the cell fields of the last
+//! time (for example `U`, `p` and `nut`) to `step-1.vtu` and `results.pvd`. A case with regions
+//! gives 1 grid with the cells of all regions. A region with no field of a name has the value 0
+//! there, for example `U` in a solid. The VTU file has no point fields, because the viewer takes
+//! a point field `U` as a displacement.
 //!
 //! OpenFOAM is GPL, so femahoy only starts it as a separate program. A run has the limits of a
 //! run of `ccx` (see [`crate::ccx`]). The time limit counts all the programs of a run.
@@ -34,6 +39,8 @@ use crate::ccx::{
 pub const WORK: &str = "foam";
 /// The folders of a case that a run copies.
 const CASE_DIRS: [&str; 3] = ["system", "constant", "0"];
+/// The file of a case with regions, for example a fluid and a solid.
+const REGIONS: &str = "constant/regionProperties";
 /// The last program of a run: the cell fields of the last time as 1 legacy VTK file.
 pub(crate) const TO_VTK: [&str; 6] = [
     "foamToVTK",
@@ -94,6 +101,25 @@ pub(crate) fn application(case: &Path) -> Result<String, String> {
                 file.display()
             )
         })
+}
+
+/// The regions of the case in `work` that need a mesh: each folder `system/<region>` with a
+/// `blockMeshDict` and no `constant/<region>/polyMesh`, in alphabetical order.
+fn regions_to_mesh(work: &Path) -> Result<Vec<String>, String> {
+    let system = work.join("system");
+    let mut regions = Vec::new();
+    for entry in fs::read_dir(&system).map_err(|e| format!("{}: {e}", system.display()))? {
+        let entry = entry.map_err(|e| format!("{}: {e}", system.display()))?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !entry.path().join("blockMeshDict").is_file()
+            || work.join("constant").join(&name).join("polyMesh").exists()
+        {
+            continue;
+        }
+        regions.push(name);
+    }
+    regions.sort();
+    Ok(regions)
 }
 
 /// Why a program of OpenFOAM failed and what to do, from its exit status and its output `log`.
@@ -277,15 +303,23 @@ impl Foam {
         let run_dir = prepare_run_dir(run_dir, &case)?;
         let work = run_dir.join(WORK);
         copy_case(&case, &work, false)?;
+        let regions = regions_to_mesh(&work)?;
         let mut programs: Vec<Vec<&str>> = Vec::new();
         if work.join("system/blockMeshDict").is_file() && !work.join("constant/polyMesh").exists() {
             programs.push(vec!["blockMesh"]);
+        }
+        for region in &regions {
+            programs.push(vec!["blockMesh", "-region", region]);
         }
         if work.join("system/setFieldsDict").is_file() {
             programs.push(vec!["setFields"]);
         }
         programs.push(vec![&app]);
-        programs.push(TO_VTK.to_vec());
+        let mut to_vtk = TO_VTK.to_vec();
+        if work.join(REGIONS).is_file() {
+            to_vtk.push("-allRegions");
+        }
+        programs.push(to_vtk);
         for args in &programs {
             on_program(args[0]);
             let limits = (start, self.timeout, self.memory_limit);
@@ -295,7 +329,7 @@ impl Foam {
     }
 
     /// Run the OpenFOAM program `args` on the case in `work`, with its output in
-    /// `work/log.<program>`.
+    /// `work/log.<program>`, or `work/log.<program>.<region>` for `<program> -region <region>`.
     pub(crate) fn program(
         &self,
         args: &[&str],
@@ -308,7 +342,10 @@ impl Foam {
             name: "openfoam",
             install: "Install OpenFOAM (README.md) and put openfoam on PATH, or set FH_OPENFOAM",
         };
-        let log_file = work.join(format!("log.{}", args[0]));
+        let log_file = match args {
+            [program, "-region", region, ..] => work.join(format!("log.{program}.{region}")),
+            _ => work.join(format!("log.{}", args[0])),
+        };
         let folder = |e: std::io::Error| format!("run folder: {e}");
         let log = fs::File::create(&log_file).map_err(folder)?;
         let mut cmd = Command::new(&self.exe);
@@ -328,26 +365,95 @@ impl Foam {
     }
 }
 
-/// Write the cell fields of the 1 file of `foamToVTK` in `work/VTK` to `step-1.vtu` and
-/// `results.pvd` in `run_dir`.
-pub(crate) fn write_result(work: &Path, run_dir: &Path) -> Result<(), String> {
-    let vtk = work.join("VTK");
-    let files: Vec<PathBuf> = fs::read_dir(&vtk)
-        .map_err(|e| format!("{}: {e}", vtk.display()))?
+/// The 1 `.vtk` file in the folder `dir`.
+fn vtk_file(dir: &Path) -> Result<PathBuf, String> {
+    let files: Vec<PathBuf> = fs::read_dir(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "vtk"))
         .collect();
-    let [file] = files.as_slice() else {
-        return Err(format!(
+    match <[PathBuf; 1]>::try_from(files) {
+        Ok([file]) => Ok(file),
+        Err(files) => Err(format!(
             "{} holds {} .vtk files, expected 1",
-            vtk.display(),
+            dir.display(),
             files.len()
-        ));
+        )),
+    }
+}
+
+/// 1 grid with the cells of all `regions`. A region with no field of a name has the value 0
+/// there.
+fn merge(regions: Vec<Grid>) -> Grid {
+    let mut fields: Vec<(String, usize)> = Vec::new();
+    for field in regions.iter().flat_map(|g| &g.cell_data) {
+        if !fields.iter().any(|(name, _)| *name == field.name) {
+            fields.push((field.name.clone(), field.components));
+        }
+    }
+    let mut values = vec![Vec::new(); fields.len()];
+    let mut all = Grid::default();
+    for grid in regions {
+        for ((name, components), values) in fields.iter().zip(&mut values) {
+            let field = grid
+                .cell_field(name)
+                .filter(|f| f.components == *components);
+            match field.and_then(Field::as_f64) {
+                Some(v) => values.extend_from_slice(v),
+                None => values.resize(values.len() + components * grid.cells.len(), 0.0),
+            }
+        }
+        let offset = all.points.len() as u32;
+        all.points.extend(grid.points);
+        all.cells.extend(
+            grid.cells
+                .into_iter()
+                .map(|cell| cell.into_iter().map(|p| p + offset).collect()),
+        );
+        all.cell_types.extend(grid.cell_types);
+    }
+    all.cell_data = fields
+        .into_iter()
+        .zip(values)
+        .map(|((name, components), values)| Field::f64(&name, components, values))
+        .collect();
+    all
+}
+
+/// Write the cell fields of the file of `foamToVTK` in `work/VTK`, or of the file in the folder
+/// of each region, to `step-1.vtu` and `results.pvd` in `run_dir`.
+pub(crate) fn write_result(work: &Path, run_dir: &Path) -> Result<(), String> {
+    let vtk = work.join("VTK");
+    let files = if work.join(REGIONS).is_file() {
+        let mut dirs: Vec<PathBuf> = fs::read_dir(&vtk)
+            .map_err(|e| format!("{}: {e}", vtk.display()))?
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
+        if dirs.is_empty() {
+            return Err(format!("{} has no folder of a region", vtk.display()));
+        }
+        dirs.sort();
+        dirs.iter().map(|d| vtk_file(d)).collect::<Result<_, _>>()?
+    } else {
+        vec![vtk_file(&vtk)?]
     };
-    let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
-    let frame = read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?;
-    write_frames(run_dir, "unspecified", false, std::iter::once(frame))
+    let mut time = 0.0;
+    let mut grids = Vec::new();
+    for file in &files {
+        let text = fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let (t, grid) = read_legacy(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+        time = t;
+        grids.push(grid);
+    }
+    write_frames(
+        run_dir,
+        "unspecified",
+        false,
+        std::iter::once((time, merge(grids))),
+    )
 }
 
 #[cfg(test)]
@@ -389,6 +495,26 @@ mod tests {
             .contains("do not match"));
         let word = VTK.replace("-0.5", "x");
         assert!(read_legacy(&word).unwrap_err().contains("\"x\""));
+    }
+
+    #[test]
+    fn the_regions_give_1_grid_with_0_where_a_region_has_no_field() {
+        let (_, fluid) = read_legacy(VTK).unwrap();
+        let solid = VTK.replace(
+            "FIELD FieldData 2\np 1 1 float\n-0.5\nU 3 1 float\n1 0.25 0\n",
+            "FIELD FieldData 1\np 1 1 float\n2\n",
+        );
+        let (_, solid) = read_legacy(&solid).unwrap();
+        let grid = merge(vec![fluid, solid]);
+        assert_eq!(grid.points.len(), 16);
+        assert_eq!(grid.cells[1], vec![8, 9, 10, 11, 12, 13, 14, 15]);
+        assert_eq!(grid.cell_types, vec![12, 12]);
+        assert_eq!(
+            grid.cell_field("p").unwrap().as_f64(),
+            Some(&[-0.5, 2.0][..])
+        );
+        let u = grid.cell_field("U").unwrap();
+        assert_eq!(u.as_f64(), Some(&[1.0, 0.25, 0.0, 0.0, 0.0, 0.0][..]));
     }
 
     #[test]

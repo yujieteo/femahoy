@@ -1,0 +1,20 @@
+FoamFile { version 2.0; format ascii; class dictionary; object thermophysicalProperties; }
+
+// A plastic wall: k = 0.25 W/(m K), 10 times the k of the air.
+thermoType
+{
+    type            heSolidThermo;
+    mixture         pureMixture;
+    transport       constIso;
+    thermo          hConst;
+    equationOfState rhoConst;
+    specie          specie;
+    energy          sensibleEnthalpy;
+}
+mixture
+{
+    specie { molWeight 100; }
+    transport { kappa 0.25; }
+    thermodynamics { Hf 0; Cp 1000; }
+    equationOfState { rho 1200; }
+}
