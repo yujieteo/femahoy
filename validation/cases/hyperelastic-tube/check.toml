@@ -1,0 +1,37 @@
+# A long rubber tube in plane strain (A = 10 mm, B = 20 mm) inflated by a radial displacement of
+# its inner face. The rubber is the 3-term Ogden fit of R. W. Ogden, Proc. R. Soc. Lond. A 326
+# (1972) 565-584, to the data of L. R. G. Treloar, Trans. Faraday Soc. 40 (1944) 59-70. The
+# reference is the exact pressure of the incompressible tube (D. M. Haughton and R. W. Ogden,
+# J. Mech. Phys. Solids 27 (1979) 489-512), with w(l) = W(l, 1/l, 1):
+#   p = integral from lambda_b to lambda_a of w'(l) / (l^2 - 1) dl,
+#   lambda_b^2 - 1 = (A/B)^2 (lambda_a^2 - 1).
+# p has a maximum of 0.229790 MPa at lambda_a = 2.566. The checks are the force F = p lambda_a A
+# on the inner face of the quarter (1 mm thick) at lambda_a = 2.5 and 4.0, and u(B) at 4.0.
+# reference.py computes them. derivation.md gives the model and the tolerance:
+# - The reference is exact for the incompressible rubber. The model has K / mu0 = 9654 and an
+#   error of 0.018 % or less. The mesh changes the results by less than 0.002 %.
+# rel_tol = 0.2 %. It rejects K / mu0 = 100 (-1.6 %), D1 = 0 (-6.0 %) and each wrong energy of
+# derivation.md (+14 % or more).
+rel_tol = 0.002
+abs_tol = 0.0
+
+[f_25]
+value = 5.74269
+set = "F25"
+field = "RF"
+component = 1
+op = "sum"
+
+[f_40]
+value = 8.76165
+set = "F40"
+field = "RF"
+component = 1
+op = "sum"
+
+[u_outer]
+value = 23.5890
+set = "PB"
+field = "U"
+component = 1
+op = "value"

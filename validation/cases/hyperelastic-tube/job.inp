@@ -1,0 +1,46 @@
+** units: SI-mm
+** 1/4 of a long rubber tube in plane strain: inner radius 10 mm, outer radius 20 mm, 1 mm thick.
+** The rubber is the 3-term Ogden fit of Ogden (1972) to the data of Treloar (1944). The inner
+** face moves out to 2.5 and then 4 times its radius. A pressure load cannot pass the pressure
+** maximum at 2.57 times the radius. mesh.py writes mesh.inp.
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=RUBBER
+** ccx: W = sum 2 mu_i / alpha_i^2 (l1^alpha_i + l2^alpha_i + l3^alpha_i - 3) + (J - 1)^2 / D1.
+** mu_i = mu_p alpha_p / 2 of the constants of Ogden, mu_p = 6.3, 0.012 and -0.1 kg/cm2.
+** D1 = 2 / K with K = 4000 MPa. D2 = D3 = 0: ccx uses (0.1 / mu0)^2 and (0.1 / mu0)^3, and
+** their terms (J - 1)^4 and (J - 1)^6 have no effect.
+*HYPERELASTIC, OGDEN, N=3
+0.40158232, 1.3, 0.002941995, 5.0, 0.00980665, -2.0, 0.0005, 0.0
+0.0
+*SOLID SECTION, ELSET=ALL, MATERIAL=RUBBER
+1.0
+** At the inner nodes, DOF 1 is radial and DOF 2 is the hoop direction.
+*TRANSFORM, NSET=INNER, TYPE=C
+0.0, 0.0, 0.0, 0.0, 0.0, 1.0
+*STEP, INC=1000
+*STATIC
+0.05, 1.0, 1e-5, 0.05
+*BOUNDARY
+SX, 1, 1
+SY, 2, 2
+INNER, 1, 1, 15.0
+INNER, 2, 2, 0.0
+** GLOBAL=YES: without it, ccx writes the forces of the INNER nodes in their cylindrical system.
+*NODE PRINT, NSET=F25, GLOBAL=YES
+RF
+** ccx takes OUTPUT=3D only in the first step. The file requests stay on in step 2.
+*NODE FILE, OUTPUT=3D
+U
+*EL FILE
+S, E
+*END STEP
+*STEP, INC=1000
+*STATIC
+0.05, 1.0, 1e-5, 0.05
+*BOUNDARY
+INNER, 1, 1, 30.0
+*NODE PRINT, NSET=F40, GLOBAL=YES
+RF
+*NODE PRINT, NSET=PB
+U
+*END STEP
