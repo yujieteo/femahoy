@@ -7,15 +7,20 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-NONCE' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
-/* The colours of the page of fh serve (page.html). */
+/* The colours of the page of fh serve (page.html). --s1 to --s8 are the series of the plots, in
+   a fixed order that keeps adjacent series apart for colour-blind readers. */
 :root {
   --bg: #212121; --side: #181818; --raised: #303030; --line: #2c2c2c; --code: #141414;
   --text: #ececec; --muted: #a0a0a0; --link: #8ab4f8;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
 }
 @media (prefers-color-scheme: light) {
   :root {
     --bg: #ffffff; --side: #f9f9f9; --raised: #f0f0f0; --line: #e6e6e6; --code: #f4f4f4;
     --text: #0d0d0d; --muted: #6b6b6b; --link: #1a56c4;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --s5: #e87ba4; --s6: #008300; --s7: #6250d6; --s8: #e34948;
   }
 }
 * { box-sizing: border-box; }
@@ -35,6 +40,21 @@ article th { background: var(--raised); }
 article pre { padding: 10px 12px; overflow-x: auto; border-radius: 8px; background: var(--code); }
 article :not(pre) > code { padding: 1px 5px; border-radius: 4px; background: var(--code); }
 a { color: var(--link); }
+/* A report with no run has no viewer: the text fills the page. */
+body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(28px, calc(50% - 400px)); }
+.curve { margin: 1.5em 0; }
+.curve figcaption { font-weight: 600; }
+.curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
+.curve text { fill: var(--muted); }
+.curve .label { fill: var(--text); }
+.curve .grid { stroke: var(--line); }
+.curve .frame { fill: none; stroke: var(--muted); }
+.curve polyline { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.curve circle { stroke: var(--side); stroke-width: 2; }
+.curve .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 6px 0; padding: 0; list-style: none; font-size: 13.5px; }
+.curve .legend i { display: inline-block; width: 16px; height: 2px; margin-right: 6px; vertical-align: middle; }
+.curve .legend i.point { width: 8px; height: 8px; border-radius: 50%; }
+.curve p { margin: 4px 0; font-size: 13.5px; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; color: var(--link); }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 header { flex: none; padding: 10px 16px; }
@@ -68,6 +88,10 @@ window.fetch = async (request) => {
 };
 
 async function start() {
+  if (!runs.options.length) {
+    $("model").remove();
+    return;
+  }
   try {
     const js = await (await fetch("/viewer/fh_viewer.js")).text();
     const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));

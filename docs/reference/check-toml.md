@@ -4,6 +4,7 @@ A validation case is a folder `validation/cases/<id>/` with these files that `fh
 
 - `job.inp`: a plain CalculiX input. It holds the mesh, the model, the steps and the print requests that the check needs. It starts with the line `** units: SI-mm` or `** units: SI-m`. A large mesh can be in a file that `job.inp` includes (`*INCLUDE`).
 - Or, for CFD, electromagnetics, acoustics, fluid-structure interaction, particles, topology and shape optimization, multibody dynamics and optics, 1 or more OpenFOAM, GetDP, preCICE, LAMMPS, topology, shape optimization, Chrono or Meep case folders in subfolders, for example `a4.04/system/controlDict`, `50hz/case.pro`, `fsi1/precice-config.xml`, `sph/case.lmp`, `60x20/topology.toml`, `L40/optimize.toml`, `60rpm/chrono.py` or `res40/meep_case.py`. A case with table checks has no `job.inp`.
+- Or, for a curve fit, a fit case folder in a subfolder, for example `pontius/fit.toml`. `fit.toml` has `curve` (a curve file in the folder, see [curve](../../crates/fh/src/curve.rs)), `model` (a model of `fh fit`) and, when the curve has more than 1 series, `series`. `fh validate` fits the curve and writes the table `fit.txt`. Its columns are the parameters of the model (`c0`, `c1` ... for `poly`, `C` and `m` for `power`, `C10` and `C01` for the hyperelastic models) and `r2`.
 - `check.toml`: the reference values, what to measure and the tolerance.
 
 Other files in the folder (`derivation.md`, the STEP file, scripts) are documents. No field points to them.

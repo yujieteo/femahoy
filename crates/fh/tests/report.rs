@@ -135,3 +135,62 @@ fn no_viewer_gives_no_report() {
     );
     assert!(!lab.out().exists());
 }
+
+/// A curve with a line and measured points.
+const CURVE: &str =
+    "# title: Surge front\n# y: Z [1]\n# points measured: Martin and Moyce (1952)\n\
+                     T [1],model,measured\n0.5,1.0,\n1.0,1.5,\n1.19,,1.44\n";
+
+/// Each `--curve` is an x-y plot after the text: the line, the points over it and the source.
+#[test]
+fn the_report_draws_each_curve() {
+    let lab = Lab::new("report-curve");
+    let curve = lab.dir.join("front.csv");
+    fs::write(&curve, CURVE).unwrap();
+    let out = lab.report(&["--run", "run-000001", "--curve", p(&curve)]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    let figure = html
+        .find("<figure class=\"curve\"><figcaption>Surge front")
+        .expect("plot");
+    assert!(
+        html.find("<h1>A320 barrel</h1>").unwrap() < figure,
+        "after the text"
+    );
+    assert!(html.contains("<polyline"), "line");
+    assert!(
+        html.contains("<title>measured: 1.19, 1.44</title>"),
+        "point"
+    );
+    assert!(html.contains("measured: Martin and Moyce (1952)"), "source");
+}
+
+/// A report of curves only needs no run and no viewer.
+#[test]
+fn a_report_of_curves_needs_no_run() {
+    let lab = Lab::new("report-curve-only");
+    fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
+    let curve = lab.dir.join("front.csv");
+    fs::write(&curve, CURVE).unwrap();
+    let out = lab.report(&["--curve", p(&curve)]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert!(html.contains("<figure class=\"curve\">"));
+    assert!(!html.contains("data-path=\"/viewer/"), "no viewer");
+}
+
+/// A bad curve file gives no report, and the message names the file and the line.
+#[test]
+fn a_bad_curve_gives_no_report() {
+    let lab = Lab::new("report-bad-curve");
+    let curve = lab.dir.join("front.csv");
+    fs::write(&curve, "# y: Z [1]\nT [1],model\n0.5,one\n").unwrap();
+    let out = lab.report(&["--run", "run-000001", "--curve", p(&curve)]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("front.csv: line 3: `one` is not a finite number"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!lab.out().exists());
+}

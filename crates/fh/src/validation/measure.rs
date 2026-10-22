@@ -1,6 +1,6 @@
 //! Run the input of a case with `ccx`, or the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep,
-//! topology and shape optimization cases of a case with their programs and loops, and read one
-//! number per reference from the text results.
+//! topology and shape optimization and fit cases of a case with their programs, loops and
+//! `fh fit`, and read one number per reference from the text results.
 
 use std::path::Path;
 
@@ -75,7 +75,12 @@ impl Subprocess {
                 .map(|folder| {
                     scope.spawn(move || {
                         let (dir, out) = (input.join(folder), run.join(folder));
-                        if getdp::is_case(&dir) {
+                        if crate::fit::is_case(&dir) {
+                            let fitted = crate::fit::run_case(&dir, &out);
+                            fitted
+                                .map(|()| crate::fit::WORK)
+                                .map_err(|e| format!("fit {folder}: {e}"))
+                        } else if getdp::is_case(&dir) {
                             let solved = self.getdp.run(&dir, &out);
                             solved
                                 .map(|()| getdp::WORK)

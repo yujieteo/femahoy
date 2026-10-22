@@ -1,16 +1,17 @@
-//! `fh report`: write the text of the agent, the wasm viewer and the results of some runs into
-//! 1 HTML file. The person opens the file with a double-click (`file://`). It needs no daemon and
-//! no network.
+//! `fh report`: write the text of the agent, the wasm viewer, the results of some runs and the
+//! plots of some curves into 1 HTML file. The person opens the file with a double-click
+//! (`file://`). It needs no daemon and no network.
 //!
 //! The file is the template `report.html` with 3 parts put in it:
 //!
-//! - The text, an HTML file that the agent writes. The template shows it beside the viewer.
+//! - The text, an HTML file that the agent writes, with an x-y plot of each curve file (see
+//!   [`crate::curve`]) after it. The template shows it beside the viewer.
 //! - The viewer files of `fh serve` (`fh_viewer.js` and `fh_viewer_bg.wasm`), so the report
 //!   uses the same viewer.
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
 //!   and each step file. Each file is a `script` element that holds its bytes in base64, with
 //!   the daemon path of the file in `data-path`. A small script in the template answers the
-//!   fetches of the viewer from these elements.
+//!   fetches of the viewer from these elements. A report with no run has no viewer.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
 //! the text of the agent cannot run a script or load a file.
@@ -26,18 +27,23 @@ use super::serve::viewer_dir;
 use super::store::Store;
 use super::{default_state_dir, random_hex};
 use crate::ccx::PVD_FILE;
+use crate::curve::escape;
+use crate::fit::read_curve;
 
-const USAGE: &str = "usage: fh report TEXT.html -o REPORT.html --run RUN [--run RUN]...";
+const USAGE: &str =
+    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]...\n\
+     Name at least 1 run or 1 curve.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
     text: PathBuf,
     out: PathBuf,
     runs: Vec<String>,
+    curves: Vec<PathBuf>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
-    let (mut text, mut out, mut runs) = (None, None, Vec::<String>::new());
+    let (mut text, mut out, mut runs, mut curves) = (None, None, Vec::<String>::new(), Vec::new());
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let mut value = |what: &str| {
@@ -47,6 +53,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         };
         match arg.as_str() {
             "-o" => out = Some(PathBuf::from(value("a file")?)),
+            "--curve" => curves.push(PathBuf::from(value("a curve file")?)),
             "--run" => {
                 let run = value("a run")?;
                 if !runs.contains(&run) {
@@ -59,7 +66,12 @@ fn parse(args: &[String]) -> Result<Options, String> {
         }
     }
     match (text, out) {
-        (Some(text), Some(out)) if !runs.is_empty() => Ok(Options { text, out, runs }),
+        (Some(text), Some(out)) if !runs.is_empty() || !curves.is_empty() => Ok(Options {
+            text,
+            out,
+            runs,
+            curves,
+        }),
         _ => Err(USAGE.into()),
     }
 }
@@ -89,13 +101,6 @@ fn add_file(out: &mut String, path: &str, bytes: &[u8]) {
     out.push_str("</script>\n");
 }
 
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
 /// The folder and the name of the input file of a run, for the list of runs.
 fn short(source: &str) -> String {
     let mut parts: Vec<&str> = source.rsplit('/').take(2).collect();
@@ -110,11 +115,11 @@ fn read(path: &Path) -> Result<Vec<u8>, String> {
 /// The report as HTML.
 fn build(o: &Options) -> Result<String, String> {
     let state = default_state_dir().ok_or("no home folder, so set FH_STATE")?;
-    let viewer = viewer_dir().ok_or(
-        "the wasm viewer is not built. Run scripts/build-viewer.sh, or set FH_VIEWER to its folder",
-    )?;
-    let text = String::from_utf8(read(&o.text)?)
+    let mut text = String::from_utf8(read(&o.text)?)
         .map_err(|_| format!("{}: not UTF-8 text", o.text.display()))?;
+    for path in &o.curves {
+        text.push_str(&read_curve(path)?.figure());
+    }
     let store = Store::open(&state)?;
     let found = store.runs().map_err(|(_, m)| m)?;
     let mut options = String::new();
@@ -137,12 +142,18 @@ fn build(o: &Options) -> Result<String, String> {
     let mut html = head
         .replace("<!--OPTIONS-->", &options)
         .replace("<!--TEXT-->", &text);
-    for (name, _) in VIEWER_FILES {
-        add_file(
-            &mut html,
-            &format!("/viewer/{name}"),
-            &read(&viewer.join(name))?,
-        );
+    if !o.runs.is_empty() {
+        let viewer = viewer_dir().ok_or(
+            "the wasm viewer is not built. Run scripts/build-viewer.sh, or set FH_VIEWER to its \
+             folder",
+        )?;
+        for (name, _) in VIEWER_FILES {
+            add_file(
+                &mut html,
+                &format!("/viewer/{name}"),
+                &read(&viewer.join(name))?,
+            );
+        }
     }
     let failed = |(_, message): (u16, String)| message;
     for run in &o.runs {
@@ -174,11 +185,13 @@ pub fn report(args: &[String]) -> Result<ExitCode, String> {
     });
     Ok(match written {
         Ok(bytes) => {
+            let curves = o.curves.iter().map(|c| c.display().to_string());
+            let parts: Vec<String> = o.runs.iter().cloned().chain(curves).collect();
             println!(
                 "fh report: wrote {} ({:.1} MiB) with {}",
                 o.out.display(),
                 bytes as f64 / f64::from(1 << 20),
-                o.runs.join(", ")
+                parts.join(", ")
             );
             ExitCode::SUCCESS
         }

@@ -25,8 +25,9 @@ add() {
 has() { [ -e "$1" ]; }
 
 # The solver of the case folder $1, from the files of its input, or "all" when none matches.
+# A fit case needs no solver. It runs with the ccx cases.
 case_solver() {
-  if [ -f "$1/job.inp" ] || has "$1"/*/topology.toml; then echo ccx
+  if [ -f "$1/job.inp" ] || has "$1"/*/topology.toml || has "$1"/*/fit.toml; then echo ccx
   elif has "$1"/*/precice-config.xml; then echo precice
   elif has "$1"/*/case.pro; then echo getdp
   elif has "$1"/*/system/controlDict; then echo openfoam
