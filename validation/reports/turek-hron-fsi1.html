@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-43c63eb4045d1b3eaadc8a1086b9d9bc' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-089303d708290b5f3070007896e27074' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -79,7 +79,7 @@ header { flex: none; padding: 0.75rem 1rem; }
 <h2>Result</h2>
 <p><strong>Not run: ccx_preCICE is not installed on the machine that made this report.</strong> Install preCICE and its CalculiX adapter (README.md) and put ccx_preCICE on PATH, or set FH_CCX_PRECICE. A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.04 and abs_tol = 0 (<code>check.toml</code>).</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th></tr></thead><tbody><tr><td><code>drag</code></td><td style="text-align:right">14.295</td><td style="text-align:right">0.5718</td></tr><tr><td><code>lift</code></td><td style="text-align:right">0.7638</td><td style="text-align:right">0.030552</td></tr><tr><td><code>ux_a</code></td><td style="text-align:right">2.27e-05</td><td style="text-align:right">9.08e-07</td></tr><tr><td><code>uy_a</code></td><td style="text-align:right">0.0008209</td><td style="text-align:right">3.2836e-05</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 1c68f69-dirty.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 2e0dced.</p>
 <p>This case checks the fluid-structure coupling: OpenFOAM for the fluid and CalculiX for the solid, coupled through preCICE.
 The problem is FSI1 of the bench mark of Turek and Hron: a soft elastic flag behind a cylinder in a laminar channel flow. The flag bends to a steady shape.
 The bench mark has 3 cases. FSI2 and FSI3 have a periodic motion. They need a dynamic solid and thousands of small time steps, so they are too slow for CI. FSI1 is steady, and it checks the same coupling.
@@ -120,7 +120,7 @@ The tolerance does not let a run without the coupling pass: a rigid flag (CFD1 o
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="43c63eb4045d1b3eaadc8a1086b9d9bc">
+<script type="module" nonce="089303d708290b5f3070007896e27074">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
