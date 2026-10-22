@@ -1,0 +1,55 @@
+** units: SI-mm
+** 2 square [0/90/0] plates of Pagano (1970), simply supported, 1/4 of each plate.
+** THIN: a/h = 100, composite shells. THICK: a/h = 4, 3D layers. pagano.py writes mesh.inp
+** (the mesh and the sets) and load.inp (the nodal forces of the load q0 sin sin).
+*INCLUDE, INPUT=mesh.inp
+** The ply of Pagano: E_L/E_T = 25, G_LT/E_T = 0.5, G_TT/E_T = 0.2, nu = 0.25. Axis 1 is the fibre.
+*MATERIAL, NAME=PLY
+*ELASTIC, TYPE=ENGINEERING CONSTANTS
+175000.0, 7000.0, 7000.0, 0.25, 0.25, 0.25, 3500.0, 3500.0,
+1400.0, 0.0
+*ORIENTATION, NAME=OR0
+1.0, 0.0, 0.0, 0.0, 1.0, 0.0
+*ORIENTATION, NAME=OR90
+0.0, 1.0, 0.0, -1.0, 0.0, 0.0
+** 3 layers of 1/3 mm. The normal is +z, thus the first layer is the bottom.
+*SHELL SECTION, ELSET=THIN, COMPOSITE
+0.333333333333, , PLY, OR0
+0.333333333333, , PLY, OR90
+0.333333333333, , PLY, OR0
+*SOLID SECTION, ELSET=THICK_0, MATERIAL=PLY, ORIENTATION=OR0
+*SOLID SECTION, ELSET=THICK_90, MATERIAL=PLY, ORIENTATION=OR90
+*STEP
+*STATIC
+** Simple support: w = 0 and the tangential displacement is 0 on x = 0 and on y = 0.
+** Symmetry on x = 50 and y = 50 (local x). A shell also needs the rotation about the edge.
+*BOUNDARY
+THIN_SSX, 2, 3
+THIN_SSY, 1, 1
+THIN_SSY, 3, 3
+THIN_SYMX, 1, 1
+THIN_SYMX, 5, 5
+THIN_SYMY, 2, 2
+THIN_SYMY, 4, 4
+THICK_SSX, 2, 3
+THICK_SSY, 1, 1
+THICK_SSY, 3, 3
+THICK_SYMX, 1, 1
+THICK_SYMY, 2, 2
+*INCLUDE, INPUT=load.inp
+*NODE PRINT, NSET=THIN_CENTRE
+U
+*NODE PRINT, NSET=THICK_CENTRE
+U
+** GLOBAL=YES gives the stresses in x, y, z. The default gives them in the axes of the ply.
+*EL PRINT, ELSET=THIN_BOTTOM, GLOBAL=YES
+S
+*EL PRINT, ELSET=THICK_BOTTOM, GLOBAL=YES
+S
+*EL PRINT, ELSET=THICK_EDGE, GLOBAL=YES
+S
+*NODE FILE
+U
+*EL FILE
+S
+*END STEP

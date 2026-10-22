@@ -62,6 +62,7 @@ fn validate_runs_every_case() {
         "fracture-centre-crack",
         "frequency-cantilever",
         "heat-fin",
+        "laminate-pagano",
         "naca0012-ladson",
         "naca23012-flap",
         "plasticity-sphere",
