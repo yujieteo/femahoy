@@ -205,11 +205,25 @@ For a stress intensity factor K_I, put the crack in the mesh and get K_I from th
 2. Mesh: a ring of 6-node triangles about the tip, then rings of 8-node quadrilaterals. In each triangle, put the mid-side nodes of the 2 edges from the tip at 1/4 of the edge from the tip. Make the edge length L from the tip about 1/50 of the crack length.
 3. K_I: on the crack face, B is the node at L/4 from the tip and C is the node at L. With the symmetry plane, K_I = c (4 v_B - v_C), c = E'/4 sqrt(2 pi / L). v is the displacement normal to the crack, E' = E / (1 - nu^2) in plane strain and E' = E in plane stress. Without the symmetry plane, use the opening of the 2 faces for v and E'/8 for E'/4.
 4. Add a node K with no element. For a crack along x, write `*EQUATION`, the line `3`, and the line `K, 2, 1.0, B, 2, -4c, C, 2, c` with the numbers. Then `*NODE PRINT` of K writes K_I as U2 in `job.dat`, in MPa mm^0.5. 1 MPa m^0.5 is 31.62 MPa mm^0.5.
-5. Fields for the page: write `*NODE FILE, OUTPUT=3D`. Without `OUTPUT=3D`, ccx writes 2D elements, and the page does not show them.
+5. Fields for the page: write `*NODE FILE, OUTPUT=3D` in the first step. Without `OUTPUT=3D`, ccx writes 2D elements, and the page does not show them.
 6. Fatigue life: solve 4 or more crack lengths. Integrate the Paris law da/dN = C dK^m from the first length to the last length in an `fh-python` script. Give C with its units.
 7. `*CRACK PROPAGATION` does not model the crack. It takes K from the stress of the part without the crack, with fixed shape factors. Do not use it for K of a crack in the mesh.
 
 This setup agrees within 0.2 % with the handbook value of K_I of a centre crack in a plate (the validation case `fracture-centre-crack`).
+
+## Rubber
+
+Use `*HYPERELASTIC` for rubber. It turns on `NLGEOM`.
+
+- Constants: `NEO HOOKE` takes C10 and D1. `MOONEY-RIVLIN` takes C10, C01 and D1. `OGDEN, N=3` takes mu1, alpha1, mu2, alpha2, mu3, alpha3, D1, D2 on line 1 and D3 on line 2.
+- An Ogden fit in a paper often has the energy sum mu_p / alpha_p (l1^alpha_p + l2^alpha_p + l3^alpha_p - 3). ccx has 2 mu_i / alpha_i^2 in place of mu_p / alpha_p. Thus write mu_i = mu_p alpha_p / 2. The shear modulus at small strain is mu0 = sum mu_i, or 2 (C10 + C01).
+- Write D1 = 2 / K with K of about 10^4 mu0. Do not write D1 = 0: ccx then uses K = 20 mu0, with only a warning. In the tube below, K = 20 mu0 gave an error of 6 % and K = 100 mu0 an error of 1.6 %. D2 = D3 = 0 has no effect.
+- Use `CPE8R`, `CAX8R` or `C3D20R`. A `C3D10` mesh with 5 elements through the wall stopped. With 8 elements, the error was 0.7 %.
+- A pressure load stops at a maximum of the pressure, for example in an inflated tube or a balloon. ccx has no arc length method. Thus move the face: `*TRANSFORM, NSET=INNER, TYPE=C` with the axis, then `INNER, 1, 1, UR` and `INNER, 2, 2, 0.0` in `*BOUNDARY`.
+- Then get the force from `*NODE PRINT, NSET=..., GLOBAL=YES` with `RF`. Without `GLOBAL=YES`, ccx writes the forces of these nodes in the cylindrical system. Do not put the nodes of a symmetry plane in the set, because their force also holds the symmetry force.
+- Ogden with 2 equal stretches, as in a sphere or in equibiaxial tension, can stop with "too many cutbacks". Neo-Hooke on the same mesh converged. Then change the first increment or the mesh, and compare the results.
+
+This setup agrees within 0.02 % with the exact inflation of a rubber tube past its pressure maximum (the validation case `hyperelastic-tube`).
 
 ## Output requests
 
@@ -240,6 +254,8 @@ S, E
 ```
 
 The page shows every field that these requests write. Without them, the page has no field to show.
+
+For 2D elements (`CPE`, `CPS`, `CAX`), write `*NODE FILE, OUTPUT=3D` in the first step. ccx ignores `OUTPUT=3D` in a later step and writes 2D elements, and the page does not show them. The file requests of step 1 stay on in the next steps.
 
 ## Supports and loads
 
