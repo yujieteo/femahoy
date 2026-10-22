@@ -160,8 +160,15 @@ fn fail(code: u8, message: &str) -> ExitCode {
     ExitCode::from(code)
 }
 
-/// Print the wall time and the result folder of a run that succeeded.
-fn report(run: &str, out: &Path, seconds: f64, solver: Solver) {
+/// Print the wall time and the result folder of a run that succeeded. `topology` is the end of a
+/// topology run.
+fn report(
+    run: &str,
+    out: &Path,
+    seconds: f64,
+    solver: Solver,
+    topology: Option<&topology::Outcome>,
+) {
     println!("fh run: {run} succeeded in {seconds:.2} s");
     println!("fh run: results in {}", out.display());
     let (results, no_field) = match solver {
@@ -211,18 +218,49 @@ fn report(run: &str, out: &Path, seconds: f64, solver: Solver) {
             ),
             "Add *NODE FILE or *EL FILE to a *STEP to write a field",
         ),
-        Solver::Topology => (
-            format!(
-                "{0}/{1} (each iteration), {0}/solve/ccx/job.dat (the last solve)",
-                out.join(topology::WORK).display(),
-                topology::HISTORY
-            ),
-            "Add *NODE FILE or *EL FILE to the *STEP of job.inp to write a field",
-        ),
+        Solver::Topology => {
+            if let Some(end) = topology {
+                print_cad(end);
+            }
+            (
+                format!(
+                    "{0}/{1} (each iteration), {0}/solve/ccx/job.dat (the last solve)",
+                    out.join(topology::WORK).display(),
+                    topology::HISTORY
+                ),
+                "Add *NODE FILE or *EL FILE to the *STEP of job.inp to write a field",
+            )
+        }
     };
     println!("fh run: text results {results}");
     if result_frames(out) == 0 {
         println!("fh run: the page has no field to show. {no_field}");
+    }
+}
+
+/// Print the STEP file of the CAD of a topology run and its check, or why the run has no CAD.
+fn print_cad(end: &topology::Outcome) {
+    let cad = match &end.cad {
+        Ok(cad) => cad,
+        Err(e) => return println!("fh run: no CAD: {e}"),
+    };
+    let step = cad.step.display();
+    let solid = format!(
+        "the solid of the density 0.5 or more, {} thick",
+        cad.thickness
+    );
+    match &cad.check {
+        Ok(check) => {
+            let c = end.last.compliance;
+            println!(
+                "fh run: CAD {step} ({solid}). The check with ccx gives the compliance {:.6e} \
+                 ({:+.2} % from {c:.6e} of the last design) and the volume fraction {:.4}",
+                check.compliance,
+                100.0 * (check.compliance - c) / c,
+                check.volume
+            );
+        }
+        Err(e) => println!("fh run: CAD {step} ({solid}). No check: {e}"),
     }
 }
 
@@ -278,6 +316,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         flag.cancel();
     });
     let start = Instant::now();
+    let mut end = None;
     let on_program = &mut |program: &str| println!("  program {program}");
     let result = match solver {
         Solver::OpenFoam => {
@@ -321,6 +360,7 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
                         i.number, i.compliance, i.volume, i.change
                     );
                 })
+                .map(|o| end = Some(o))
             } else {
                 ccx.run_with(&run.input, &run.out, &cancel, &mut |p| {
                     println!("  progress step {} increment {}", p.step, p.increment);
@@ -330,7 +370,8 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
     };
     Ok(match result {
         Ok(()) => {
-            report(&run.id, &run.out, start.elapsed().as_secs_f64(), solver);
+            let seconds = start.elapsed().as_secs_f64();
+            report(&run.id, &run.out, seconds, solver, end.as_ref());
             ExitCode::SUCCESS
         }
         Err(_) if cancel.is_cancelled() => fail(CANCELLED, &format!("{} was cancelled", run.id)),
