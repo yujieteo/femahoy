@@ -12,7 +12,7 @@
 //! the bodies at true scale.
 //!
 //! Chrono stays a separate program, as each other solver. A run has the limits of a run of `ccx`
-//! (see [`crate::ccx`]).
+//! (see [`crate::ccx`]). Meep runs its script in the same way (see [`crate::meep`]).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -25,12 +25,37 @@ use crate::getdp;
 /// The folder of the Chrono files in a run folder.
 pub const WORK: &str = "chrono";
 
-/// What to do when Python has no PyChrono.
-const INSTALL: &str = "Install PyChrono (README.md) and set FH_PYCHRONO to its Python";
+/// A solver that a Python script of the case drives: Chrono, or Meep.
+pub(crate) struct Script {
+    /// The script of a case, for example `chrono.py`.
+    pub file: &'static str,
+    /// The Python module of the solver, for example `pychrono`.
+    pub module: &'static str,
+    /// The name of the module in the errors, for example `PyChrono`.
+    pub name: &'static str,
+    /// What to do when Python has no module `module`.
+    pub install: &'static str,
+    /// The folder of the solver files in a run folder.
+    pub work: &'static str,
+    /// The unit system of the results, and true for the true scale of a mechanism (see
+    /// [`crate::vtu::write_pvd`]).
+    pub units: &'static str,
+    pub multibody: bool,
+}
+
+const SCRIPT: Script = Script {
+    file: "chrono.py",
+    module: "pychrono",
+    name: "PyChrono",
+    install: "Install PyChrono (README.md) and set FH_PYCHRONO to its Python",
+    work: WORK,
+    units: "SI-m",
+    multibody: true,
+};
 
 /// True when `dir` is a Chrono case: it has `chrono.py`.
 pub fn is_case(dir: &Path) -> bool {
-    dir.join("chrono.py").is_file()
+    dir.join(SCRIPT.file).is_file()
 }
 
 /// The Python with PyChrono, with the limits of its runs.
@@ -77,45 +102,61 @@ impl Chrono {
         cancel: &CancelToken,
         on_program: &mut dyn FnMut(&str),
     ) -> Result<(), String> {
-        let start = Instant::now();
-        let case =
-            fs::canonicalize(case).map_err(|e| format!("{}: case folder: {e}", case.display()))?;
-        if !is_case(&case) {
+        let limits = (Instant::now(), self.timeout, self.memory_limit);
+        run_script(
+            &SCRIPT, &self.exe, limits, case, run_dir, cancel, on_program,
+        )
+    }
+}
+
+/// Solve the case `case` of the solver `script` with the Python `exe` in the folder `run_dir`:
+/// start `python3 <file>` in a copy of the case, then write the views of the `.pos` files. The
+/// run clears the folder first, if a run made the folder earlier. `limits` holds the start of
+/// the time limit, the time limit and the memory limit, as for [`supervise`].
+pub(crate) fn run_script(
+    script: &Script,
+    exe: &Path,
+    limits: (Instant, Option<Duration>, u64),
+    case: &Path,
+    run_dir: &Path,
+    cancel: &CancelToken,
+    on_program: &mut dyn FnMut(&str),
+) -> Result<(), String> {
+    let case =
+        fs::canonicalize(case).map_err(|e| format!("{}: case folder: {e}", case.display()))?;
+    if !case.join(script.file).is_file() {
+        return Err(format!("{} has no {}", case.display(), script.file));
+    }
+    let run_dir = prepare_run_dir(run_dir, &case)?;
+    let work = run_dir.join(script.work);
+    getdp::copy_case(&case, &work, false)?;
+    let python = Program {
+        name: "python",
+        install: script.install,
+    };
+    on_program(python.name);
+    let log_file = work.join("log.python");
+    let folder = |e: std::io::Error| format!("run folder: {e}");
+    let log = fs::File::create(&log_file).map_err(folder)?;
+    let mut cmd = Command::new(exe);
+    cmd.arg(script.file)
+        .current_dir(&work)
+        .stdin(Stdio::null())
+        .stdout(log.try_clone().map_err(folder)?)
+        .stderr(log);
+    let status = supervise(&python, &mut cmd, limits, cancel, &mut || {})?;
+    if !status.success() {
+        let log = fs::read_to_string(&log_file).unwrap_or_default();
+        if log.contains(&format!("No module named '{}'", script.module)) {
             return Err(format!(
-                "{} is not a Chrono case: it has no chrono.py",
-                case.display()
+                "{} has no {}. {}. The full output is in {}",
+                exe.display(),
+                script.name,
+                script.install,
+                log_file.display()
             ));
         }
-        let run_dir = prepare_run_dir(run_dir, &case)?;
-        let work = run_dir.join(WORK);
-        getdp::copy_case(&case, &work, false)?;
-        let python = Program {
-            name: "python",
-            install: INSTALL,
-        };
-        on_program(python.name);
-        let log_file = work.join("log.python");
-        let folder = |e: std::io::Error| format!("run folder: {e}");
-        let log = fs::File::create(&log_file).map_err(folder)?;
-        let mut cmd = Command::new(&self.exe);
-        cmd.arg("chrono.py")
-            .current_dir(&work)
-            .stdin(Stdio::null())
-            .stdout(log.try_clone().map_err(folder)?)
-            .stderr(log);
-        let limits = (start, self.timeout, self.memory_limit);
-        let status = supervise(&python, &mut cmd, limits, cancel, &mut || {})?;
-        if !status.success() {
-            let log = fs::read_to_string(&log_file).unwrap_or_default();
-            if log.contains("No module named 'pychrono'") {
-                return Err(format!(
-                    "{} has no PyChrono. {INSTALL}. The full output is in {}",
-                    self.exe.display(),
-                    log_file.display()
-                ));
-            }
-            return Err(getdp::failure(python.name, status, &log, &log_file));
-        }
-        getdp::write_views(&work, &run_dir, "SI-m", true)
+        return Err(getdp::failure(python.name, status, &log, &log_file));
     }
+    getdp::write_views(&work, &run_dir, script.units, script.multibody)
 }

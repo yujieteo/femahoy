@@ -117,6 +117,7 @@ This table is the only list of the solvers. A new solver adds 1 row here, and th
 | Multibody dynamics | Project Chrono: a Python with PyChrono runs the script | Chrono case folder: `chrono.py`, a PyChrono script | The other solvers do not solve mechanisms with joints and large rigid motion, for example the actuator linkage of a control surface. PyChrono has builds for macOS (Apple Silicon) and Linux. |
 | Particles (SPH, DEM) | LAMMPS | LAMMPS case folder: `case.lmp` | The mesh solvers do not solve a free surface with a large motion or a granular flow. LAMMPS has packages for macOS (Apple Silicon) and Linux. DualSPHysics does not run on Apple Silicon. |
 | Explicit dynamics (impact) | CalculiX (`ccx`) with `*DYNAMIC, EXPLICIT` | CalculiX `.inp` text | OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS and in CI. |
+| Optics and photonics | Meep: a Python with Meep runs the script | Meep case folder: `meep_case.py`, a Meep script | An optics problem needs the spectrum of a structure of a few wavelengths in open space. GetDP solves 1 frequency in each run. Meep, an FDTD solver, gives the full spectrum from 1 run on a regular grid with no mesh, and it has builds for macOS (Apple Silicon) and Linux. |
 
 Reason of the single table: the list of the solvers was in 6 places, and each new solver had to change all of them.
 

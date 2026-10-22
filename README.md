@@ -53,6 +53,14 @@ For your own model, give `fh run` a CalculiX `.inp` file or the case folder of a
 
 `fh` uses `$FH_PYCHRONO`. If `FH_PYCHRONO` is not set, it uses `python3` on PATH. The validation case is tested with PyChrono 10.0.0 on macOS and Linux.
 
+## Get Meep
+
+`fh` starts Meep for optics and photonics: a Python with Meep, the FDTD solver of MIT, runs the `meep_case.py` of the case. Meep is GPL, so femahoy only starts it as a separate program. You install it with micromamba from conda-forge (see "Get PyChrono" for micromamba).
+
+- Meep on macOS (Apple Silicon) and Linux (x86-64): `micromamba create -y -p ~/.local/share/pymeep -c conda-forge "pymeep=1.35.0=nompi*" python=3.12`, then `export FH_MEEP=~/.local/share/pymeep/bin/python`. The environment is about 370 MB.
+
+`fh` uses `$FH_MEEP`. If `FH_MEEP` is not set, it uses `python3` on PATH. The validation case is tested with Meep 1.35.0 on macOS and Linux.
+
 ## Get preCICE
 
 `fh` couples OpenFOAM and CalculiX through preCICE for fluid-structure interaction. preCICE (LGPL) and its 2 adapters (GPL) are separate programs. You install them and OpenFOAM (see "Get OpenFOAM").
@@ -89,6 +97,7 @@ For your own model, give `fh run` a CalculiX `.inp` file or the case folder of a
 - `FH_OPENFOAM`: the `openfoam` program of `fh run` and `fh validate`. It runs each program of OpenFOAM as `$FH_OPENFOAM PROGRAM ARGS`.
 - `FH_GETDP`: the `getdp` program of `fh run` and `fh validate`.
 - `FH_PYCHRONO`: the Python with PyChrono of `fh run` and `fh validate`.
+- `FH_MEEP`: the Python with Meep of `fh run` and `fh validate`.
 - `FH_CCX_PRECICE`: the `ccx_preCICE` program (CalculiX with the preCICE adapter) of `fh run` and `fh validate`.
 - `FH_LAMMPS`: the `lmp` program of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
