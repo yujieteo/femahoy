@@ -184,16 +184,14 @@ fn block_of(field: &Field) -> (&'static str, usize, usize) {
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
         // `mode_value`, `last_row` and `rms_values` read these. They have no block of a set.
-        Field::Freq | Field::Buckle | Field::URms | Field::ARms | Field::Table { .. } => ("", 0, 0),
+        Field::Freq | Field::Buckle | Field::ARms | Field::Table { .. } => ("", 0, 0),
     }
 }
 
 /// The column of a component in the values of a row.
 fn column_of(q: &Quantity) -> Result<usize, String> {
     let column = match (&q.field, q.component) {
-        (Field::U | Field::RF | Field::Cstr | Field::URms | Field::ARms, c @ 1..=3) => {
-            c as usize - 1
-        }
+        (Field::U | Field::RF | Field::Cstr | Field::ARms, c @ 1..=3) => c as usize - 1,
         (Field::NT, 1) => 0,
         (Field::S, 11) => 0,
         (Field::S, 22) => 1,
@@ -262,7 +260,7 @@ fn values_of(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
     }
 }
 
-/// The RMS of one component at each node of the set, over the frequencies of the last steady
+/// The RMS of the acceleration of one component at each node of the set, over the frequencies of the last steady
 /// state step.
 fn rms_values(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
     let column = column_of(q)?;
@@ -277,17 +275,7 @@ fn rms_values(dat: &str, q: &Quantity) -> Result<Vec<f64>, String> {
                 q.set
             )
         })?;
-    Ok(set
-        .nodes
-        .iter()
-        .map(|(_, u, a)| {
-            if q.field == Field::URms {
-                u[column]
-            } else {
-                a[column]
-            }
-        })
-        .collect())
+    Ok(set.nodes.iter().map(|(_, _, a)| a[column]).collect())
 }
 
 /// The value in column `column` of the row of `mode` in the last table `title` of the `.dat`
@@ -338,7 +326,7 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
         _ => {}
     }
     let picked = match q.field {
-        Field::URms | Field::ARms => rms_values(dat, q)?,
+        Field::ARms => rms_values(dat, q)?,
         _ => values_of(dat, q)?,
     };
     // f64::max drops a NaN, so the check comes before the reduction.
