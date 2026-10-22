@@ -129,7 +129,7 @@ Reason of the single table: the list of the solvers was in 6 places, and each ne
 These limits apply to each solver process that `fh run` starts, with the same mechanism (`supervise` in `crates/fh/src/ccx/mod.rs`).
 
 - Each run has its own folder in the state folder, with the copy of the input, the files of the solver and the results.
-- Each run has a memory limit. The default is 85 percent of the RAM of the machine. When a run starts 2 solver processes at the same time (preCICE), each has half of the limit. A run has a time limit only when `--timeout` sets one. The time limit counts all the processes of a run.
+- Each run has a memory limit of 85 percent of the RAM of the machine. When a run starts 2 solver processes at the same time (preCICE), each has half of the limit. A run has a time limit only when `--timeout` sets one. The time limit counts all the processes of a run.
 - A cancel, the memory limit and the time limit kill the whole process group of the solver at once. A guard process kills the group when `fh` stops. When `fh run` ends for any reason, the solver stops: Ctrl+C, SIGTERM and SIGHUP cancel the run, and the guard process handles SIGKILL.
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops. One mechanism for all solvers keeps the limits the same for each solver.

@@ -128,18 +128,7 @@ impl Case {
         let input = if references.iter().all(Reference::table) {
             for r in &references {
                 let case = dir.join(&r.quantity.set);
-                let solvers = [
-                    crate::foam::is_case,
-                    crate::getdp::is_case,
-                    crate::chrono::is_case,
-                    crate::meep::is_case,
-                    crate::precice::is_case,
-                    crate::lammps::is_case,
-                    crate::topology::is_case,
-                    crate::optimize::is_case,
-                    crate::fit::is_case,
-                ];
-                if !solvers.iter().any(|is_case| is_case(&case)) {
+                if crate::solver(&case).is_none() && !crate::fit::is_case(&case) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
                         "{}, {}, {}, {}, {}, {}, {}, {} or {} not found",

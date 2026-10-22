@@ -30,28 +30,12 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             return Ok(ExitCode::from(1));
         }
     };
-    if !fixtures_ok(&cases) {
-        return Ok(ExitCode::from(1));
-    }
     let solve = Subprocess::default();
     let reports: Vec<(&Case, Report)> = cases
         .iter()
         .map(|case| (case, run_case_with(case, &solve)))
         .collect();
     Ok(print_reports(&reports))
-}
-
-/// Print each problem of the CalculiX inputs of the cases: a missing `*INCLUDE` file. True when
-/// there is none.
-fn fixtures_ok(cases: &[Case]) -> bool {
-    let mut ok = true;
-    for case in cases.iter().filter(|c| !c.tables()) {
-        if let Err(problem) = fh_core::inp::flatten(&case.input) {
-            eprintln!("fh validate: {}: {problem}", case.input.display());
-            ok = false;
-        }
-    }
-    ok
 }
 
 /// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure.
