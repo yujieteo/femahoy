@@ -11,14 +11,32 @@ jobs:
     # A validation case has no time limit. This limit stops a hung solve. It is about 3 times the
     # time of the job (8 minutes).
     timeout-minutes: 25
+    env:
+      FH_OPENFOAM: openfoam2512
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The merge commit of a pull request and its first parent, the base branch.
+          fetch-depth: 2
+      # On a pull request, the changed paths select the solvers to install and the cases to run
+      # (DESIGN.md section 7). A push to main selects every solver and runs the full suite. Each
+      # selected solver gets FH_REQUIRE_<SOLVER>=1 in the Test step.
+      - name: Select solvers
+        id: select
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            git diff --name-only HEAD^1 HEAD | scripts/ci-select.sh
+          else
+            scripts/ci-select.sh --all
+          fi | tee -a "$GITHUB_OUTPUT"
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
       # The validation cases are tested with ccx 2.23 (README.md). The Ubuntu package is older,
       # so ccx comes from nixpkgs.
       - uses: cachix/install-nix-action@v31
       - name: Install ccx
+        if: steps.select.outputs.ccx == '1'
         run: |
           nix profile install nixpkgs#calculix-ccx
           echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
@@ -27,28 +45,36 @@ jobs:
       # same release v2512 as the macOS app. FH_REQUIRE_OPENFOAM=1 makes each test that solves
       # through the real OpenFOAM fail if OpenFOAM is absent.
       - name: Install OpenFOAM
+        if: steps.select.outputs.openfoam == '1'
         run: |
           curl -fsSL https://dl.openfoam.com/pubkey.gpg | sudo gpg --dearmor -o /usr/share/keyrings/openfoam.gpg
           echo "deb [signed-by=/usr/share/keyrings/openfoam.gpg] https://dl.openfoam.com/repos/deb $(. /etc/os-release && echo "$VERSION_CODENAME") main" | sudo tee /etc/apt/sources.list.d/openfoam.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends openfoam2512
           openfoam2512 -show-api
-      # fh starts gmsh and GetDP for the electromagnetic and acoustic cases (README.md). GetDP has
-      # no package, so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1
-      # makes each test that solves through the real GetDP fail if GetDP is absent.
-      - name: Install gmsh and GetDP
+      # fh mesh, the topology CAD check of a ccx case and the GetDP cases use gmsh.
+      - name: Install gmsh
+        if: steps.select.outputs.ccx == '1' || steps.select.outputs.getdp == '1'
         run: |
           nix profile install nixpkgs#gmsh
+          echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          "$HOME/.nix-profile/bin/gmsh" -version
+      # fh starts GetDP for the electromagnetic and acoustic cases (README.md). GetDP has
+      # no package, so its binary comes from getdp.info, checked with its SHA-256. FH_REQUIRE_GETDP=1
+      # makes each test that solves through the real GetDP fail if GetDP is absent.
+      - name: Install GetDP
+        if: steps.select.outputs.getdp == '1'
+        run: |
           curl -fsSL -o /tmp/getdp.tgz https://getdp.info/bin/Linux/getdp-3.5.0-Linux64c.tgz
           echo "d3c28fa18f20d6147b4c7367d4dd802e9f7ddb58c608688bbb71919dbca8041d  /tmp/getdp.tgz" | sha256sum -c
           tar xzf /tmp/getdp.tgz -C "$HOME"
           echo "$HOME/getdp-3.5.0-Linux64/bin" >> "$GITHUB_PATH"
-          "$HOME/.nix-profile/bin/gmsh" -version
           "$HOME/getdp-3.5.0-Linux64/bin/getdp" -version
       # fh starts the Python of PyChrono for the multibody case (README.md). PyChrono is not on
       # PyPI, so micromamba installs it from conda-forge. FH_REQUIRE_PYCHRONO=1 makes each test
       # that solves through the real PyChrono fail if PyChrono is absent.
       - name: Install PyChrono
+        if: steps.select.outputs.chrono == '1'
         run: |
           nix profile install nixpkgs#micromamba
           "$HOME/.nix-profile/bin/micromamba" create -y -q -p "$HOME/pychrono" -c conda-forge pychrono=10.0.0 python=3.12
@@ -59,6 +85,7 @@ jobs:
       # OpenFOAM loads its adapter as a library, so this step builds it. FH_REQUIRE_PRECICE=1 makes
       # each test that solves through the real preCICE fail if ccx_preCICE is absent.
       - name: Install preCICE
+        if: steps.select.outputs.precice == '1'
         working-directory: /tmp
         run: |
           curl -fsSLO https://github.com/precice/precice/releases/download/v3.4.1/libprecice3_3.4.1_noble.deb
@@ -77,6 +104,7 @@ jobs:
       # FH_REQUIRE_LAMMPS=1 makes each test that solves through the real LAMMPS fail if LAMMPS is
       # absent.
       - name: Install LAMMPS
+        if: steps.select.outputs.lammps == '1'
         run: |
           sudo apt-get install -y --no-install-recommends lammps
           lmp -h | head -3
@@ -86,10 +114,19 @@ jobs:
           cargo build -p fh-viewer --lib --target wasm32-unknown-unknown
           cargo test --workspace
         env:
-          FH_REQUIRE_CCX: "1"
-          FH_OPENFOAM: openfoam2512
-          FH_REQUIRE_OPENFOAM: "1"
-          FH_REQUIRE_GETDP: "1"
-          FH_REQUIRE_PYCHRONO: "1"
-          FH_REQUIRE_PRECICE: "1"
-          FH_REQUIRE_LAMMPS: "1"
+          FH_REQUIRE_CCX: ${{ steps.select.outputs.ccx }}
+          FH_REQUIRE_OPENFOAM: ${{ steps.select.outputs.openfoam }}
+          FH_REQUIRE_GETDP: ${{ steps.select.outputs.getdp }}
+          FH_REQUIRE_PYCHRONO: ${{ steps.select.outputs.chrono }}
+          FH_REQUIRE_PRECICE: ${{ steps.select.outputs.precice }}
+          FH_REQUIRE_LAMMPS: ${{ steps.select.outputs.lammps }}
+      # validate_runs_every_case of the Test step needs every solver. When only some solvers are
+      # selected, this step runs the cases of those solvers. A missing selected solver fails a case.
+      - name: Validate the selected cases
+        if: steps.select.outputs.all != '1' && steps.select.outputs.cases != ''
+        env:
+          CASES: ${{ steps.select.outputs.cases }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/selected/validation/cases"
+          for id in $CASES; do cp -R "validation/cases/$id" "$RUNNER_TEMP/selected/validation/cases/"; done
+          target/debug/fh validate --root "$RUNNER_TEMP/selected"
