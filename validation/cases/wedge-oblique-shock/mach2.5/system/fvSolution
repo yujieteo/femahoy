@@ -1,0 +1,7 @@
+FoamFile { version 2.0; format ascii; class dictionary; object fvSolution; }
+
+// With no viscosity, rhoCentralFoam solves only the explicit equations of rho, rhoU and rhoE.
+solvers
+{
+    "(rho|rhoU|rhoE)" { solver diagonal; }
+}

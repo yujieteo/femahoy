@@ -1,0 +1,21 @@
+FoamFile { version 2.0; format ascii; class dictionary; object thermophysicalProperties; }
+
+// A perfect gas with gamma = 1.4 and no viscosity, in units in which the free stream has p = 1,
+// T = 1 and the speed of sound 1: R = 1/1.4 and Cp = gamma R/(gamma - 1) = 2.5. The mol weight
+// is 1.4 times the gas constant of OpenFOAM, 8314.47006650545.
+thermoType
+{
+    type            hePsiThermo;
+    mixture         pureMixture;
+    transport       const;
+    thermo          hConst;
+    equationOfState perfectGas;
+    specie          specie;
+    energy          sensibleInternalEnergy;
+}
+mixture
+{
+    specie { molWeight 11640.258093107628; }
+    thermodynamics { Cp 2.5; Hf 0; }
+    transport { mu 0; Pr 1; }
+}

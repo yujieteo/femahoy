@@ -43,6 +43,16 @@ On an open top, use `totalPressure` for `p_rgh`, `pressureInletOutletVelocity` f
 This setup agrees with the measured surge front of the Martin and Moyce dam break (the validation case `dam-break-vof`): square cells, MULES with `cAlpha 1` and `MULESCorr yes`, and `adjustTimeStep yes` with `maxCo` and `maxAlphaCo` 0.5.
 To get the front or the height of the water, add the function object `fieldExtents` of `alpha.water` with `threshold 0.5`. It writes the extents of the cell centres of the water after each time step.
 
+For a supersonic flow with shocks, use `rhoCentralFoam` with `fluxScheme Kurganov` and `vanLeer` (`vanLeerV` for `U`) for the `reconstruct` schemes. This setup agrees with the oblique shock relations for the flow at Mach 2.5 over a wedge of 15 degrees (the validation case `wedge-oblique-shock`):
+
+- `hePsiThermo` with `mu 0` for an inviscid flow. Then `fvSolution` needs only `"(rho|rhoU|rhoE)" { solver diagonal; }`.
+- `adjustTimeStep yes` with `maxCo 0.2`. With `maxCo 0.5`, the pressure behind the shock had oscillations of up to 7 %, with no warning.
+- A supersonic inflow and far field: `fixedValue` for `U`, `p` and `T`. A supersonic outflow: `zeroGradient`. An inviscid wall: `slip` for `U`.
+- Solve in time from the free stream to the steady state, 3 or more times the time that the flow takes to go through the domain.
+- The function object `MachNo` writes the field `Ma`. Give it `writeControl writeTime`, else it writes a time folder at each time step.
+- For a mean over a region, add an `exprField` of a mask, for example `pos().x() > 0.25 ? 1 : 0`, then a `volFieldValue` with `operation weightedVolAverage` and `weightField` of the mask. In an `exprField`, `sum(vol()*...)` stops with a dimension error. Use `weightAverage(...)`.
+- The tip of a wedge makes a numerical error in T and Ma near the wall. It falls as the cell size: with cells of 1/100 of the wedge length, the mean T and Ma behind the shock were 0.2 % from the theory, and with 1/200, 0.1 %.
+
 ## Electromagnetics with GetDP
 
 For an electromagnetic request, for example eddy currents or a magnetic field, write a GetDP case folder and solve it with `fh run CASE`.

@@ -1,0 +1,48 @@
+# Steady inviscid flow of a perfect gas (gamma = 1.4) at Mach 2.5 over a wedge of 15 degrees. A
+# straight oblique shock starts at the tip of the wedge, and the flow behind it is uniform. The
+# reference is the exact solution of the oblique shock relations, as in Table 2 of the NPARC
+# verification case "Supersonic wedge" (NASA Glenn): the shock angle, and the Mach number, the
+# pressure, the temperature and the density behind the shock. The free stream has p = 1, T = 1
+# and rho = 1.4, thus p, T and rho/1.4 are the ratios of Table 2. derivation.md gives the
+# sources, the setup and the mesh study.
+#
+# The model is rhoCentralFoam on the grid B of the NPARC study: cells of 0.01, 15000
+# cells. The tolerance comes from the mesh study, because the reference is exact
+# (derivation.md, "Tolerance"):
+# - The mesh error of grid B, from grids B and C with the order 1, times 1.25, the factor of
+#   safety of the grid convergence index: 0.03 % (p2) to 0.248 % (T2).
+# - The iteration error: 0.002 % or less. The error of the reference: 1e-6.
+# rel_tol = 0.248 % (temperature_ratio, the largest sum), rounded up.
+rel_tol = 0.0025
+abs_tol = 0
+
+[shock_angle]
+value = 36.94490
+case = "mach2.5"
+file = "postProcessing/shock/0/volFieldValue.dat"
+column = "max(beta)"
+
+[mach2]
+value = 1.873526
+case = "mach2.5"
+file = "postProcessing/state2/0/volFieldValue.dat"
+column = "weightedVolAverage(Ma)"
+
+[pressure_ratio]
+value = 2.467500
+case = "mach2.5"
+file = "postProcessing/state2/0/volFieldValue.dat"
+column = "weightedVolAverage(p)"
+
+[temperature_ratio]
+value = 1.321958
+case = "mach2.5"
+file = "postProcessing/state2/0/volFieldValue.dat"
+column = "weightedVolAverage(T)"
+
+# rho2 = 1.4 x 1.866549 (Table 2) = 2.613168, the density ratio times the density of the free stream.
+[density2]
+value = 2.613168
+case = "mach2.5"
+file = "postProcessing/state2/0/volFieldValue.dat"
+column = "weightedVolAverage(rho)"
