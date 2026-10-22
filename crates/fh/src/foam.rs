@@ -399,8 +399,8 @@ fn merge(regions: Vec<Grid>) -> Grid {
             let field = grid
                 .cell_field(name)
                 .filter(|f| f.components == *components);
-            match field.and_then(Field::as_f64) {
-                Some(v) => values.extend_from_slice(v),
+            match field {
+                Some(f) => values.extend_from_slice(&f.values),
                 None => values.resize(values.len() + components * grid.cells.len(), 0.0),
             }
         }
@@ -509,12 +509,9 @@ mod tests {
         assert_eq!(grid.points.len(), 16);
         assert_eq!(grid.cells[1], vec![8, 9, 10, 11, 12, 13, 14, 15]);
         assert_eq!(grid.cell_types, vec![12, 12]);
-        assert_eq!(
-            grid.cell_field("p").unwrap().as_f64(),
-            Some(&[-0.5, 2.0][..])
-        );
+        assert_eq!(grid.cell_field("p").unwrap().values, [-0.5, 2.0]);
         let u = grid.cell_field("U").unwrap();
-        assert_eq!(u.as_f64(), Some(&[1.0, 0.25, 0.0, 0.0, 0.0, 0.0][..]));
+        assert_eq!(u.values, [1.0, 0.25, 0.0, 0.0, 0.0, 0.0]);
     }
 
     #[test]
