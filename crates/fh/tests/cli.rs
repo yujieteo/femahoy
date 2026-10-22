@@ -103,23 +103,37 @@ fn warpage_matches_the_theory(table: &str) {
     );
 }
 
+/// Without ccx and OpenFOAM, each case runs and tells how to install its own solver.
 #[test]
-fn without_ccx_validate_stops_and_tells_how_to_install_it() {
-    let out = fh(&["validate", "--root", &root()]);
+fn without_a_solver_each_case_tells_how_to_install_it() {
+    let dir = copy_cases("nosolver", &["bar-pressure", "cavity-devahldavis"]);
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["validate", "--root", p(&dir)])
+        .env("FH_CCX", NO_SOLVER)
+        .env("FH_OPENFOAM", "/nonexistent/openfoam")
+        .output()
+        .expect("run fh");
     let (stdout, stderr) = (text(out.stdout), text(out.stderr));
     assert_eq!(out.status.code(), Some(1), "{stdout}{stderr}");
-    assert!(stderr.contains("cannot start ccx"), "{stderr}");
-    assert!(stderr.contains("README.md"), "{stderr}");
-    assert!(!stdout.contains("pass"), "{stdout}");
+    let tells = |id: &str, install: &str| {
+        let row = format!("{id}\tcannot run");
+        stdout
+            .lines()
+            .any(|l| l.starts_with(&row) && l.contains(install))
+    };
+    assert!(tells("bar-pressure", "Install CalculiX"), "{stdout}");
+    assert!(tells("cavity-devahldavis", "Install OpenFOAM"), "{stdout}");
+    assert!(stdout.contains("2 cases: 0 pass, 2 fail"), "{stdout}");
+    let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Like [`copy_root`], with only the case `id`, so that a solve stays short.
-fn copy_case(tag: &str, id: &str) -> std::path::PathBuf {
+/// Like [`copy_root`], with only the cases `ids`, so that a solve stays short.
+fn copy_cases(tag: &str, ids: &[&str]) -> std::path::PathBuf {
     let dir = copy_root(tag);
     let cases = dir.join("validation/cases");
     for entry in std::fs::read_dir(&cases).unwrap() {
         let path = entry.unwrap().path();
-        if path.is_dir() && !path.ends_with(id) {
+        if path.is_dir() && !ids.iter().any(|id| path.ends_with(id)) {
             std::fs::remove_dir_all(path).unwrap();
         }
     }
@@ -129,7 +143,7 @@ fn copy_case(tag: &str, id: &str) -> std::path::PathBuf {
 #[test]
 fn validate_exits_1_when_a_reference_is_wrong() {
     let Some(solver) = ccx_solver() else { return };
-    let dir = copy_case("badref", "bar-pressure");
+    let dir = copy_cases("badref", &["bar-pressure"]);
     let path = dir.join("validation/cases/bar-pressure/check.toml");
     let text_in = std::fs::read_to_string(&path).unwrap();
     let broken = text_in.replacen("value = 100.0", "value = 300.0", 1);

@@ -102,7 +102,7 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ## 6. Solvers
 
-`fh run` and `fh validate` start each solver directly, as a separate program that the user installs (section 2). `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there. `fh validate` also stops before the first case when `ccx` is not there.
+`fh run` and `fh validate` start each solver directly, as a separate program that the user installs (section 2). `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there.
 
 This table is the only list of the solvers in the docs. A new solver adds 1 row here, and the other docs point to this table. CI has the one other list of the solvers: `scripts/ci-select.sh` and `.github/workflows/ci.yml` must install each tool, so they name each solver.
 

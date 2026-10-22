@@ -6,29 +6,12 @@
 //! PATH), Chrono (`$FH_PYCHRONO`, else `python3` on PATH), LAMMPS (`$FH_LAMMPS`, else `lmp` on
 //! PATH), Meep (`$FH_MEEP`, else `python3` on PATH) or the topology and shape optimization loops
 //! around `ccx`. A table shows every quantity with its computed value, reference, tolerance and
-//! margin. A bad fixture, a case that fails or a case that cannot run gives exit code 1. If `ccx`
-//! does not start, `fh validate` stops before the first case and tells how to install CalculiX.
+//! margin. A bad fixture, a case that fails or a case that cannot run gives exit code 1. A case
+//! whose solver does not start cannot run, and its line tells how to install that solver.
 
-use fh::ccx::Ccx;
 use fh::validation::{load_all, run_case_with, Case, Outcome, Report, Subprocess};
 use std::path::PathBuf;
-use std::process::{Command, ExitCode, Stdio};
-
-/// Prints the error and gives false when `ccx` does not start.
-fn solver_ready() -> bool {
-    let exe = Ccx::new().exe;
-    match Command::new(&exe).arg("-v").stdin(Stdio::null()).output() {
-        Ok(_) => true,
-        Err(e) => {
-            eprintln!(
-                "fh validate: cannot start ccx ({}): {e}. fh needs CalculiX: install it as \
-                 README.md tells, then put ccx on PATH or set FH_CCX",
-                exe.display()
-            );
-            false
-        }
-    }
-}
+use std::process::ExitCode;
 
 pub fn run(args: &[String]) -> Result<ExitCode, String> {
     let mut root = PathBuf::from(".");
@@ -48,9 +31,6 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         }
     };
     if !fixtures_ok(&cases) {
-        return Ok(ExitCode::from(1));
-    }
-    if cases.iter().any(|c| !c.tables()) && !solver_ready() {
         return Ok(ExitCode::from(1));
     }
     let solve = Subprocess::default();
