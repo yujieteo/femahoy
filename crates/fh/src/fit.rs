@@ -301,7 +301,8 @@ pub fn summary(f: &Fit, curve: &Curve, series: &str) -> String {
 }
 
 /// The curve with the fit as a new series of 101 points across the range of the points, and the
-/// parameters as a note.
+/// parameters as a note. It is an error when the result is not a valid curve, so that `fh fit -o`
+/// never writes a file that `fh report` rejects.
 pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
     let name = format!("{} fit", f.model.name());
     let mut out = curve.clone();
