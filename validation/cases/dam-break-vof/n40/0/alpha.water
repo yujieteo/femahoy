@@ -1,0 +1,11 @@
+FoamFile { version 2.0; format ascii; class volScalarField; object alpha.water; }
+
+// setFields puts the water column in this field.
+dimensions      [0 0 0 0 0 0 0];
+internalField   uniform 0;
+boundaryField
+{
+    walls { type zeroGradient; }
+    atmosphere { type inletOutlet; inletValue uniform 0; value uniform 0; }
+    frontAndBack { type empty; }
+}

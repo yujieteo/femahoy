@@ -51,8 +51,8 @@ const USAGE: &str = "usage: fh run MODEL.inp|CASE [--timeout SECONDS] [--memory 
 --timeout has no limit by default. --memory is 85 % of the RAM by default. At a limit, fh run \
 stops the solver. For a case, the limit counts all the programs.\n\
 CASE is an OpenFOAM case folder with system/controlDict. fh run starts blockMesh (when the case \
-has system/blockMeshDict and no constant/polyMesh), then the application of system/controlDict, \
-then foamToVTK.\n\
+has system/blockMeshDict and no constant/polyMesh), then setFields (when the case has \
+system/setFieldsDict), then the application of system/controlDict, then foamToVTK.\n\
 CASE is also a GetDP case folder with case.pro. fh run starts gmsh (when the case has case.geo), \
 then getdp with the first Resolution and the first PostOperation of case.pro.\n\
 CASE is also a preCICE case folder with precice-config.xml, the OpenFOAM case fluid and the \

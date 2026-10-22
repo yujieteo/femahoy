@@ -1,0 +1,35 @@
+# Dam break with the volume of fluid method: a water column of width a = 2.25 in and height 2a
+# falls on a dry floor in air. The references are the measured times T = t sqrt(2 g / a) at which
+# the surge front is at Z = x / a = 2.11, 3.00 and 3.89, from the column "mean" for a = 2.25 in of
+# Table 2 of J. C. Martin and W. J. Moyce, "An experimental study of the collapse of liquid
+# columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324. The
+# source sets T to 1.19 at Z = 1.44, and the model does the same. derivation.md gives the source
+# and the studies.
+#
+# The model is the OpenFOAM case n40: interFoam, 2D, 40 square cells across a. The tolerance
+# (derivation.md, "Tolerance"):
+# - The scatter of the single runs of the source about the mean: a standard deviation of 2.6 %
+#   to 4.5 % of the mean.
+# - The mesh error of the model, from 4 meshes: 0.5 % or less.
+# - The time step error of the model, from 2 Courant numbers: 0.2 % or less.
+# rel_tol = 4.5 % + 0.5 % + 0.2 % = 5.2 %, rounded up to 5.5 %.
+rel_tol = 0.055
+abs_tol = 0
+
+[T_211]
+value = 1.83
+case = "n40"
+file = "front.txt"
+column = "T_211"
+
+[T_300]
+value = 2.51
+case = "n40"
+file = "front.txt"
+column = "T_300"
+
+[T_389]
+value = 3.11
+case = "n40"
+file = "front.txt"
+column = "T_389"

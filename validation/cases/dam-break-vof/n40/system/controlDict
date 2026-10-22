@@ -1,0 +1,43 @@
+FoamFile { version 2.0; format ascii; class dictionary; object controlDict; }
+
+application     interFoam;
+startFrom       startTime;
+startTime       0;
+stopAt          endTime;
+endTime         0.18;
+deltaT          1e-5;
+writeControl    adjustable;
+writeInterval   0.06;
+writeFormat     ascii;
+writePrecision  8;
+timePrecision   6;
+runTimeModifiable false;
+// The time step keeps the Courant number of the flow and of the interface below 0.5.
+adjustTimeStep  yes;
+maxCo           0.5;
+maxAlphaCo      0.5;
+maxDeltaT       1;
+
+functions
+{
+    // The extents of the water (alpha.water > 0.5) after each time step: the largest x of a
+    // cell centre is the front, the largest y is the top of the column.
+    front
+    {
+        type            fieldExtents;
+        libs            (fieldFunctionObjects);
+        fields          (alpha.water);
+        threshold       0.5;
+        internalField   true;
+        patches         ();
+    }
+    // At the end, front.awk reads the table of `front` and writes front.txt.
+    frontTimes
+    {
+        type            systemCall;
+        libs            (utilityFunctionObjects);
+        executeCalls    ();
+        writeCalls      ();
+        endCalls        ("awk -f system/front.awk postProcessing/front/0/fieldExtents.dat > front.txt");
+    }
+}

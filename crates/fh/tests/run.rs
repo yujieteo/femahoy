@@ -315,6 +315,22 @@ fn a_failed_openfoam_program_fails_the_run_with_its_fatal_error() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// A case with `system/setFieldsDict` gets its initial fields from setFields after the mesh, for
+/// example the water column of an interFoam case.
+#[test]
+fn fh_run_sets_the_initial_fields_with_set_fields() {
+    let (dir, case) = foam_lab("run-foam-set-fields", "interFoam");
+    fs::write(case.join("system/setFieldsDict"), "regions ();\n").unwrap();
+    let out = fh_run_foam(&dir, &case);
+    let shown = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{shown}{}", stderr(&out));
+    assert!(
+        shown.contains("  program blockMesh\n  program setFields\n  program interFoam\n"),
+        "{shown}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A fake `gmsh` and a fake `getdp`. They write their arguments to CALLS. gmsh writes the mesh.
 /// getdp writes a view with 1 tetrahedron and a complex vector, or, when `case.pro` holds FAIL,
 /// fails as GetDP does.
