@@ -65,7 +65,7 @@ pub enum Quantity {
 /// The results of one step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Step {
-    /// The step time at the end of the step, from `results.pvd`.
+    /// The time of this output of the solver, from `results.pvd`.
     pub time: f64,
     /// The VTU file name, from `results.pvd`.
     pub file: String,

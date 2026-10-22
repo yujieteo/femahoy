@@ -1,4 +1,5 @@
-//! The `.frd` result file of `ccx` as VTU grids: every nodal field in the file, for each step.
+//! The `.frd` result file of `ccx` as VTU grids: every nodal field in the file, for each increment
+//! and each mode.
 //!
 //! The reader keeps each increment that the file holds, and each mode of a frequency step. The
 //! input sets which increments `ccx` writes (`FREQUENCY` of `*NODE FILE` and `*EL FILE`).
@@ -56,7 +57,7 @@ fn field_name(block: &str) -> &str {
     }
 }
 
-/// The results of one step, or of one mode.
+/// The results of one increment, or of one mode.
 #[derive(Debug, Default)]
 pub struct Frame {
     /// The time of the increment, or the frequency of the mode, from the `.frd` file.
