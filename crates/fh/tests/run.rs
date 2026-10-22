@@ -1,8 +1,8 @@
 //! `fh run`: one solve with the real ccx on the input of a validation case, and the stop of
 //! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
 //! OpenFOAM tests use a fake `openfoam` that writes the files of each program, the GetDP tests a
-//! fake `gmsh` and a fake `getdp`, the Chrono and Meep tests a fake Python, and the LAMMPS tests a
-//! fake `lmp`.
+//! fake `gmsh` and a fake `getdp`, the Chrono, Meep and openEMS tests a fake Python, and the
+//! LAMMPS tests a fake `lmp`.
 mod common;
 use common::{ccx_solver, p, real_gmsh, root, scratch, script, stderr, stdout};
 
@@ -832,5 +832,72 @@ fn fh_run_solves_a_meep_case_with_python() {
         errors.contains("has no Meep. Install Meep (README.md) and set FH_MEEP"),
         "{errors}"
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake Python with openEMS. It writes its arguments to CALLS, a table, and the view `D` of
+/// 1 quad. When `openems.py` holds FAIL, it fails as a Python with no openEMS.
+const FAKE_OPENEMS: &str = r#"#!/bin/sh
+echo python "$@" >> CALLS
+if grep -q FAIL openems.py; then echo "ModuleNotFoundError: No module named 'openEMS'" >&2; exit 1; fi
+printf '# f_res\n1e9\n' > dipole.txt
+printf 'View "D" {\nSQ(0,0,0,1,0,0,1,1,0,0,1,0){1,2,3,4};\n};\n' > pattern.pos
+"#;
+
+fn fh_run_openems(name: &str, text: &str) -> (PathBuf, std::process::Output) {
+    let dir = scratch(name);
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("openems.py"), text).unwrap();
+    let calls = p(&dir.join("calls")).to_owned();
+    script(&dir.join("python"), &FAKE_OPENEMS.replace("CALLS", &calls));
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_OPENEMS", dir.join("python"))
+        .output()
+        .unwrap();
+    (dir, out)
+}
+
+/// `fh run CASE` starts `openems.py` with the Python of openEMS, and writes the views of its
+/// `.pos` files to a VTU file of the page, in SI-m.
+#[test]
+fn fh_run_solves_an_openems_case_with_python() {
+    let (dir, out) = fh_run_openems("run-openems", "from openEMS import openEMS\n");
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(shown.contains("  program python\n"), "{shown}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert_eq!(calls, "python openems.py\n");
+    let run = dir.join("state/runs/run-000001");
+    let work = run.join("out/openems");
+    assert!(work.join("log.python").is_file(), "{shown}");
+    assert!(work.join("dipole.txt").is_file(), "{shown}");
+    let copy = run.join("in/openems.py");
+    assert!(fs::metadata(&copy).unwrap().permissions().readonly());
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    assert!(
+        pvd.contains("units=\"SI-m\">") && pvd.contains("step-1.vtu"),
+        "{pvd}"
+    );
+    let vtu = fs::read(run.join("out/step-1.vtu")).unwrap();
+    let grid = fh_core::vtu::read_vtu(&vtu).unwrap();
+    assert_eq!(grid.cell_types, vec![9]);
+    assert_eq!(grid.cell_field("D").unwrap().as_f64(), Some(&[2.5][..]));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A Python with no openEMS ends the run with the install step and the path of the log.
+#[test]
+fn a_python_with_no_openems_fails_the_run_with_the_install_step() {
+    let (dir, out) = fh_run_openems("run-openems-fail", "FAIL\n");
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors.contains("has no openEMS. Install openEMS with its Python interface (README.md)"),
+        "{errors}"
+    );
+    assert!(errors.contains("out/openems/log.python"), "{errors}");
     let _ = fs::remove_dir_all(&dir);
 }

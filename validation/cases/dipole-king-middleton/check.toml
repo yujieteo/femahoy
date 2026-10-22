@@ -1,0 +1,45 @@
+# A centre-fed dipole in free space with the thickness parameter Omega = 2 ln(2h/a) = 12.5,
+# thus a length of 518 radii. The references (derivation.md, "Reference"):
+# - X12 and R15: the second-order impedance of King and Middleton (R. W. P. King, "The Theory of
+#   Linear Antennas", 1956): the reactance at beta h = 1.2 and the resistance at beta h = 1.5,
+#   near the first resonance. Z in ohm.
+# - D: the directivity of a half-wave dipole with a sinusoidal current, 4 / Cin(2 pi).
+# - eff: the radiated power over the power into the port. A metal antenna has no loss, thus 1.
+#
+# The model is the openEMS case omega12.5: a strip of width 1.2 mm (equivalent radius 0.3 mm),
+# 4 cells across its width, a lumped port, and 1 pulse of 0.2 to 2.8 GHz. The tolerance
+# (derivation.md, "Tolerance"):
+# - The mesh error of the check mesh is 0.3 % or less (4 and 8 cells across the strip).
+# - The model with 8 cells differs from the round dipole of the reference by 3.8 % in X12 and
+#   3.7 % in R15. A strip in place of a round wire, and the approximations of the second-order
+#   theory (1.4 % or less, from a method-of-moments solution of the same dipole), are the causes.
+# - rel_tol = 6 % covers these with a margin of 1.9 % or more on the check mesh. A strip of width
+#   2a in place of 4a (13.8 %), or a mesh without the 1/3 rule at the edges of the strip (9.0 %),
+#   fails.
+# - abs_tol = 0: no reference value is near 0.
+rel_tol = 0.06
+abs_tol = 0
+
+[X12]
+value = -185.7
+case = "omega12.5"
+file = "dipole.txt"
+column = "X12"
+
+[R15]
+value = 71.02
+case = "omega12.5"
+file = "dipole.txt"
+column = "R15"
+
+[D]
+value = 1.641
+case = "omega12.5"
+file = "dipole.txt"
+column = "D"
+
+[eff]
+value = 1.0
+case = "omega12.5"
+file = "dipole.txt"
+column = "eff"

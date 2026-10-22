@@ -5,14 +5,15 @@
 #   scripts/ci-select.sh --all
 #
 # The script reads the changed paths, 1 on each line, and writes lines for $GITHUB_OUTPUT:
-# `<solver>=1` for each solver to install (ccx, openfoam, getdp, precice, chrono, lammps, meep),
-# `all=1` when the full suite runs, else `cases=<id> ...`, the cases of the selected solvers.
+# `<solver>=1` for each solver to install (ccx, openfoam, getdp, precice, chrono, lammps, meep,
+# openems), `all=1` when the full suite runs, else `cases=<id> ...`, the cases of the selected
+# solvers.
 # A changed case selects the solver of that case. A changed solver module selects its solver and
 # each solver whose module uses it. A Markdown file or a file in docs/ selects no solver. Each
 # other path (shared code, Cargo files, CI) selects every solver.
 set -euo pipefail
 
-every="ccx openfoam getdp precice chrono lammps meep"
+every="ccx openfoam getdp precice chrono lammps meep openems"
 selected=" "
 
 add() {
@@ -34,6 +35,7 @@ case_solver() {
   elif has "$1"/*/chrono.py; then echo chrono
   elif has "$1"/*/case.lmp; then echo lammps
   elif has "$1"/*/meep_case.py; then echo meep
+  elif has "$1"/*/openems.py; then echo openems
   else echo all
   fi
 }
@@ -52,10 +54,11 @@ else
       crates/fh/src/chrono.rs) add chrono meep ;;
       crates/fh/src/lammps.rs) add lammps ;;
       crates/fh/src/meep.rs) add meep ;;
+      crates/fh/src/openems.rs) add openems ;;
       crates/fh/src/precice.rs) add precice openfoam ;;
       crates/fh/src/topology.rs) add ccx ;;
       crates/fh/src/foam.rs) add openfoam precice ;;
-      crates/fh/src/getdp.rs) add getdp chrono lammps meep precice ;;
+      crates/fh/src/getdp.rs) add getdp chrono lammps meep precice openems ;;
       *) add all ;;
     esac
   done

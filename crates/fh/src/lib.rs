@@ -1,7 +1,7 @@
-//! The parts of `fh`: the CalculiX, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS and Meep runners,
-//! the topology and shape optimization loops, the server with the chat, the readers of meshes and
-//! STEP files, the curves and their fits, and the validation. The commands are in the binary
-//! (`main.rs`).
+//! The parts of `fh`: the CalculiX, OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep and openEMS
+//! runners, the topology and shape optimization loops, the server with the chat, the readers of
+//! meshes and STEP files, the curves and their fits, and the validation. The commands are in the
+//! binary (`main.rs`).
 
 pub mod ccx;
 pub mod chrono;
@@ -13,6 +13,7 @@ pub mod getdp;
 pub mod lammps;
 pub mod meep;
 pub mod msh;
+pub mod openems;
 pub mod optimize;
 pub mod precice;
 pub mod step;
@@ -34,6 +35,7 @@ pub enum Solver {
     Chrono,
     Lammps,
     Meep,
+    OpenEms,
 }
 
 /// The solver of the case folder `dir`, from the file that each kind of case has. `None` when
@@ -55,6 +57,8 @@ pub fn solver(dir: &Path) -> Option<Solver> {
         Some(Solver::Chrono)
     } else if meep::is_case(dir) {
         Some(Solver::Meep)
+    } else if openems::is_case(dir) {
+        Some(Solver::OpenEms)
     } else {
         None
     }

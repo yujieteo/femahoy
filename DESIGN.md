@@ -121,6 +121,7 @@ This table is the only list of the solvers in the docs. A new solver adds 1 row 
 | Particles (SPH, DEM) | LAMMPS | LAMMPS case folder: `case.lmp` | The mesh solvers do not solve a free surface with a large motion or a granular flow. LAMMPS has packages for macOS (Apple Silicon) and Linux. DualSPHysics does not run on Apple Silicon. |
 | Explicit dynamics (impact) | CalculiX (`ccx`) with `*DYNAMIC, EXPLICIT` | CalculiX `.inp` text | OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS and in CI. |
 | Optics and photonics | Meep: a Python with Meep runs the script | Meep case folder: `meep_case.py`, a Meep script | An optics problem needs the spectrum of a structure of a few wavelengths in open space. GetDP solves 1 frequency in each run. Meep, an FDTD solver, gives the full spectrum from 1 run on a regular grid with no mesh, and it has builds for macOS (Apple Silicon) and Linux. |
+| Antennas | openEMS (FDTD): a Python with the modules of openEMS runs the script | openEMS case folder: `openems.py`, a script for the Python modules of openEMS | GetDP solves 1 frequency in each solve. An antenna needs its input impedance and S11 over a broad band, and its far field. 1 FDTD run of openEMS gives all of them. openEMS builds from source on macOS (Apple Silicon) and Linux. |
 
 Reason of the single table: the list of the solvers was in 6 places, and each new solver had to change all of them.
 
