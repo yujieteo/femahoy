@@ -627,7 +627,6 @@ name = "fh"
 version = "0.0.0"
 dependencies = [
  "fh-core",
- "libc",
  "toml_edit",
 ]
 

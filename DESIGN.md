@@ -132,7 +132,7 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 ### 6.2 Results
 
 - The run folder has `step-N.vtu` (the last increment of step N) for each step, the PVD collection, and the `ccx` files in `ccx/`.
-- VTU: binary data appended raw. Sets are integer arrays.
+- VTU: binary data appended raw.
 - Atomic write: a writer writes a temporary file and renames it when complete. A reader never sees a partial file, because a run can die at any time.
 
 ---

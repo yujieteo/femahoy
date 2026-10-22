@@ -328,7 +328,7 @@ mod tests {
         let grid = frd.grid(&frd.frames[0]);
         assert_eq!(frd.frames[0].time, 2.0);
         let s = grid.point_field("S").unwrap();
-        assert_eq!((s.components, s.as_f64().unwrap()[0]), (6, 2.0));
-        assert_eq!(grid.point_field("MISES").unwrap().as_f64().unwrap(), [2.0]);
+        assert_eq!((s.components, s.values[0]), (6, 2.0));
+        assert_eq!(grid.point_field("MISES").unwrap().values, [2.0]);
     }
 }

@@ -114,9 +114,12 @@ impl Log {
         let Some(mut child) = self.agent.take() else {
             return;
         };
-        // The agent is the first process of its own group.
+        // The agent is the first process of its own group. SIGTERM is 15 on Linux and macOS.
+        extern "C" {
+            fn kill(pid: i32, sig: i32) -> i32;
+        }
         unsafe {
-            libc::kill(-(child.id() as i32), libc::SIGTERM);
+            kill(-(child.id() as i32), 15);
         }
         std::thread::spawn(move || child.wait());
     }

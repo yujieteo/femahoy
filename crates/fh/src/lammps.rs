@@ -345,8 +345,8 @@ mod tests {
         assert_eq!(grid.points[22], [0.25, 1.75, 0.25]);
         assert!(grid.point_data.is_empty());
         assert_eq!(
-            grid.cell_field("p").unwrap().as_f64(),
-            Some(&[11.0, 22.0, 33.0][..])
+            grid.cell_field("p").unwrap().values.as_slice(),
+            &[11.0, 22.0, 33.0][..]
         );
         // The time is the step when the dump has no time.
         let no_time = DUMP.replace("ITEM: TIME\n0.25\n", "");

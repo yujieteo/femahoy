@@ -42,7 +42,7 @@ use toml_edit::{Document, TableLike};
 use crate::ccx::{frd, prepare_run_dir, stage_input, write_frames, CancelToken, Ccx};
 
 mod cad;
-pub use cad::{Cad, Check};
+pub use cad::Cad;
 
 /// The folder of the files of the loop in a run folder.
 pub const WORK: &str = "topology";

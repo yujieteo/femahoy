@@ -401,7 +401,6 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>) -> io::Result
         431 => "Request Header Fields Too Large",
         502 => "Bad Gateway",
         503 => "Service Unavailable",
-        504 => "Gateway Timeout",
         _ => "Internal Server Error",
     };
     write!(

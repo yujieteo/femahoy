@@ -170,13 +170,9 @@ struct Reader {
 
 /// Read a gmsh MSH 4.1 ASCII file. Each physical group becomes a node set.
 /// A group of volumes also becomes an element set. A group of surfaces on the outside of the
-/// solid also becomes an element surface (`*SURFACE, TYPE=ELEMENT`) of the same name.
-pub fn read_msh(text: &str) -> Result<Model> {
-    read_msh_mesh(text).map(|m| m.model)
-}
-
-/// Like [`read_msh`], and also report the volumes with no physical group and the surface
-/// groups that are not on the outside of the solid.
+/// solid also becomes an element surface (`*SURFACE, TYPE=ELEMENT`) of the same name. Also report
+/// the volumes with no physical group and the surface groups that are not on the outside of the
+/// solid.
 pub fn read_msh_mesh(text: &str) -> Result<MshMesh> {
     read(text, false)
 }
