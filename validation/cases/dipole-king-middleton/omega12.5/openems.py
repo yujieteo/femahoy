@@ -17,10 +17,11 @@ The lengths are in mm, as the mesh of openEMS.
 
 import os
 
-import numpy as np
+# CSXCAD first: a Python with no openEMS then fails on CSXCAD, and fh gives the install step.
 from CSXCAD import ContinuousStructure
 from openEMS import openEMS
 from openEMS.physical_constants import C0
+import numpy as np
 
 OMEGA = 12.5
 W = 1.2  # strip width
