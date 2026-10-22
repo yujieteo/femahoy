@@ -500,6 +500,10 @@ mod tests {
                 "# y: Z [1]\nT [s],a,b\n1,2,\n",
                 "the series `b` has no value",
             ),
+            (
+                "# y: Z [1]\nT [s],a,a\n1,2,3\n",
+                "line 2: each series needs its own name, not `a`",
+            ),
         ] {
             let e = Curve::parse(text, "t").unwrap_err();
             assert!(e.contains(problem), "{e}");
