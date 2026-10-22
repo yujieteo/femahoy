@@ -24,6 +24,11 @@ pub enum Field {
     Freq,
     /// The buckling factor of a mode, from a `*BUCKLE` step.
     Buckle,
+    /// The RMS of the displacement at each node over the frequencies of a `*STEADY STATE
+    /// DYNAMICS` step, from `*NODE PRINT` (see `crate::ccx::rms`). Components 1 to 3.
+    URms,
+    /// The RMS of the acceleration (2 pi f)^2 U at each node, as `URms`.
+    ARms,
     /// A column of a text table that an OpenFOAM, GetDP, LAMMPS or topology case writes, for example the
     /// column `Cl` of `postProcessing/forceCoeffs/0/coefficient.dat` of a function object of
     /// OpenFOAM.
@@ -305,10 +310,15 @@ impl Reader<'_> {
             "CSTR" => (Field::Cstr, &[1, 2, 3]),
             "FREQ" => (Field::Freq, &[]),
             "BUCKLE" => (Field::Buckle, &[]),
+            "U_RMS" => (Field::URms, &[1, 2, 3]),
+            "A_RMS" => (Field::ARms, &[1, 2, 3]),
             other => {
                 return Err(self.err(
                     Some(field_item),
-                    format!("unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ or BUCKLE"),
+                    format!(
+                        "unknown field `{other}`, expected U, RF, S, NT, CSTR, FREQ, BUCKLE, \
+                         U_RMS or A_RMS"
+                    ),
                 ))
             }
         };
