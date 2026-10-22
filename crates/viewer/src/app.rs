@@ -385,6 +385,11 @@ fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) -> bool {
 
     ui.strong("Step");
     let n = r.steps.len();
+    // Before the controls, so that they show the step of the shape.
+    if let Some(wait) = v.play(ui.input(|i| i.time), n) {
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_secs_f64(wait));
+    }
     ui.horizontal(|ui| {
         if ui
             .add_enabled(v.step > 0, egui::Button::new("<"))
@@ -408,6 +413,22 @@ fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) -> bool {
             v.step += 1;
         }
     });
+    if n > 1 {
+        ui.horizontal(|ui| {
+            let text = if v.playing.is_some() { "Pause" } else { "Play" };
+            if ui
+                .button(text)
+                .on_hover_text("show each step in turn")
+                .clicked()
+            {
+                v.playing = match v.playing {
+                    Some(_) => None,
+                    None => Some(ui.input(|i| i.time)),
+                };
+            }
+            ui.add(egui::Slider::new(&mut v.step, 0..=n - 1).show_value(false));
+        });
+    }
     ui.label(format!("{n} step{}", if n == 1 { "" } else { "s" }));
     ui.separator();
 

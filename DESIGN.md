@@ -31,7 +31,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 | Interface | Purpose |
 |---|---|
 | Chat | Main interface, in a panel on the left of the page. One conversation with the agent. Every agent action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the agent at its next step, and `Stop` ends the work at once. A status shows the current action of the agent and the time. |
-| 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector. |
+| 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector that selects and plays each output time. |
 
 ---
 
@@ -132,9 +132,11 @@ Reason: a large model can use all the RAM of the machine. A stop with a clear er
 
 ### 6.2 Results
 
-- The run folder has `step-N.vtu` (the last increment of step N) for each step, the PVD collection, and the `ccx` files in `ccx/`.
+- The run folder has 1 VTU file `step-N.vtu` for each output time N of the solver, the PVD collection that lists each file with its time, and the files of the solver in its folder (for example `ccx/` or `foam/`). The input sets the output times: each increment and each mode that `ccx` writes to the `.frd` file (`FREQUENCY`), each write time of OpenFOAM (`writeInterval`), each step of the `.pos` views of GetDP and Chrono (for example each time), and each snapshot of the LAMMPS dump. ParaView plays the collection as an animation, and the step selector of the viewer selects and plays each output time.
 - VTU: binary data appended raw.
 - Atomic write: a writer writes a temporary file and renames it when complete. A reader never sees a partial file, because a run can die at any time.
+
+Reason of the output times: the dam break, the Taylor bar impact and the supersonic wedge showed only their last state, because the run kept only the last increment of each `ccx` step and the last time of OpenFOAM. The input already sets how often the solver writes, so `fh run` has no option for it.
 
 ---
 

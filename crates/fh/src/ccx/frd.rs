@@ -1,6 +1,7 @@
 //! The `.frd` result file of `ccx` as VTU grids: every nodal field in the file, for each step.
 //!
-//! The reader keeps the last increment of each step (and of each mode of a frequency step).
+//! The reader keeps each increment that the file holds, and each mode of a frequency step. The
+//! input sets which increments `ccx` writes (`FREQUENCY` of `*NODE FILE` and `*EL FILE`).
 //! It renames the blocks `DISP`, `FORC`, `STRESS`, `TOSTRAIN`, `PE` and `NDTEMP` to the keywords
 //! that a person writes (`U`, `RF`, `S`, `E`, `PEEQ`, `NT`) and adds `MISES` after each `S`. `ccx` writes
 //! the element codes 1 to 12. The reader skips any other code. A file with no cell gives no frame.
@@ -147,24 +148,18 @@ pub fn read(text: &str) -> Result<Frd, String> {
         } else if line.starts_with("  100CL") {
             let time = cell(line, 12, 12).and_then(|s| s.trim().parse().ok());
             let time = time.ok_or_else(|| bad(n, "bad time"))?;
-            // A later increment of a step replaces the earlier one.
-            let same = |f: &Frame| f.step == step && f.mode == mode;
-            let at = match frd.frames.iter().position(same) {
-                Some(at) => at,
-                None => {
-                    frd.frames.push(Frame {
-                        step,
-                        mode,
-                        ..Frame::default()
-                    });
-                    frd.frames.len() - 1
-                }
-            };
-            let frame = &mut frd.frames[at];
-            if frame.increment != increment {
-                frame.fields.clear();
+            // Each block of a frame has this line. A new increment or mode starts a new frame.
+            let same = |f: &&Frame| f.step == step && f.increment == increment && f.mode == mode;
+            if frd.frames.last().filter(same).is_none() {
+                frd.frames.push(Frame {
+                    step,
+                    increment,
+                    mode,
+                    ..Frame::default()
+                });
             }
-            (frame.time, frame.increment) = (time, increment);
+            let at = frd.frames.len() - 1;
+            frd.frames[at].time = time;
             current = Some(at);
         } else if line.starts_with(" -4") {
             let name = cell(line, 5, 8).map_or("", str::trim).to_owned();
@@ -307,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    fn a_later_increment_replaces_the_earlier_one_and_s_gets_mises() {
+    fn each_increment_is_a_frame_and_s_gets_mises() {
         let mut text = String::from(
             "    2C                             1                                     1\n",
         );
@@ -335,12 +330,14 @@ mod tests {
         let frd = read(&text).unwrap();
         assert_eq!(frd.nodes, [7]);
         assert_eq!(frd.elements, [1]);
-        assert_eq!(frd.frames.len(), 1);
-        assert_eq!(frd.frames[0].field("MISES").unwrap().values, [2.0]);
-        let grid = frd.grid(&frd.frames[0]);
-        assert_eq!(frd.frames[0].time, 2.0);
-        let s = grid.point_field("S").unwrap();
-        assert_eq!((s.components, s.values[0]), (6, 2.0));
-        assert_eq!(grid.point_field("MISES").unwrap().values, [2.0]);
+        assert_eq!(frd.frames.len(), 2);
+        for (frame, v) in frd.frames.iter().zip([1.0, 2.0]) {
+            assert_eq!(frame.field("MISES").unwrap().values, [v]);
+            let grid = frd.grid(frame);
+            assert_eq!(frame.time, v);
+            let s = grid.point_field("S").unwrap();
+            assert_eq!((s.components, s.values[0]), (6, v));
+            assert_eq!(grid.point_field("MISES").unwrap().values, [v]);
+        }
     }
 }

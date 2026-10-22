@@ -14,13 +14,13 @@
 //! 2. at the same time, the application of `fluid/system/controlDict` in `fluid`, and the user's
 //!    `ccx_preCICE` (`$FH_CCX_PRECICE`, else `ccx_preCICE` on PATH) in `solid`:
 //!    `ccx_preCICE -i job -precice-participant Solid`;
-//! 3. `foamToVTK` in `fluid` for the last time.
+//! 3. `foamToVTK` in `fluid` for each time that `fluid` writes.
 //!
 //! Each program writes its output to `log.<program>` in its folder. preCICE stops the 2 programs
 //! of step 2 at the `max-time` of the coupling. When one of them fails, the run stops the other.
 //! When one of them ends and the other does not end in the same time again (at least 1 minute),
 //! for example because it does not couple, the run stops it. Then the run writes the cell fields
-//! of the fluid at the last time to `step-1.vtu` and `results.pvd`, as for an OpenFOAM case.
+//! of the fluid at each time to `step-N.vtu` and `results.pvd`, as for an OpenFOAM case.
 //!
 //! preCICE is LGPL, and OpenFOAM, CalculiX and the adapters are GPL, so femahoy only starts them
 //! as separate programs. A run has the limits of a run of OpenFOAM. The 2 programs of step 2
