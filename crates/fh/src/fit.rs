@@ -304,9 +304,6 @@ pub fn summary(f: &Fit, curve: &Curve, series: &str) -> String {
 /// parameters as a note.
 pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
     let name = format!("{} fit", f.model.name());
-    if curve.series.iter().any(|s| s.name == name) {
-        return Err(format!("the curve already has a series `{name}`"));
-    }
     let mut out = curve.clone();
     out.series.push(Series { name, source: None });
     for (_, values) in &mut out.rows {
@@ -321,16 +318,8 @@ pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
         } else {
             lo + (hi - lo) * t
         };
-        let y = f.model.value(&f.params, x);
-        if curve.log_y && y <= 0.0 {
-            return Err(format!(
-                "the fit is {} at x = {}: the log axis y needs values above 0",
-                short(y),
-                short(x)
-            ));
-        }
         let mut values = vec![None; curve.series.len()];
-        values.push(Some(y));
+        values.push(Some(f.model.value(&f.params, x)));
         out.rows.push((x, values));
     }
     let params = parameters(f, curve).join(", ");
@@ -343,7 +332,7 @@ pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
         short(f.range.0),
         short(f.range.1)
     ));
-    Ok(out)
+    Curve::parse(&out.to_csv(), &out.title)
 }
 
 /// Read a curve file. Its title is the name of the file when it has no `# title:`.
