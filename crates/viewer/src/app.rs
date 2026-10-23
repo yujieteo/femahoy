@@ -370,7 +370,10 @@ fn panel(r: &Results, view: &View, preview: &Result<Box<Preview>, String>, all: 
 /// size is at most 1/20 of its x or y size), and no node of the run `r` moves in z.
 fn plane(r: &Results, b: Bounds) -> bool {
     let size: [f32; 3] = std::array::from_fn(|k| b.max[k] - b.min[k]);
-    let still = r.steps.iter().all(|s| s.displacement.iter().all(|u| u[2] == 0.0));
+    let still = r
+        .steps
+        .iter()
+        .all(|s| s.displacement.iter().all(|u| u[2] == 0.0));
     still && size[2] <= size[0].max(size[1]) / 20.0
 }
 
