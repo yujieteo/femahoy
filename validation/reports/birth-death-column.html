@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-ee06753d968428d495ec3b4795eb21b7' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-2b3518fff27d18478d83b97c3f267e54' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,10 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -76,11 +80,17 @@ header { flex: none; padding: 0.75rem 1rem; }
 </head>
 <body>
 <article><h1>birth-death-column derivation</h1>
+<h2>Conclusion</h2>
+<p>ccx builds the column in 10 lifts with element birth and gives the settlement of the lift theory. At mid-height (z = 5 m), ccx gives 0.02315179 mm, and the lift theory gives 0.0231516 mm. The difference is 8.2e-6 of the reference, and the tolerance is 1e-4. At the top of each lift, the largest difference is 2.0e-7 mm.</p>
+<figure class="curve"><figcaption>Column built in 10 lifts, the settlement of the top of each lift at the end</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Column built in 10 lifts, the settlement of the top of each lift at the end"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="182.4" y1="12" x2="182.4" y2="308.0"/><line x1="292.8" y1="12" x2="292.8" y2="308.0"/><line x1="403.2" y1="12" x2="403.2" y2="308.0"/><line x1="513.6" y1="12" x2="513.6" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="182.4" y="324.0" text-anchor="middle">2</text><text x="292.8" y="324.0" text-anchor="middle">4</text><text x="403.2" y="324.0" text-anchor="middle">6</text><text x="513.6" y="324.0" text-anchor="middle">8</text><text x="624.0" y="324.0" text-anchor="middle">10</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="238.0" text-anchor="end">0.01</text><text x="66.0" y="164.0" text-anchor="end">0.02</text><text x="66.0" y="90.0" text-anchor="end">0.03</text><text x="66.0" y="16.0" text-anchor="end">0.04</text><text class="label" x="348.0" y="354" text-anchor="middle">height z [m]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">settlement -u_z [mm]</text><polyline style="stroke:var(--s1)" points="72.0,308.0 127.2,252.8 182.4,206.4 237.6,171.5 292.8,148.3 348.0,136.7 403.2,136.7 458.4,148.3 513.6,171.5 568.8,206.4 624.0,252.8"/><polyline style="stroke:var(--s2)" points="72.0,308.0 127.2,252.8 182.4,203.5 237.6,159.9 292.8,122.2 348.0,90.2 403.2,64.1 458.4,43.8 513.6,29.2 568.8,20.5 624.0,17.6"/><circle style="fill:var(--s3)" cx="72.0" cy="308.0" r="4"><title>ccx: 0, 0</title></circle><circle style="fill:var(--s3)" cx="127.2" cy="252.8" r="4"><title>ccx: 1, 0.00745568</title></circle><circle style="fill:var(--s3)" cx="182.4" cy="206.4" r="4"><title>ccx: 2, 0.0137341</title></circle><circle style="fill:var(--s3)" cx="237.6" cy="171.5" r="4"><title>ccx: 3, 0.018443</title></circle><circle style="fill:var(--s3)" cx="292.8" cy="148.3" r="4"><title>ccx: 4, 0.0215822</title></circle><circle style="fill:var(--s3)" cx="348.0" cy="136.7" r="4"><title>ccx: 5, 0.0231518</title></circle><circle style="fill:var(--s3)" cx="403.2" cy="136.7" r="4"><title>ccx: 6, 0.0231518</title></circle><circle style="fill:var(--s3)" cx="458.4" cy="148.3" r="4"><title>ccx: 7, 0.0215822</title></circle><circle style="fill:var(--s3)" cx="513.6" cy="171.5" r="4"><title>ccx: 8, 0.0184429</title></circle><circle style="fill:var(--s3)" cx="568.8" cy="206.4" r="4"><title>ccx: 9, 0.0137341</title></circle><circle style="fill:var(--s3)" cx="624.0" cy="252.8" r="4"><title>ccx: 10, 0.00745564</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>lift theory</li><li><i class="line" style="background:var(--s2)"></i>all at once</li><li><i class="point" style="background:var(--s3)"></i>ccx</li></ul><p>ccx: the nodes of the set AXIS after step 10, ccx/job.dat of the run</p><p>Lift theory: (rho g h^2 / 2E) (2i (N + 1 - i) - 1) at the top of lift i. All at once: (rho g / E) (H z - z^2 / 2).</p><p>The largest difference of ccx from the lift theory is +2.0e-07 mm, at z = 4 m. With ADD=WITH STRAIN in place of ADD=STRAIN FREE, ccx gives the curve of all at once.</p></figure>
+
+<p>Each lift goes on the deformed column strain free. Thus the top of lift 5 or 6 settles most, and the top of the column settles only 0.0074556 mm. A column with all lifts at once settles 0.02943 mm at mid-height, 27 % more, and most at the top. ccx with <code>ADD=WITH STRAIN</code> gives this curve (derivation.md). Thus the check fails if ccx does not add the lifts strain free.</p>
+
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.0001 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>u_mid</code></td><td style="text-align:right">-0.0231518</td><td style="text-align:right">-0.0231516</td><td style="text-align:right">2.315e-06</td><td style="text-align:right">2.125e-06</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy dad4ebf.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 874a1ff.</p>
 <p>This case checks element birth: a concrete column built in 10 lifts, each lift added strain free on the deformed column (units SI-mm).</p>
 <h2>Source</h2>
 <p>The theory is the axial deformation of a bar, δ = N L / (E A), applied to each step of the construction: J. M. Gere and B. J. Goodno, <em>Mechanics of Materials</em>, 8th ed., Cengage Learning, 2013, chapter 2 (axially loaded members).
@@ -122,28 +132,39 @@ ccx gives -0.02315179 mm, 8.2e-6 of the reference more than the theory. The part
 <ol><li>Geometric nonlinearity (<code>NLGEOM</code>), about the strain rho g H / E = 7.8e-6. The same input with E 10 times smaller gives 8.3e-5, and with E 10 times larger 8.6e-7. Thus the difference changes with the strain.</li><li>Mesh: 0 at the top of each lift (&quot;Mesh study&quot;).</li><li>The 7 printed digits of ccx: 4e-7.</li></ol>
 <p>The sum is less than 1/10 of the tolerance. The column with all lifts at once, or with lifts added with strain, is 27 % off.</p>
 <h2>Plot</h2>
-<p><code>settlement.csv</code> shows the settlement at the top of each lift after step 10. The ccx points come from the set <code>AXIS</code> of the run of <code>job.inp</code>.
+<p><code>curves.py</code> writes <code>settlement.csv</code>: the settlement at the top of each lift after step 10. The ccx points come from the set <code>AXIS</code> in <code>job.dat</code> of the run of <code>job.inp</code>.
 The lift theory goes through each ccx point. The curve of all lifts at once shows the difference that the sequence makes.</p>
 <h2>3D view</h2>
 <p><code>job.inp</code> writes no field to the <code>.frd</code> file. ccx writes the mesh to the <code>.frd</code> file only at the first output, with only the elements in the model at that time.
 In this case that is lift 1. Thus a 3D view shows lift 1 only, in each step. With <code>*NODE FILE, OUTPUT ALL</code>, ccx writes all elements, also the lifts that are not built yet.</p>
 <h2>Files</h2>
-<p><code>job.inp</code> is written by hand: 44 nodes and 10 <code>C3D8</code> elements, 1 for each lift. The run takes less than 1 s.</p><figure class="curve"><figcaption>Column built in 10 lifts, the settlement of the top of each lift at the end</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Column built in 10 lifts, the settlement of the top of each lift at the end"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="182.4" y1="12" x2="182.4" y2="308.0"/><line x1="292.8" y1="12" x2="292.8" y2="308.0"/><line x1="403.2" y1="12" x2="403.2" y2="308.0"/><line x1="513.6" y1="12" x2="513.6" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="182.4" y="324.0" text-anchor="middle">2</text><text x="292.8" y="324.0" text-anchor="middle">4</text><text x="403.2" y="324.0" text-anchor="middle">6</text><text x="513.6" y="324.0" text-anchor="middle">8</text><text x="624.0" y="324.0" text-anchor="middle">10</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="238.0" text-anchor="end">0.01</text><text x="66.0" y="164.0" text-anchor="end">0.02</text><text x="66.0" y="90.0" text-anchor="end">0.03</text><text x="66.0" y="16.0" text-anchor="end">0.04</text><text class="label" x="348.0" y="354" text-anchor="middle">height z [m]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">settlement -u_z [mm]</text><polyline style="stroke:var(--s1)" points="72.0,308.0 127.2,252.8 182.4,206.4 237.6,171.5 292.8,148.3 348.0,136.7 403.2,136.7 458.4,148.3 513.6,171.5 568.8,206.4 624.0,252.8"/><polyline style="stroke:var(--s2)" points="72.0,308.0 127.2,252.8 182.4,203.5 237.6,159.9 292.8,122.2 348.0,90.2 403.2,64.1 458.4,43.8 513.6,29.2 568.8,20.5 624.0,17.6"/><circle style="fill:var(--s3)" cx="72.0" cy="308.0" r="4"><title>ccx: 0, 0</title></circle><circle style="fill:var(--s3)" cx="127.2" cy="252.8" r="4"><title>ccx: 1, 0.00745568</title></circle><circle style="fill:var(--s3)" cx="182.4" cy="206.4" r="4"><title>ccx: 2, 0.0137341</title></circle><circle style="fill:var(--s3)" cx="237.6" cy="171.5" r="4"><title>ccx: 3, 0.018443</title></circle><circle style="fill:var(--s3)" cx="292.8" cy="148.3" r="4"><title>ccx: 4, 0.0215822</title></circle><circle style="fill:var(--s3)" cx="348.0" cy="136.7" r="4"><title>ccx: 5, 0.0231518</title></circle><circle style="fill:var(--s3)" cx="403.2" cy="136.7" r="4"><title>ccx: 6, 0.0231518</title></circle><circle style="fill:var(--s3)" cx="458.4" cy="148.3" r="4"><title>ccx: 7, 0.0215822</title></circle><circle style="fill:var(--s3)" cx="513.6" cy="171.5" r="4"><title>ccx: 8, 0.0184429</title></circle><circle style="fill:var(--s3)" cx="568.8" cy="206.4" r="4"><title>ccx: 9, 0.0137341</title></circle><circle style="fill:var(--s3)" cx="624.0" cy="252.8" r="4"><title>ccx: 10, 0.00745564</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>lift theory</li><li><i class="line" style="background:var(--s2)"></i>all at once</li><li><i class="point" style="background:var(--s3)"></i>ccx</li></ul><p>ccx: the run of job.inp (ccx 2.23), set AXIS after step 10</p><p>Lift theory: (rho g h^2 / 2E) (2i (N + 1 - i) - 1) at the top of lift i. All at once: (rho g / E) (H z - z^2 / 2).</p><p>ccx adds each lift strain free. With ADD=WITH STRAIN in place of ADD=STRAIN FREE, ccx gives the curve of all at once.</p></figure>
-</article>
+<p><code>job.inp</code> is written by hand: 44 nodes and 10 <code>C3D8</code> elements, 1 for each lift. The run takes less than 1 s.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="ee06753d968428d495ec3b4795eb21b7">
+<script type="module" nonce="2b3518fff27d18478d83b97c3f267e54">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
 // `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
-// The view of a run of `fh report --view` is the file `/views/RUN`.
+//
+// The agent writes the controls of the report in its text. An element with `data-run="RUN"`
+// opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
+const text = document.querySelector("article");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -171,18 +192,54 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const open = async (run) => {
-      runs.value = run;
-      const path = "/views/" + run;
-      view.open(run, files.has(path) ? await (await fetch(path)).text() : undefined);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
     };
-    runs.addEventListener("change", () => open(runs.value));
-    // An element of the text with `data-run="RUN"` opens that run.
-    document.addEventListener("click", (e) => {
-      const run = e.target.closest("[data-run]")?.dataset.run;
-      if (run && [...runs.options].some((o) => o.value === run)) open(run);
+    views().filter(slider).forEach(label);
+    let current = null;
+    // Open the run of the element `e`, with its view. False when the report has no such run.
+    const open = (e) => {
+      if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
+      runs.value = e.dataset.run;
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
+      view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
+      return true;
+    };
+    // The list of the runs opens a run with the view of its first element.
+    runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    open(runs.value);
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
+    const first = views().find(chosen);
+    if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {
     $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }
