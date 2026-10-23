@@ -1,5 +1,5 @@
 # ccx_preCICE: CalculiX 2.20 with the preCICE adapter 2.20.2, for a preCICE case of fh run (README.md,
-# "Get preCICE"). Both are GPL. fh only starts the program, and links no code of it.
+# "Install"), with Nix. Both are GPL. fh only starts the program, and links no code of it.
 # Build: nix build -f scripts/ccx-precice.nix -o ccx-precice
 {
   pkgs ? import <nixpkgs> { },

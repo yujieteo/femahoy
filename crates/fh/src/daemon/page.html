@@ -379,6 +379,8 @@ function entry(kind, text, fresh) {
     case "error":
       rest();
       return failure("The agent failed", text);
+    case "setup":
+      return failure("Set up Claude Code", text);
     case "open": {
       const b = el("button", "open", "Show the results of ");
       b.append(runName(text));

@@ -17,7 +17,28 @@ fn usage() -> &'static str {
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve)\n"
 }
 
+/// Set each variable of the file `solvers.env` beside the `fh` program that the environment does
+/// not set. `scripts/install.sh` writes the file: 1 line `FH_NAME=PATH` for each solver that it
+/// installed. A child process, for example the agent of `fh serve`, gets the variables.
+fn load_solvers() {
+    let Some(file) = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("solvers.env")))
+    else {
+        return;
+    };
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return;
+    };
+    for (name, value) in text.lines().filter_map(|line| line.split_once('=')) {
+        if std::env::var_os(name).is_none_or(|v| v.is_empty()) {
+            std::env::set_var(name, value);
+        }
+    }
+}
+
 fn main() -> ExitCode {
+    load_solvers();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let first = args.first().map(String::as_str);
     let outcome = match first {
