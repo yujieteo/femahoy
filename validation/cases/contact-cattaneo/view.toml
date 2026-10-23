@@ -1,0 +1,4 @@
+# Q goes from the pad into the block through the contact: the shear stress S12 and the
+# pressure S22 under the contact. traction.csv shows the stick zone and the 2 slip zones.
+fields = ["S12", "S22"]
+controls = ["loads"]
