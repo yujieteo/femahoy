@@ -22,9 +22,10 @@
 //!   and each step file. With `--one-step`, only the steps of each run that the elements of the
 //!   text for the run open: the step of each `data-step`, and the last step for an element with
 //!   no `data-step` or a run with no element. Each `data-step` then names its step in the kept
-//!   steps ([`kept_steps`]). Each file is a `script` element that holds its bytes as raw deflate in base64, with the daemon path of
-//!   the file in `data-path`. A small script in the template answers the fetches of the viewer
-//!   from these elements. A report with no run has no viewer.
+//!   steps ([`kept_steps`]). Each file is a `script` element that holds its bytes as raw
+//!   deflate in base64, with the daemon path of the file in `data-path`. A small script in the
+//!   template answers the fetches of the viewer from these elements. A report with no run has
+//!   no viewer.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
 //! the text of the agent cannot run a script or load a file. The fonts are in the template as
