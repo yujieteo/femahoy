@@ -23,6 +23,7 @@ random-vibration-cantilever	pass		1218017	3493b3a
 scordelis-lo-roof	pass		125518	3493b3a
 shape-hole-biaxial	pass		884170	3493b3a
 slider-crank	pass		181811	3493b3a
+submodel-kirsch-hole	pass		311802	9c05c86
 taylor-bar-impact	pass		4258322	3493b3a
 team7-eddy-current	pass		3006010	3493b3a
 topology-mbb-beam	pass		213609	3493b3a
