@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-2818658f2290c6dffff70e142a90eb73' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-395776f90d2f300a2b10181488cc0a58' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,6 +65,8 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
+article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+article button:hover, article select:hover { border-color: var(--text); }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 header { flex: none; padding: 0.75rem 1rem; }
 #runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
@@ -80,7 +82,7 @@ header { flex: none; padding: 0.75rem 1rem; }
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.12 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>warpage</code></td><td style="text-align:right">-0.0271124</td><td style="text-align:right">-0.028</td><td style="text-align:right">0.00336</td><td style="text-align:right">0.002472</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 3493b3a.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
 <p>The reference is a measured value, not a theory.
 Source: M. Calabretta, A. Sitta, S. M. Oliveri and G. Sequenzia, <em>Warpage Behavior on Silicon Semiconductor Device: The Impact of Thick Copper Metallization</em>, Applied Sciences 11 (2021) 5140.
 The paper is open access under CC BY 4.0: <a href="https://doi.org/10.3390/app11115140">https://doi.org/10.3390/app11115140</a>.
@@ -142,15 +144,22 @@ The first cycle needs copper plasticity and the grain growth, which are nonlinea
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="2818658f2290c6dffff70e142a90eb73">
+<script type="module" nonce="395776f90d2f300a2b10181488cc0a58">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
 // `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
-// The view of a run of `fh report --view` is the file `/views/RUN`.
+//
+// The agent writes the controls of the report in its text. An element with `data-run="RUN"`
+// opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
+// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
+// option of a `select`, or of a checked radio button. At the start, the report opens the first
+// chosen element of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
+const text = document.querySelector("article");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -178,18 +187,28 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const open = async (run) => {
-      runs.value = run;
-      const path = "/views/" + run;
-      view.open(run, files.has(path) ? await (await fetch(path)).text() : undefined);
+    const views = () => [...text.querySelectorAll("[data-run]")];
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    // Open the run of the element `e`, with its view. False when the report has no such run.
+    const open = (e) => {
+      if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
+      runs.value = e.dataset.run;
+      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      return true;
     };
-    runs.addEventListener("change", () => open(runs.value));
-    // An element of the text with `data-run="RUN"` opens that run.
-    document.addEventListener("click", (e) => {
-      const run = e.target.closest("[data-run]")?.dataset.run;
-      if (run && [...runs.options].some((o) => o.value === run)) open(run);
+    // The list of the runs opens a run with the view of its first element in the text.
+    runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
+    text.addEventListener("click", (e) => {
+      const target = e.target.closest("[data-run]");
+      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
     });
-    open(runs.value);
+    text.addEventListener("change", (e) => {
+      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+      if (target?.dataset.run && chosen(target)) open(target);
+    });
+    const first = views().find(chosen);
+    if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {
     $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }
