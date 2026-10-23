@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-12626e0551d3f662ae30a993244d4636' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-04891b2e94536d2cad99dce7da012397' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -80,20 +82,17 @@ header { flex: none; padding: 0.75rem 1rem; }
 <article><h1>hyperelastic-tube derivation</h1>
 <h2>Conclusion</h2>
 <p>The CalculiX model inflates the Ogden rubber tube past its pressure maximum. At each of its 40 increments, the pressure of the model is within 0.018 % of the exact pressure of Haughton and Ogden (1979). The tolerance of the checks is 0.2 %.</p>
+<label data-bar>Inflation <input type="range" min="1" max="40" value="40" data-run="run-000015" data-fields="U magnitude" data-controls="" data-scale="1" data-box="0,0,0.5,44,44,0.5" data-labels="λ_a = 1.075: p = 0.04216 MPa|λ_a = 1.150: p = 0.07667 MPa|λ_a = 1.225: p = 0.10505 MPa|λ_a = 1.300: p = 0.12845 MPa|λ_a = 1.375: p = 0.14779 MPa|λ_a = 1.450: p = 0.16379 MPa|λ_a = 1.525: p = 0.17701 MPa|λ_a = 1.600: p = 0.18793 MPa|λ_a = 1.675: p = 0.19692 MPa|λ_a = 1.750: p = 0.20429 MPa|λ_a = 1.825: p = 0.21031 MPa|λ_a = 1.900: p = 0.21519 MPa|λ_a = 1.975: p = 0.21910 MPa|λ_a = 2.050: p = 0.22221 MPa|λ_a = 2.125: p = 0.22463 MPa|λ_a = 2.200: p = 0.22647 MPa|λ_a = 2.275: p = 0.22782 MPa|λ_a = 2.350: p = 0.22877 MPa|λ_a = 2.425: p = 0.22937 MPa|λ_a = 2.500: p = 0.22969 MPa, check f_25|λ_a = 2.575: p = 0.22976 MPa, the largest p|λ_a = 2.650: p = 0.22965 MPa|λ_a = 2.725: p = 0.22938 MPa|λ_a = 2.800: p = 0.22897 MPa|λ_a = 2.875: p = 0.22847 MPa|λ_a = 2.950: p = 0.22788 MPa|λ_a = 3.025: p = 0.22723 MPa|λ_a = 3.100: p = 0.22655 MPa|λ_a = 3.175: p = 0.22583 MPa|λ_a = 3.250: p = 0.22510 MPa|λ_a = 3.325: p = 0.22437 MPa|λ_a = 3.400: p = 0.22365 MPa|λ_a = 3.475: p = 0.22295 MPa|λ_a = 3.550: p = 0.22226 MPa|λ_a = 3.625: p = 0.22161 MPa|λ_a = 3.700: p = 0.22100 MPa|λ_a = 3.775: p = 0.22043 MPa|λ_a = 3.850: p = 0.21990 MPa|λ_a = 3.925: p = 0.21942 MPa|λ_a = 4.000: p = 0.21900 MPa, checks f_40 and u_outer" data-marks="40:43.5898,0,0.5 u(B) = 23.590 mm, exact 23.589 mm"></label>
 <p>The exact pressure has its maximum 0.229790 MPa at the inner stretch λ_a = a/A = 2.566. After the maximum, the pressure decreases, and the model follows it to λ_a = 4.0. A pressure load cannot pass the maximum, thus the model moves the inner face and gets the pressure from the reaction forces.</p>
-<figure class="curve"><figcaption>The pressure on the inner face against the inner stretch</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The pressure on the inner face against the inner stretch"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="256.0" y="324.0" text-anchor="middle">2</text><text x="440.0" y="324.0" text-anchor="middle">3</text><text x="624.0" y="324.0" text-anchor="middle">4</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="252.8" text-anchor="end">0.05</text><text x="66.0" y="193.6" text-anchor="end">0.1</text><text x="66.0" y="134.4" text-anchor="end">0.15</text><text x="66.0" y="75.2" text-anchor="end">0.2</text><text x="66.0" y="16.0" text-anchor="end">0.25</text><text class="label" x="348.0" y="354" text-anchor="middle">λ_a = a / A [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">p [MPa]</text><polyline style="stroke:var(--s1)" points="85.8,258.1 99.6,217.2 113.4,183.6 127.2,155.9 141.0,133.0 154.8,114.1 168.6,98.4 182.4,85.5 196.2,74.8 210.0,66.1 223.8,59.0 237.6,53.2 251.4,48.6 265.2,44.9 279.0,42.0 292.8,39.9 306.6,38.3 320.4,37.1 334.2,36.4 348.0,36.0 361.8,36.0 375.6,36.1 389.4,36.4 403.2,36.9 417.0,37.5 430.8,38.2 444.6,39.0 458.4,39.8 472.2,40.6 486.0,41.5 499.8,42.3 513.6,43.2 527.4,44.0 541.2,44.8 555.0,45.6 568.8,46.3 582.6,47.0 596.4,47.6 610.2,48.2 624.0,48.7"/><polyline style="stroke:var(--s2)" points="85.8,258.1 99.6,217.2 113.4,183.6 127.2,155.9 141.0,133.0 154.8,114.1 168.6,98.4 182.4,85.5 196.2,74.8 210.0,66.1 223.8,59.0 237.6,53.2 251.4,48.6 265.2,44.9 279.0,42.0 292.8,39.8 306.6,38.2 320.4,37.1 334.2,36.4 348.0,36.0 361.8,35.9 375.6,36.1 389.4,36.4 403.2,36.9 417.0,37.5 430.8,38.2 444.6,38.9 458.4,39.7 472.2,40.6 486.0,41.4 499.8,42.3 513.6,43.2 527.4,44.0 541.2,44.8 555.0,45.6 568.8,46.3 582.6,47.0 596.4,47.6 610.2,48.2 624.0,48.7"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>exact</li></ul><p>exact is the pressure of the incompressible tube of Haughton and Ogden (1979) from reference.py. The model p is the sum of the x reactions on the inner face of the quarter, divided by λ_a A t.</p><p>The largest difference of the model is -0.018 %, at λ_a = 4.000.</p></figure>
+<figure class="curve"><figcaption>The pressure on the inner face against the inner stretch</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The pressure on the inner face against the inner stretch"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="256.0" y="324.0" text-anchor="middle">2</text><text x="440.0" y="324.0" text-anchor="middle">3</text><text x="624.0" y="324.0" text-anchor="middle">4</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="252.8" text-anchor="end">0.05</text><text x="66.0" y="193.6" text-anchor="end">0.1</text><text x="66.0" y="134.4" text-anchor="end">0.15</text><text x="66.0" y="75.2" text-anchor="end">0.2</text><text x="66.0" y="16.0" text-anchor="end">0.25</text><text class="label" x="348.0" y="354" text-anchor="middle">λ_a = a / A [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">p [MPa]</text><polyline style="stroke:var(--s2)" points="85.8,258.1 99.6,217.2 113.4,183.6 127.2,155.9 141.0,133.0 154.8,114.1 168.6,98.4 182.4,85.5 196.2,74.8 210.0,66.1 223.8,59.0 237.6,53.2 251.4,48.6 265.2,44.9 279.0,42.0 292.8,39.8 306.6,38.2 320.4,37.1 334.2,36.4 348.0,36.0 361.8,35.9 375.6,36.1 389.4,36.4 403.2,36.9 417.0,37.5 430.8,38.2 444.6,38.9 458.4,39.7 472.2,40.6 486.0,41.4 499.8,42.3 513.6,43.2 527.4,44.0 541.2,44.8 555.0,45.6 568.8,46.3 582.6,47.0 596.4,47.6 610.2,48.2 624.0,48.7"/><circle style="fill:var(--s1)" cx="85.8" cy="258.1" r="4"><title>model: 1.075, 0.042163</title></circle><circle style="fill:var(--s1)" cx="99.6" cy="217.2" r="4"><title>model: 1.15, 0.076672</title></circle><circle style="fill:var(--s1)" cx="113.4" cy="183.6" r="4"><title>model: 1.225, 0.105047</title></circle><circle style="fill:var(--s1)" cx="127.2" cy="155.9" r="4"><title>model: 1.3, 0.128451</title></circle><circle style="fill:var(--s1)" cx="141.0" cy="133.0" r="4"><title>model: 1.375, 0.147792</title></circle><circle style="fill:var(--s1)" cx="154.8" cy="114.1" r="4"><title>model: 1.45, 0.163786</title></circle><circle style="fill:var(--s1)" cx="168.6" cy="98.4" r="4"><title>model: 1.525, 0.17701</title></circle><circle style="fill:var(--s1)" cx="182.4" cy="85.5" r="4"><title>model: 1.6, 0.187927</title></circle><circle style="fill:var(--s1)" cx="196.2" cy="74.8" r="4"><title>model: 1.675, 0.196918</title></circle><circle style="fill:var(--s1)" cx="210.0" cy="66.1" r="4"><title>model: 1.75, 0.204294</title></circle><circle style="fill:var(--s1)" cx="223.8" cy="59.0" r="4"><title>model: 1.825, 0.210313</title></circle><circle style="fill:var(--s1)" cx="237.6" cy="53.2" r="4"><title>model: 1.9, 0.21519</title></circle><circle style="fill:var(--s1)" cx="251.4" cy="48.6" r="4"><title>model: 1.975, 0.219105</title></circle><circle style="fill:var(--s1)" cx="265.2" cy="44.9" r="4"><title>model: 2.05, 0.222208</title></circle><circle style="fill:var(--s1)" cx="279.0" cy="42.0" r="4"><title>model: 2.125, 0.224626</title></circle><circle style="fill:var(--s1)" cx="292.8" cy="39.9" r="4"><title>model: 2.2, 0.226466</title></circle><circle style="fill:var(--s1)" cx="306.6" cy="38.3" r="4"><title>model: 2.275, 0.227821</title></circle><circle style="fill:var(--s1)" cx="320.4" cy="37.1" r="4"><title>model: 2.35, 0.228767</title></circle><circle style="fill:var(--s1)" cx="334.2" cy="36.4" r="4"><title>model: 2.425, 0.22937</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="36.0" r="4"><title>model: 2.5, 0.229688</title></circle><circle style="fill:var(--s1)" cx="361.8" cy="36.0" r="4"><title>model: 2.575, 0.229765</title></circle><circle style="fill:var(--s1)" cx="375.6" cy="36.1" r="4"><title>model: 2.65, 0.229653</title></circle><circle style="fill:var(--s1)" cx="389.4" cy="36.4" r="4"><title>model: 2.725, 0.229377</title></circle><circle style="fill:var(--s1)" cx="403.2" cy="36.9" r="4"><title>model: 2.8, 0.228973</title></circle><circle style="fill:var(--s1)" cx="417.0" cy="37.5" r="4"><title>model: 2.875, 0.228466</title></circle><circle style="fill:var(--s1)" cx="430.8" cy="38.2" r="4"><title>model: 2.95, 0.22788</title></circle><circle style="fill:var(--s1)" cx="444.6" cy="39.0" r="4"><title>model: 3.025, 0.227235</title></circle><circle style="fill:var(--s1)" cx="458.4" cy="39.8" r="4"><title>model: 3.1, 0.226547</title></circle><circle style="fill:var(--s1)" cx="472.2" cy="40.6" r="4"><title>model: 3.175, 0.225833</title></circle><circle style="fill:var(--s1)" cx="486.0" cy="41.5" r="4"><title>model: 3.25, 0.225105</title></circle><circle style="fill:var(--s1)" cx="499.8" cy="42.3" r="4"><title>model: 3.325, 0.224375</title></circle><circle style="fill:var(--s1)" cx="513.6" cy="43.2" r="4"><title>model: 3.4, 0.223652</title></circle><circle style="fill:var(--s1)" cx="527.4" cy="44.0" r="4"><title>model: 3.475, 0.222946</title></circle><circle style="fill:var(--s1)" cx="541.2" cy="44.8" r="4"><title>model: 3.55, 0.222264</title></circle><circle style="fill:var(--s1)" cx="555.0" cy="45.6" r="4"><title>model: 3.625, 0.221613</title></circle><circle style="fill:var(--s1)" cx="568.8" cy="46.3" r="4"><title>model: 3.7, 0.220998</title></circle><circle style="fill:var(--s1)" cx="582.6" cy="47.0" r="4"><title>model: 3.775, 0.220426</title></circle><circle style="fill:var(--s1)" cx="596.4" cy="47.6" r="4"><title>model: 3.85, 0.219899</title></circle><circle style="fill:var(--s1)" cx="610.2" cy="48.2" r="4"><title>model: 3.925, 0.219424</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="48.7" r="4"><title>model: 4, 0.219002</title></circle></svg><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>exact</li></ul><p>model: the sum of the x reactions on the inner face of the quarter, divided by λ_a A t, at each increment of the run</p><p>exact is the pressure of the incompressible tube of Haughton and Ogden (1979) from reference.py.</p><p>The largest difference of the model is -0.018 %, at λ_a = 4.000.</p></figure>
 
+<p>The model view shows the true shape of the quarter tube, with the magnitude of the displacement U. Move the inflation slider above the view through the 40 increments. The inner radius grows from 10 mm to 40 mm. The slider gives λ_a and the pressure p of the model at each increment. Of the 40 increments, p is largest at λ_a = 2.575, the increment nearest the maximum. After it, p decreases. At λ_a = 4.0, the mark gives the displacement u(B) of the outer face.</p>
 <p>The checks find a wrong rubber model. A Neo-Hooke rubber with the same shear modulus at small strain gives a force 14.2 % too large at λ_a = 2.5. At λ_a = 4.0, the force is 28.8 % too large (see "Wrong models").</p>
-<p>The view shows the true shape of the quarter tube at each increment. The inner radius grows from 10 mm to 40 mm. Select an increment:</p>
-<p>
-<button data-run="run-000015" data-fields="MISES,U magnitude" data-controls="steps,deformation" data-scale="1" data-box="0,0,-0.5,44,44,0.5" data-step="40">λ_a = 4.0, the end of step 2</button>
-<button data-run="run-000015" data-fields="MISES,U magnitude" data-controls="steps,deformation" data-scale="1" data-box="0,0,-0.5,44,44,0.5" data-step="20">λ_a = 2.5, the end of step 1</button>
-</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.002 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>f_25</code></td><td style="text-align:right">5.7422</td><td style="text-align:right">5.74269</td><td style="text-align:right">0.01149</td><td style="text-align:right">0.011</td></tr><tr><td><code>f_40</code></td><td style="text-align:right">8.76008</td><td style="text-align:right">8.76165</td><td style="text-align:right">0.01752</td><td style="text-align:right">0.01595</td></tr><tr><td><code>u_outer</code></td><td style="text-align:right">23.5898</td><td style="text-align:right">23.589</td><td style="text-align:right">0.04718</td><td style="text-align:right">0.04639</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the inflation of a thick rubber tube past its pressure maximum (units SI-mm).
 The rubber is the Ogden model with 3 terms that Ogden fitted to the tests of Treloar. The deformation is large and not uniform: the inner radius grows to 4 times its first value.</p>
 <h2>Source</h2>
@@ -154,11 +153,11 @@ Thus the result of an Ogden sphere in ccx changes with the mesh and the incremen
 <p><code>mesh.inp</code> comes from <code>python3 mesh.py</code>. The mesh study uses the options of <code>mesh.py</code>, for example <code>python3 mesh.py --radial 16 --hoop 32</code>.
 <code>python3 reference.py</code> prints the reference values, the maximum of p and μ0.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000015" data-run="run-000015">run-000015 · hyperelastic-tube/job.inp</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000015" data-run="run-000015">run-000015 · hyperelastic-tube/job.inp</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="12626e0551d3f662ae30a993244d4636"></script>
-<script type="module" nonce="12626e0551d3f662ae30a993244d4636">
+<script src="viewer.js" nonce="04891b2e94536d2cad99dce7da012397"></script>
+<script type="module" nonce="04891b2e94536d2cad99dce7da012397">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -167,10 +166,15 @@ Thus the result of an Ogden sphere in ccx changes with the mesh and the incremen
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -201,26 +205,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

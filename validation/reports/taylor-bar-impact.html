@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-d884024718bc3f8c6b799632dd04ce26' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-f1f53d6a17f427a19ad6df93db3eb1cc' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -80,17 +82,17 @@ header { flex: none; padding: 0.75rem 1rem; }
 <article><h1>taylor-bar-impact derivation</h1>
 <h2>Conclusion</h2>
 <p>The explicit model of CalculiX gives the final shape of the Taylor bar within the tolerance of 0.80 mm. At 80 µs, the final length of the model is 21.29 mm and the mushroom radius is 6.72 mm. DYNA3D gives 21.66 mm and 7.02 mm. The model values are 0.37 mm and 0.30 mm smaller, 46 % and 37 % of the tolerance.</p>
+<label data-bar>Time <input type="range" min="1" max="8" value="8" data-run="run-000029" data-fields="PEEQ" data-controls="" data-scale="1" data-labels="t = 10 µs|t = 20 µs|t = 30 µs|t = 40 µs|t = 50 µs|t = 60 µs|t = 70 µs|t = 80 µs, the time of the checks" data-marks="1:0,0,30.141 length 30.14 mm;1:4.962,0,0 radius 4.96 mm;2:0,0,28.057 length 28.06 mm;2:5.855,0,0 radius 5.86 mm;3:0,0,26.180 length 26.18 mm;3:6.404,0,0 radius 6.40 mm;4:0,0,24.543 length 24.54 mm;4:6.680,0,0 radius 6.68 mm;5:0,0,23.165 length 23.17 mm;5:6.723,0,0 radius 6.72 mm;6:0,0,22.101 length 22.10 mm;6:6.725,0,0 radius 6.73 mm;7:0,0,21.427 length 21.43 mm;7:6.723,0,0 radius 6.72 mm;8:0,0,21.294 length 21.29 mm, DYNA3D 21.66 mm;8:6.723,0,0 radius 6.72 mm, DYNA3D 7.02 mm"></label>
 <figure class="curve"><figcaption>The length of the bar and the mushroom radius against the time</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The length of the bar and the mushroom radius against the time"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="210.0" y="324.0" text-anchor="middle">20</text><text x="348.0" y="324.0" text-anchor="middle">40</text><text x="486.0" y="324.0" text-anchor="middle">60</text><text x="624.0" y="324.0" text-anchor="middle">80</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="238.0" text-anchor="end">10</text><text x="66.0" y="164.0" text-anchor="end">20</text><text x="66.0" y="90.0" text-anchor="end">30</text><text x="66.0" y="16.0" text-anchor="end">40</text><text class="label" x="348.0" y="354" text-anchor="middle">t [µs]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">length or radius [mm]</text><polyline style="stroke:var(--s1)" points="72.0,68.2 141.0,85.0 210.0,100.4 279.0,114.2 348.0,126.4 417.0,136.6 486.0,144.5 555.0,149.4 624.0,150.4"/><polyline style="stroke:var(--s2)" points="72.0,284.3 141.0,271.3 210.0,264.7 279.0,260.6 348.0,258.6 417.0,258.2 486.0,258.2 555.0,258.2 624.0,258.3"/><circle style="fill:var(--s3)" cx="624.0" cy="147.7" r="4"><title>DYNA3D: 80, 21.66</title></circle><circle style="fill:var(--s3)" cx="624.0" cy="256.1" r="4"><title>DYNA3D: 80, 7.02</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>length</li><li><i class="line" style="background:var(--s2)"></i>radius</li><li><i class="point" style="background:var(--s3)"></i>DYNA3D</li></ul><p>DYNA3D: DYNA3D (Hallquist and Benson 1987), from the Ansys Technology Showcase, chapter 17</p><p>The length is 32.4 mm plus the mean u3 of the top face. The radius is 3.2 mm plus u1 of the rim node on the wall. ccx writes them each 10 µs.</p></figure>
 
 <p>The radius increases fast in the first 30 µs and stops at about 50 µs. The length decreases to the end, but from 70 to 80 µs the top moves only 0.13 mm. Thus the bar is almost at rest at 80 µs, the time of the checks.</p>
 <p>A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below), 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.</p>
-<p>The model view shows the true shape of the quarter bar at 80 µs. <code>PEEQ</code> is the equivalent plastic strain. Play the steps to see the impact, 1 step each 10 µs.</p>
-<p><button data-run="run-000029" data-fields="PEEQ,MISES,U magnitude" data-controls="steps" data-scale="1">The impact</button></p>
+<p>The 3D view shows the true shape of the quarter bar. Move the time slider above the view: the dots mark the length and the mushroom radius at each time, 1 step each 10 µs. The colour is <code>PEEQ</code>, the equivalent plastic strain.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.0 and abs_tol = 0.8 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>length</code></td><td style="text-align:right">-11.106</td><td style="text-align:right">-10.74</td><td style="text-align:right">0.8</td><td style="text-align:right">0.434</td></tr><tr><td><code>radius</code></td><td style="text-align:right">3.52254</td><td style="text-align:right">3.82</td><td style="text-align:right">0.8</td><td style="text-align:right">0.5025</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the final length and the mushroom radius of a copper bar after an impact on a rigid wall (units SI-mm). It is the explicit dynamics case: CalculiX <code>*DYNAMIC, EXPLICIT</code> with large strains and plasticity.</p>
 <h2>Why CalculiX</h2>
 <p>OpenRadioss, now OpenCourant (AGPL-3.0), has builds for Linux x86-64, Linux ARM64 and Windows only (its <code>HOWTO.md</code> and the release files of 2026-10-11). It has no build for macOS, and nixpkgs has no package. <code>ccx</code> 2.23 runs on macOS and in CI, and <code>fh</code> already starts it. Thus this case needs no new program.</p>
@@ -123,11 +125,11 @@ The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the rad
 <h2>Not in the check</h2>
 <ul><li>The largest equivalent plastic strain (3.24 for DYNA3D): it is a value at 1 point at the centre of the impact face, and it changes much with the mesh.</li><li>Friction on the wall and the bounce off the wall: the benchmark has no friction, and at 80 µs the bar is almost at rest.</li></ul></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000029" data-run="run-000029">run-000029 · taylor-bar-impact/job.inp</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000029" data-run="run-000029">run-000029 · taylor-bar-impact/job.inp</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="d884024718bc3f8c6b799632dd04ce26"></script>
-<script type="module" nonce="d884024718bc3f8c6b799632dd04ce26">
+<script src="viewer.js" nonce="f1f53d6a17f427a19ad6df93db3eb1cc"></script>
+<script type="module" nonce="f1f53d6a17f427a19ad6df93db3eb1cc">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -136,10 +138,15 @@ The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the rad
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -170,26 +177,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

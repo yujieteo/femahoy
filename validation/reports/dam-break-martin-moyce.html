@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-eed9014a6971e0b2d42a63a2d56fbbb1' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-87f69bb2742365dedac9892c9476caab' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -83,13 +85,13 @@ header { flex: none; padding: 0.75rem 1rem; }
 <figure class="curve"><figcaption>Dam break, the surge front (LAMMPS SPH, 40 particles across a)</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Dam break, the surge front (LAMMPS SPH, 40 particles across a)"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="209.3" x2="624.0" y2="209.3"/><line x1="72" y1="110.7" x2="624.0" y2="110.7"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="210.0" y="324.0" text-anchor="middle">1</text><text x="348.0" y="324.0" text-anchor="middle">2</text><text x="486.0" y="324.0" text-anchor="middle">3</text><text x="624.0" y="324.0" text-anchor="middle">4</text><text x="66.0" y="312.0" text-anchor="end">1</text><text x="66.0" y="213.3" text-anchor="end">2</text><text x="66.0" y="114.7" text-anchor="end">3</text><text x="66.0" y="16.0" text-anchor="end">4</text><text class="label" x="348.0" y="354" text-anchor="middle">T = t sqrt(2 g / a) [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">Z = x / a, the front [1]</text><polyline style="stroke:var(--s1)" points="94.4,308.0 108.1,307.1 121.8,305.8 135.5,303.0 149.2,299.8 162.9,295.8 176.6,291.5 190.3,286.5 204.0,280.7 217.7,274.5 231.4,267.3 236.2,264.6 245.1,259.5 258.8,251.0 272.5,241.5 286.2,231.9 299.9,221.6 313.6,210.9 327.3,200.3 329.7,198.5 341.0,189.5 354.7,178.1 368.4,166.5 382.1,154.7 395.8,142.4 409.5,129.8 423.2,117.2 430.3,110.7 436.9,104.4 450.6,91.3 464.3,78.0 478.0,64.6 491.7,51.1 505.4,37.3 519.1,23.4 519.6,22.8"/><circle style="fill:var(--s2)" cx="236.2" cy="264.6" r="4"><title>measured: 1.19, 1.44</title></circle><circle style="fill:var(--s2)" cx="324.5" cy="198.5" r="4"><title>measured: 1.83, 2.11</title></circle><circle style="fill:var(--s2)" cx="418.4" cy="110.7" r="4"><title>measured: 2.51, 3</title></circle><circle style="fill:var(--s2)" cx="501.2" cy="22.9" r="4"><title>measured: 3.11, 3.89</title></circle><circle style="fill:var(--s3)" cx="313.5" cy="198.5" r="4"><title>single runs: 1.75, 2.11</title></circle><circle style="fill:var(--s3)" cx="331.4" cy="198.5" r="4"><title>single runs: 1.88, 2.11</title></circle><circle style="fill:var(--s3)" cx="400.4" cy="110.7" r="4"><title>single runs: 2.38, 3</title></circle><circle style="fill:var(--s3)" cx="439.1" cy="110.7" r="4"><title>single runs: 2.66, 3</title></circle><circle style="fill:var(--s3)" cx="477.7" cy="22.9" r="4"><title>single runs: 2.94, 3.89</title></circle><circle style="fill:var(--s3)" cx="520.5" cy="22.9" r="4"><title>single runs: 3.25, 3.89</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>SPH</li><li><i class="point" style="background:var(--s2)"></i>measured</li><li><i class="point" style="background:var(--s3)"></i>single runs</li></ul><p>measured: Martin and Moyce (1952), Table 2, the mean of the runs with a = 2.25 in</p><p>single runs: Martin and Moyce (1952), Table 2, the smallest and the largest T of the runs with a = 2.25 in</p><p>The front is the largest x of the water plus dx / 2. T is 1.19 at Z = 1.44, as in the source.</p></figure>
 
 <p>The difference increases along the floor. The checks use 29 %, 49 % and 61 % of the tolerance. The section "Studies" below gives a part of the cause: the resolution. With 80 particles across a, the front is earlier, and the values extrapolated to a fine resolution are 1.9 % above the mean.</p>
-<p>The view shows the water particles at 8 times, from the release (t = 0) to t = 0.150 s, when the front is at Z = 3.47. The run stops at Z = 3.89, at t = 0.166 s, before the next output. <code>speed</code> is the speed of the particles in m/s, and <code>p</code> the pressure of the Tait equation in Pa. Play the steps to see the column fall and the front move along the floor:</p>
-<p><button data-run="run-000008" data-fields="speed,p" data-controls="steps">The water from t = 0 to 0.150 s</button></p>
+<label data-bar>Time <input type="range" min="1" max="8" value="8" data-run="run-000008" data-fields="speed" data-controls="" data-box="0,0,0.000714,0.2223,0.1143,0.000714" data-labels="t = 0 s, the release|t = 0.021 s, T = 0.56|t = 0.043 s, T = 0.96|t = 0.064 s, T = 1.35|t = 0.086 s, T = 1.75|t = 0.107 s, T = 2.15|t = 0.129 s, T = 2.55|t = 0.150 s, T = 2.94" data-marks="1:0.05715,0,0.000714 front, Z = 1.00;2:0.06192,0.0037,0.000714 front, Z = 1.08;3:0.07295,0.0036,0.000714 front, Z = 1.28;4:0.09016,0.0031,0.000714 front, Z = 1.58;5:0.11338,0.0028,0.000714 front, Z = 1.98;6:0.13914,0.0029,0.000714 front, Z = 2.43;7:0.16764,0.0023,0.000714 front, Z = 2.93;8:0.19815,0.0024,0.000714 front, Z = 3.47"></label>
+<p>The 3D view shows the water particles from the top, with the speed of each particle in m/s. Move the time slider above the view: the column falls, and the dot marks the front at each output of the run. The front is the largest x of the water plus dx / 2. T in the labels is the T of the plot. The last output is at t = 0.150 s, Z = 3.47. The run stops at Z = 3.89, at t = 0.166 s, before the next output.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.07 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>T_211</code></td><td style="text-align:right">1.8673</td><td style="text-align:right">1.83</td><td style="text-align:right">0.1281</td><td style="text-align:right">0.0908</td></tr><tr><td><code>T_300</code></td><td style="text-align:right">2.5961</td><td style="text-align:right">2.51</td><td style="text-align:right">0.1757</td><td style="text-align:right">0.0896</td></tr><tr><td><code>T_389</code></td><td style="text-align:right">3.2437</td><td style="text-align:right">3.11</td><td style="text-align:right">0.2177</td><td style="text-align:right">0.084</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the particle path: a 2D dam break with smoothed particle hydrodynamics (SPH).
 A water column falls on a dry floor, and the surge front moves along the floor. The reference is a measurement. Thus the tolerance comes from the scatter of the measurement and from the resolution study of the model.</p>
 <h2>Why this case</h2>
@@ -131,11 +133,11 @@ The front of the model is slower than the mean at all 3 points. The extrapolated
 <ul><li>The height of the column at x = 0, the second measurement of the source. It needs a second rule for the surface of the particles.</li><li>Z larger than 4.11: only 3 of the 9 runs of a = 2.25 in have data there, and the run takes longer.</li><li>The other column of the source, a = 1.125 in: it has the same n^2 and thus the same T(Z) in theory.</li></ul>
 <p>On a Mac with 10 cores, <code>fh validate</code> of the case took 24 s on 1 core with LAMMPS of 30 Sep 2026.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000008" data-run="run-000008">run-000008 · dam-break-martin-moyce/sph</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000008" data-run="run-000008">run-000008 · dam-break-martin-moyce/sph</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="eed9014a6971e0b2d42a63a2d56fbbb1"></script>
-<script type="module" nonce="eed9014a6971e0b2d42a63a2d56fbbb1">
+<script src="viewer.js" nonce="87f69bb2742365dedac9892c9476caab"></script>
+<script type="module" nonce="87f69bb2742365dedac9892c9476caab">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -144,10 +146,15 @@ The front of the model is slower than the mean at all 3 points. The extrapolated
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -178,26 +185,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

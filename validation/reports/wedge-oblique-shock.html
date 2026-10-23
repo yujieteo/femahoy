@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-be6448cf2b1ecaa73bd244abd337aec1' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-2e4c7e05efac1d590ad3418609927be7' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -80,19 +82,22 @@ header { flex: none; padding: 0.75rem 1rem; }
 <article><h1>wedge-oblique-shock derivation</h1>
 <h2>Conclusion</h2>
 <p>The model passes: its shock angle is 0.071 % and its pressure ratio 0.013 % from the exact oblique shock. Its Mach number, temperature and density behind the shock are 0.19 % to 0.20 % from the theory. These 3 checks use 74 % to 80 % of the tolerance of 0.25 %.</p>
-<p>The pressure jump of the model is at the shock of the theory. Behind the shock, the pressure is within 0.3 % of the theory.</p>
+<label data-bar>View <select>
+<option data-run="run-000036" data-fields="p" data-controls="" data-box="-0.5,0,0.01,1,1,0.01" data-marks="0.755,0.5678,0.01 shock of the theory, x = 0.755;1,0.7520,0.01 shock of the theory, x = 1" selected>The shock</option>
+<option data-run="run-000036" data-fields="T" data-controls="" data-box="-0.05,0,0.01,0.25,0.2,0.01" data-marks="0.055,0.0197,0.01 T = 1.412, 6.8 % above the theory">The tip of the wedge</option>
+</select></label>
+<p>The pressure jump of the model is at the shock of the theory. Behind the shock, the pressure is within 0.3 % of the theory. The view "The shock" above the model shows the pressure <code>p</code>. The dots mark the shock of the theory, beta = 36.9449 degrees from the tip.</p>
 <figure class="curve"><figcaption>The pressure on the line x = 0.755, from the wedge to the far field</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The pressure on the line x = 0.755, from the wedge to the far field"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="209.3" x2="624.0" y2="209.3"/><line x1="72" y1="110.7" x2="624.0" y2="110.7"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0.2</text><text x="210.0" y="324.0" text-anchor="middle">0.4</text><text x="348.0" y="324.0" text-anchor="middle">0.6</text><text x="486.0" y="324.0" text-anchor="middle">0.8</text><text x="624.0" y="324.0" text-anchor="middle">1</text><text x="66.0" y="312.0" text-anchor="end">1</text><text x="66.0" y="213.3" text-anchor="end">1.5</text><text x="66.0" y="114.7" text-anchor="end">2</text><text x="66.0" y="16.0" text-anchor="end">2.5</text><text class="label" x="348.0" y="354" text-anchor="middle">y [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">p / p1 [1]</text><polyline style="stroke:var(--s1)" points="76.3,18.1 81.8,18.1 87.3,18.1 92.9,18.2 98.4,18.1 103.9,18.2 109.4,18.2 114.9,18.3 120.4,18.3 125.9,18.4 131.4,18.3 136.9,18.2 142.4,18.3 147.9,18.4 153.4,18.3 158.9,18.2 164.4,18.2 169.9,18.3 175.4,18.3 180.9,18.3 186.4,18.4 191.9,18.6 197.4,18.7 202.9,18.7 208.4,18.6 213.9,18.3 219.4,18.1 225.0,18.0 230.5,18.0 236.0,18.2 241.5,18.2 247.0,18.1 252.5,17.8 258.0,17.7 263.5,17.6 269.0,18.3 274.5,19.3 280.0,19.4 285.5,17.9 291.0,17.0 296.5,18.3 302.0,17.4 307.5,17.4 313.0,26.4 318.5,32.8 324.0,106.3 329.5,230.3 335.0,299.2 340.5,307.8 346.0,308.0 351.5,308.0 357.1,308.0 362.6,308.0 368.1,308.0 373.6,308.0 379.1,308.0 384.6,308.0 390.1,308.0 395.6,308.0 401.1,308.0 406.6,308.0 412.1,308.0 417.6,308.0 423.1,308.0 428.6,308.0 434.1,308.0 439.6,308.0 445.1,308.0 450.6,308.0 456.1,308.0 461.6,308.0 467.1,308.0 472.6,308.0 478.1,308.0 483.6,308.0 489.1,308.0 494.7,308.0 500.2,308.0 505.7,308.0 511.2,308.0 516.7,308.0 522.2,308.0 527.7,308.0 533.2,308.0 538.7,308.0 544.2,308.0 549.7,308.0 555.2,308.0 560.7,308.0 566.2,308.0 571.7,308.0 577.2,308.0 582.7,308.0 588.2,308.0 593.7,308.0 599.2,308.0 604.7,308.0 610.2,308.0 615.7,308.0 621.2,308.0"/><polyline style="stroke:var(--s2)" points="73.6,18.4 325.8,18.4 325.8,308.0 624.0,308.0"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>theory</li></ul><p>The theory is the exact oblique shock of Table 2 of the NPARC case: the shock at y = 0.5678 (beta = 36.9449 degrees) and p2 / p1 = 2.4675.</p></figure>
 
-<p>The tip of the wedge causes the 3 larger differences (see "Mesh study"). There the shock and the wall meet in 1 cell, and the scheme makes too much entropy. The flow carries this hot gas along the wall. Near the wall, the temperature is up to 0.44 % above the theory and the Mach number is up to 0.35 % below it, but the pressure is within 0.07 % of the theory. The averages of the 3 checks include this layer. The error decreases with the cell size: from the 2 finest meshes of the mesh study, the 5 values extrapolate to within 0.011 % of the theory.</p>
+<p>The tip of the wedge causes the 3 larger differences (see "Mesh study"). There the shock and the wall meet in 1 cell, and the scheme makes too much entropy. The view "The tip of the wedge" shows the temperature <code>T</code>. The hottest cell is at the wall near the tip, with T = 1.412, 6.8 % above the theory.</p>
+<p>The flow carries this hot gas along the wall. On the line x = 0.755 near the wall, the temperature is up to 0.44 % above the theory. There the Mach number is up to 0.35 % below the theory, but the pressure is within 0.07 % of it. The averages of the 3 checks include this layer. The error decreases with the cell size. From the 2 finest meshes of the mesh study, the 5 values extrapolate to within 0.011 % of the theory.</p>
 <figure class="curve"><figcaption>The state behind the shock on the line x = 0.755, divided by the theory</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The state behind the shock on the line x = 0.755, divided by the theory"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0.2</text><text x="210.0" y="324.0" text-anchor="middle">0.3</text><text x="348.0" y="324.0" text-anchor="middle">0.4</text><text x="486.0" y="324.0" text-anchor="middle">0.5</text><text x="624.0" y="324.0" text-anchor="middle">0.6</text><text x="66.0" y="312.0" text-anchor="end">0.996</text><text x="66.0" y="252.8" text-anchor="end">0.998</text><text x="66.0" y="193.6" text-anchor="end">1</text><text x="66.0" y="134.4" text-anchor="end">1.002</text><text x="66.0" y="75.2" text-anchor="end">1.004</text><text x="66.0" y="16.0" text-anchor="end">1.006</text><text class="label" x="348.0" y="354" text-anchor="middle">y [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">model / theory [1]</text><polyline style="stroke:var(--s1)" points="80.7,169.2 91.7,171.2 102.7,172.4 113.7,173.9 124.7,171.8 135.7,175.1 146.7,177.5 157.7,180.1 168.8,183.1 179.8,186.3 190.8,182.8 201.8,177.8 212.8,182.2 223.8,186.3 234.8,184.3 245.8,174.8 256.8,176.9 267.8,180.7 278.8,182.5 289.8,185.2 300.8,189.6 311.9,199.4 322.9,205.0 333.9,205.3 344.9,200.0 355.9,182.8 366.9,171.0 377.9,163.3 388.9,163.3 399.9,176.0 410.9,178.9 421.9,169.8 432.9,152.6 444.0,143.7 455.0,141.6 466.0,183.1 477.0,245.0 488.0,247.0 499.0,160.3 510.0,106.1 521.0,184.0 532.0,129.8 543.0,129.8"/><polyline style="stroke:var(--s2)" points="80.7,149.9 91.7,146.1 102.7,132.2 113.7,108.5 124.7,82.7 135.7,66.8 146.7,60.5 157.7,60.5 168.8,65.0 179.8,77.1 190.8,97.0 201.8,121.2 212.8,147.6 223.8,169.8 234.8,183.4 245.8,188.7 256.8,193.4 267.8,196.4 278.8,198.2 289.8,199.1 300.8,200.0 311.9,202.0 322.9,202.3 333.9,201.1 344.9,198.5 355.9,192.6 366.9,187.2 377.9,183.7 388.9,182.5 399.9,185.5 410.9,185.8 421.9,182.8 432.9,177.2 444.0,174.2 455.0,173.3 466.0,185.2 477.0,203.8 488.0,205.9 499.0,182.8 510.0,168.0 521.0,187.5 532.0,166.8 543.0,169.5"/><polyline style="stroke:var(--s3)" points="80.7,255.3 91.7,253.2 102.7,248.2 113.7,243.8 124.7,245.5 135.7,254.1 146.7,267.4 157.7,279.3 168.8,284.9 179.8,287.6 190.8,292.0 201.8,289.4 212.8,272.5 223.8,247.9 234.8,223.3 245.8,204.7 256.8,194.3 267.8,190.2 278.8,186.6 289.8,185.2 300.8,183.7 311.9,180.4 322.9,178.9 333.9,178.6 344.9,180.7 355.9,187.5 366.9,194.6 377.9,197.3 388.9,195.5 399.9,190.8 410.9,184.9 421.9,181.0 432.9,180.1 444.0,185.8 455.0,193.2 466.0,191.1 477.0,184.0 488.0,180.4 499.0,194.3 510.0,208.8 521.0,201.1 532.0,201.1 543.0,64.4"/><polyline style="stroke:var(--s4)" points="75.2,189.6 543.0,189.6"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>p / p2</li><li><i class="line" style="background:var(--s2)"></i>T / T2</li><li><i class="line" style="background:var(--s3)"></i>Ma / M2</li><li><i class="line" style="background:var(--s4)"></i>theory</li></ul><p>The checks mach2, temperature_ratio and density2 average the cells with 0.25 &lt; x and y &lt; x / 2: here y &lt; 0.3775.</p><p>The wedge is at y = 0.2023.</p></figure>
 
-<p>The Mach number shows the shock from the tip of the wedge to the outlet:
-<button data-run="run-000036" data-fields="Ma,p,T,rho" data-controls="">The flow at t = 2</button></p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.0025 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>shock_angle</code></td><td style="text-align:right">36.971</td><td style="text-align:right">36.9449</td><td style="text-align:right">0.09236</td><td style="text-align:right">0.0663</td></tr><tr><td><code>mach2</code></td><td style="text-align:right">1.86979</td><td style="text-align:right">1.87353</td><td style="text-align:right">0.004684</td><td style="text-align:right">0.0009508</td></tr><tr><td><code>pressure_ratio</code></td><td style="text-align:right">2.46781</td><td style="text-align:right">2.4675</td><td style="text-align:right">0.006169</td><td style="text-align:right">0.005855</td></tr><tr><td><code>temperature_ratio</code></td><td style="text-align:right">1.32458</td><td style="text-align:right">1.32196</td><td style="text-align:right">0.003305</td><td style="text-align:right">0.0006787</td></tr><tr><td><code>density2</code></td><td style="text-align:right">2.60833</td><td style="text-align:right">2.61317</td><td style="text-align:right">0.006533</td><td style="text-align:right">0.001693</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the compressible flow path: a steady supersonic flow over a wedge, with an attached oblique shock.
 The reference is the exact solution of the oblique shock relations. Thus the tolerance comes from the mesh study and the iteration error of the model.</p>
 <h2>Sources</h2>
@@ -137,11 +142,11 @@ The mesh error of grid B is the Richardson estimate from B and C with the order 
 The model is 0.013 % to 0.199 % from the theory. The largest part of the tolerance that a check uses is 80 % (<code>mach2</code> and <code>temperature_ratio</code>).
 The tolerance does not let grid A pass: there <code>temperature_ratio</code> is 0.273 % and <code>density2</code> 0.295 % from the theory.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000036" data-run="run-000036">run-000036 · wedge-oblique-shock/mach2.5</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000036" data-run="run-000036">run-000036 · wedge-oblique-shock/mach2.5</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="be6448cf2b1ecaa73bd244abd337aec1"></script>
-<script type="module" nonce="be6448cf2b1ecaa73bd244abd337aec1">
+<script src="viewer.js" nonce="2e4c7e05efac1d590ad3418609927be7"></script>
+<script type="module" nonce="2e4c7e05efac1d590ad3418609927be7">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -150,10 +155,15 @@ The tolerance does not let grid A pass: there <code>temperature_ratio</code> is 
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -184,26 +194,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

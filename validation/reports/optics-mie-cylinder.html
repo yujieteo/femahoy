@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-ee7ee83aa8df040b5f10de115b0f44bf' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-66f2fccf9ebc5f0ff68775cbe145d553' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -79,19 +81,19 @@ header { flex: none; padding: 0.75rem 1rem; }
 <body>
 <article><h1>optics-mie-cylinder derivation</h1>
 <h2>Conclusion</h2>
-<p>The scattering efficiency Q of the Meep model agrees with the exact series solution at all 41 size parameters x from 1 to 3, within 0.59 %. The 4 checks are within 0.33 %, and the tolerance is 1 %. The peaks of Q of the model are at the same size parameters as the peaks of the exact Q.</p>
-<figure class="curve"><figcaption>Scattering efficiency of the cylinder against the size parameter</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Scattering efficiency of the cylinder against the size parameter"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="210.0" y="324.0" text-anchor="middle">1.5</text><text x="348.0" y="324.0" text-anchor="middle">2</text><text x="486.0" y="324.0" text-anchor="middle">2.5</text><text x="624.0" y="324.0" text-anchor="middle">3</text><text x="66.0" y="312.0" text-anchor="end">1</text><text x="66.0" y="252.8" text-anchor="end">2</text><text x="66.0" y="193.6" text-anchor="end">3</text><text x="66.0" y="134.4" text-anchor="end">4</text><text x="66.0" y="75.2" text-anchor="end">5</text><text x="66.0" y="16.0" text-anchor="end">6</text><text class="label" x="348.0" y="354" text-anchor="middle">x = 2 pi a / wavelength [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">Q = C / (2 a) [1]</text><polyline style="stroke:var(--s1)" points="72.0,197.7 85.8,171.8 99.6,142.6 113.4,117.5 127.2,102.8 141.0,99.1 154.8,103.2 168.6,111.1 182.4,119.7 196.2,127.2 210.0,132.1 223.8,132.7 237.6,127.1 251.4,112.6 265.2,89.2 279.0,64.3 292.8,51.6 306.6,56.2 320.4,72.2 334.2,92.5 348.0,113.2 361.8,132.3 375.6,148.2 389.4,160.0 403.2,166.6 417.0,165.9 430.8,154.2 444.6,131.6 458.4,116.7 472.2,128.5 486.0,154.0 499.8,179.6 513.6,203.0 527.4,224.4 541.2,243.5 555.0,258.6 568.8,268.1 582.6,271.0 596.4,265.0 610.2,243.4 624.0,214.3"/><polyline style="stroke:var(--s2)" points="72.0,197.7 85.8,171.9 99.6,142.7 113.4,117.6 127.2,102.8 141.0,99.1 154.8,103.2 168.6,111.1 182.4,119.8 196.2,127.2 210.0,132.1 223.8,132.8 237.6,127.2 251.4,112.8 265.2,89.4 279.0,64.5 292.8,51.7 306.6,56.2 320.4,72.1 334.2,92.3 348.0,113.0 361.8,132.1 375.6,148.0 389.4,159.9 403.2,166.5 417.0,165.9 430.8,154.4 444.6,131.8 458.4,116.6 472.2,128.0 486.0,153.3 499.8,178.8 513.6,202.2 527.4,223.7 541.2,242.8 555.0,257.9 568.8,267.6 582.6,270.7 596.4,265.0 610.2,243.9 624.0,214.3"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>Meep</li><li><i class="line" style="background:var(--s2)"></i>exact series</li></ul><p>Meep: 1 pulse, 40 grid points per a. Exact: the series solution of Bohren and Huffman (1983), chapter 8 (reference.py).</p></figure>
+<p>The scattering efficiency Q of the Meep model agrees with the exact series solution at all 41 size parameters x from 1 to 3, within 0.59 %. The 4 checks are within 0.33 %, and the tolerance is 1 %. The peaks of Q of the model are at the same size parameters as the peaks of the exact Q: x = 1.25, 1.80 and 2.40.</p>
+<figure class="curve"><figcaption>Scattering efficiency of the cylinder against the size parameter</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Scattering efficiency of the cylinder against the size parameter"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="210.0" y="324.0" text-anchor="middle">1.5</text><text x="348.0" y="324.0" text-anchor="middle">2</text><text x="486.0" y="324.0" text-anchor="middle">2.5</text><text x="624.0" y="324.0" text-anchor="middle">3</text><text x="66.0" y="312.0" text-anchor="end">1</text><text x="66.0" y="252.8" text-anchor="end">2</text><text x="66.0" y="193.6" text-anchor="end">3</text><text x="66.0" y="134.4" text-anchor="end">4</text><text x="66.0" y="75.2" text-anchor="end">5</text><text x="66.0" y="16.0" text-anchor="end">6</text><text class="label" x="348.0" y="354" text-anchor="middle">x = 2 pi a / wavelength [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">Q = C / (2 a) [1]</text><polyline style="stroke:var(--s1)" points="72.0,197.7 85.8,171.8 99.6,142.6 113.4,117.5 127.2,102.8 141.0,99.1 154.8,103.2 168.6,111.1 182.4,119.7 196.2,127.2 210.0,132.1 223.8,132.7 237.6,127.1 251.4,112.6 265.2,89.2 279.0,64.3 292.8,51.6 306.6,56.2 320.4,72.2 334.2,92.5 348.0,113.2 361.8,132.3 375.6,148.2 389.4,160.0 403.2,166.6 417.0,165.9 430.8,154.2 444.6,131.6 458.4,116.7 472.2,128.5 486.0,154.0 499.8,179.6 513.6,203.0 527.4,224.4 541.2,243.5 555.0,258.6 568.8,268.1 582.6,271.0 596.4,265.0 610.2,243.4 624.0,214.3"/><circle style="fill:var(--s2)" cx="72.0" cy="197.7" r="4"><title>exact series: 1, 2.86293</title></circle><circle style="fill:var(--s2)" cx="85.8" cy="171.9" r="4"><title>exact series: 1.05, 3.29931</title></circle><circle style="fill:var(--s2)" cx="99.6" cy="142.7" r="4"><title>exact series: 1.1, 3.79247</title></circle><circle style="fill:var(--s2)" cx="113.4" cy="117.6" r="4"><title>exact series: 1.15, 4.21607</title></circle><circle style="fill:var(--s2)" cx="127.2" cy="102.8" r="4"><title>exact series: 1.2, 4.46597</title></circle><circle style="fill:var(--s2)" cx="141.0" cy="99.1" r="4"><title>exact series: 1.25, 4.52847</title></circle><circle style="fill:var(--s2)" cx="154.8" cy="103.2" r="4"><title>exact series: 1.3, 4.45924</title></circle><circle style="fill:var(--s2)" cx="168.6" cy="111.1" r="4"><title>exact series: 1.35, 4.32612</title></circle><circle style="fill:var(--s2)" cx="182.4" cy="119.8" r="4"><title>exact series: 1.4, 4.17981</title></circle><circle style="fill:var(--s2)" cx="196.2" cy="127.2" r="4"><title>exact series: 1.45, 4.05323</title></circle><circle style="fill:var(--s2)" cx="210.0" cy="132.1" r="4"><title>exact series: 1.5, 3.97096</title></circle><circle style="fill:var(--s2)" cx="223.8" cy="132.8" r="4"><title>exact series: 1.55, 3.9594</title></circle><circle style="fill:var(--s2)" cx="237.6" cy="127.2" r="4"><title>exact series: 1.6, 4.05448</title></circle><circle style="fill:var(--s2)" cx="251.4" cy="112.8" r="4"><title>exact series: 1.65, 4.29763</title></circle><circle style="fill:var(--s2)" cx="265.2" cy="89.4" r="4"><title>exact series: 1.7, 4.69206</title></circle><circle style="fill:var(--s2)" cx="279.0" cy="64.5" r="4"><title>exact series: 1.75, 5.11241</title></circle><circle style="fill:var(--s2)" cx="292.8" cy="51.7" r="4"><title>exact series: 1.8, 5.33007</title></circle><circle style="fill:var(--s2)" cx="306.6" cy="56.2" r="4"><title>exact series: 1.85, 5.25403</title></circle><circle style="fill:var(--s2)" cx="320.4" cy="72.1" r="4"><title>exact series: 1.9, 4.98548</title></circle><circle style="fill:var(--s2)" cx="334.2" cy="92.3" r="4"><title>exact series: 1.95, 4.64321</title></circle><circle style="fill:var(--s2)" cx="348.0" cy="113.0" r="4"><title>exact series: 2, 4.29323</title></circle><circle style="fill:var(--s2)" cx="361.8" cy="132.1" r="4"><title>exact series: 2.05, 3.97148</title></circle><circle style="fill:var(--s2)" cx="375.6" cy="148.0" r="4"><title>exact series: 2.1, 3.70207</title></circle><circle style="fill:var(--s2)" cx="389.4" cy="159.9" r="4"><title>exact series: 2.15, 3.50225</title></circle><circle style="fill:var(--s2)" cx="403.2" cy="166.5" r="4"><title>exact series: 2.2, 3.39017</title></circle><circle style="fill:var(--s2)" cx="417.0" cy="165.9" r="4"><title>exact series: 2.25, 3.40061</title></circle><circle style="fill:var(--s2)" cx="430.8" cy="154.4" r="4"><title>exact series: 2.3, 3.59478</title></circle><circle style="fill:var(--s2)" cx="444.6" cy="131.8" r="4"><title>exact series: 2.35, 3.97587</title></circle><circle style="fill:var(--s2)" cx="458.4" cy="116.6" r="4"><title>exact series: 2.4, 4.2329</title></circle><circle style="fill:var(--s2)" cx="472.2" cy="128.0" r="4"><title>exact series: 2.45, 4.04042</title></circle><circle style="fill:var(--s2)" cx="486.0" cy="153.3" r="4"><title>exact series: 2.5, 3.61375</title></circle><circle style="fill:var(--s2)" cx="499.8" cy="178.8" r="4"><title>exact series: 2.55, 3.18177</title></circle><circle style="fill:var(--s2)" cx="513.6" cy="202.2" r="4"><title>exact series: 2.6, 2.78747</title></circle><circle style="fill:var(--s2)" cx="527.4" cy="223.7" r="4"><title>exact series: 2.65, 2.42478</title></circle><circle style="fill:var(--s2)" cx="541.2" cy="242.8" r="4"><title>exact series: 2.7, 2.10204</title></circle><circle style="fill:var(--s2)" cx="555.0" cy="257.9" r="4"><title>exact series: 2.75, 1.84571</title></circle><circle style="fill:var(--s2)" cx="568.8" cy="267.6" r="4"><title>exact series: 2.8, 1.6821</title></circle><circle style="fill:var(--s2)" cx="582.6" cy="270.7" r="4"><title>exact series: 2.85, 1.62949</title></circle><circle style="fill:var(--s2)" cx="596.4" cy="265.0" r="4"><title>exact series: 2.9, 1.72677</title></circle><circle style="fill:var(--s2)" cx="610.2" cy="243.9" r="4"><title>exact series: 2.95, 2.08251</title></circle><circle style="fill:var(--s2)" cx="624.0" cy="214.3" r="4"><title>exact series: 3, 2.58297</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>Meep</li><li><i class="point" style="background:var(--s2)"></i>exact series</li></ul><p>exact series: Bohren and Huffman (1983), chapter 8, the series solution (reference.py)</p><p>Meep: 1 pulse, 40 grid points per a. The dots are the exact Q at the same size parameters, so the Meep line shows between them.</p></figure>
 
 <p>The largest difference is -0.59 % at x = 2.70. There Q falls fast after the resonance at x = 2.405. The waves on the grid are a little slower than c, thus the resonances of the model are at a little smaller x (see "Spectrum" below). The differences at the 4 checks are +0.03 % at x = 1, -0.08 % at x = 2, -0.33 % at x = 2.5 and +0.01 % at x = 3.</p>
 <figure class="curve"><figcaption>Difference of the Meep Q from the exact Q</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Difference of the Meep Q from the exact Q"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="210.0" y="324.0" text-anchor="middle">1.5</text><text x="348.0" y="324.0" text-anchor="middle">2</text><text x="486.0" y="324.0" text-anchor="middle">2.5</text><text x="624.0" y="324.0" text-anchor="middle">3</text><text x="66.0" y="312.0" text-anchor="end">-1</text><text x="66.0" y="238.0" text-anchor="end">-0.5</text><text x="66.0" y="164.0" text-anchor="end">0</text><text x="66.0" y="90.0" text-anchor="end">0.5</text><text x="66.0" y="16.0" text-anchor="end">1</text><text class="label" x="348.0" y="354" text-anchor="middle">x = 2 pi a / wavelength [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">(Q Meep - Q exact) / Q exact [%]</text><polyline style="stroke:var(--s1)" points="72.0,155.3 85.8,154.0 99.6,154.2 113.4,155.3 127.2,156.7 141.0,157.8 154.8,158.5 168.6,158.8 182.4,158.6 196.2,158.1 210.0,157.2 223.8,155.7 237.6,153.3 251.4,150.2 265.2,148.2 279.0,150.2 292.8,156.1 306.6,162.4 320.4,167.0 334.2,170.0 348.0,172.0 361.8,172.8 375.6,172.2 389.4,170.1 403.2,165.9 417.0,158.2 430.8,146.9 444.6,142.9 458.4,164.2 472.2,192.4 486.0,208.4 499.8,218.8 513.6,229.5 527.4,240.6 541.2,247.3 555.0,244.0 568.8,228.6 582.6,202.1 596.4,159.3 610.2,103.9 624.0,158.2"/><polyline style="stroke:var(--s2)" points="72.0,12.0 85.8,12.0 99.6,12.0 113.4,12.0 127.2,12.0 141.0,12.0 154.8,12.0 168.6,12.0 182.4,12.0 196.2,12.0 210.0,12.0 223.8,12.0 237.6,12.0 251.4,12.0 265.2,12.0 279.0,12.0 292.8,12.0 306.6,12.0 320.4,12.0 334.2,12.0 348.0,12.0 361.8,12.0 375.6,12.0 389.4,12.0 403.2,12.0 417.0,12.0 430.8,12.0 444.6,12.0 458.4,12.0 472.2,12.0 486.0,12.0 499.8,12.0 513.6,12.0 527.4,12.0 541.2,12.0 555.0,12.0 568.8,12.0 582.6,12.0 596.4,12.0 610.2,12.0 624.0,12.0"/><polyline style="stroke:var(--s3)" points="72.0,308.0 85.8,308.0 99.6,308.0 113.4,308.0 127.2,308.0 141.0,308.0 154.8,308.0 168.6,308.0 182.4,308.0 196.2,308.0 210.0,308.0 223.8,308.0 237.6,308.0 251.4,308.0 265.2,308.0 279.0,308.0 292.8,308.0 306.6,308.0 320.4,308.0 334.2,308.0 348.0,308.0 361.8,308.0 375.6,308.0 389.4,308.0 403.2,308.0 417.0,308.0 430.8,308.0 444.6,308.0 458.4,308.0 472.2,308.0 486.0,308.0 499.8,308.0 513.6,308.0 527.4,308.0 541.2,308.0 555.0,308.0 568.8,308.0 582.6,308.0 596.4,308.0 610.2,308.0 624.0,308.0"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>Meep</li><li><i class="line" style="background:var(--s2)"></i>+rel_tol</li><li><i class="line" style="background:var(--s3)"></i>-rel_tol</li></ul><p>rel_tol of check.toml is 1 %. It applies to the 4 checks at x = 1, 2, 2.5 and 3.</p></figure>
 
-<p>The view shows the real part of the total field Ez at x = 2.5, at 8 times in 1 period. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. Ez is largest at the back surface of the cylinder. Play the steps to see the wave move:</p>
-<p><button data-run="run-000023" data-fields="Ez" data-controls="steps" data-step="1">Ez at x = 2.5, 1 period</button></p>
+<label data-bar>Phase of Ez <input type="range" min="1" max="8" value="1" data-run="run-000023" data-fields="Ez" data-controls="" data-box="-2.5625,-2.5625,0.1,2.5375,2.5375,0.1" data-labels="0°, t = 0|45°, t = T/8|90°, t = T/4|135°, t = 3T/8|180°, t = T/2|225°, t = 5T/8|270°, t = 3T/4|315°, t = 7T/8" data-marks="0.99,-0.01,0.1 back surface, largest |Ez|"></label>
+<p>The 3D view shows the real part of the total field Ez at x = 2.5, from the top. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. Move the phase slider above the view: each step is 1/8 of the period T = 2 pi / x = 2.51 a / c. The crests move to the right. |Ez| is largest at the back surface of the cylinder, at the dot, at the phases 90° and 270°.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.01 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>q_x1</code></td><td style="text-align:right">2.86384</td><td style="text-align:right">2.86293</td><td style="text-align:right">0.02863</td><td style="text-align:right">0.02772</td></tr><tr><td><code>q_x2</code></td><td style="text-align:right">4.28974</td><td style="text-align:right">4.29323</td><td style="text-align:right">0.04293</td><td style="text-align:right">0.03944</td></tr><tr><td><code>q_x2_5</code></td><td style="text-align:right">3.60192</td><td style="text-align:right">3.61375</td><td style="text-align:right">0.03614</td><td style="text-align:right">0.02431</td></tr><tr><td><code>q_x3</code></td><td style="text-align:right">2.58328</td><td style="text-align:right">2.58297</td><td style="text-align:right">0.02583</td><td style="text-align:right">0.02552</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the optics path: a plane wave of light scatters on a dielectric cylinder, solved with Meep.
 The reference is the analytical series solution. Thus the tolerance comes from the grid error and the size of the model, and from the smallest model error that the check must find.</p>
 <h2>Why this case</h2>
@@ -146,11 +148,11 @@ The Richardson extrapolation of the values at 40 and 80 points per a is within 3
 <ul><li>The other polarization (H along the axis of the cylinder): the same steps with the source component <code>Hz</code> and the coefficients a_n of the series.</li><li>A sphere in 3D: the same steps, but the cell has hundreds of times more grid points. The cylinder in 2D gives the same check of the method in 15 s.</li><li>Materials with loss or dispersion (metals, for example gold): Meep has Drude and Lorentz materials. Then the flux of the total fields into the box, a second flux object, gives the absorbed power.</li><li>Resonance frequencies and Q factors of a cavity (<code>Harminv</code>) and waveguide modes (<code>EigenModeSource</code>): other tools of Meep that a later case can check.</li></ul>
 <p>On a Mac with 10 cores, <code>fh run</code> of the case took 15 s.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000023" data-run="run-000023">run-000023 · optics-mie-cylinder/res40</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000023" data-run="run-000023">run-000023 · optics-mie-cylinder/res40</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="ee7ee83aa8df040b5f10de115b0f44bf"></script>
-<script type="module" nonce="ee7ee83aa8df040b5f10de115b0f44bf">
+<script src="viewer.js" nonce="66f2fccf9ebc5f0ff68775cbe145d553"></script>
+<script type="module" nonce="66f2fccf9ebc5f0ff68775cbe145d553">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -159,10 +161,15 @@ The Richardson extrapolation of the values at 40 and 80 points per a is within 3
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -193,26 +200,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

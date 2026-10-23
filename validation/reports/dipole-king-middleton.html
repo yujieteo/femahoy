@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-ca5cec80f286edb48644ac3fc274a68b' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-1155d41cfbd2177efa90ec814e50bd59' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -84,13 +86,14 @@ header { flex: none; padding: 0.75rem 1rem; }
 
 <p>The X curve of the model is 5.2 to 7.5 ohm above the reference from beta h = 1.2 to 1.7. Thus the first resonance (X = 0) of the model is at beta h = 1.491, 0.6 % below the resonance of the reference, 1.4996. The model is a flat strip, and the reference is a round tube. The section "Tolerance" below gives the strip as the largest cause, up to 3.8 % in X at beta h = 1.2. The mesh error is 0.3 % or less.</p>
 <p>Above the resonance, the difference of R increases: +5.8 % at beta h = 1.6 and +7.8 % at beta h = 1.7. These 2 points are not checks. There the 2 references also differ: the R of AN-SOF, a method-of-moments solution of the same dipole, is 2.8 % and 4.1 % above King-Middleton.</p>
-<p>The far field agrees with the far field of a half-wave dipole. At beta h = pi / 2, the directivity is 1.652 against 1.641 for a sinusoidal current (+0.7 %), and the radiated power is 0.9994 of the power into the port. The view shows the pattern: a surface at the distance D(theta, phi) from the centre. The dipole is on the z axis. D is near 0 on the axis and largest in the plane z = 0.</p>
-<p><button data-run="run-000010" data-fields="D" data-controls="">The pattern D at beta h = pi / 2</button></p>
+<p>The far field agrees with the far field of a half-wave dipole. At beta h = pi / 2, the directivity is 1.652 against 1.641 for a sinusoidal current (+0.7 %), and the radiated power is 0.9994 of the power into the port.</p>
+<p>The 3D view shows the pattern: a surface at the distance D(theta, phi) from the centre. The dipole is on the z axis. D is near 0 on the axis. In the plane z = 0, D is 1.651 to 1.652 in all directions, and the dot marks the largest value.</p>
+<p><button data-run="run-000010" data-fields="D" data-controls="" data-marks="0,1.6518,0 largest D = 1.652">The pattern D at beta h = pi / 2</button></p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.06 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>X12</code></td><td style="text-align:right">-178.23</td><td style="text-align:right">-185.7</td><td style="text-align:right">11.14</td><td style="text-align:right">3.672</td></tr><tr><td><code>R15</code></td><td style="text-align:right">73.7984</td><td style="text-align:right">71.02</td><td style="text-align:right">4.261</td><td style="text-align:right">1.483</td></tr><tr><td><code>D</code></td><td style="text-align:right">1.65176</td><td style="text-align:right">1.641</td><td style="text-align:right">0.09846</td><td style="text-align:right">0.0877</td></tr><tr><td><code>eff</code></td><td style="text-align:right">0.999367</td><td style="text-align:right">1</td><td style="text-align:right">0.06</td><td style="text-align:right">0.05937</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the antenna path: the input impedance and the far field of a centre-fed dipole, solved with openEMS (FDTD).
 The impedance reference is the published second-order theory of King and Middleton. The directivity reference is analytical.
 The tolerance comes from the mesh error and from the difference between the strip of the model and the round dipole of the reference.</p>
@@ -136,11 +139,11 @@ The resonance of the reference is the zero of X between the rows 1.4 and 1.5 of 
 <h2>Not in the check</h2>
 <ul><li>S11: it is a function of Z and of the port resistance, (Z - 50) / (Z + 50). <code>impedance.txt</code> gives it for the page.</li><li>The second resonance and the antiresonance near beta h = 2.7 are in <code>impedance.txt</code>. The reference table stops at beta h = 1.7.</li><li>A ground plane, a dielectric or a patch antenna: openEMS solves them with the same port and far-field tools. A published measurement with a clear geometry is the next case for these.</li></ul></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000010" data-run="run-000010">run-000010 · dipole-king-middleton/omega12.5</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000010" data-run="run-000010">run-000010 · dipole-king-middleton/omega12.5</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="ca5cec80f286edb48644ac3fc274a68b"></script>
-<script type="module" nonce="ca5cec80f286edb48644ac3fc274a68b">
+<script src="viewer.js" nonce="1155d41cfbd2177efa90ec814e50bd59"></script>
+<script type="module" nonce="1155d41cfbd2177efa90ec814e50bd59">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -149,10 +152,15 @@ The resonance of the reference is the zero of X between the rows 1.4 and 1.5 of 
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -183,26 +191,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

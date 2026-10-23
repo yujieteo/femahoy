@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-4e3b611a9ff8b9eadbb698a90b69d3b4' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-157c542b2cb339712d7d23c197fa595f' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -79,19 +81,20 @@ header { flex: none; padding: 0.75rem 1rem; }
 <body>
 <article><h1>cht-heated-channel derivation</h1>
 <h2>Conclusion</h2>
-<p>The model agrees with the exact conjugate solution: the 3 checked temperatures are 0.0002 K to 0.0043 K below the exact values, and the tolerance is 0.006 K. <code>heater_T</code> uses 72 % of the tolerance. The mesh error of the check mesh is -0.0040 K (see "Mesh study"), thus the mesh causes most of the difference.</p>
+<p>The model agrees with the exact conjugate solution. The 3 checked temperatures are 0.0002 K to 0.0043 K below the exact values, and the tolerance is 0.006 K. <code>heater_T</code> uses 72 % of the tolerance. The mesh error of the check mesh is -0.0040 K (see "Mesh study"), thus the mesh causes most of the difference.</p>
 <p>The model also has the correct temperature across the full section at x = 40 mm, not only at the checked points. In the air, the temperature increases by 3.0 K from the centre line to the interface. In the wall, it increases linearly by 0.48 K to the heater. At the scale of the plot, the model line is on the exact line.</p>
 <figure class="curve"><figcaption>The temperature across the half channel and the wall at x = 40 mm</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The temperature across the half channel and the wall at x = 40 mm"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="210.0" y="324.0" text-anchor="middle">0.5</text><text x="348.0" y="324.0" text-anchor="middle">1</text><text x="486.0" y="324.0" text-anchor="middle">1.5</text><text x="624.0" y="324.0" text-anchor="middle">2</text><text x="66.0" y="312.0" text-anchor="end">309</text><text x="66.0" y="252.8" text-anchor="end">310</text><text x="66.0" y="193.6" text-anchor="end">311</text><text x="66.0" y="134.4" text-anchor="end">312</text><text x="66.0" y="75.2" text-anchor="end">313</text><text x="66.0" y="16.0" text-anchor="end">314</text><text class="label" x="348.0" y="354" text-anchor="middle">y [mm]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">T [K]</text><polyline style="stroke:var(--s1)" points="85.8,254.2 113.4,249.9 141.0,241.5 168.6,229.1 196.2,213.0 223.8,193.5 251.4,171.1 279.0,146.1 306.6,119.3 334.2,91.3 361.8,75.7 389.4,72.9 417.0,70.0 444.6,67.2 472.2,64.3 499.8,61.5 527.4,58.6 555.0,55.8 582.6,53.0 610.2,50.1"/><polyline style="stroke:var(--s2)" points="72.0,254.5 85.8,253.9 99.6,252.3 113.4,249.7 127.2,246.0 141.0,241.3 154.8,235.6 168.6,228.9 182.4,221.3 196.2,212.8 210.0,203.4 223.8,193.2 237.6,182.3 251.4,170.8 265.2,158.6 279.0,145.8 292.8,132.6 306.6,119.0 320.4,105.1 334.2,91.1 348.0,76.9 361.8,75.4 375.6,74.0 389.4,72.6 403.2,71.2 417.0,69.8 430.8,68.3 444.6,66.9 458.4,65.5 472.2,64.1 486.0,62.7 499.8,61.2 513.6,59.8 527.4,58.4 541.2,57.0 555.0,55.6 568.8,54.1 582.6,52.7 596.4,51.3 610.2,49.9 624.0,48.4"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>exact</li></ul><p>The air is at 0 &lt; y &lt; 1 mm and the wall at 1 &lt; y &lt; 2 mm. The heater is at y = 2 mm, the centre line at y = 0.</p><p>The exact line is the fully developed solution of derivation.md: the profile of Shah and London (1978) in the air, and a linear temperature in the wall.</p><p>The model is the mean of the 2 cell columns at x = 39.9 and 40.1 mm.</p></figure>
 
-<p>The air enters at 300 K with a uniform velocity. The heater on 20 &le; x &le; 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. Select a view:
-<button data-run="run-000006" data-fields="T,U magnitude" data-controls="" data-box="0.036,0,0,0.044,0.002,0">The station x = 40 mm</button>
-<button data-run="run-000006" data-fields="T,U magnitude" data-controls="">The full channel</button>
-</p>
+<label data-bar>View <select>
+<option data-run="run-000006" data-fields="T" data-controls="" data-box="0.036,0,0.0001,0.044,0.002,0.0001" data-marks="0.04,0.001,0.0001 interface_T = 312.9000 K;0.04,0.002,0.0001 heater_T = 313.3800 K" selected>The station x = 40 mm</option>
+<option data-run="run-000006" data-fields="T" data-controls="" data-box="0,0,0.0001,0.09,0.002,0.0001" data-marks="0.04,0.001,0.0001 the station x = 40 mm;0.09,0.001,0.0001 outlet_T = 329.9998 K">The full channel</option>
+</select></label>
+<p>The air enters at 300 K with a uniform velocity. The heater on 20 &le; x &le; 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. The view shows the temperature <code>T</code>, with a dot at each checked place. Select the station x = 40 mm or the full channel above the view.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0 and abs_tol = 0.006 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>interface_T</code></td><td style="text-align:right">312.9</td><td style="text-align:right">312.904</td><td style="text-align:right">0.006</td><td style="text-align:right">0.001677</td></tr><tr><td><code>heater_T</code></td><td style="text-align:right">313.38</td><td style="text-align:right">313.384</td><td style="text-align:right">0.006</td><td style="text-align:right">0.001668</td></tr><tr><td><code>outlet_T</code></td><td style="text-align:right">330</td><td style="text-align:right">330</td><td style="text-align:right">0.006</td><td style="text-align:right">0.0058</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks conjugate heat transfer in the CFD path: a fluid region and a solid region that exchange heat through a common interface.
 Laminar air flows between 2 parallel plastic walls. A heater on the outer face of each wall gives a uniform heat flux. The heat goes through the wall and into the air.
 The reference is exact. Thus the tolerance comes from the mesh study of the model, not from the difference between the model and the reference.</p>
@@ -134,11 +137,11 @@ At n = 10 the Nusselt number from <code>interface_T</code> and the exact T_b is 
 The model is 0.0002 K to 0.0043 K below the exact values. The largest part of the tolerance that a check uses is 72 % (<code>heater_T</code>).
 The tolerance does not let a mesh with n = 5 pass: there <code>interface_T</code> is 0.0156 K below the exact value.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000006" data-run="run-000006">run-000006 · cht-heated-channel/channel</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000006" data-run="run-000006">run-000006 · cht-heated-channel/channel</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="4e3b611a9ff8b9eadbb698a90b69d3b4"></script>
-<script type="module" nonce="4e3b611a9ff8b9eadbb698a90b69d3b4">
+<script src="viewer.js" nonce="157c542b2cb339712d7d23c197fa595f"></script>
+<script type="module" nonce="157c542b2cb339712d7d23c197fa595f">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -147,10 +150,15 @@ The tolerance does not let a mesh with n = 5 pass: there <code>interface_T</code
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -181,26 +189,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

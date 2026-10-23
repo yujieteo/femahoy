@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-be57161c413e0c7e3cb4c6cbbe23df41' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-d1b66a7a3bb3bd9f83853f10ea56142c' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -79,16 +81,15 @@ header { flex: none; padding: 0.75rem 1rem; }
 <body>
 <article><h1>Measured warpage of a 2.5D package with a metal frame</h1>
 <h2>Conclusion</h2>
-<p>The model gives a warpage of -0.1477 mm at the substrate corner at 60 °C. This is 8.8 % smaller than the moiré value of Tsai, Wang and Liu (2021), -0.162 mm. The tolerance is 13 %, the root sum square of the errors of the inputs and of the measurement (see "Tolerance").</p>
+<p>The model gives a warpage of -0.1477 mm at the substrate corner at 60 °C. This is 8.8 % smaller than the moiré value of Tsai, Wang and Liu (2021), -0.162 mm. The tolerance is 13 %, the root sum square of the errors of the inputs and of the measurement (see "Tolerance"). Thus the difference is 68 % of the tolerance. A finer mesh gives a smaller warpage: with the 0.5 mm mesh, the difference is 10.2 % (see "Measured result").</p>
 <p>At 60 °C, the strain gauges of the paper give -0.168 mm, and the FEM of the paper gives -0.162 mm. The 2 largest errors of the budget are the zero error of the moiré (9.8 %) and the unknown die size (7.5 %).</p>
 <p>The check is at 60 °C only. At 25 °C and 260 °C, the warpage of the model with the 1 mm mesh is 24 % and 22 % smaller than the moiré value (see "Other results" and "Causes of the difference"). Thus this case does not validate the warpage at these temperatures.</p>
-<p>The view shows u3, the displacement out of the plane, of the quarter package after it cools from 140 °C to 60 °C. The package becomes a dome, and the corner moves to -z.</p>
-<p><button data-run="run-000034" data-fields="U3,U magnitude" data-controls="deformation">Warpage at 60 °C</button></p>
+<p>The <a data-run="run-000034" data-fields="U3" data-controls="" data-scale="50" data-marks="0,0,0 centre, u3 = 0;25.887,26.171,-7.385 CORNER, u3 = -0.1477 mm;25.958,15.747,-7.572 lowest point of the substrate, u3 = -0.1514 mm">3D view</a> shows u3, the displacement out of the plane, of the quarter package after it cools from 140 °C to 60 °C. The deformation is 50 times the true size. The package becomes a dome, and the corner moves to -z. The warpage is u3 at the corner relative to the centre. The lowest point of the substrate is not the corner, but a point on the edge x = 27.5 mm at y = 16.5 mm. It is 0.0038 mm lower than the corner.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.13 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>warpage</code></td><td style="text-align:right">-0.147691</td><td style="text-align:right">-0.162</td><td style="text-align:right">0.02106</td><td style="text-align:right">0.006751</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>The reference is a measured value, not a theory.
 Source: M.-Y. Tsai, Y.-W. Wang and C.-M. Liu, <em>Thermally-Induced Deformations and Warpages of Flip-Chip and 2.5D IC Packages Measured by Strain Gauges</em>, Materials 14 (2021) 3723.
 The paper is open access under CC BY 4.0: <a href="https://doi.org/10.3390/ma14133723">https://doi.org/10.3390/ma14133723</a>.
@@ -161,11 +162,11 @@ The paper must have a legal free full text and give the geometry, the materials,
 <ol><li>A 3D quarter model of a flip-chip package. It is not a case, so that the suite stays small. With the same method and a 0.5 mm mesh, femahoy gives -58.3 µm at 25 °C and 28.4 µm at 260 °C. The moiré values of Figure 9 are -61.2 and 31.0 µm, and the FEM values of the paper are -58.1 and 28.8 µm.</li><li>2D plane stress and axisymmetric beam models for Figures 6 to 8. The paper gives no geometry or materials for them.</li><li>A 2D axisymmetric model of the flip-chip package for Figures 12 and 13. <code>fh mesh</code> makes no axisymmetric elements.</li></ol>
 <p>Viscoelastic EMC, underfill and adhesive, and the cure shrinkage, are follow-up work.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000034" data-run="run-000034">run-000034 · warpage-2p5d-frame/job.inp</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000034" data-run="run-000034">run-000034 · warpage-2p5d-frame/job.inp</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="be57161c413e0c7e3cb4c6cbbe23df41"></script>
-<script type="module" nonce="be57161c413e0c7e3cb4c6cbbe23df41">
+<script src="viewer.js" nonce="d1b66a7a3bb3bd9f83853f10ea56142c"></script>
+<script type="module" nonce="d1b66a7a3bb3bd9f83853f10ea56142c">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -174,10 +175,15 @@ The paper must have a legal free full text and give the geometry, the materials,
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -208,26 +214,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

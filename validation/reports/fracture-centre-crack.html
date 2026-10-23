@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-ea488484fca50675cc71b6c396cfd4a3' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-4fdaca562787e799fff0b9ee3f218d0b' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -80,20 +82,25 @@ header { flex: none; padding: 0.75rem 1rem; }
 <article><h1>fracture-centre-crack derivation</h1>
 <h2>Conclusion</h2>
 <p>The CalculiX model gives the stress intensity factor K_I of the centre crack 0.19 % above the formula of Tada (1971). The model gives K_I = 1053.28 MPa mm^0.5, and the formula gives 1051.27 MPa mm^0.5. The tolerance is 0.5 %.</p>
-<p>CalculiX has no output of K for a crack in the mesh. Thus the model gets K_I from the opening of the crack face at the 2 nodes of the quarter-point element at the tip (see "K_I from the displacements"). The opening of each node near the tip gives a value of K_I too. At the node nearest the tip, r = 0.125 mm, it is 0.25 % below the formula. Farther from the tip, the higher terms of the field make it smaller.</p>
+<p>CalculiX has no output of K for a crack in the mesh. Thus the model gets K_I from the opening v of the crack face at the nodes B and C of the element at the tip. B is at r = L/4 = 0.125 mm from the tip, and C is at r = L = 0.5 mm. K_I = c (4 v_B - v_C), with c = 204513.9 MPa mm^-0.5 (see "K_I from the displacements").</p>
+<label data-bar>View <select>
+<option data-run="run-000012" data-fields="U2" data-controls="" data-scale="200" data-marks="22.383,0,0.5 crack tip, x = 25 mm" selected>The quarter plate, displacement x 200</option>
+<option data-run="run-000012" data-fields="U2" data-controls="" data-scale="50" data-box="23.5,0,0.5,24.95,0.75,0.5" data-marks="24.2243,0.1282,0.5 B: v = 0.00256369 mm;23.8595,0.2552,0.5 C: v = 0.00510462 mm">The crack tip, displacement x 50</option>
+</select></label>
+<p>The model view shows the opening displacement U2 in 1/4 of the plate. The crack is on y = 0 from x = 0 to 25 mm. The ligament from x = 25 to 50 mm has uy = 0. Choose a view above the model:</p>
+<ul>
+<li>The quarter plate: the crack face opens, and the ligament stays on y = 0. The shape shows the displacement 200 times larger.</li>
+<li>The crack tip: the marks give v at the nodes B and C. Then K_I = 204513.9 × (4 × 0.00256369 - 0.00510462) = 1053.28 MPa mm^0.5. The shape shows the displacement 50 times larger, and the marks are on the moved nodes.</li>
+</ul>
+<p>The opening of each node near the tip gives a value of K_I too. At the node nearest the tip, r = 0.125 mm, it is 0.25 % below the formula. Farther from the tip, the higher terms of the field make it smaller.</p>
 <figure class="curve"><figcaption>K_I from the opening of the crack face near the tip</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="K_I from the opening of the crack face near the tip"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="182.4" y1="12" x2="182.4" y2="308.0"/><line x1="292.8" y1="12" x2="292.8" y2="308.0"/><line x1="403.2" y1="12" x2="403.2" y2="308.0"/><line x1="513.6" y1="12" x2="513.6" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="182.4" y="324.0" text-anchor="middle">1</text><text x="292.8" y="324.0" text-anchor="middle">2</text><text x="403.2" y="324.0" text-anchor="middle">3</text><text x="513.6" y="324.0" text-anchor="middle">4</text><text x="624.0" y="324.0" text-anchor="middle">5</text><text x="66.0" y="312.0" text-anchor="end">980</text><text x="66.0" y="238.0" text-anchor="end">1000</text><text x="66.0" y="164.0" text-anchor="end">1020</text><text x="66.0" y="90.0" text-anchor="end">1040</text><text x="66.0" y="16.0" text-anchor="end">1060</text><text class="label" x="348.0" y="354" text-anchor="middle">r = a - x [mm]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">K_I [MPa mm^0.5]</text><polyline style="stroke:var(--s1)" points="85.8,54.1 127.2,71.3 138.0,75.2 148.7,78.8 163.6,84.4 178.6,89.8 199.3,97.5 220.1,105.2 248.9,116.0 277.8,126.6 317.8,141.6 357.9,156.4 413.6,177.4 469.3,198.2 546.6,227.5 624.0,256.9"/><polyline style="stroke:var(--s2)" points="85.8,44.3 127.2,44.3 138.0,44.3 148.7,44.3 163.6,44.3 178.6,44.3 199.3,44.3 220.1,44.3 248.9,44.3 277.8,44.3 317.8,44.3 357.9,44.3 413.6,44.3 469.3,44.3 546.6,44.3 624.0,44.3"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>Tada</li></ul><p>model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face, from v = (4 K_I / E') sqrt(r / 2 pi). This formula is the first term of the field at the tip. It is exact only as r goes to 0.</p><p>Tada is the formula of Tada (1971) in check.toml. The check gets K_I of the model from the 2 nodes at r = L/4 and L (derivation.md).</p></figure>
 
 <p>The finer meshes of the mesh study give K_I 0.10 % to 0.16 % above the formula. An error of the method gives a larger difference. For example, E in place of E' gives -9 %.</p>
-<p>The view shows 1/4 of the plate with the crack on y = 0 from x = 0 to 25 mm. The opening stress S22 is singular at the tip. Select a view:</p>
-<p>
-<button data-run="run-000012" data-fields="S22,U2,MISES" data-controls="deformation,loads">The quarter plate</button>
-<button data-run="run-000012" data-fields="S22,U2,MISES" data-controls="deformation" data-box="20,0,0,30,5,0">Near the crack tip</button>
-</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.005 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>k_i</code></td><td style="text-align:right">1053.28</td><td style="text-align:right">1051.27</td><td style="text-align:right">5.256</td><td style="text-align:right">3.249</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the stress intensity factor K_I of a centre crack in a steel plate in tension (units SI-mm).
 CalculiX has no output of K for a crack in the mesh. Thus the case gets K_I from the displacements of the crack face, as the chat does.</p>
 <h2>Source</h2>
@@ -135,11 +142,11 @@ An error of the method is larger: E in place of E&#x27; gives -9 %, and L/2 in p
 <h2>Files</h2>
 <p><code>mesh.inp</code> comes from <code>python3 mesh.py</code>. The mesh study uses the options of <code>mesh.py</code>, for example <code>python3 mesh.py --sectors 32 --rings 16 16 --tip 0.125</code>.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000012" data-run="run-000012">run-000012 · fracture-centre-crack/job.inp</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000012" data-run="run-000012">run-000012 · fracture-centre-crack/job.inp</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="ea488484fca50675cc71b6c396cfd4a3"></script>
-<script type="module" nonce="ea488484fca50675cc71b6c396cfd4a3">
+<script src="viewer.js" nonce="4fdaca562787e799fff0b9ee3f218d0b"></script>
+<script type="module" nonce="4fdaca562787e799fff0b9ee3f218d0b">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -148,10 +155,15 @@ An error of the method is larger: E in place of E&#x27; gives -9 %, and L/2 in p
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -182,26 +194,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {

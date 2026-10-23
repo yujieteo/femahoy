@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-98bd114dd961adb7b7fa4c0c4e017060' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-9c28f13978f501d5deafd599a088f6ce' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,12 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
-article button, article select { margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
-article button:hover, article select:hover { border-color: var(--text); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -80,25 +82,28 @@ header { flex: none; padding: 0.75rem 1rem; }
 <article><h1>laminate-pagano derivation</h1>
 <h2>Conclusion</h2>
 <p>Both CalculiX models of the square [0/90/0] plate agree with the exact 3D solution of Pagano (1970) within 0.17 %. The tolerance is 0.5 %. The thin plate (a/h = 100) uses composite shells. The thick plate (a/h = 4) uses 3D layers with 3 elements in each ply.</p>
+<label data-bar>Result <select>
+<option data-run="run-000016" data-fields="S11" data-controls="" data-box="60,0,-12.5,110,50,12.5" data-marks="110,50,12.5 x = y = a/2, the line of the σ_xx plot" selected>σ_xx in the thick plate</option>
+<option data-run="run-000016" data-fields="U3" data-controls="" data-marks="50,50,0.5 thin plate: w = -0.06200 mm, exact -0.06210 mm;110,50,0 thick plate: w = -0.018338 mm, exact -0.018340 mm">Deflection w of the 2 plates</option>
+</select></label>
 <p>The thick plate is the hard test. At a/h = 4, the classical laminate theory gives a deflection 78 % too small, and σ_xx is not symmetric about the mid-plane. The 3D layers follow the exact σ_xx through the thickness, with the jumps at the 2 ply interfaces:</p>
-<figure class="curve"><figcaption>The thick plate (a/h = 4): σ_xx through the thickness at the centre</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The thick plate (a/h = 4): σ_xx through the thickness at the centre"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="164.0" y1="12" x2="164.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="532.0" y1="12" x2="532.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="258.7" x2="624.0" y2="258.7"/><line x1="72" y1="209.3" x2="624.0" y2="209.3"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="110.7" x2="624.0" y2="110.7"/><line x1="72" y1="61.3" x2="624.0" y2="61.3"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">-15</text><text x="164.0" y="324.0" text-anchor="middle">-10</text><text x="256.0" y="324.0" text-anchor="middle">-5</text><text x="348.0" y="324.0" text-anchor="middle">0</text><text x="440.0" y="324.0" text-anchor="middle">5</text><text x="532.0" y="324.0" text-anchor="middle">10</text><text x="624.0" y="324.0" text-anchor="middle">15</text><text x="66.0" y="312.0" text-anchor="end">-15</text><text x="66.0" y="262.7" text-anchor="end">-10</text><text x="66.0" y="213.3" text-anchor="end">-5</text><text x="66.0" y="164.0" text-anchor="end">0</text><text x="66.0" y="114.7" text-anchor="end">5</text><text x="66.0" y="65.3" text-anchor="end">10</text><text x="66.0" y="16.0" text-anchor="end">15</text><text class="label" x="348.0" y="354" text-anchor="middle">z [mm]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">σ_xx [MPa]</text><polyline style="stroke:var(--s1)" points="118.0,42.9 143.6,76.1 169.1,108.5 194.7,129.6 220.2,150.9 245.8,170.1 296.9,161.0 322.4,161.0 348.0,160.9 373.6,160.9 399.1,161.0 450.2,145.3 475.8,166.1 501.3,189.4 526.9,212.4 552.4,247.8 578.0,284.1"/><polyline style="stroke:var(--s2)" points="118.0,40.8 124.4,51.1 130.8,60.7 137.2,69.6 143.6,78.0 149.9,85.9 156.3,93.3 162.7,100.3 169.1,106.9 175.5,113.1 181.9,119.1 188.3,124.8 194.7,130.3 201.1,135.6 207.4,140.7 213.8,145.7 220.2,150.6 226.6,155.4 233.0,160.2 239.4,165.0 245.8,169.9 252.2,174.7 258.6,179.7 264.9,184.8 271.3,190.0 271.3,161.0 277.7,161.0 284.1,161.0 290.5,161.0 296.9,161.0 303.3,161.0 309.7,161.0 316.1,161.0 322.4,161.0 328.8,161.0 335.2,160.9 341.6,160.9 348.0,160.9 354.4,160.9 360.8,160.9 367.2,160.9 373.6,160.9 379.9,160.9 386.3,160.9 392.7,161.0 399.1,161.0 405.5,161.0 411.9,161.0 418.3,161.0 424.7,161.0 424.7,123.7 431.1,129.3 437.4,134.8 443.8,140.2 450.2,145.5 456.6,150.8 463.0,156.0 469.4,161.2 475.8,166.5 482.2,171.8 488.6,177.2 494.9,182.8 501.3,188.6 507.7,194.6 514.1,200.8 520.5,207.3 526.9,214.2 533.3,221.4 539.7,229.0 546.1,237.1 552.4,245.7 558.8,254.9 565.2,264.7 571.6,275.2 578.0,286.4"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>Pagano</li></ul><p>Pagano is the exact 3D solution of Pagano (1970) from pagano.py. The plies are 0, 90 and 0 degrees from the bottom.</p><p>The model line is the nodes of the line x = a/2, y = a/2. It leaves out the 2 nodes on the ply interfaces z = -4.17 and 4.17 mm. There the result file of ccx gives the mean of the 2 plies.</p><p>The largest difference of the model from Pagano is +0.233 MPa, at z = 12.50 mm.</p></figure>
+<figure class="curve"><figcaption>The thick plate (a/h = 4): σ_xx through the thickness at the centre</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The thick plate (a/h = 4): σ_xx through the thickness at the centre"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="164.0" y1="12" x2="164.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="532.0" y1="12" x2="532.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="258.7" x2="624.0" y2="258.7"/><line x1="72" y1="209.3" x2="624.0" y2="209.3"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="110.7" x2="624.0" y2="110.7"/><line x1="72" y1="61.3" x2="624.0" y2="61.3"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">-15</text><text x="164.0" y="324.0" text-anchor="middle">-10</text><text x="256.0" y="324.0" text-anchor="middle">-5</text><text x="348.0" y="324.0" text-anchor="middle">0</text><text x="440.0" y="324.0" text-anchor="middle">5</text><text x="532.0" y="324.0" text-anchor="middle">10</text><text x="624.0" y="324.0" text-anchor="middle">15</text><text x="66.0" y="312.0" text-anchor="end">-15</text><text x="66.0" y="262.7" text-anchor="end">-10</text><text x="66.0" y="213.3" text-anchor="end">-5</text><text x="66.0" y="164.0" text-anchor="end">0</text><text x="66.0" y="114.7" text-anchor="end">5</text><text x="66.0" y="65.3" text-anchor="end">10</text><text x="66.0" y="16.0" text-anchor="end">15</text><text class="label" x="348.0" y="354" text-anchor="middle">z [mm]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">σ_xx [MPa]</text><polyline style="stroke:var(--s2)" points="118.0,40.8 124.4,51.1 130.8,60.7 137.2,69.6 143.6,78.0 149.9,85.9 156.3,93.3 162.7,100.3 169.1,106.9 175.5,113.1 181.9,119.1 188.3,124.8 194.7,130.3 201.1,135.6 207.4,140.7 213.8,145.7 220.2,150.6 226.6,155.4 233.0,160.2 239.4,165.0 245.8,169.9 252.2,174.7 258.6,179.7 264.9,184.8 271.3,190.0 271.3,161.0 277.7,161.0 284.1,161.0 290.5,161.0 296.9,161.0 303.3,161.0 309.7,161.0 316.1,161.0 322.4,161.0 328.8,161.0 335.2,160.9 341.6,160.9 348.0,160.9 354.4,160.9 360.8,160.9 367.2,160.9 373.6,160.9 379.9,160.9 386.3,160.9 392.7,161.0 399.1,161.0 405.5,161.0 411.9,161.0 418.3,161.0 424.7,161.0 424.7,123.7 431.1,129.3 437.4,134.8 443.8,140.2 450.2,145.5 456.6,150.8 463.0,156.0 469.4,161.2 475.8,166.5 482.2,171.8 488.6,177.2 494.9,182.8 501.3,188.6 507.7,194.6 514.1,200.8 520.5,207.3 526.9,214.2 533.3,221.4 539.7,229.0 546.1,237.1 552.4,245.7 558.8,254.9 565.2,264.7 571.6,275.2 578.0,286.4"/><circle style="fill:var(--s1)" cx="118.0" cy="42.9" r="4"><title>model: -12.5, 11.8667</title></circle><circle style="fill:var(--s1)" cx="143.6" cy="76.1" r="4"><title>model: -11.1111, 8.5003</title></circle><circle style="fill:var(--s1)" cx="169.1" cy="108.5" r="4"><title>model: -9.7222, 5.2226</title></circle><circle style="fill:var(--s1)" cx="194.7" cy="129.6" r="4"><title>model: -8.3333, 3.0819</title></circle><circle style="fill:var(--s1)" cx="220.2" cy="150.9" r="4"><title>model: -6.9444, 0.9202</title></circle><circle style="fill:var(--s1)" cx="245.8" cy="170.1" r="4"><title>model: -5.5556, -1.0199</title></circle><circle style="fill:var(--s1)" cx="296.9" cy="161.0" r="4"><title>model: -2.7778, -0.0996</title></circle><circle style="fill:var(--s1)" cx="322.4" cy="161.0" r="4"><title>model: -1.3889, -0.0977</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="160.9" r="4"><title>model: 0, -0.096</title></circle><circle style="fill:var(--s1)" cx="373.6" cy="160.9" r="4"><title>model: 1.3889, -0.0942</title></circle><circle style="fill:var(--s1)" cx="399.1" cy="161.0" r="4"><title>model: 2.7778, -0.0993</title></circle><circle style="fill:var(--s1)" cx="450.2" cy="145.3" r="4"><title>model: 5.5556, 1.4915</title></circle><circle style="fill:var(--s1)" cx="475.8" cy="166.1" r="4"><title>model: 6.9444, -0.6156</title></circle><circle style="fill:var(--s1)" cx="501.3" cy="189.4" r="4"><title>model: 8.3333, -2.9751</title></circle><circle style="fill:var(--s1)" cx="526.9" cy="212.4" r="4"><title>model: 9.7222, -5.3114</title></circle><circle style="fill:var(--s1)" cx="552.4" cy="247.8" r="4"><title>model: 11.1111, -8.8976</title></circle><circle style="fill:var(--s1)" cx="578.0" cy="284.1" r="4"><title>model: 12.5, -12.5808</title></circle></svg><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>Pagano</li></ul><p>model: the nodes of the line x = a/2, y = a/2 in the run</p><p>Pagano is the exact 3D solution of Pagano (1970) from pagano.py. The plies are 0, 90 and 0 degrees from the bottom.</p><p>The model leaves out the 2 nodes on the ply interfaces z = -4.17 and 4.17 mm. There the result file of ccx gives the mean of the 2 plies.</p><p>The largest difference of the model from Pagano is +0.233 MPa, at z = 12.50 mm.</p></figure>
 
 <p>The plots show the stress at the nodes of the result file. Their largest difference from the exact σ_xx is 0.23 MPa at the top face, 1.8 % of the largest σ_xx. The checks use the stress at the integration points (see "Reference values").</p>
+<p>The model view shows the 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm. Choose a result above the model:</p>
+<ul>
+<li>σ_xx in the thick plate: the face x = 110 mm is the symmetry plane x = a/2. On this face, |σ_xx| at the nodes is up to 12.6 MPa in the 2 plies at 0 degrees. In the ply at 90 degrees in the core, it is less than 0.1 MPa. The mark is on the line of the σ_xx plot.</li>
+<li>Deflection w of the 2 plates: the marks give w at the centre of each plate, the checks <code>w_thin</code> and <code>w_thick</code>.</li>
+</ul>
 <p>The transverse shear stress τ_xz is continuous through the plies. At the supported edge x = 0, the 3D layers follow the exact τ_xz within 0.056 MPa:</p>
-<figure class="curve"><figcaption>The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="164.0" y1="12" x2="164.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="532.0" y1="12" x2="532.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="209.3" x2="624.0" y2="209.3"/><line x1="72" y1="110.7" x2="624.0" y2="110.7"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">-15</text><text x="164.0" y="324.0" text-anchor="middle">-10</text><text x="256.0" y="324.0" text-anchor="middle">-5</text><text x="348.0" y="324.0" text-anchor="middle">0</text><text x="440.0" y="324.0" text-anchor="middle">5</text><text x="532.0" y="324.0" text-anchor="middle">10</text><text x="624.0" y="324.0" text-anchor="middle">15</text><text x="66.0" y="312.0" text-anchor="end">-1.5</text><text x="66.0" y="213.3" text-anchor="end">-1</text><text x="66.0" y="114.7" text-anchor="end">-0.5</text><text x="66.0" y="16.0" text-anchor="end">0</text><text class="label" x="348.0" y="354" text-anchor="middle">z [mm]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">τ_xz [MPa]</text><polyline style="stroke:var(--s1)" points="118.0,22.1 143.6,101.0 169.1,178.2 194.7,206.6 220.2,236.4 245.8,229.1 271.3,219.2 296.9,216.1 322.4,215.9 348.0,215.2 373.6,214.6 399.1,213.4 424.7,215.4 450.2,229.8 475.8,241.4 501.3,212.8 526.9,185.7 552.4,105.3 578.0,23.1"/><polyline style="stroke:var(--s2)" points="118.0,12.0 124.4,38.6 130.8,62.9 137.2,85.1 143.6,105.3 149.9,123.7 156.3,140.3 162.7,155.4 169.1,168.8 175.5,180.8 181.9,191.4 188.3,200.7 194.7,208.7 201.1,215.4 207.4,221.0 213.8,225.4 220.2,228.7 226.6,230.8 233.0,231.9 239.4,231.8 245.8,230.7 252.2,228.4 258.6,225.1 264.9,220.6 271.3,214.9 271.3,214.9 277.7,214.9 284.1,214.9 290.5,214.9 296.9,214.8 303.3,214.8 309.7,214.7 316.1,214.6 322.4,214.5 328.8,214.4 335.2,214.3 341.6,214.1 348.0,214.0 354.4,213.8 360.8,213.6 367.2,213.4 373.6,213.2 379.9,213.0 386.3,212.7 392.7,212.5 399.1,212.2 405.5,211.9 411.9,211.5 418.3,211.2 424.7,210.8 424.7,210.8 431.1,217.9 437.4,223.7 443.8,228.3 450.2,231.7 456.6,233.8 463.0,234.8 469.4,234.6 475.8,233.2 482.2,230.5 488.6,226.7 494.9,221.6 501.3,215.2 507.7,207.4 514.1,198.3 520.5,187.7 526.9,175.5 533.3,161.8 539.7,146.4 546.1,129.2 552.4,110.1 558.8,88.9 565.2,65.6 571.6,40.1 578.0,12.0"/></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>Pagano</li></ul><p>Pagano is the exact 3D solution of Pagano (1970) from pagano.py. τ_xz is continuous at the ply interfaces.</p><p>The largest difference of the model from Pagano is -0.056 MPa, at z = 12.50 mm.</p></figure>
+<figure class="curve"><figcaption>The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="164.0" y1="12" x2="164.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="532.0" y1="12" x2="532.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="209.3" x2="624.0" y2="209.3"/><line x1="72" y1="110.7" x2="624.0" y2="110.7"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">-15</text><text x="164.0" y="324.0" text-anchor="middle">-10</text><text x="256.0" y="324.0" text-anchor="middle">-5</text><text x="348.0" y="324.0" text-anchor="middle">0</text><text x="440.0" y="324.0" text-anchor="middle">5</text><text x="532.0" y="324.0" text-anchor="middle">10</text><text x="624.0" y="324.0" text-anchor="middle">15</text><text x="66.0" y="312.0" text-anchor="end">-1.5</text><text x="66.0" y="213.3" text-anchor="end">-1</text><text x="66.0" y="114.7" text-anchor="end">-0.5</text><text x="66.0" y="16.0" text-anchor="end">0</text><text class="label" x="348.0" y="354" text-anchor="middle">z [mm]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">τ_xz [MPa]</text><polyline style="stroke:var(--s2)" points="118.0,12.0 124.4,38.6 130.8,62.9 137.2,85.1 143.6,105.3 149.9,123.7 156.3,140.3 162.7,155.4 169.1,168.8 175.5,180.8 181.9,191.4 188.3,200.7 194.7,208.7 201.1,215.4 207.4,221.0 213.8,225.4 220.2,228.7 226.6,230.8 233.0,231.9 239.4,231.8 245.8,230.7 252.2,228.4 258.6,225.1 264.9,220.6 271.3,214.9 271.3,214.9 277.7,214.9 284.1,214.9 290.5,214.9 296.9,214.8 303.3,214.8 309.7,214.7 316.1,214.6 322.4,214.5 328.8,214.4 335.2,214.3 341.6,214.1 348.0,214.0 354.4,213.8 360.8,213.6 367.2,213.4 373.6,213.2 379.9,213.0 386.3,212.7 392.7,212.5 399.1,212.2 405.5,211.9 411.9,211.5 418.3,211.2 424.7,210.8 424.7,210.8 431.1,217.9 437.4,223.7 443.8,228.3 450.2,231.7 456.6,233.8 463.0,234.8 469.4,234.6 475.8,233.2 482.2,230.5 488.6,226.7 494.9,221.6 501.3,215.2 507.7,207.4 514.1,198.3 520.5,187.7 526.9,175.5 533.3,161.8 539.7,146.4 546.1,129.2 552.4,110.1 558.8,88.9 565.2,65.6 571.6,40.1 578.0,12.0"/><circle style="fill:var(--s1)" cx="118.0" cy="22.1" r="4"><title>model: -12.5, -0.051</title></circle><circle style="fill:var(--s1)" cx="143.6" cy="101.0" r="4"><title>model: -11.1111, -0.4508</title></circle><circle style="fill:var(--s1)" cx="169.1" cy="178.2" r="4"><title>model: -9.7222, -0.842</title></circle><circle style="fill:var(--s1)" cx="194.7" cy="206.6" r="4"><title>model: -8.3333, -0.9861</title></circle><circle style="fill:var(--s1)" cx="220.2" cy="236.4" r="4"><title>model: -6.9444, -1.137</title></circle><circle style="fill:var(--s1)" cx="245.8" cy="229.1" r="4"><title>model: -5.5556, -1.1001</title></circle><circle style="fill:var(--s1)" cx="271.3" cy="219.2" r="4"><title>model: -4.1667, -1.05</title></circle><circle style="fill:var(--s1)" cx="296.9" cy="216.1" r="4"><title>model: -2.7778, -1.0341</title></circle><circle style="fill:var(--s1)" cx="322.4" cy="215.9" r="4"><title>model: -1.3889, -1.0332</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="215.2" r="4"><title>model: 0, -1.0298</title></circle><circle style="fill:var(--s1)" cx="373.6" cy="214.6" r="4"><title>model: 1.3889, -1.0266</title></circle><circle style="fill:var(--s1)" cx="399.1" cy="213.4" r="4"><title>model: 2.7778, -1.0205</title></circle><circle style="fill:var(--s1)" cx="424.7" cy="215.4" r="4"><title>model: 4.1667, -1.0305</title></circle><circle style="fill:var(--s1)" cx="450.2" cy="229.8" r="4"><title>model: 5.5556, -1.1038</title></circle><circle style="fill:var(--s1)" cx="475.8" cy="241.4" r="4"><title>model: 6.9444, -1.1627</title></circle><circle style="fill:var(--s1)" cx="501.3" cy="212.8" r="4"><title>model: 8.3333, -1.0177</title></circle><circle style="fill:var(--s1)" cx="526.9" cy="185.7" r="4"><title>model: 9.7222, -0.8802</title></circle><circle style="fill:var(--s1)" cx="552.4" cy="105.3" r="4"><title>model: 11.1111, -0.4728</title></circle><circle style="fill:var(--s1)" cx="578.0" cy="23.1" r="4"><title>model: 12.5, -0.056</title></circle></svg><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>model</li><li><i class="line" style="background:var(--s2)"></i>Pagano</li></ul><p>model: the nodes of the line x = 0, y = a/2 in the run</p><p>Pagano is the exact 3D solution of Pagano (1970) from pagano.py. τ_xz is continuous at the ply interfaces.</p><p>The largest difference of the model from Pagano is -0.056 MPa, at z = 12.50 mm.</p></figure>
 
 <p>Use composite shells of this material only for a/h of 50 or more. At a/h = 4, the 8 x 8 composite shells give a deflection 26 % too small (see "Composite shell and the span ratio").</p>
-<p>The view shows the 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm. Select a result:</p>
-<p>
-<button data-run="run-000016" data-fields="S11,U3,S13" data-controls="deformation">σ_xx (S11)</button>
-<button data-run="run-000016" data-fields="U3,S11,S13" data-controls="deformation">Deflection w (U3)</button>
-<button data-run="run-000016" data-fields="S13,S11,U3" data-controls="deformation">τ_xz (S13)</button>
-</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.005 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>w_thin</code></td><td style="text-align:right">-0.0619972</td><td style="text-align:right">-0.0621031</td><td style="text-align:right">0.0003105</td><td style="text-align:right">0.0002046</td></tr><tr><td><code>sx_thin</code></td><td style="text-align:right">4.62407</td><td style="text-align:right">4.62032</td><td style="text-align:right">0.0231</td><td style="text-align:right">0.01935</td></tr><tr><td><code>w_thick</code></td><td style="text-align:right">-0.018338</td><td style="text-align:right">-0.0183398</td><td style="text-align:right">9.17e-05</td><td style="text-align:right">8.994e-05</td></tr><tr><td><code>sx_thick</code></td><td style="text-align:right">10.3599</td><td style="text-align:right">10.3419</td><td style="text-align:right">0.05171</td><td style="text-align:right">0.0337</td></tr><tr><td><code>txz_thick</code></td><td style="text-align:right">-1.01018</td><td style="text-align:right">-1.01034</td><td style="text-align:right">0.005052</td><td style="text-align:right">0.004897</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 0551405.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the 2 CalculiX models of a composite laminate against the exact 3D elasticity solution of Pagano (units SI-mm):</p>
 <ul><li><code>THIN</code>: composite shells (<code>*SHELL SECTION, COMPOSITE</code>, <code>S8R</code>), a/h = 100.</li><li><code>THICK</code>: 3D layers (<code>C3D20R</code>, 3 elements in each ply, 1 <code>*ORIENTATION</code> for each ply angle), a/h = 4.</li></ul>
 <p>Both plates use the ply material <code>*ELASTIC, TYPE=ENGINEERING CONSTANTS</code>, and the checks read the stresses with <code>*EL PRINT, GLOBAL=YES</code>.</p>
@@ -159,11 +164,11 @@ A wrong layup or a wrong ply constant gives an error of 10 % or more (see Result
 <h2>Files</h2>
 <p><code>mesh.inp</code> and <code>load.inp</code> come from <code>python3 pagano.py</code> in this folder. The script also prints the 5 reference values of <code>check.toml</code>.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"><option value="run-000016" data-run="run-000016">run-000016 · laminate-pagano/job.inp</option></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000016" data-run="run-000016">run-000016 · laminate-pagano/job.inp</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="98bd114dd961adb7b7fa4c0c4e017060"></script>
-<script type="module" nonce="98bd114dd961adb7b7fa4c0c4e017060">
+<script src="viewer.js" nonce="9c28f13978f501d5deafd599a088f6ce"></script>
+<script type="module" nonce="9c28f13978f501d5deafd599a088f6ce">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -172,10 +177,15 @@ A wrong layup or a wrong ply constant gives an error of 10 % or more (see Result
 //
 // The agent writes the controls of the report in its text. An element with `data-run="RUN"`
 // opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
-// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale` and
-// `data-box`. A click opens the run of a link or a button. A change opens the run of the chosen
-// option of a `select`, or of a checked radio button. At the start, the report opens the first
-// chosen element of the text, else the first run of the list.
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -206,26 +216,52 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const views = () => [...text.querySelectorAll("[data-run]")];
-    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement ? e.checked : true);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
+    };
+    views().filter(slider).forEach(label);
+    let current = null;
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
-      const lines = Object.entries(e.dataset).filter(([key]) => key !== "run");
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
       return true;
     };
-    // The list of the runs opens a run with the view of its first element in the text.
+    // The list of the runs opens a run with the view of its first element.
     runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
-    text.addEventListener("click", (e) => {
-      const target = e.target.closest("[data-run]");
-      if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    text.addEventListener("change", (e) => {
-      const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
-      if (target?.dataset.run && chosen(target)) open(target);
-    });
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {
