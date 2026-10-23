@@ -2,6 +2,7 @@
 
 CalculiX (`ccx`) reads and checks the input. It takes every keyword, element type and solver that it has.
 `fh run` gives `ccx` the input file unchanged, with each file that it includes (`*INCLUDE`).
+For a submodel, `*SUBMODEL, INPUT=NAME.frd` names the result file of the global model. `fh run` then also copies `NAME.inp` from the folder of the input, with its `*INCLUDE` files, and solves it first in the same folder.
 
 The crate `fh-core` has a small reader for the preview of the supports and the loads. It never refuses a keyword.
 It takes the keywords below, and skips each other keyword and each data line that it cannot read.

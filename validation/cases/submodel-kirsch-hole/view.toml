@@ -1,0 +1,4 @@
+# The submodel at the hole: sxx (S11) has its peak 3 sigma at the top of the hole. The cut r = 20 mm
+# shows as a support: it gets the displacement of the global model.
+fields = ["S11", "MISES", "U magnitude"]
+controls = ["deformation", "loads"]

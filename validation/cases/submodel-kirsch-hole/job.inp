@@ -1,0 +1,26 @@
+** units: SI-mm
+** Submodel of global.inp: the ring 10 <= r <= 20 mm about the hole, with a fine mesh. The
+** displacement of the cut r = 20 mm (the node set CUT) comes from the result file global.frd
+** of the global model. mesh.py writes mesh.inp: the mesh and the sets.
+*INCLUDE, INPUT=mesh.inp
+*SUBMODEL, TYPE=NODE, INPUT=global.frd
+CUT
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+*SOLID SECTION, ELSET=PLATE, MATERIAL=STEEL
+1.0
+*STEP
+*STATIC
+*BOUNDARY
+LEFT, 1, 1
+BOTTOM, 2, 2
+*BOUNDARY, SUBMODEL, STEP=1
+CUT, 1, 2
+*EL PRINT, ELSET=TOP
+S
+*NODE FILE, OUTPUT=3D
+U
+*EL FILE
+S
+*END STEP

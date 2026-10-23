@@ -1,0 +1,16 @@
+# Kirsch (1898), circular hole in a plate in tension, the exact solution of the infinite plate.
+# sigma = 100 MPa along x, a = 10 mm, plane strain. The global model (global.inp, 16 elements)
+# has the Kirsch displacement on its outer edges. The submodel (job.inp) gets the displacement of
+# the global model on its cut r = 20 mm. The check is sxx of the submodel at the integration point
+# of the element TOP nearest (0, a), and the value is the Kirsch stress at that point
+# (python3 mesh.py). Budget: displacement of the global model at the cut 0.03 %, mesh of the
+# submodel 0.001 %. See derivation.md.
+rel_tol = 0.001
+abs_tol = 0.0
+
+[sxx_hole]
+value = 296.179
+set = "TOP"
+field = "S"
+component = 11
+op = "max"

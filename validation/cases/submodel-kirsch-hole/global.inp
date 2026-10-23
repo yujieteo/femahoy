@@ -1,0 +1,22 @@
+** units: SI-mm
+** The global model of the submodel job.inp: 1/4 of a steel plate of 100 x 100 mm with a hole of
+** 20 mm, in plane strain, with a coarse mesh (16 elements). mesh.py writes global-mesh.inp: the
+** mesh, the sets and the Kirsch displacement of the outer edges for 100 MPa of tension along x.
+** fh solves this file first, because job.inp reads its result file global.frd (*SUBMODEL).
+*INCLUDE, INPUT=global-mesh.inp
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+*SOLID SECTION, ELSET=PLATE, MATERIAL=STEEL
+1.0
+*STEP
+*STATIC
+*BOUNDARY
+LEFT, 1, 1
+BOTTOM, 2, 2
+** OUTPUT=3D: the submodel gets its displacement from the 3D elements of global.frd.
+*NODE FILE, OUTPUT=3D
+U
+*EL FILE
+S
+*END STEP
