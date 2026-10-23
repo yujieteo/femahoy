@@ -64,6 +64,7 @@ impl Reader {
             "CLOAD" => self.cload(b),
             "DLOAD" => self.dload(b),
             "DSLOAD" => self.dsload(b),
+            "MODEL CHANGE" => self.model_change(b),
             _ => {}
         }
     }
@@ -264,6 +265,29 @@ impl Reader {
                 });
             }
         }
+    }
+
+    /// `*MODEL CHANGE, TYPE=ELEMENT` in a step. The data lines are element ids or element set
+    /// names.
+    fn model_change(&mut self, b: &Block) {
+        let Some(step) = self
+            .step
+            .as_mut()
+            .filter(|_| b.value("TYPE") == Some("ELEMENT"))
+        else {
+            return;
+        };
+        let mut elements = Vec::new();
+        for f in b.data.iter().flatten().filter(|f| !f.is_empty()) {
+            match f.parse::<u32>() {
+                Ok(e) => elements.push(e),
+                Err(_) => elements.extend(self.model.elset(f).into_iter().flat_map(|s| &s.ids)),
+            }
+        }
+        step.element_changes.push(ElementChange {
+            add: b.has("ADD"),
+            elements,
+        });
     }
 }
 

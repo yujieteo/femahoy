@@ -395,8 +395,8 @@ impl ViewState {
 
     /// The vertex data for the GPU layer.
     pub fn geometry(&self, results: &Results, version: u64) -> Geometry {
-        let mesh = &results.mesh;
         let step = self.current(results);
+        let mesh = results.mesh(step);
         let scale = if self.deformed { self.scale } else { 0.0 };
         let positions = results::deformed_positions(mesh, step, scale);
         let values = match self.contour(results) {
@@ -646,7 +646,7 @@ mod tests {
         assert_ne!(first.positions, last.positions);
         assert_eq!(first.version, 2);
         // The geometry uses the selected step: the moved positions are x + scale * U.
-        let want = results::deformed_positions(&r.mesh, &r.steps[0], v.scale);
+        let want = results::deformed_positions(&r.meshes[0], &r.steps[0], v.scale);
         assert_eq!(first.positions, want);
     }
 
@@ -676,9 +676,9 @@ mod tests {
         let g = v.geometry(&r, 1);
         let mises = r.steps[1].field("MISES").unwrap();
         let (lo, hi) = results::contour_range(mises);
-        let values = results::triangle_values(&r.mesh, mises, lo, hi);
+        let values = results::triangle_values(&r.meshes[0], mises, lo, hi);
         for (i, f) in g.faces.iter().enumerate() {
-            let p = r.mesh.triangles[i / 3][i % 3] as usize;
+            let p = r.meshes[0].triangles[i / 3][i % 3] as usize;
             assert_eq!([f[0], f[1], f[2]], g.positions[p]);
             assert_eq!(f[3], values[i]);
         }

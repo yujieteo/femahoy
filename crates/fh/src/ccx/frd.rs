@@ -62,7 +62,8 @@ fn field_name(block: &str) -> &str {
 pub struct Frame {
     /// The time of the increment, or the frequency of the mode, from the `.frd` file.
     pub time: f64,
-    step: usize,
+    /// The step of the input, from 1.
+    pub step: usize,
     increment: usize,
     mode: usize,
     fields: Vec<Field>,
@@ -91,10 +92,18 @@ impl Frame {
 impl Frd {
     /// The grid of a frame: the mesh of the file with the fields of the frame.
     pub fn grid(&self, frame: &Frame) -> Grid {
+        self.grid_with(frame, |_| true)
+    }
+
+    /// The grid of a frame with only the cells of the elements that `keep` accepts. The grid
+    /// keeps each point, so each field has a value for each point.
+    pub fn grid_with(&self, frame: &Frame, keep: impl Fn(u32) -> bool) -> Grid {
+        let kept = |i: &usize| keep(self.elements[*i]);
+        let cells = (0..self.cells.len()).filter(kept);
         Grid {
             points: self.points.clone(),
-            cell_types: self.cell_types.clone(),
-            cells: self.cells.clone(),
+            cell_types: cells.clone().map(|i| self.cell_types[i]).collect(),
+            cells: cells.map(|i| self.cells[i].clone()).collect(),
             point_data: frame.fields.clone(),
             cell_data: Vec::new(),
         }
