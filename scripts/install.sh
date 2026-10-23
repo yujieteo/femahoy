@@ -477,10 +477,6 @@ if ! on_path "$prefix"; then
   echo "install: $prefix is not on PATH. To run fh by its name, add this line to your shell start file (for example ~/.zshrc):"
   echo "  export PATH=\"$prefix:\$PATH\""
 fi
-if ! command -v "${FH_AGENT:-claude}" >/dev/null 2>&1; then
-  echo "install: the chat needs Claude Code. Install it, then run claude once and sign in with your Claude subscription:"
-  echo "  curl -fsSL https://claude.ai/install.sh | bash"
-fi
 echo "install: next, start the page and write a request in the chat:"
 echo "  $run"
 if [ ${#failed[@]} -gt 0 ]; then exit 1; fi
