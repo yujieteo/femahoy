@@ -1,0 +1,4 @@
+# The optimum hole: the shape of the hole and the uniform stress at its edge.
+fields = ["MISES", "S11", "S22"]
+controls = []
+scale = 0

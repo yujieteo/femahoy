@@ -50,6 +50,8 @@ pub struct ScalarField {
     /// The quantity, for the unit: `displacement`, `force` or `stress`.
     pub quantity: Quantity,
     pub location: Location,
+    /// True for 1 component of a field with 2 or more components, for example `U1` or `S11`.
+    pub component: bool,
     pub values: Vec<f64>,
 }
 
@@ -180,6 +182,7 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
                     name: format!("{} magnitude", field.name),
                     quantity: q,
                     location,
+                    component: false,
                     values: values
                         .as_chunks::<3>()
                         .0
@@ -193,6 +196,7 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
                     name,
                     quantity: q,
                     location,
+                    component: c > 1,
                     values: values.iter().skip(k).step_by(c).copied().collect(),
                 });
             }
@@ -642,6 +646,7 @@ mod tests {
             name: "MISES".into(),
             quantity: Quantity::Stress,
             location: Location::Point,
+            component: false,
             values: vec![100.0 - 4e-6, 100.0, 100.0 + 4e-6],
         };
         let (lo, hi) = contour_range(&mises);

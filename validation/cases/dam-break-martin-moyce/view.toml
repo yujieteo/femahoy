@@ -1,0 +1,3 @@
+# The water column falls and the front moves along the floor: play the steps.
+fields = ["speed", "p"]
+controls = ["steps"]

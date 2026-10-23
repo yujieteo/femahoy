@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 
 mod common;
-use common::{p, scratch};
+use common::{p, root, scratch};
 
 /// A state folder with the run `run-000001`, a folder with a fake viewer, and a text file.
 struct Lab {
@@ -58,6 +58,24 @@ impl Lab {
         let mut args = vec![p(&text), "-o", p(&out)];
         args.extend_from_slice(extra);
         self.fh(&args)
+    }
+
+    /// Give `run-000001` the results and the input of the cantilever with 2 steps of
+    /// `fixtures/results`, and write `view` to `view.toml`.
+    fn cantilever(&self, view: &str) -> PathBuf {
+        let fixture = root().join("fixtures/results/cantilever-2step");
+        let run = self.dir.join("state/runs/run-000001");
+        for file in ["results.pvd", "step-1.vtu", "step-2.vtu"] {
+            fs::copy(fixture.join(file), run.join("out").join(file)).unwrap();
+        }
+        fs::copy(
+            fixture.join("cantilever-2step.inp"),
+            run.join("in/input.inp"),
+        )
+        .unwrap();
+        let path = self.dir.join("view.toml");
+        fs::write(&path, view).unwrap();
+        path
     }
 }
 
@@ -216,11 +234,11 @@ fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
     assert!(!html.contains("data-path="), "no files");
 }
 
-/// With `--last-step`, the report holds only the last step of the run, and its `results.pvd`
-/// names only that step.
+/// With `--one-step` and no view, the report holds only the last step of the run, and its
+/// `results.pvd` names only that step.
 #[test]
-fn the_last_step_option_keeps_only_the_last_step() {
-    let lab = Lab::new("report-last-step");
+fn the_one_step_option_keeps_only_the_last_step() {
+    let lab = Lab::new("report-one-step");
     let out = lab.dir.join("state/runs/run-000001/out");
     fs::write(
         out.join("results.pvd"),
@@ -230,7 +248,7 @@ fn the_last_step_option_keeps_only_the_last_step() {
     )
     .unwrap();
     fs::write(out.join("step-2.vtu"), b"last vtu").unwrap();
-    let out = lab.report(&["--run", "run-000001", "--last-step"]);
+    let out = lab.report(&["--run", "run-000001", "--one-step"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let html = fs::read_to_string(lab.out()).unwrap();
     let base = "/api/v1/runs/run-000001/files";
@@ -282,5 +300,76 @@ fn a_report_with_a_shared_viewer_holds_no_viewer() {
     assert!(
         html.contains(&format!("script-src 'nonce-{nonce}'")),
         "policy"
+    );
+}
+
+/// The view of a run is in the report under `/views/RUN`, as the text that the viewer reads.
+#[test]
+fn the_report_holds_the_view_of_a_run() {
+    let lab = Lab::new("report-view");
+    let view = lab.cantilever(
+        "[run-000001]\nfields = [\"U3\", \"MISES\"]\ncontrols = [\"deformation\", \"loads\"]\n\
+         step = 1\nscale = 1\n",
+    );
+    let out = lab.report(&["--run", "run-000001", "--view", p(&view)]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert_eq!(
+        String::from_utf8(file(&html, "/views/run-000001").unwrap()).unwrap(),
+        "field=U3\nfield=MISES\ncontrols=deformation,loads\nstep=1\nscale=1\n"
+    );
+    // With --one-step, the report keeps the step of the view, and the view names no step.
+    let out = lab.report(&["--run", "run-000001", "--view", p(&view), "--one-step"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    let base = "/api/v1/runs/run-000001/files";
+    assert!(
+        file(&html, &format!("{base}/step-1.vtu")).is_some(),
+        "step 1"
+    );
+    assert_eq!(file(&html, &format!("{base}/step-2.vtu")), None, "step 2");
+    let text = String::from_utf8(file(&html, "/views/run-000001").unwrap()).unwrap();
+    assert_eq!(
+        text,
+        "field=U3\nfield=MISES\ncontrols=deformation,loads\nscale=1\n"
+    );
+}
+
+/// A view that does not fit its run gives no report, and the message tells why.
+#[test]
+fn a_view_that_does_not_fit_the_run_gives_no_report() {
+    let lab = Lab::new("report-bad-view");
+    for (view, extra, want) in [
+        (
+            "fields = [\"Ez\"]",
+            "",
+            "[run-000001]: field \"Ez\": the run has no such field",
+        ),
+        ("step = 3", "", "[run-000001]: step 3: the run has 2 steps"),
+        ("controls = [\"flow\"]", "", "no control \"flow\""),
+        ("colour = \"red\"", "", "no key `colour`"),
+        (
+            "controls = [\"steps\"]",
+            "--one-step",
+            "--one-step keeps 1 step, so the controls cannot have steps",
+        ),
+    ] {
+        let path = lab.cantilever(&format!("[run-000001]\n{view}\n"));
+        let mut args = vec!["--run", "run-000001", "--view", p(&path)];
+        if !extra.is_empty() {
+            args.push(extra);
+        }
+        let _ = fs::remove_file(lab.out());
+        let out = lab.report(&args);
+        assert_eq!(out.status.code(), Some(1), "{view}: {}", stderr(&out));
+        assert!(stderr(&out).contains(want), "{view}: {}", stderr(&out));
+        assert!(!lab.out().exists(), "{view}");
+    }
+    let path = lab.cantilever("[run-000002]\nstep = 1\n");
+    let out = lab.report(&["--run", "run-000001", "--view", p(&path)]);
+    assert!(
+        stderr(&out).contains("[run-000002]: no --run names this run"),
+        "{}",
+        stderr(&out)
     );
 }

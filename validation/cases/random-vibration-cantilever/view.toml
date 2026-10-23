@@ -1,0 +1,3 @@
+# The steps are the 10 modes of the beam, at their frequencies, that the response adds.
+fields = ["U magnitude"]
+controls = ["steps", "deformation"]

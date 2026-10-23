@@ -1,0 +1,4 @@
+# The motor turns the crank, and the slider moves: play the steps at the true motion.
+fields = ["U magnitude"]
+controls = ["steps"]
+scale = 1

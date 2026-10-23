@@ -1,0 +1,3 @@
+# The shock at the wedge: the Mach number, the pressure and the temperature change across it.
+fields = ["Ma", "p", "T", "rho"]
+controls = []

@@ -1,0 +1,3 @@
+# The temperature falls along the fin from the base.
+fields = ["NT"]
+controls = ["loads"]

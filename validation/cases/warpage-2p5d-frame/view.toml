@@ -1,0 +1,3 @@
+# The package warps out of its plane as it cools: the displacement U3.
+fields = ["U3", "U magnitude"]
+controls = ["deformation"]
