@@ -3,8 +3,9 @@
 //! address of the page. Each request must carry the token, and a request from a page of
 //! another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
-//! At start on macOS, `fh serve` opens the page in the browser (`browser` module). On other
-//! systems it only prints the address.
+//! At start, `fh serve` checks that the agent starts and that Claude Code has a login. When it
+//! does not, the chat of the page tells the person what to do. On macOS, `fh serve` then opens the
+//! page in the browser (`browser` module). On other systems it only prints the address.
 //! The state folder `DIR` is `$FH_STATE` (see `default_state_dir`). Ctrl+C stops the daemon.
 
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use super::browser::{no_open, open_page};
+use super::chat::{agent_problem, agent_program};
 use super::{Daemon, Options};
 
 const USAGE: &str = "usage: fh serve";
@@ -60,6 +62,10 @@ fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode {
         "fh serve: state folder {}. Stop with Ctrl+C.",
         state_dir.display()
     );
+    if let Some(problem) = agent_problem(&agent_program()) {
+        println!("fh serve: {problem}");
+        daemon.chat.setup(&problem);
+    }
     if open {
         match open_page(&url) {
             Ok(()) => println!("fh serve: opened the page in the browser"),

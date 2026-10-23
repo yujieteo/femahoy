@@ -34,7 +34,8 @@
 //! An entry is the item `<seq> <kind> <text>`. In the text, `\n` is a line break and `\\`
 //! is a backslash, because an item is one line. The token of the daemon never goes into an
 //! entry. An `error` entry is an error of the chat: the agent cannot start, or it ended
-//! before the end of its work.
+//! before the end of its work. A `setup` entry tells the person what to do before the chat
+//! works: install Claude Code, or sign in (`agent_problem`, which `fh serve` runs at start).
 
 use std::collections::{HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -168,6 +169,12 @@ impl Chat {
         self.log.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Add the entry `setup <text>`: what the person must do before the chat works.
+    pub(crate) fn setup(&self, text: &str) {
+        let mut log = self.lock();
+        self.push(&mut log, "setup", text);
+    }
+
     fn push(&self, log: &mut Log, kind: &str, text: &str) {
         let text = escape(&text.replace(&self.token, "<token>"));
         log.next += 1;
@@ -240,10 +247,7 @@ impl Chat {
         log.end();
         let dir = self.state_dir.join("chat");
         std::fs::create_dir_all(&dir).map_err(|e| fail(500, format!("chat folder: {e}")))?;
-        let program = std::env::var("FH_AGENT")
-            .ok()
-            .filter(|p| !p.is_empty())
-            .unwrap_or_else(|| "claude".into());
+        let program = agent_program();
         let mut cmd = agent_command(&program, &self.state_dir, log.session.as_deref());
         cmd.current_dir(&dir)
             .stdin(Stdio::piped())
@@ -460,6 +464,51 @@ fn entries(event: &Json) -> Vec<(String, String)> {
     out
 }
 
+/// The agent program: `$FH_AGENT`, else `claude`.
+pub(crate) fn agent_program() -> String {
+    std::env::var("FH_AGENT")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .unwrap_or_else(|| "claude".into())
+}
+
+/// What the person must do before the chat works, or `None`. The agent `program` must start, and
+/// `program auth status` must end with exit code 0: Claude Code then has a login. The login stays
+/// in Claude Code, and the daemon reads no credential.
+pub(crate) fn agent_problem(program: &str) -> Option<String> {
+    let status = Command::new(program)
+        .args(["auth", "status"])
+        .env("PATH", agent_path())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    match status {
+        Ok(status) if status.success() => None,
+        Ok(_) => Some(format!(
+            "Claude Code ({program}) has no login. In a terminal, run {program} and sign in with \
+             your Claude subscription. Then send your message."
+        )),
+        Err(e) => Some(format!(
+            "The chat needs Claude Code, and the agent {program:?} does not start: {e}. Install \
+             Claude Code in a terminal:\n  curl -fsSL https://claude.ai/install.sh | bash\nThen \
+             run claude and sign in with your Claude subscription. Then send your message."
+        )),
+    }
+}
+
+/// The `PATH` of the agent: the folder of `fh` first, so that the agent runs this `fh`.
+fn agent_path() -> std::ffi::OsString {
+    let mut path = std::env::current_exe()
+        .ok()
+        .and_then(|e| Some(vec![e.parent()?.to_path_buf()]))
+        .unwrap_or_default();
+    path.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    std::env::join_paths(path).unwrap_or_default()
+}
+
 /// The agent command with its arguments and its environment.
 fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Command {
     let mut cmd = Command::new(program);
@@ -482,16 +531,33 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
     if let Some(session) = session {
         cmd.args(["--resume", session]);
     }
-    let mut path = std::env::current_exe()
-        .ok()
-        .and_then(|e| Some(vec![e.parent()?.to_path_buf()]))
-        .unwrap_or_default();
-    path.extend(std::env::split_paths(
-        &std::env::var_os("PATH").unwrap_or_default(),
-    ));
     cmd.env("FH_STATE", state_dir)
-        .env("PATH", std::env::join_paths(path).unwrap_or_default())
+        .env("PATH", agent_path())
         .env("BASH_DEFAULT_TIMEOUT_MS", BASH_TIMEOUT_MS)
         .env("BASH_MAX_TIMEOUT_MS", BASH_TIMEOUT_MS);
     cmd
+}
+
+#[cfg(test)]
+mod tests {
+    use super::agent_problem;
+
+    #[test]
+    fn a_missing_agent_tells_how_to_install_claude_code() {
+        let problem = agent_problem("/nonexistent/claude").unwrap();
+        assert!(
+            problem.contains("curl -fsSL https://claude.ai/install.sh | bash"),
+            "{problem}"
+        );
+    }
+
+    #[test]
+    fn an_agent_with_no_login_tells_how_to_sign_in() {
+        let problem = agent_problem("false").unwrap();
+        assert!(
+            problem.contains("sign in with your Claude subscription"),
+            "{problem}"
+        );
+        assert_eq!(agent_problem("true"), None);
+    }
 }

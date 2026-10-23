@@ -4,113 +4,34 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 ## Start
 
-Run these 2 commands in a clone of this repository, on macOS or Linux:
+Run these 2 commands in a clone of this repository, on macOS (Apple Silicon) or Linux (x86-64 or ARM64):
 
 ```sh
 scripts/install.sh
 fh serve
 ```
 
-1. `scripts/install.sh` builds `fh` and the browser viewer, and copies them to `~/.local/bin`. Use `--prefix DIR` for another folder. The script first checks the tools (Rust with rustup, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli` and uv). If a tool is missing, the script stops and shows the command that installs it. Each solve also needs CalculiX (`ccx`, see "Get `ccx`" below).
-2. `fh serve` starts a local daemon and opens the page in the browser (on a system that is not macOS, it only prints the address). Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh (`brew install gmsh`), writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`) with a login. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Stop the daemon with Ctrl+C.
+1. `scripts/install.sh` installs femahoy for your user, with no root and no Nix. It builds `fh` and the browser viewer, installs gmsh and each solver, and copies `fh` to `~/.local/bin`. Use `--prefix DIR` for another folder. See "Install" below.
+2. `fh serve` starts a local daemon and opens the page in the browser (on a system that is not macOS, it only prints the address). Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh, writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`), signed in with your Claude subscription. If `claude` is not installed or has no login, the chat of the page tells you how to install it and sign in. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Stop the daemon with Ctrl+C.
 
-For your own model, give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. The table in section 6 of `DESIGN.md` gives the solver and the input of each analysis type, and the "Get" sections below tell how to install each solver. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click, and the chat uses it for its report. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX.
+For your own model, give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. The table in section 6 of `DESIGN.md` gives the solver and the input of each analysis type. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click, and the chat uses it for its report. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX.
 
 `validation/reports/index.html` links 1 report of `fh report` for each validation case: the checks, the derivation and the runs. `scripts/validation-reports.py` makes them again.
 
-## Get `ccx`
+## Install
 
-`fh` starts CalculiX (`ccx`) as a separate program. You install it. `ccx` is also the explicit solver for impact (`*DYNAMIC, EXPLICIT`), so an impact needs no other program.
+`scripts/install.sh` needs bash, git, tar, and curl or wget. On macOS, it also needs the Xcode command line tools (`xcode-select --install`). It installs no system package.
 
-- Nix (macOS, Linux): `nix build nixpkgs#calculix-ccx -o ccx`, then `export FH_CCX=$PWD/ccx/bin/ccx`.
-- Debian, Ubuntu: `apt install calculix-ccx`. This puts `ccx` on PATH.
+- micromamba installs Rust, gmsh, CalculiX, PyChrono and Meep from conda-forge, and OpenFOAM on Linux x86-64. On macOS, the script downloads OpenFOAM.app from `github.com/gerlero/openfoam-app`. It downloads GetDP from `getdp.info`. It builds preCICE with its CalculiX and OpenFOAM adapters, LAMMPS with its SPH package, and openEMS, from source. It checks each download with its SHA-256.
+- All of it goes to `~/.local/share/femahoy` (`$XDG_DATA_HOME/femahoy`), except the OpenFOAM adapter of preCICE on macOS, which goes to the user folder of OpenFOAM (`~/OpenFOAM`). In the test runs, the folder used 11 to 14 GB. A second run builds `fh` again and keeps each solver that has the same version. The log of each solver is in the folder `logs` there.
+- The script writes `solvers.env` beside `fh`: 1 line `FH_NAME=PATH` for each solver that it installed. `fh` reads this file at start.
+- At the end, the script names each solver that it did not install, with the analysis types that it disables. On Linux ARM64, OpenFOAM and GetDP have no build, so CFD, fluid-structure interaction, electromagnetics and acoustics are not available there.
 
-`fh` uses `$FH_CCX`. If `FH_CCX` is not set, it uses `ccx` on PATH. The validation cases are tested with `ccx` 2.23. The Ubuntu package is older.
-
-## Get OpenFOAM
-
-`fh` starts OpenFOAM as a separate program for CFD. You install it.
-
-- macOS: `brew install gerlero/openfoam/openfoam@2512` installs OpenFOAM.app. This puts `openfoam` on PATH.
-- Debian, Ubuntu: install `openfoam2512` from the OpenCFD repository (`https://dl.openfoam.com`, see the step "Install OpenFOAM" in `.github/workflows/ci.yml`). Then `export FH_OPENFOAM=openfoam2512`.
-
-`fh` uses `$FH_OPENFOAM`. If `FH_OPENFOAM` is not set, it uses `openfoam` on PATH. The validation cases are tested with OpenFOAM v2512 of OpenCFD.
-
-## Get GetDP
-
-`fh` starts GetDP as a separate program for electromagnetics and acoustics, and gmsh to mesh the case. You install both.
-
-- gmsh: `brew install gmsh` on macOS, or `nix profile install nixpkgs#gmsh`.
-- GetDP on macOS (Apple Silicon): `curl -fsSL https://getdp.info/bin/macOS/getdp-4.0.0-MacOSARMc.tgz | tar xz`, then `export FH_GETDP=$PWD/getdp-4.0.0-MacOSARM/bin/getdp`.
-- GetDP on Linux (x86-64): `curl -fsSL https://getdp.info/bin/Linux/getdp-3.5.0-Linux64c.tgz | tar xz`, then `export FH_GETDP=$PWD/getdp-3.5.0-Linux64/bin/getdp`.
-
-`fh` uses `$FH_GETDP`. If `FH_GETDP` is not set, it uses `getdp` on PATH. The validation cases are tested with GetDP 4.0.0 on macOS and 3.5.0 on Linux.
-
-## Get PyChrono
-
-`fh` starts Project Chrono for multibody dynamics: a Python with PyChrono, the Python module of Chrono, runs the `chrono.py` of the case. PyChrono is BSD-3-Clause. It is not on PyPI, so you install it with micromamba from conda-forge.
-
-- micromamba: `brew install micromamba` on macOS, or `nix profile install nixpkgs#micromamba`.
-- PyChrono on macOS (Apple Silicon) and Linux (x86-64): `micromamba create -y -p ~/.local/share/pychrono -c conda-forge pychrono=10.0.0 python=3.12`, then `export FH_PYCHRONO=~/.local/share/pychrono/bin/python`. The download is about 550 MB.
-
-`fh` uses `$FH_PYCHRONO`. If `FH_PYCHRONO` is not set, it uses `python3` on PATH. The validation case is tested with PyChrono 10.0.0 on macOS and Linux.
-
-## Get Meep
-
-`fh` starts Meep for optics and photonics: a Python with Meep, the FDTD solver of MIT, runs the `meep_case.py` of the case. Meep is GPL, so femahoy only starts it as a separate program. You install it with micromamba from conda-forge (see "Get PyChrono" for micromamba).
-
-- Meep on macOS (Apple Silicon) and Linux (x86-64): `micromamba create -y -p ~/.local/share/pymeep -c conda-forge "pymeep=1.35.0=nompi*" python=3.12`, then `export FH_MEEP=~/.local/share/pymeep/bin/python`. The environment is about 370 MB.
-
-`fh` uses `$FH_MEEP`. If `FH_MEEP` is not set, it uses `python3` on PATH. The validation case is tested with Meep 1.35.0 on macOS and Linux.
-
-## Get preCICE
-
-`fh` couples OpenFOAM and CalculiX through preCICE for fluid-structure interaction. preCICE (LGPL) and its 2 adapters (GPL) are separate programs. You install them and OpenFOAM (see "Get OpenFOAM").
-
-- macOS (Apple Silicon), with Nix, in a clone of this repository:
-
-  ```sh
-  nix build nixpkgs#precice -o precice
-  nix build nixpkgs#pkg-config -o pkg-config
-  nix build -f scripts/ccx-precice.nix -o ccx-precice
-  export FH_CCX_PRECICE=$PWD/ccx-precice/bin/ccx_preCICE
-  curl -fsSL https://github.com/precice/openfoam-adapter/releases/download/v1.4.0/openfoam-adapter-1.4.0-OpenFOAMv1812-v2606-newer.tar.gz | tar xz
-  cd openfoam-adapter-1.4.0
-  PATH=$PWD/../pkg-config/bin:$PATH PKG_CONFIG_PATH=$PWD/../precice/lib/pkgconfig openfoam ./Allwmake
-  ```
-
-- Ubuntu 24.04: install the packages of preCICE and of the CalculiX adapter from their GitHub releases, and build the OpenFOAM adapter with `openfoam2512 ./Allwmake`. The step "Install preCICE" in `.github/workflows/ci.yml` shows the commands. The package puts `ccx_preCICE` on PATH.
-
-`./Allwmake` puts the OpenFOAM adapter in the user library folder of OpenFOAM (`$FOAM_USER_LIBBIN`). The fluid solver loads it from there. `fh` uses `$FH_CCX_PRECICE`. If `FH_CCX_PRECICE` is not set, it uses `ccx_preCICE` on PATH. The validation case is tested with preCICE 3.4.1, the CalculiX adapter 2.20.2 and the OpenFOAM adapter 1.4.0.
-
-## Get LAMMPS
-
-`fh` starts LAMMPS as a separate program for particles (SPH, DEM). You install it.
-
-- macOS: `brew install lammps`, then `export FH_LAMMPS=lmp_serial`.
-- Debian, Ubuntu: `sudo apt-get install lammps`. This puts `lmp` on PATH.
-
-`fh` uses `$FH_LAMMPS`. If `FH_LAMMPS` is not set, it uses `lmp` on PATH. The validation case is tested with LAMMPS 30 Sep 2026 on macOS and 7 Feb 2024 (Ubuntu 24.04) on Linux.
-
-## Get openEMS
-
-`fh` starts openEMS for antennas: a Python with the modules of openEMS (`CSXCAD` and `openEMS`) runs the `openems.py` of the case. openEMS is GPL-3.0, so it is a separate program that you install. It has no package for macOS or PyPI, so you build it from source with its script `update_openEMS.sh`. The build takes about 5 minutes.
-
-1. Get the source: `git clone --depth 1 --branch v0.37.0 --recurse-submodules --shallow-submodules https://github.com/thliebig/openEMS-Project.git`, then `cd openEMS-Project`.
-2. Build it:
-   - macOS (Apple Silicon), with Nix:
-
-     ```sh
-     nix develop --impure --expr 'with import (builtins.getFlake "nixpkgs") {}; mkShell { packages = [ cmake boost hdf5 cgal gmp mpfr vtk python312 pkg-config zlib ]; }' \
-       --command ./update_openEMS.sh ~/opt/openEMS --python --disable-GUI --with-tinyxml --skip-dep-check
-     ```
-
-   - Ubuntu 24.04: install the packages of the step "Install openEMS" in `.github/workflows/ci.yml`, then `./update_openEMS.sh ~/opt/openEMS --python --disable-GUI --with-tinyxml --skip-dep-check`.
-3. `export FH_OPENEMS=~/opt/openEMS/venv/bin/python`.
-
-`fh` uses `$FH_OPENEMS`. If `FH_OPENEMS` is not set, it uses `python3` on PATH. The validation case is tested with openEMS 0.37.0 on macOS and Linux.
+To use your own solver, for example from Nix, set its variable (see "Environment variables") before you run the script. The script then does not install that solver, and `fh` uses the variable, because a variable of the environment has priority over `solvers.env`. `scripts/ccx-precice.nix` builds `ccx_preCICE` with Nix. preCICE also needs its OpenFOAM adapter, which the script builds only for the OpenFOAM that it installs.
 
 ## Environment variables
+
+A solver variable has priority over its line in `solvers.env`. With neither, `fh` uses the program of the list below on PATH, or `python3` for a Python solver.
 
 - `FH_GMSH`: the gmsh program of `fh mesh`, and of `fh run` and `fh validate` for a GetDP case.
 - `FH_CCX`: the `ccx` program of `fh run` and `fh validate`.

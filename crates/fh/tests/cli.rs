@@ -130,6 +130,39 @@ fn without_a_solver_each_case_tells_how_to_install_it() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// fh takes each solver from `solvers.env` beside its program, and a variable of the
+/// environment has priority.
+#[test]
+fn fh_takes_each_solver_from_solvers_env_beside_it() {
+    let dir = common::scratch("solvers-env");
+    let fh = dir.join("fh");
+    std::fs::copy(env!("CARGO_BIN_EXE_fh"), &fh).unwrap();
+    std::fs::write(dir.join("solvers.env"), "FH_CCX=/nonexistent/file-ccx\n").unwrap();
+    let model = format!("{}/validation/cases/bar-pressure/job.inp", root());
+    let run = |ccx: Option<&str>| {
+        let mut cmd = Command::new(&fh);
+        cmd.args(["run", &model])
+            .env("FH_STATE", dir.join("state"))
+            .env_remove("FH_CCX");
+        if let Some(ccx) = ccx {
+            cmd.env("FH_CCX", ccx);
+        }
+        let out = cmd.output().expect("run fh");
+        text(out.stdout) + &text(out.stderr)
+    };
+    let output = run(None);
+    assert!(
+        output.contains("cannot start /nonexistent/file-ccx"),
+        "{output}"
+    );
+    let output = run(Some("/nonexistent/env-ccx"));
+    assert!(
+        output.contains("cannot start /nonexistent/env-ccx"),
+        "{output}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Like [`copy_root`], with only the cases `ids`, so that a solve stays short.
 fn copy_cases(tag: &str, ids: &[&str]) -> std::path::PathBuf {
     let dir = copy_root(tag);

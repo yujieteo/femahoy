@@ -73,14 +73,17 @@ Reason of the plots: many analysis types give a curve, not a field, for example 
 ### 4.3 Agent
 
 - The agent is a CLI harness process: Claude Code, with the user's own Claude Code login. femahoy has no agent loop of its own.
+- At start, `fh serve` checks that the agent starts and that `claude auth status` gives a login. If not, the chat tells the person how to install Claude Code or how to sign in. femahoy reads no credential.
 - The agent runs under the permission system of its harness.
+
+Reason of the check: a missing or signed-out agent showed only as a failed chat.
 
 ---
 
 ## 5. Input and meshes
 
 - The table of section 6 gives the input of each analysis type. The solver reads and checks its input. The small reader of `fh` for CalculiX `.inp` is for the preview only (`docs/reference/inp.md`).
-- `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. Users install gmsh themselves.
+- `fh mesh` calls gmsh as an external program and writes the mesh and the named sets as CalculiX input. `scripts/install.sh` installs gmsh with the solvers.
 - The `.msh` reader takes only `C3D10` (type 11) volumes, or with `--shell` only `S6` (type 9) surfaces. Another type is an error.
 - Text-to-CAD uses a Python script with build123d. The script writes STEP, and gmsh reads STEP with OpenCASCADE. `fh` has no CAD kernel. It reads only the length unit of a STEP file.
 
@@ -104,9 +107,9 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ## 6. Solvers
 
-`fh run` and `fh validate` start each solver directly, as a separate program that the user installs (section 2). `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there.
+`fh run` and `fh validate` start each solver directly, as a separate program (section 2). `scripts/install.sh` installs each solver for the user, with no root. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there.
 
-This table is the only list of the solvers in the docs. A new solver adds 1 row here, and the other docs point to this table. CI has the one other list of the solvers: `scripts/ci-select.sh` and `.github/workflows/ci.yml` must install each tool, so they name each solver.
+This table is the only list of the solvers in the docs. A new solver adds 1 row here, and the other docs point to this table. CI and the install script have the other lists of the solvers: `scripts/ci-select.sh`, `.github/workflows/ci.yml` and `scripts/install.sh` must install each tool, so they name each solver.
 
 | Analysis type | Solver | Input | Reason |
 |---|---|---|---|
@@ -183,6 +186,6 @@ About 10 workers add solvers and cases at the same time. These rules changed wit
 1. `validate_runs_every_case` checks only that no case fails. It has no count and no list of the cases. Reason: each new case changed the count, thus parallel pull requests conflicted after each merge, and main failed once when 2 pull requests both changed 14 to 15. Exit test: a pull request that adds a case does not change `crates/fh/tests/cli.rs`.
 2. A new case with a written tolerance budget needs no approval. A change to the tolerance of an existing case needs the approval of the owner (`AGENTS.md`). Reason: a wider tolerance can hide a fault that an existing case found, but a new case has no earlier result to hide. Exit test: each tolerance change of an existing case on main has the approval of the owner.
 3. A pull request installs only the solvers of its changed paths and runs their cases. Main runs the full suite after each merge (section 7). Reason: the full suite took about 12 minutes on each pull request, for 7 solver tools. Exit test: the full suite on main passes after each merge whose pull request passed. If it fails, the selection missed a path: correct `scripts/ci-select.sh`.
-4. The table of section 6 is the only list of the solvers in the docs. CI (`scripts/ci-select.sh` and `.github/workflows/ci.yml`) has the one other list of the solvers, because CI must install each tool. Reason: the list was in 5 places in this file and again in `README.md`, and each new solver changed all of them. `crates/fh/src/daemon/agent.md` keeps 1 how-to section for each solver, because the chat cannot read this file. These sections are not a list of the solvers. Exit test: a new solver adds 1 row to the table and changes no other list of the solvers, except the solver lists in `scripts/ci-select.sh` and `.github/workflows/ci.yml`.
+4. The table of section 6 is the only list of the solvers in the docs. CI (`scripts/ci-select.sh` and `.github/workflows/ci.yml`) and `scripts/install.sh` have the other lists of the solvers, because they must install each tool. Reason: the list was in 5 places in this file and again in `README.md`, and each new solver changed all of them. `crates/fh/src/daemon/agent.md` keeps 1 how-to section for each solver, because the chat cannot read this file. These sections are not a list of the solvers. Exit test: a new solver adds 1 row to the table and changes no other list of the solvers, except the solver lists in `scripts/ci-select.sh`, `.github/workflows/ci.yml` and `scripts/install.sh`.
 5. 1 rule of discretization error for all analysis types (section 7). Reason: each analysis type had its own rule, thus a new analysis type needed a new rule. Exit test: each case states its discretization error from 2 meshes or time steps, or why it cannot.
 6. The limits of section 6.1 apply to each solver process that `fh run` starts. Reason: the text named only `ccx`, but each solver already uses the same mechanism. Exit test: each solver module starts its programs only through `supervise`.
