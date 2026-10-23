@@ -33,7 +33,7 @@ jobs:
           fi | tee -a "$GITHUB_OUTPUT"
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
-      # The validation cases are tested with ccx 2.23 (README.md). The Ubuntu package is older,
+      # The validation cases are tested with ccx 2.23 (scripts/install.sh). The Ubuntu package is older,
       # so ccx comes from nixpkgs.
       - uses: cachix/install-nix-action@v31
       - name: Install ccx
