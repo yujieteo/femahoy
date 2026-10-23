@@ -7,5 +7,6 @@ publish.workspace = true
 
 [dependencies]
 fh-core = { path = "../core" }
+fh-viewer = { path = "../viewer" }
 miniz_oxide = "0.9.1"
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }

@@ -142,6 +142,11 @@ fn displaced(results: &Results) -> bool {
     !results.moves && results.steps.iter().any(|s| s.max_displacement() > 0.0)
 }
 
+/// True for a topology run: its density field is the design.
+fn topology(results: &Results) -> bool {
+    results.steps.iter().any(|s| s.field("density").is_some())
+}
+
 /// The time in seconds that a playing animation shows each step.
 pub const PLAY_SECONDS: f64 = 0.25;
 
@@ -199,8 +204,9 @@ pub enum Contour<'a> {
 impl ViewState {
     /// The first view state of a run: the step of the view, else the last step. The contour is
     /// the first field of the view, else the first field of `DEFAULT_FIELDS` in the step, else
-    /// the first field of the panel in the step. The scale of the view, else the automatic
-    /// scale when the panel shows the deformation, else 1 (the true shape).
+    /// the first field of the panel in the step. The scale of the view, else the undeformed
+    /// design of a topology run, else 1 (the true motion) for a multibody run, else the
+    /// automatic scale when the panel shows the deformation, else 1 (the true shape).
     pub fn open(results: &Results, view: &View, panel: &Panel) -> Self {
         let last = results.steps.len().saturating_sub(1);
         let step = view.step.unwrap_or(last).min(last);
@@ -217,6 +223,8 @@ impl ViewState {
         let (deformed, scale) = match view.scale {
             Some(0.0) => (false, auto),
             Some(s) => (true, s),
+            None if topology(results) => (false, auto),
+            None if results.multibody => (true, 1.0),
             None if panel.controls.contains(&Control::Deformation) => (true, auto),
             None => (true, 1.0),
         };
@@ -405,6 +413,24 @@ mod tests {
         assert_eq!((v.deformed, v.scale), (true, 1.0));
         let v = state(&r);
         assert_eq!((v.deformed, v.scale), (true, results::auto_scale(&r)));
+    }
+
+    /// With no view, a topology run shows the undeformed design and a multibody run its true
+    /// motion, not a scaled shape.
+    #[test]
+    fn multibody_and_topology_runs_open_with_no_scaled_shape() {
+        let mut r = fixture();
+        r.multibody = true;
+        assert_ne!(results::auto_scale(&r), 1.0);
+        let v = state(&r);
+        assert_eq!((v.deformed, v.scale), (true, 1.0), "the true motion");
+        r.multibody = false;
+        let mut density = r.steps[1].field("MISES").unwrap().clone();
+        density.name = "density".into();
+        r.steps[1].fields.push(density);
+        let v = state(&r);
+        assert_eq!(v.field.as_deref(), Some("density"));
+        assert!(!v.deformed, "the undeformed design");
     }
 
     /// The view of the agent gives the fields, the controls, the first step, the scale and the

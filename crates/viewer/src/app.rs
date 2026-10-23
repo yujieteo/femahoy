@@ -439,6 +439,7 @@ fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, panel: &Pane
     egui::ComboBox::from_id_salt("field")
         .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
         .show_ui(ui, |ui| {
+            ui.selectable_value(&mut v.field, None, "None");
             for name in &panel.fields {
                 ui.selectable_value(&mut v.field, Some(name.clone()), name);
             }

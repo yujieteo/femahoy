@@ -9,7 +9,9 @@
 //!   text, where the path of the curve ends with NAME, else after the text. The template shows
 //!   the text beside the viewer. The template script makes the controls that the agent writes
 //!   in the text work: an element with `data-run` opens that run with the view of its other
-//!   `data-` attributes (`report.html`).
+//!   `data-` attributes (`report.html`). Each `data-run` must name a run of the report, each
+//!   name of its `data-fields` a field of the run, and its `data-step` a step of the run
+//!   ([`check`]).
 //! - The viewer files of `fh serve` (`fh_viewer.js` and `fh_viewer_bg.wasm`), so the report
 //!   uses the same viewer. With `--viewer FILE`, the report has no viewer files: it loads the
 //!   script FILE, a path from the folder of the report. FILE sets `window.fhViewer` to an object
@@ -17,9 +19,10 @@
 //!   `/viewer/fh_viewer.js`). Many reports in 1 folder then share 1 copy of the viewer
 //!   (`scripts/validation-reports.py`).
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
-//!   and each step file. With `--one-step`, only 1 step of each run: the `data-step` of the
-//!   first element of the text for the run (see [`first_step`]), else the last step. Each file is
-//!   a `script` element that holds its bytes as raw deflate in base64, with the daemon path of
+//!   and each step file. With `--one-step`, only the steps of each run that the elements of the
+//!   text for the run open: the step of each `data-step`, and the last step for an element with
+//!   no `data-step` or a run with no element. Each `data-step` then names its step in the kept
+//!   steps ([`kept_steps`]). Each file is a `script` element that holds its bytes as raw deflate in base64, with the daemon path of
 //!   the file in `data-path`. A small script in the template answers the fetches of the viewer
 //!   from these elements. A report with no run has no viewer.
 //!
@@ -28,10 +31,11 @@
 //! `data:` URLs ([`font_faces`]).
 
 use std::fs;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use fh_core::vtu::read_pvd;
+use fh_core::vtu::{read_pvd, PvdEntry};
 use miniz_oxide::deflate::compress_to_vec;
 
 use super::http::VIEWER_FILES;
@@ -48,9 +52,11 @@ const USAGE: &str =
      A report with no run and no curve is the text only. The plot of a curve goes in place of \
      the mark <!--curve NAME--> of the text, where the path of the curve ends with NAME, else \
      after the text. --viewer loads the viewer from the script FILE.js beside the report, \
-     which sets window.fhViewer, instead of a copy in the report. --one-step keeps only 1 step \
-     of each run, for a smaller file: the data-step of the first element of the text for \
-     the run, else the last step.";
+     which sets window.fhViewer, instead of a copy in the report. Each data-run of the text \
+     must name a --run, each name of its data-fields a field of the run, and its data-step a \
+     step of the run. --one-step keeps only the steps of each run that the text opens, for a \
+     smaller file: the step of each data-step, and the last step for an element with no \
+     data-step or a run with no element.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
@@ -185,17 +191,114 @@ fn place_curves(mut text: String, paths: &[PathBuf]) -> Result<String, String> {
     Ok(text)
 }
 
-/// The step (from 0) of `data-step="N"` in the first tag of the text with `data-run="RUN"`, or
-/// `None`.
-fn first_step(text: &str, run: &str) -> Option<usize> {
-    let at = text.find(&format!("data-run=\"{run}\""))?;
-    let tag = &text[text[..at].rfind('<')?..at + text[at..].find('>')?];
-    let value = tag.split("data-step=\"").nth(1)?;
-    value[..value.find('"')?]
-        .trim()
-        .parse::<usize>()
-        .ok()?
-        .checked_sub(1)
+/// The place in `tag` of the value of its attribute `name="VALUE"`.
+fn attribute(tag: &str, name: &str) -> Option<Range<usize>> {
+    let pattern = format!("{name}=\"");
+    let (at, _) = tag
+        .match_indices(&pattern)
+        .find(|(at, _)| tag[..*at].ends_with(char::is_whitespace))?;
+    let start = at + pattern.len();
+    Some(start..start + tag[start..].find('"')?)
+}
+
+/// An element of the text that opens a run: its run, and the place in the text of the values
+/// of its `data-fields` and its `data-step`.
+struct Control<'a> {
+    run: &'a str,
+    fields: Option<Range<usize>>,
+    step: Option<Range<usize>>,
+}
+
+/// Each element of the text with `data-run`.
+fn controls(text: &str) -> Vec<Control<'_>> {
+    let mut found = Vec::new();
+    for (at, _) in text.match_indices("data-run=\"") {
+        let Some(start) = text[..at]
+            .rfind(['<', '>'])
+            .filter(|s| text[*s..].starts_with('<'))
+        else {
+            continue;
+        };
+        let Some(end) = text[at..].find('>').map(|n| at + n) else {
+            continue;
+        };
+        let value =
+            |name| attribute(&text[start..end], name).map(|r| start + r.start..start + r.end);
+        let (Some(run), fields, step) =
+            (value("data-run"), value("data-fields"), value("data-step"))
+        else {
+            continue;
+        };
+        found.push(Control {
+            run: &text[run],
+            fields,
+            step,
+        });
+    }
+    found
+}
+
+/// An error when a control of `run` does not fit the run: a `data-step` that is not a step of
+/// its `steps` steps, or a name of its `data-fields` that is not a field of the run. The fields
+/// come from `results` only when a control names a field.
+fn check(
+    text: &str,
+    run: &str,
+    controls: &[&Control],
+    steps: usize,
+    results: impl FnOnce() -> Result<fh_viewer::results::Results, String>,
+) -> Result<(), String> {
+    for c in controls {
+        if let Some(range) = &c.step {
+            let value = &text[range.clone()];
+            if !value
+                .parse::<usize>()
+                .is_ok_and(|n| (1..=steps).contains(&n))
+            {
+                return Err(format!(
+                    "{run}: data-step=\"{value}\": the run has {steps} steps"
+                ));
+            }
+        }
+    }
+    let named: Vec<&str> = controls
+        .iter()
+        .filter_map(|c| c.fields.clone())
+        .flat_map(|range| text[range].split(','))
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+        .collect();
+    if named.is_empty() {
+        return Ok(());
+    }
+    let names = fh_viewer::view::field_names(&results()?);
+    match named.iter().find(|f| !names.iter().any(|n| n == *f)) {
+        Some(f) => Err(format!(
+            "{run}: data-fields: the run has no field \"{f}\". Its fields are {}",
+            names.join(", ")
+        )),
+        None => Ok(()),
+    }
+}
+
+/// The steps (from 0) of a run of `steps` steps that its controls open: the step of each
+/// `data-step`, and the last step for a control with no `data-step` or a run with no control.
+/// In order, with no step 2 times.
+fn kept_steps(text: &str, controls: &[&Control], steps: usize) -> Vec<usize> {
+    let last = steps.saturating_sub(1);
+    let mut kept: Vec<usize> = controls
+        .iter()
+        .map(|c| match &c.step {
+            Some(range) => text[range.clone()].parse::<usize>().map_or(last, |n| n - 1),
+            None => last,
+        })
+        .collect();
+    if kept.is_empty() {
+        kept.push(last);
+    }
+    kept.sort_unstable();
+    kept.dedup();
+    kept
 }
 
 /// The report as HTML.
@@ -203,7 +306,7 @@ fn build(o: &Options) -> Result<String, String> {
     let state = default_state_dir().ok_or("no home folder, so set FH_STATE")?;
     let text = String::from_utf8(read(&o.text)?)
         .map_err(|_| format!("{}: not UTF-8 text", o.text.display()))?;
-    let text = place_curves(text, &o.curves)?;
+    let mut text = place_curves(text, &o.curves)?;
     let store = Store::open(&state)?;
     let found = store.runs().map_err(|(_, m)| m)?;
     let mut options = String::new();
@@ -228,6 +331,51 @@ fn build(o: &Options) -> Result<String, String> {
         ),
         _ => String::new(),
     };
+    let found_controls = controls(&text);
+    if let Some(c) = found_controls
+        .iter()
+        .find(|c| !o.runs.iter().any(|r| r == c.run))
+    {
+        return Err(format!(
+            "data-run=\"{}\": the report has no such run. Name it with --run",
+            c.run
+        ));
+    }
+    let failed = |(_, message): (u16, String)| message;
+    let mut files = Vec::new();
+    let mut steps_of = Vec::new();
+    for run in &o.runs {
+        let input = store.input_file(run).map_err(failed)?;
+        let pvd = String::from_utf8_lossy(&store.result_file(run, PVD_FILE).map_err(failed)?)
+            .into_owned();
+        let mut entries = read_pvd(&pvd).map_err(|e| format!("{run}: {PVD_FILE}: {e}"))?;
+        let mine: Vec<&Control> = found_controls.iter().filter(|c| c.run == run).collect();
+        check(&text, run, &mine, entries.len(), || {
+            fh_viewer::results::load(PVD_FILE, &pvd, |file| {
+                store.result_file(run, file).map_err(|(_, m)| m)
+            })
+            .map_err(|e| format!("{run}: {e}"))
+        })?;
+        let pvd = if o.one_step && !entries.is_empty() {
+            let kept = kept_steps(&text, &mine, entries.len());
+            for c in &mine {
+                if let Some(range) = &c.step {
+                    let n = text[range.clone()].parse::<usize>().map_or(0, |n| n - 1);
+                    let at = kept.iter().position(|k| *k == n).unwrap_or(0);
+                    steps_of.push((range.clone(), (at + 1).to_string()));
+                }
+            }
+            entries = kept.into_iter().map(|k| entries[k].clone()).collect();
+            keep_steps(&pvd, &entries)
+        } else {
+            pvd
+        };
+        files.push((run, input, pvd, entries));
+    }
+    steps_of.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    for (range, step) in steps_of {
+        text.replace_range(range, &step);
+    }
     let page = TEMPLATE
         .replace("NONCE", &nonce)
         .replace("/*FONTS*/", &font_faces())
@@ -252,25 +400,9 @@ fn build(o: &Options) -> Result<String, String> {
             );
         }
     }
-    let failed = |(_, message): (u16, String)| message;
-    for run in &o.runs {
+    for (run, input, pvd, entries) in files {
         let base = format!("/api/v1/runs/{run}");
-        add_file(
-            &mut html,
-            &format!("{base}/input"),
-            &store.input_file(run).map_err(failed)?,
-        );
-        let pvd = String::from_utf8_lossy(&store.result_file(run, PVD_FILE).map_err(failed)?)
-            .into_owned();
-        let mut entries = read_pvd(&pvd).map_err(|e| format!("{run}: {PVD_FILE}: {e}"))?;
-        let pvd = match first_step(&text, run).or(entries.len().checked_sub(1)) {
-            Some(k) if o.one_step && k < entries.len() => {
-                let time = entries[k].time;
-                entries.retain(|e| e.time == time);
-                one_step(&pvd, &entries)
-            }
-            _ => pvd,
-        };
+        add_file(&mut html, &format!("{base}/input"), &input);
         add_file(
             &mut html,
             &format!("{base}/files/{PVD_FILE}"),
@@ -285,8 +417,8 @@ fn build(o: &Options) -> Result<String, String> {
     Ok(html)
 }
 
-/// The PVD file `pvd` with only the data sets of `kept`, the parts of 1 step.
-fn one_step(pvd: &str, kept: &[fh_core::vtu::PvdEntry]) -> String {
+/// The PVD file `pvd` with only the data sets of `kept`.
+fn keep_steps(pvd: &str, kept: &[PvdEntry]) -> String {
     let mut parts = pvd.split('<');
     let mut out = parts.next().unwrap_or_default().to_owned();
     for part in parts {

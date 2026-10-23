@@ -209,6 +209,7 @@ fn the_report_draws_each_curve() {
 #[test]
 fn a_report_of_curves_needs_no_run() {
     let lab = Lab::new("report-curve-only");
+    fs::write(lab.dir.join("text.html"), "<h1>A320 barrel</h1>").unwrap();
     fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
     let curve = lab.dir.join("front.csv");
     fs::write(&curve, CURVE).unwrap();
@@ -223,6 +224,7 @@ fn a_report_of_curves_needs_no_run() {
 #[test]
 fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
     let lab = Lab::new("report-text-only");
+    fs::write(lab.dir.join("text.html"), "<h1>A320 barrel</h1>").unwrap();
     fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
     let out = lab.report(&[]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
@@ -232,48 +234,87 @@ fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
 }
 
 /// With `--one-step`, the report holds only the last step of the run, and its `results.pvd`
-/// names only that step. When the text opens the run at a step, the report holds that step.
+/// names only that step. When the text opens the run at some steps, the report holds those
+/// steps, and each `data-step` names its step in the kept steps.
 #[test]
-fn the_one_step_option_keeps_only_1_step() {
+fn the_one_step_option_keeps_only_the_steps_that_the_text_opens() {
     let lab = Lab::new("report-one-step");
     let out = lab.dir.join("state/runs/run-000001/out");
     fs::write(
         out.join("results.pvd"),
         "<VTKFile type=\"Collection\"><Collection units=\"SI-mm\">\
          <DataSet timestep=\"1\" part=\"0\" file=\"step-1.vtu\"/>\
-         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/></Collection></VTKFile>",
+         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/>\
+         <DataSet timestep=\"3\" part=\"0\" file=\"step-3.vtu\"/></Collection></VTKFile>",
     )
     .unwrap();
-    fs::write(out.join("step-2.vtu"), b"last vtu").unwrap();
+    fs::write(out.join("step-2.vtu"), b"middle vtu").unwrap();
+    fs::write(out.join("step-3.vtu"), b"last vtu").unwrap();
     let out = lab.report(&["--run", "run-000001", "--one-step"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let html = fs::read_to_string(lab.out()).unwrap();
     let base = "/api/v1/runs/run-000001/files";
     assert_eq!(file(&html, &format!("{base}/step-1.vtu")), None);
     assert_eq!(
-        file(&html, &format!("{base}/step-2.vtu")).as_deref(),
+        file(&html, &format!("{base}/step-3.vtu")).as_deref(),
         Some(&b"last vtu"[..])
     );
     let pvd = String::from_utf8(file(&html, &format!("{base}/results.pvd")).unwrap()).unwrap();
     assert_eq!(
         pvd,
         "<VTKFile type=\"Collection\"><Collection units=\"SI-mm\">\
-         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/></Collection></VTKFile>"
+         <DataSet timestep=\"3\" part=\"0\" file=\"step-3.vtu\"/></Collection></VTKFile>"
     );
     fs::write(
         lab.dir.join("text.html"),
-        "<p>The <button data-run=\"run-000001\" data-fields=\"p\" data-step=\"1\">real \
-         part</button>.</p>",
+        "<button data-run=\"run-000001\" data-step=\"3\">end</button>\
+         <button data-run=\"run-000001\" data-step=\"1\">start</button>",
     )
     .unwrap();
     let out = lab.report(&["--run", "run-000001", "--one-step"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let html = fs::read_to_string(lab.out()).unwrap();
-    assert_eq!(
-        file(&html, &format!("{base}/step-1.vtu")).as_deref(),
-        Some(&b"fake vtu"[..])
-    );
     assert_eq!(file(&html, &format!("{base}/step-2.vtu")), None);
+    assert!(file(&html, &format!("{base}/step-1.vtu")).is_some());
+    assert!(file(&html, &format!("{base}/step-3.vtu")).is_some());
+    assert!(
+        html.contains("data-step=\"2\">end</button>")
+            && html.contains("data-step=\"1\">start</button>"),
+        "each control opens its step in the kept steps"
+    );
+}
+
+/// A control of the text that names a run, a field or a step that the report does not have
+/// gives no report, and the message names it.
+#[test]
+fn a_control_that_does_not_fit_its_run_gives_no_report() {
+    let lab = Lab::new("report-check");
+    let fixture = common::root().join("fixtures/results/cantilever-2step");
+    let out = lab.dir.join("state/runs/run-000001/out");
+    for name in ["results.pvd", "step-1.vtu", "step-2.vtu"] {
+        fs::copy(fixture.join(name), out.join(name)).unwrap();
+    }
+    for (control, error) in [
+        ("data-run=\"run-000009\"", "data-run=\"run-000009\""),
+        ("data-run=\"run-000001\" data-step=\"3\"", "data-step=\"3\""),
+        (
+            "data-run=\"run-000001\" data-fields=\"MISES, Ez\"",
+            "no field \"Ez\"",
+        ),
+    ] {
+        fs::write(lab.dir.join("text.html"), format!("<a {control}>run</a>")).unwrap();
+        let out = lab.report(&["--run", "run-000001"]);
+        assert_eq!(out.status.code(), Some(1), "{control}");
+        assert!(stderr(&out).contains(error), "{}", stderr(&out));
+        assert!(!lab.out().exists());
+    }
+    fs::write(
+        lab.dir.join("text.html"),
+        "<a data-run=\"run-000001\" data-fields=\"MISES\" data-step=\"2\">run</a>",
+    )
+    .unwrap();
+    let out = lab.report(&["--run", "run-000001"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
 }
 
 /// A bad curve file gives no report, and the message names the file and the line.

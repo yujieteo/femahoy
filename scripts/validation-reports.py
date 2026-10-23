@@ -25,7 +25,7 @@ A case that cannot run (its solver is not installed on this computer) gets a rep
 only: the checks of check.toml and derivation.md. The report and the index name the solver and
 how to install it. A case that fails gets its report, which shows the failure. An
 input that writes no field (a CalculiX input with no *NODE FILE and no *EL FILE) has no 3D view.
-A report above 5 MB is made again with only the step that the view of each run shows first
+A report above 5 MB is made again with only the steps that the story of each run opens
 (`fh report --one-step`).
 A report above 10 MB is not kept: the index names its size.
 
@@ -60,7 +60,7 @@ FONTS = ROOT / "crates/fh/src/daemon/fonts"
 FH = Path(os.environ.get("FH_BIN") or ROOT / "target/release/fh")
 VIEWER = Path(os.environ.get("FH_VIEWER") or ROOT / "target/release/viewer")
 VIEWER_FILES = ["fh_viewer.js", "fh_viewer_bg.wasm"]
-# A report above SMALL bytes keeps only the step that the view of each run shows first. The
+# A report above SMALL bytes keeps only the steps that the story of each run opens. The
 # repository keeps no report above LIMIT bytes.
 SMALL = 5_000_000
 LIMIT = 10_000_000
@@ -323,7 +323,7 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
         )
         body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{trs}</tbody></table>")
     told = story(case, runs)
-    last = " Only 1 step of each run is in this report, to keep the file small." if one_step else ""
+    last = " Only the steps that the text opens of each run are in this report, to keep the file small." if one_step else ""
     if runs and not told:
         links = ", ".join(f'<a data-run="{run}">{esc(name)}</a>' for run, name in runs)
         body.append(f"<p>The 3D view shows the run of each input: {links}.{last}</p>")

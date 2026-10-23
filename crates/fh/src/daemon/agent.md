@@ -214,14 +214,14 @@ This setup agrees with the King-Middleton impedance of a dipole (the validation 
 A report has no fixed form. It shows the conclusion of its results so that the person can check it. Before you write it, answer 2 questions: what do the results show, and which conclusion does the report give? Then write only the plots and the controls that show or test the conclusion. Each value of the conclusion comes from your runs or from a source that the report names.
 
 - Plots: write a curve file for each result that is a line (see "Curves and fits"), with the reference values as points. Put the mark `<!--curve NAME-->` in the text where the plot goes. NAME is the end of the path of the curve, for example `d10/cp.csv`. A curve with no mark goes after the text.
-- Controls: an element of the text with `data-run="RUN"` opens the run RUN in the viewer, with the view of its other `data-` attributes. A link or a button opens it with a click. A `select` opens the run of the chosen `option`, and a radio button opens its run when the person checks it. The report opens the first chosen element at the start.
+- Controls: an element of the text with `data-run="RUN"` opens the run RUN in the viewer, with the view of its other `data-` attributes. A link or a button opens it with a click. A `select` opens the run of the chosen `option`, and a radio button opens its run when the person checks it. The report opens the first chosen element at the start. `fh report` stops with an error when a `data-run` names no `--run`, a name of `data-fields` is no field of the run, or `data-step` is no step of the run.
 
 | Attribute | The view | Default |
 |---|---|---|
 | `data-fields="p,U magnitude"` | The fields of the contour list. The first shows first. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`. | All the fields |
 | `data-controls="steps,deformation,loads"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `data-controls=""` shows none. | Each control that can change the view of the run |
 | `data-step="N"` | The step that shows first, from 1. | The last step |
-| `data-scale="X"` | The deformation scale. `1` is the true shape, `0` the undeformed shape. | The automatic scale when the deformation controls show, else `1` |
+| `data-scale="X"` | The deformation scale. `1` is the true shape, `0` the undeformed shape. | `0` for a topology run, `1` for a multibody run, else the automatic scale when the deformation controls show, else `1` |
 | `data-box="X0,Y0,Z0,X1,Y1,Z1"` | The box that the view shows first, in the units of the model. A flat box with no motion in z shows from the top: put Z0 and Z1 on the top face of the model, for example z = 1 for a 2D OpenFOAM mesh from z = 0 to 1. | The whole model |
 
 For example, the pressure on an airfoil at 2 flap angles, with the plot of the pressure coefficient along the chord:
