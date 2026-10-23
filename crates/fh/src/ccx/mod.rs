@@ -49,6 +49,8 @@ pub const RMS_FILE: &str = "rms.txt";
 const RUN_MARKER: &str = ".fh-run";
 /// Name of the `ccx` job in `<run-dir>/ccx`.
 const JOB: &str = "job";
+/// Name of the copy of the input in the `in` folder of a daemon run.
+pub(crate) const INPUT_FILE: &str = "input.inp";
 
 /// The error of a run that the user cancelled.
 pub(crate) const CANCELLED: &str = "run cancelled";
@@ -80,6 +82,18 @@ fn run_files(inp: &Path, flat: &Flat) -> Result<(Vec<PathBuf>, Vec<PathBuf>), St
     let globals = global_inputs(&flat.text)?;
     let mut files = flat.files.clone();
     for global in &globals {
+        // A run copies the input to one of these names, and then does not copy a global there.
+        for reserved in [format!("{JOB}.inp"), INPUT_FILE.to_owned()] {
+            if global == Path::new(&reserved) {
+                return Err(format!(
+                    "{}: the global model {} has the name {reserved}. A run gives this name to \
+                     the copy of the input. Rename the global model and its INPUT= value, for \
+                     example to global.inp and global.frd",
+                    inp.display(),
+                    global.display()
+                ));
+            }
+        }
         let path = dir.join(global);
         if !path.is_file() {
             return Err(format!(

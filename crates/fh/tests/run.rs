@@ -244,6 +244,27 @@ fn a_submodel_with_no_global_input_fails_with_the_name_of_the_file() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn a_global_input_with_the_name_of_the_run_copy_fails_with_the_name() {
+    let dir = scratch("run-submodel-job");
+    let input = dir.join("sub.inp");
+    fs::write(&input, "*SUBMODEL, TYPE=NODE, INPUT=job.frd\nCUT\n").unwrap();
+    fs::write(dir.join("job.inp"), "*NODE\n1, 0, 0, 0\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&input)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", dir.join("no-ccx"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let shown = stdout(&out) + &stderr(&out);
+    assert!(
+        shown.contains("the global model job.inp has the name job.inp"),
+        "{shown}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A fake `openfoam`. It writes its arguments to CALLS, and the files that each program writes:
 /// the mesh, a time folder, and for the times 100 and 0 a legacy VTK file with 1 hexahedron and
 /// its cell fields (U x is the time / 100). With FAIL as its program, it fails as OpenFOAM does.
