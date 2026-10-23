@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-5ac3bb4da3b38ee24ce3b1beeee918a2' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-ee06753d968428d495ec3b4795eb21b7' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -80,7 +80,7 @@ header { flex: none; padding: 0.75rem 1rem; }
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.0001 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>u_mid</code></td><td style="text-align:right">-0.0231518</td><td style="text-align:right">-0.0231516</td><td style="text-align:right">2.315e-06</td><td style="text-align:right">2.125e-06</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy e77fe7d.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy dad4ebf.</p>
 <p>This case checks element birth: a concrete column built in 10 lifts, each lift added strain free on the deformed column (units SI-mm).</p>
 <h2>Source</h2>
 <p>The theory is the axial deformation of a bar, δ = N L / (E A), applied to each step of the construction: J. M. Gere and B. J. Goodno, <em>Mechanics of Materials</em>, 8th ed., Cengage Learning, 2013, chapter 2 (axially loaded members).
@@ -93,19 +93,19 @@ They find that the result is very different from the solution for a body that is
 The weight of a lift acts only when the lift is in the model.
 ccx adds an element strain free only in a nonlinear step: <code>modelchanges.f</code> of ccx 2.23 stops with an error in a linear step. Thus the steps have <code>NLGEOM</code>.
 With nu = 0, the column has a uniaxial stress and no lateral strain. Thus 1 element across the section gives the axial bar of the theory.</p>
-<p>The check is the mean of <code>U</code>, component 3, of the set <code>MID</code> (the 4 nodes at z = 5000 mm, the top of lift 5) after step 10.</p>
+<p>The check is the mean of <code>U</code>, component 3, of the set <code>MID</code> after step 10. <code>MID</code> is the 4 nodes at z = 5000 mm, the top of lift 5.</p>
 <h2>Theory</h2>
 <p>A new lift is strain free on the deformed column. Thus the displacement of a point is its displacement after its lift goes on the column.
 The column is statically determinate. The axial force at a section is the weight of the lifts above it.
-Let W = rho g A h be the weight of 1 lift, and c = rho g h² / (2E) = W h / (2 E A).
+Let W = rho g A h be the weight of 1 lift. Let c = rho g h² / (2E) = W h / (2 E A).
 Step j adds lift j. In step j, the top of lift i (z = i h, i &lt;= j) moves down by:</p>
-<ul><li>j &gt; i: all of W goes through 0 &lt;= z &lt;= i h. The top of lift i moves W i h / (E A) = 2 i c.</li><li>j = i: all of W goes through 0 &lt;= z &lt;= (i - 1) h, and lift i shortens under its own weight by rho g h² / (2E) = c. The top moves (2 i - 1) c.</li></ul>
+<ul><li>j &gt; i: all of W goes through 0 &lt;= z &lt;= i h. The top of lift i moves W i h / (E A) = 2 i c.</li><li>j = i: all of W goes through 0 &lt;= z &lt;= (i - 1) h. Lift i also shortens under its own weight by rho g h² / (2E) = c. The top moves (2 i - 1) c.</li></ul>
 <p>The sum for j = i to N gives the settlement at the end:</p>
 <p>u_i = -c (2 i (N - i) + 2 i - 1) = -c (2 i (N + 1 - i) - 1)</p>
 <p>c = 2.4e-9 · 9810 · 1000² / (2 · 30000) = 3.924e-4 mm. At mid-height (i = 5), u_5 = -59 c = -0.0231516 mm.</p>
 <p>The largest settlement is at the top of lifts 5 and 6 (z = 5000 and 6000 mm). The top of the column settles only 19 c = 0.0074556 mm.
-A column that gets all its lifts at once has u(z) = -(rho g / E) (H z - z² / 2), which is -c i (2 N - i) at the top of lift i. Its largest settlement is at the top: 100 c = 0.03924 mm. At z = 5000 mm it is 75 c = 0.0294300 mm, 27 % more than the column built in lifts.
-For thin lifts (h to 0), u_i goes to -rho g z (H - z) / E, the settlement of a body that grows by accretion. The lifts add -rho g h (2 z - h) / (2E).
+A column that gets all its lifts at once has u(z) = -(rho g / E) (H z - z² / 2). At the top of lift i, this is -c i (2 N - i). Its largest settlement is at the top: 100 c = 0.03924 mm. At z = 5000 mm it is 75 c = 0.0294300 mm, 27 % more than the column built in lifts.
+For thin lifts (h to 0), u_i goes to -rho g z (H - z) / E. This is the settlement of a body that grows by accretion. The lifts add -rho g h (2 z - h) / (2E).
 The axial stress is -rho g (H - z) in the 2 columns, because the column is statically determinate. Only the displacement shows the sequence of the construction. Thus the check is a displacement.</p>
 <p>A bar of linear elements with the consistent load of its weight gives the exact displacement at its nodes. Each <code>C3D8</code> puts W/2 on its bottom face and W/2 on its top face. With nu = 0, the column is this bar.</p>
 <h2>Lifts added with strain</h2>
@@ -135,7 +135,7 @@ In this case that is lift 1. Thus a 3D view shows lift 1 only, in each step. Wit
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="5ac3bb4da3b38ee24ce3b1beeee918a2">
+<script type="module" nonce="ee06753d968428d495ec3b4795eb21b7">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
