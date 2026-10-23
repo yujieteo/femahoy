@@ -1,0 +1,17 @@
+# title: Column built in 10 lifts, the settlement of the top of each lift at the end
+# y: settlement -u_z [mm]
+# points ccx: the run of job.inp (ccx 2.23), set AXIS after step 10
+# note: Lift theory: (rho g h^2 / 2E) (2i (N + 1 - i) - 1) at the top of lift i. All at once: (rho g / E) (H z - z^2 / 2).
+# note: ccx adds each lift strain free. With ADD=WITH STRAIN in place of ADD=STRAIN FREE, ccx gives the curve of all at once.
+height z [m],lift theory,all at once,ccx
+0,0,0,0
+1,0.0074556,0.0074556,0.007455683
+2,0.013734,0.0141264,0.01373414
+3,0.0184428,0.0200124,0.01844298
+4,0.021582,0.0251136,0.0215822
+5,0.0231516,0.02943,0.02315179
+6,0.0231516,0.0329616,0.02315178
+7,0.021582,0.0357084,0.02158215
+8,0.0184428,0.0376704,0.01844291
+9,0.013734,0.0388476,0.01373408
+10,0.0074556,0.03924,0.007455639
