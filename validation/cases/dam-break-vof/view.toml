@@ -1,3 +1,0 @@
-# The water column falls and the front moves along the floor: play the steps.
-fields = ["alpha.water", "U magnitude", "p"]
-controls = ["steps"]

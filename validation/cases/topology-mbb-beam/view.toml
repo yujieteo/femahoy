@@ -1,3 +1,0 @@
-# The design: the density of the material in each element, on the undeformed beam.
-fields = ["density"]
-controls = ["loads"]

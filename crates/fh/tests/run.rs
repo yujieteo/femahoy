@@ -503,7 +503,25 @@ fn fh_run_optimizes_a_topology_case_with_ccx_in_each_iteration() {
     assert!(rows.len() > 5 && last[3] <= 0.01, "{history}");
     assert!(last[1] < 0.5 * first[1], "{history}");
 
-    let grid = fh_core::vtu::read_vtu(&fs::read(run.join("out/step-1.vtu")).unwrap()).unwrap();
+    // The steps show the design of the iterations 1, 2, 4, 8 and so on, then the last design.
+    let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
+    let steps = fh_core::vtu::read_pvd(&pvd).unwrap();
+    let mut want: Vec<f64> = (0..)
+        .map(|k| (1 << k) as f64)
+        .take_while(|n| *n < rows.len() as f64)
+        .collect();
+    want.push(rows.len() as f64);
+    assert_eq!(steps.iter().map(|s| s.time).collect::<Vec<_>>(), want);
+    let read = |s: &fh_core::vtu::PvdEntry| {
+        fh_core::vtu::read_vtu(&fs::read(run.join("out").join(&s.file)).unwrap()).unwrap()
+    };
+    let start = read(&steps[0]);
+    let start = &start.cell_field("density").unwrap().values;
+    assert!(
+        start.iter().all(|x| *x == first[2]),
+        "the design of iteration 1: {start:?}"
+    );
+    let grid = read(&steps[steps.len() - 1]);
     let density = grid.cell_field("density").unwrap().values.clone();
     assert_eq!(density.len(), 48);
     // The page draws only 3D cells: the 2D elements go to the page as hexahedra (VTK type 12).

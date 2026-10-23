@@ -31,7 +31,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 | Interface | Purpose |
 |---|---|
 | Chat | Main interface, in a panel on the left of the page. One conversation with the agent. Every agent action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the agent at its next step, and `Stop` ends the work at once. A status shows the current action of the agent and the time. |
-| 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector that selects and plays each output time. The panel shows the important controls of the analysis and hides the others behind 1 switch, "Show all controls". |
+| 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector that selects and plays each output time. The panel shows the important controls of the analysis and hides the others behind 1 switch, "Show all controls". In a report, the agent chooses the controls and the view. |
 
 ---
 
@@ -64,7 +64,7 @@ Reason: a web page on another origin must not use the daemon, and a key in the b
 
 - **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the style of the site teoyujie.org: the Source Serif 4 and DM Sans fonts, and its colours.
 - **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls.
-- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer, the results of the runs, the view of each run (the fields and the controls that tell its story) and an x-y plot of each curve that the agent names. `fh` draws each plot as inline SVG, with the reference points of the curve over it. The file opens with a double-click and needs no daemon and no network. With `--viewer`, many reports in 1 folder share 1 copy of the viewer (`validation/reports`). The agent writes no PDF, image, plot or viewer code.
+- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer, the results of the runs and an x-y plot of each curve that the agent names. A report has no fixed form: the agent puts each plot and each control in its text, for the conclusion of the results. A control opens a run with the view that the agent gives: the fields, the viewer controls, the step, the scale, the box of the camera and the marks on the model. The agent also writes the controls of the 3D view in the bar above the viewer, for example a choice of the flap angle or a slider of the time, the phase or the iteration. The viewer hides each of its own controls that the view does not name, behind the switch "Show all controls". `fh` draws each plot as inline SVG, with the reference points of the curve over it. The file opens with a double-click and needs no daemon and no network. With `--viewer`, many reports in 1 folder share 1 copy of the viewer (`validation/reports`). The agent writes no PDF, image, plot or viewer code.
 
 Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport needs the GPU, and egui hosts it well.
 

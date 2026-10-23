@@ -1,5 +1,0 @@
-# The pressure wave from the sphere: the real part of p (step 1) and its amplitude. Step 2 is
-# the imaginary part.
-fields = ["p", "p_abs"]
-controls = []
-step = 1

@@ -1,3 +1,0 @@
-# The flow around the cylinder bends the flag to a steady shape.
-fields = ["U magnitude", "p"]
-controls = []

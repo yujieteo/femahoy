@@ -1,0 +1,11 @@
+<h2>Conclusion</h2>
+<p>The model passes: its shock angle is 0.071 % and its pressure ratio 0.013 % from the exact oblique shock. Its Mach number, temperature and density behind the shock are 0.19 % to 0.20 % from the theory. These 3 checks use 74 % to 80 % of the tolerance of 0.25 %.</p>
+<label data-bar>View <select>
+<option data-run="mach2.5" data-fields="p" data-controls="" data-box="-0.5,0,0.01,1,1,0.01" data-marks="0.755,0.5678,0.01 shock of the theory, x = 0.755;1,0.7520,0.01 shock of the theory, x = 1" selected>The shock</option>
+<option data-run="mach2.5" data-fields="T" data-controls="" data-box="-0.05,0,0.01,0.25,0.2,0.01" data-marks="0.055,0.0197,0.01 T = 1.412, 6.8 % above the theory">The tip of the wedge</option>
+</select></label>
+<p>The pressure jump of the model is at the shock of the theory. Behind the shock, the pressure is within 0.3 % of the theory. The view "The shock" above the model shows the pressure <code>p</code>. The dots mark the shock of the theory, beta = 36.9449 degrees from the tip.</p>
+<!--curve pressure.csv-->
+<p>The tip of the wedge causes the 3 larger differences (see "Mesh study"). There the shock and the wall meet in 1 cell, and the scheme makes too much entropy. The view "The tip of the wedge" shows the temperature <code>T</code>. The hottest cell is at the wall near the tip, with T = 1.412, 6.8 % above the theory.</p>
+<p>The flow carries this hot gas along the wall. On the line x = 0.755 near the wall, the temperature is up to 0.44 % above the theory. There the Mach number is up to 0.35 % below the theory, but the pressure is within 0.07 % of it. The averages of the 3 checks include this layer. The error decreases with the cell size. From the 2 finest meshes of the mesh study, the 5 values extrapolate to within 0.011 % of the theory.</p>
+<!--curve behind.csv-->

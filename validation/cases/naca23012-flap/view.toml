@@ -1,3 +1,0 @@
-# The flap changes the pressure on the airfoil, and the pressure gives the lift and the moment.
-fields = ["p", "U magnitude"]
-controls = []

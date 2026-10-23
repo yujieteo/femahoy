@@ -1,3 +1,0 @@
-# The radiation pattern: the directivity D in each direction, as the distance from the centre.
-fields = ["D"]
-controls = []

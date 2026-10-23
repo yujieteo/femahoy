@@ -5,7 +5,12 @@ field along the axis. The scattered field is a series of cylinder waves with the
 b_n. The scattering efficiency is Q = (2 / x) (|b_0|^2 + 2 sum_{n>=1} |b_n|^2), with the size
 parameter x = 2 pi a / wavelength. Run: python3 reference.py (it needs SciPy, as the Python of
 Meep has).
+
+python3 reference.py --spectrum > spectrum-exact.txt writes Q at the 41 size parameters of
+res40/meep_case.py, for the plot of the report (curves.py).
 """
+import sys
+
 import numpy as np
 from scipy.special import h1vp, hankel1, jv, jvp
 
@@ -28,7 +33,12 @@ def efficiencies(m, x):
     return 2 / x * np.sum(twice * abs(b) ** 2), 2 / x * np.sum(twice * b.real)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and sys.argv[1:] == ["--spectrum"]:
+    print("# python3 reference.py --spectrum > spectrum-exact.txt")
+    print("# x Q")
+    for x in np.linspace(1.0, 3.0, 41):
+        print(f"{x:.4f} {efficiencies(M, x)[0]:.6f}")
+elif __name__ == "__main__":
     for x in (1.0, 2.0, 2.5, 3.0):
         q_sca, q_ext = efficiencies(M, x)
         print(f"x {x:.1f}: Q {q_sca:.6f}, Q_ext - Q {q_ext - q_sca:.1e}")

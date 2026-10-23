@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-d458ef7a6615521742902059a605917d' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-bd4a29e435076a5f98d5d67d453286bd' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,10 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -76,10 +80,17 @@ header { flex: none; padding: 0.75rem 1rem; }
 </head>
 <body>
 <article><h1>fit-nist-pontius derivation</h1>
+<h2>Conclusion</h2>
+<p><code>fh fit</code> gives the certified values of NIST for the data set Pontius. The fit of y = c0 + c1 x + c2 x^2 to the 40 observations gives c0, c1, c2 and R-squared within 6.4e-13 of the certified values, relative. The largest difference is in c0, 0.6 % of the tolerance of 1e-10 (see "Tolerance").</p>
+<figure class="curve"><figcaption>Load cell calibration of NIST (Pontius), the deflection at each load</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Load cell calibration of NIST (Pontius), the deflection at each load"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="256.0" y="324.0" text-anchor="middle">1e6</text><text x="440.0" y="324.0" text-anchor="middle">2e6</text><text x="624.0" y="324.0" text-anchor="middle">3e6</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="252.8" text-anchor="end">0.5</text><text x="66.0" y="193.6" text-anchor="end">1</text><text x="66.0" y="134.4" text-anchor="end">1.5</text><text x="66.0" y="75.2" text-anchor="end">2</text><text x="66.0" y="16.0" text-anchor="end">2.5</text><text class="label" x="348.0" y="354" text-anchor="middle">load [-]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">deflection [-]</text><polyline style="stroke:var(--s2)" points="99.6,294.9 104.8,292.5 110.1,290.0 115.3,287.5 120.6,285.1 125.8,282.6 131.1,280.1 136.3,277.7 141.6,275.2 146.8,272.7 152.0,270.3 157.3,267.8 162.5,265.4 167.8,262.9 173.0,260.4 178.3,258.0 183.5,255.5 188.7,253.1 194.0,250.6 199.2,248.2 204.5,245.7 209.7,243.3 215.0,240.8 220.2,238.3 225.5,235.9 230.7,233.4 235.9,231.0 241.2,228.5 246.4,226.1 251.7,223.6 256.9,221.2 262.2,218.7 267.4,216.3 272.7,213.8 277.9,211.4 283.1,209.0 288.4,206.5 293.6,204.1 298.9,201.6 304.1,199.2 309.4,196.7 314.6,194.3 319.8,191.8 325.1,189.4 330.3,187.0 335.6,184.5 340.8,182.1 346.1,179.6 351.3,177.2 356.6,174.8 361.8,172.3 367.0,169.9 372.3,167.5 377.5,165.0 382.8,162.6 388.0,160.2 393.3,157.7 398.5,155.3 403.8,152.9 409.0,150.4 414.2,148.0 419.5,145.6 424.7,143.1 430.0,140.7 435.2,138.3 440.5,135.9 445.7,133.4 450.9,131.0 456.2,128.6 461.4,126.1 466.7,123.7 471.9,121.3 477.2,118.9 482.4,116.5 487.7,114.0 492.9,111.6 498.1,109.2 503.4,106.8 508.6,104.3 513.9,101.9 519.1,99.5 524.4,97.1 529.6,94.7 534.9,92.3 540.1,89.8 545.3,87.4 550.6,85.0 555.8,82.6 561.1,80.2 566.3,77.8 571.6,75.4 576.8,72.9 582.0,70.5 587.3,68.1 592.5,65.7 597.8,63.3 603.0,60.9 608.3,58.5 613.5,56.1 618.8,53.7 624.0,51.3"/><circle style="fill:var(--s1)" cx="99.6" cy="295.0" r="4"><title>NIST: 150000, 0.11019</title></circle><circle style="fill:var(--s1)" cx="127.2" cy="282.0" r="4"><title>NIST: 300000, 0.21956</title></circle><circle style="fill:var(--s1)" cx="154.8" cy="269.0" r="4"><title>NIST: 450000, 0.32949</title></circle><circle style="fill:var(--s1)" cx="182.4" cy="256.0" r="4"><title>NIST: 600000, 0.43899</title></circle><circle style="fill:var(--s1)" cx="210.0" cy="243.1" r="4"><title>NIST: 750000, 0.54803</title></circle><circle style="fill:var(--s1)" cx="237.6" cy="230.2" r="4"><title>NIST: 900000, 0.65694</title></circle><circle style="fill:var(--s1)" cx="265.2" cy="217.4" r="4"><title>NIST: 1.05e6, 0.76562</title></circle><circle style="fill:var(--s1)" cx="292.8" cy="204.4" r="4"><title>NIST: 1.2e6, 0.87487</title></circle><circle style="fill:var(--s1)" cx="320.4" cy="191.6" r="4"><title>NIST: 1.35e6, 0.98292</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="178.8" r="4"><title>NIST: 1.5e6, 1.09146</title></circle><circle style="fill:var(--s1)" cx="375.6" cy="165.9" r="4"><title>NIST: 1.65e6, 1.20001</title></circle><circle style="fill:var(--s1)" cx="403.2" cy="153.1" r="4"><title>NIST: 1.8e6, 1.30822</title></circle><circle style="fill:var(--s1)" cx="430.8" cy="140.3" r="4"><title>NIST: 1.95e6, 1.41599</title></circle><circle style="fill:var(--s1)" cx="458.4" cy="127.6" r="4"><title>NIST: 2.1e6, 1.52399</title></circle><circle style="fill:var(--s1)" cx="486.0" cy="114.8" r="4"><title>NIST: 2.25e6, 1.63194</title></circle><circle style="fill:var(--s1)" cx="513.6" cy="102.0" r="4"><title>NIST: 2.4e6, 1.73947</title></circle><circle style="fill:var(--s1)" cx="541.2" cy="89.4" r="4"><title>NIST: 2.55e6, 1.84646</title></circle><circle style="fill:var(--s1)" cx="568.8" cy="76.7" r="4"><title>NIST: 2.7e6, 1.95392</title></circle><circle style="fill:var(--s1)" cx="596.4" cy="63.9" r="4"><title>NIST: 2.85e6, 2.06128</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="51.3" r="4"><title>NIST: 3e6, 2.16844</title></circle><circle style="fill:var(--s1)" cx="99.6" cy="294.9" r="4"><title>NIST: 150000, 0.11052</title></circle><circle style="fill:var(--s1)" cx="127.2" cy="281.9" r="4"><title>NIST: 300000, 0.22018</title></circle><circle style="fill:var(--s1)" cx="154.8" cy="269.0" r="4"><title>NIST: 450000, 0.32939</title></circle><circle style="fill:var(--s1)" cx="182.4" cy="256.0" r="4"><title>NIST: 600000, 0.43886</title></circle><circle style="fill:var(--s1)" cx="210.0" cy="243.1" r="4"><title>NIST: 750000, 0.54798</title></circle><circle style="fill:var(--s1)" cx="237.6" cy="230.2" r="4"><title>NIST: 900000, 0.65739</title></circle><circle style="fill:var(--s1)" cx="265.2" cy="217.3" r="4"><title>NIST: 1.05e6, 0.76596</title></circle><circle style="fill:var(--s1)" cx="292.8" cy="204.4" r="4"><title>NIST: 1.2e6, 0.87474</title></circle><circle style="fill:var(--s1)" cx="320.4" cy="191.6" r="4"><title>NIST: 1.35e6, 0.983</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="178.8" r="4"><title>NIST: 1.5e6, 1.0915</title></circle><circle style="fill:var(--s1)" cx="375.6" cy="165.9" r="4"><title>NIST: 1.65e6, 1.20004</title></circle><circle style="fill:var(--s1)" cx="403.2" cy="153.1" r="4"><title>NIST: 1.8e6, 1.30818</title></circle><circle style="fill:var(--s1)" cx="430.8" cy="140.3" r="4"><title>NIST: 1.95e6, 1.41613</title></circle><circle style="fill:var(--s1)" cx="458.4" cy="127.5" r="4"><title>NIST: 2.1e6, 1.52408</title></circle><circle style="fill:var(--s1)" cx="486.0" cy="114.8" r="4"><title>NIST: 2.25e6, 1.63159</title></circle><circle style="fill:var(--s1)" cx="513.6" cy="102.0" r="4"><title>NIST: 2.4e6, 1.73965</title></circle><circle style="fill:var(--s1)" cx="541.2" cy="89.3" r="4"><title>NIST: 2.55e6, 1.84696</title></circle><circle style="fill:var(--s1)" cx="568.8" cy="76.6" r="4"><title>NIST: 2.7e6, 1.95445</title></circle><circle style="fill:var(--s1)" cx="596.4" cy="63.9" r="4"><title>NIST: 2.85e6, 2.06177</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="51.3" r="4"><title>NIST: 3e6, 2.16829</title></circle></svg><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>NIST</li><li><i class="line" style="background:var(--s2)"></i>poly2 fit</li></ul><p>NIST: NIST StRD, data set Pontius (P. Pontius, NIST, load cell calibration), 40 observations</p><p>The source gives no units.</p><p>poly2 fit of NIST: c0 = 6.735658e-4 [-], c1 = 7.320592e-7 [-], c2 = -3.160819e-15 [-], R^2 = 0.99999990, largest residual 4.4684e-4 at x = 300000, valid for x from 150000 to 3e6.</p></figure>
+
+<p>The plot shows the 40 observations of NIST and the fit of <code>fh fit poly2</code>. The largest residual is 4.4684e-4, at x = 300000. c0 has the largest relative difference because it is small: the other 2 terms of y are up to 3000 times larger.</p>
+<p>The raw columns 1, x and x^2 differ in size by 10^13. Thus the solver first scales each column to the norm 1. This lowers the condition number of the matrix from 1.4e13 to 18.4. On the raw columns, <code>numpy.linalg.lstsq</code> gives c0 7.8e-8 from the reference, and the tolerance stops this error.</p>
+
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 1e-10 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>c0</code></td><td style="text-align:right">0.000673566</td><td style="text-align:right">0.000673566</td><td style="text-align:right">6.736e-14</td><td style="text-align:right">6.693e-14</td></tr><tr><td><code>c1</code></td><td style="text-align:right">7.32059e-07</td><td style="text-align:right">7.32059e-07</td><td style="text-align:right">7.321e-17</td><td style="text-align:right">7.321e-17</td></tr><tr><td><code>c2</code></td><td style="text-align:right">-3.16082e-15</td><td style="text-align:right">-3.16082e-15</td><td style="text-align:right">3.161e-25</td><td style="text-align:right">3.16e-25</td></tr><tr><td><code>r2</code></td><td style="text-align:right">1</td><td style="text-align:right">1</td><td style="text-align:right">1e-10</td><td style="text-align:right">1e-10</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 3493b3a.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks <code>fh fit</code>: the least squares fit of a model to a curve. The reference is a published fit with certified values. Thus the tolerance comes only from the rounding of the reference and from the round-off of the fit.</p>
 <h2>Why this case</h2>
 <p>No other case of the suite checks a fit. <code>fh fit</code> gives the parameters that the agent puts in a model, for example the constants of <code>*HYPERELASTIC</code>. A wrong fit gives a wrong model with no warning.</p>
@@ -102,22 +113,33 @@ The fit gives these relative differences to the certified values on a Mac (Apple
 <ul><li>No scaling of the columns: <code>numpy.linalg.lstsq</code> on the raw columns gives <code>c0</code> 7.8e-8 from the reference.</li><li>32-bit numbers: <code>c0</code> 1.8e-5 from the reference.</li><li>1 observation less (the first): <code>c0</code> 9 % from the reference.</li></ul>
 <p>The tolerance does not stop the normal equations in 64-bit numbers: they give <code>c0</code> 3.5e-12 from the reference. The data set has a low difficulty, so the normal equations are not wrong for it.</p>
 <h2>Not in the check</h2>
-<ul><li>The other models of <code>fh fit</code>. They use the same solver, and the unit tests check their rows.</li><li>The data sets of StRD with a higher difficulty, for example Filip (degree 10). They need more than 64-bit numbers.</li></ul><figure class="curve"><figcaption>Load cell calibration of NIST (Pontius), the deflection at each load</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Load cell calibration of NIST (Pontius), the deflection at each load"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="256.0" y1="12" x2="256.0" y2="308.0"/><line x1="440.0" y1="12" x2="440.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">0</text><text x="256.0" y="324.0" text-anchor="middle">1e6</text><text x="440.0" y="324.0" text-anchor="middle">2e6</text><text x="624.0" y="324.0" text-anchor="middle">3e6</text><text x="66.0" y="312.0" text-anchor="end">0</text><text x="66.0" y="252.8" text-anchor="end">0.5</text><text x="66.0" y="193.6" text-anchor="end">1</text><text x="66.0" y="134.4" text-anchor="end">1.5</text><text x="66.0" y="75.2" text-anchor="end">2</text><text x="66.0" y="16.0" text-anchor="end">2.5</text><text class="label" x="348.0" y="354" text-anchor="middle">load [-]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">deflection [-]</text><polyline style="stroke:var(--s2)" points="99.6,294.9 104.8,292.5 110.1,290.0 115.3,287.5 120.6,285.1 125.8,282.6 131.1,280.1 136.3,277.7 141.6,275.2 146.8,272.7 152.0,270.3 157.3,267.8 162.5,265.4 167.8,262.9 173.0,260.4 178.3,258.0 183.5,255.5 188.7,253.1 194.0,250.6 199.2,248.2 204.5,245.7 209.7,243.3 215.0,240.8 220.2,238.3 225.5,235.9 230.7,233.4 235.9,231.0 241.2,228.5 246.4,226.1 251.7,223.6 256.9,221.2 262.2,218.7 267.4,216.3 272.7,213.8 277.9,211.4 283.1,209.0 288.4,206.5 293.6,204.1 298.9,201.6 304.1,199.2 309.4,196.7 314.6,194.3 319.8,191.8 325.1,189.4 330.3,187.0 335.6,184.5 340.8,182.1 346.1,179.6 351.3,177.2 356.6,174.8 361.8,172.3 367.0,169.9 372.3,167.5 377.5,165.0 382.8,162.6 388.0,160.2 393.3,157.7 398.5,155.3 403.8,152.9 409.0,150.4 414.2,148.0 419.5,145.6 424.7,143.1 430.0,140.7 435.2,138.3 440.5,135.9 445.7,133.4 450.9,131.0 456.2,128.6 461.4,126.1 466.7,123.7 471.9,121.3 477.2,118.9 482.4,116.5 487.7,114.0 492.9,111.6 498.1,109.2 503.4,106.8 508.6,104.3 513.9,101.9 519.1,99.5 524.4,97.1 529.6,94.7 534.9,92.3 540.1,89.8 545.3,87.4 550.6,85.0 555.8,82.6 561.1,80.2 566.3,77.8 571.6,75.4 576.8,72.9 582.0,70.5 587.3,68.1 592.5,65.7 597.8,63.3 603.0,60.9 608.3,58.5 613.5,56.1 618.8,53.7 624.0,51.3"/><circle style="fill:var(--s1)" cx="99.6" cy="295.0" r="4"><title>NIST: 150000, 0.11019</title></circle><circle style="fill:var(--s1)" cx="127.2" cy="282.0" r="4"><title>NIST: 300000, 0.21956</title></circle><circle style="fill:var(--s1)" cx="154.8" cy="269.0" r="4"><title>NIST: 450000, 0.32949</title></circle><circle style="fill:var(--s1)" cx="182.4" cy="256.0" r="4"><title>NIST: 600000, 0.43899</title></circle><circle style="fill:var(--s1)" cx="210.0" cy="243.1" r="4"><title>NIST: 750000, 0.54803</title></circle><circle style="fill:var(--s1)" cx="237.6" cy="230.2" r="4"><title>NIST: 900000, 0.65694</title></circle><circle style="fill:var(--s1)" cx="265.2" cy="217.4" r="4"><title>NIST: 1.05e6, 0.76562</title></circle><circle style="fill:var(--s1)" cx="292.8" cy="204.4" r="4"><title>NIST: 1.2e6, 0.87487</title></circle><circle style="fill:var(--s1)" cx="320.4" cy="191.6" r="4"><title>NIST: 1.35e6, 0.98292</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="178.8" r="4"><title>NIST: 1.5e6, 1.09146</title></circle><circle style="fill:var(--s1)" cx="375.6" cy="165.9" r="4"><title>NIST: 1.65e6, 1.20001</title></circle><circle style="fill:var(--s1)" cx="403.2" cy="153.1" r="4"><title>NIST: 1.8e6, 1.30822</title></circle><circle style="fill:var(--s1)" cx="430.8" cy="140.3" r="4"><title>NIST: 1.95e6, 1.41599</title></circle><circle style="fill:var(--s1)" cx="458.4" cy="127.6" r="4"><title>NIST: 2.1e6, 1.52399</title></circle><circle style="fill:var(--s1)" cx="486.0" cy="114.8" r="4"><title>NIST: 2.25e6, 1.63194</title></circle><circle style="fill:var(--s1)" cx="513.6" cy="102.0" r="4"><title>NIST: 2.4e6, 1.73947</title></circle><circle style="fill:var(--s1)" cx="541.2" cy="89.4" r="4"><title>NIST: 2.55e6, 1.84646</title></circle><circle style="fill:var(--s1)" cx="568.8" cy="76.7" r="4"><title>NIST: 2.7e6, 1.95392</title></circle><circle style="fill:var(--s1)" cx="596.4" cy="63.9" r="4"><title>NIST: 2.85e6, 2.06128</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="51.3" r="4"><title>NIST: 3e6, 2.16844</title></circle><circle style="fill:var(--s1)" cx="99.6" cy="294.9" r="4"><title>NIST: 150000, 0.11052</title></circle><circle style="fill:var(--s1)" cx="127.2" cy="281.9" r="4"><title>NIST: 300000, 0.22018</title></circle><circle style="fill:var(--s1)" cx="154.8" cy="269.0" r="4"><title>NIST: 450000, 0.32939</title></circle><circle style="fill:var(--s1)" cx="182.4" cy="256.0" r="4"><title>NIST: 600000, 0.43886</title></circle><circle style="fill:var(--s1)" cx="210.0" cy="243.1" r="4"><title>NIST: 750000, 0.54798</title></circle><circle style="fill:var(--s1)" cx="237.6" cy="230.2" r="4"><title>NIST: 900000, 0.65739</title></circle><circle style="fill:var(--s1)" cx="265.2" cy="217.3" r="4"><title>NIST: 1.05e6, 0.76596</title></circle><circle style="fill:var(--s1)" cx="292.8" cy="204.4" r="4"><title>NIST: 1.2e6, 0.87474</title></circle><circle style="fill:var(--s1)" cx="320.4" cy="191.6" r="4"><title>NIST: 1.35e6, 0.983</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="178.8" r="4"><title>NIST: 1.5e6, 1.0915</title></circle><circle style="fill:var(--s1)" cx="375.6" cy="165.9" r="4"><title>NIST: 1.65e6, 1.20004</title></circle><circle style="fill:var(--s1)" cx="403.2" cy="153.1" r="4"><title>NIST: 1.8e6, 1.30818</title></circle><circle style="fill:var(--s1)" cx="430.8" cy="140.3" r="4"><title>NIST: 1.95e6, 1.41613</title></circle><circle style="fill:var(--s1)" cx="458.4" cy="127.5" r="4"><title>NIST: 2.1e6, 1.52408</title></circle><circle style="fill:var(--s1)" cx="486.0" cy="114.8" r="4"><title>NIST: 2.25e6, 1.63159</title></circle><circle style="fill:var(--s1)" cx="513.6" cy="102.0" r="4"><title>NIST: 2.4e6, 1.73965</title></circle><circle style="fill:var(--s1)" cx="541.2" cy="89.3" r="4"><title>NIST: 2.55e6, 1.84696</title></circle><circle style="fill:var(--s1)" cx="568.8" cy="76.6" r="4"><title>NIST: 2.7e6, 1.95445</title></circle><circle style="fill:var(--s1)" cx="596.4" cy="63.9" r="4"><title>NIST: 2.85e6, 2.06177</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="51.3" r="4"><title>NIST: 3e6, 2.16829</title></circle></svg><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>NIST</li><li><i class="line" style="background:var(--s2)"></i>poly2 fit</li></ul><p>NIST: NIST StRD, data set Pontius (P. Pontius, NIST, load cell calibration), 40 observations</p><p>The source gives no units.</p><p>poly2 fit of NIST: c0 = 6.735658e-4 [-], c1 = 7.320592e-7 [-], c2 = -3.160819e-15 [-], R^2 = 0.99999990, largest residual 4.4684e-4 at x = 300000, valid for x from 150000 to 3e6.</p></figure>
-</article>
+<ul><li>The other models of <code>fh fit</code>. They use the same solver, and the unit tests check their rows.</li><li>The data sets of StRD with a higher difficulty, for example Filip (degree 10). They need more than 64-bit numbers.</li></ul></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="d458ef7a6615521742902059a605917d">
+<script type="module" nonce="bd4a29e435076a5f98d5d67d453286bd">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
 // `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
-// The view of a run of `fh report --view` is the file `/views/RUN`.
+//
+// The agent writes the controls of the report in its text. An element with `data-run="RUN"`
+// opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
+const text = document.querySelector("article");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -145,18 +167,54 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const open = async (run) => {
-      runs.value = run;
-      const path = "/views/" + run;
-      view.open(run, files.has(path) ? await (await fetch(path)).text() : undefined);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
     };
-    runs.addEventListener("change", () => open(runs.value));
-    // An element of the text with `data-run="RUN"` opens that run.
-    document.addEventListener("click", (e) => {
-      const run = e.target.closest("[data-run]")?.dataset.run;
-      if (run && [...runs.options].some((o) => o.value === run)) open(run);
+    views().filter(slider).forEach(label);
+    let current = null;
+    // Open the run of the element `e`, with its view. False when the report has no such run.
+    const open = (e) => {
+      if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
+      runs.value = e.dataset.run;
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
+      view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
+      return true;
+    };
+    // The list of the runs opens a run with the view of its first element.
+    runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    open(runs.value);
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
+    const first = views().find(chosen);
+    if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {
     $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }

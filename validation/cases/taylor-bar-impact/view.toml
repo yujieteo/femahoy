@@ -1,4 +1,0 @@
-# The bar hits the wall and the end becomes a mushroom: the true shape at each step.
-fields = ["PEEQ", "MISES", "U magnitude"]
-controls = ["steps", "deformation"]
-scale = 1

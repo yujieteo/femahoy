@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process::{Command, Output};
 
 mod common;
-use common::{p, root, scratch};
+use common::{p, scratch};
 
 /// A state folder with the run `run-000001`, a folder with a fake viewer, and a text file.
 struct Lab {
@@ -58,24 +58,6 @@ impl Lab {
         let mut args = vec![p(&text), "-o", p(&out)];
         args.extend_from_slice(extra);
         self.fh(&args)
-    }
-
-    /// Give `run-000001` the results and the input of the cantilever with 2 steps of
-    /// `fixtures/results`, and write `view` to `view.toml`.
-    fn cantilever(&self, view: &str) -> PathBuf {
-        let fixture = root().join("fixtures/results/cantilever-2step");
-        let run = self.dir.join("state/runs/run-000001");
-        for file in ["results.pvd", "step-1.vtu", "step-2.vtu"] {
-            fs::copy(fixture.join(file), run.join("out").join(file)).unwrap();
-        }
-        fs::copy(
-            fixture.join("cantilever-2step.inp"),
-            run.join("in/input.inp"),
-        )
-        .unwrap();
-        let path = self.dir.join("view.toml");
-        fs::write(&path, view).unwrap();
-        path
     }
 }
 
@@ -185,6 +167,7 @@ const CURVE: &str =
                      T [1],model,measured\n0.5,1.0,\n1.0,1.5,\n1.19,,1.44\n";
 
 /// Each `--curve` is an x-y plot after the text: the line, the points over it and the source.
+/// A plot goes in place of its mark in the text.
 #[test]
 fn the_report_draws_each_curve() {
     let lab = Lab::new("report-curve");
@@ -206,12 +189,27 @@ fn the_report_draws_each_curve() {
         "point"
     );
     assert!(html.contains("measured: Martin and Moyce (1952)"), "source");
+    fs::write(
+        lab.dir.join("text.html"),
+        "<h1>A320 barrel</h1><!--curve front.csv--><p>After the plot.</p>",
+    )
+    .unwrap();
+    let out = lab.report(&["--curve", p(&curve)]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    let figure = html.find("<figure class=\"curve\">").expect("plot");
+    assert!(
+        figure < html.find("After the plot.").unwrap(),
+        "in place of the mark"
+    );
+    assert!(!html.contains("<!--curve"), "no mark");
 }
 
 /// A report of curves only needs no run and no viewer.
 #[test]
 fn a_report_of_curves_needs_no_run() {
     let lab = Lab::new("report-curve-only");
+    fs::write(lab.dir.join("text.html"), "<h1>A320 barrel</h1>").unwrap();
     fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
     let curve = lab.dir.join("front.csv");
     fs::write(&curve, CURVE).unwrap();
@@ -226,6 +224,7 @@ fn a_report_of_curves_needs_no_run() {
 #[test]
 fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
     let lab = Lab::new("report-text-only");
+    fs::write(lab.dir.join("text.html"), "<h1>A320 barrel</h1>").unwrap();
     fs::remove_dir_all(lab.dir.join("viewer")).unwrap();
     let out = lab.report(&[]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
@@ -234,35 +233,113 @@ fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
     assert!(!html.contains("data-path="), "no files");
 }
 
-/// With `--one-step` and no view, the report holds only the last step of the run, and its
-/// `results.pvd` names only that step.
+/// With `--one-step`, the report holds only the last step of the run, and its `results.pvd`
+/// names only that step. When the text opens the run at some steps, the report holds those
+/// steps, and each step number names its step in the kept steps. A slider keeps each of its
+/// steps.
 #[test]
-fn the_one_step_option_keeps_only_the_last_step() {
+fn the_one_step_option_keeps_only_the_steps_that_the_text_opens() {
     let lab = Lab::new("report-one-step");
     let out = lab.dir.join("state/runs/run-000001/out");
     fs::write(
         out.join("results.pvd"),
         "<VTKFile type=\"Collection\"><Collection units=\"SI-mm\">\
          <DataSet timestep=\"1\" part=\"0\" file=\"step-1.vtu\"/>\
-         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/></Collection></VTKFile>",
+         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/>\
+         <DataSet timestep=\"3\" part=\"0\" file=\"step-3.vtu\"/></Collection></VTKFile>",
     )
     .unwrap();
-    fs::write(out.join("step-2.vtu"), b"last vtu").unwrap();
+    fs::write(out.join("step-2.vtu"), b"middle vtu").unwrap();
+    fs::write(out.join("step-3.vtu"), b"last vtu").unwrap();
     let out = lab.report(&["--run", "run-000001", "--one-step"]);
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let html = fs::read_to_string(lab.out()).unwrap();
     let base = "/api/v1/runs/run-000001/files";
     assert_eq!(file(&html, &format!("{base}/step-1.vtu")), None);
     assert_eq!(
-        file(&html, &format!("{base}/step-2.vtu")).as_deref(),
+        file(&html, &format!("{base}/step-3.vtu")).as_deref(),
         Some(&b"last vtu"[..])
     );
     let pvd = String::from_utf8(file(&html, &format!("{base}/results.pvd")).unwrap()).unwrap();
     assert_eq!(
         pvd,
         "<VTKFile type=\"Collection\"><Collection units=\"SI-mm\">\
-         <DataSet timestep=\"2\" part=\"0\" file=\"step-2.vtu\"/></Collection></VTKFile>"
+         <DataSet timestep=\"3\" part=\"0\" file=\"step-3.vtu\"/></Collection></VTKFile>"
     );
+    fs::write(
+        lab.dir.join("text.html"),
+        "<button data-run=\"run-000001\" data-step=\"3\">end</button>\
+         <button data-run=\"run-000001\" data-step=\"1\">start</button>",
+    )
+    .unwrap();
+    let out = lab.report(&["--run", "run-000001", "--one-step"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert_eq!(file(&html, &format!("{base}/step-2.vtu")), None);
+    assert!(file(&html, &format!("{base}/step-1.vtu")).is_some());
+    assert!(file(&html, &format!("{base}/step-3.vtu")).is_some());
+    assert!(
+        html.contains("data-step=\"2\">end</button>")
+            && html.contains("data-step=\"1\">start</button>"),
+        "each control opens its step in the kept steps"
+    );
+    fs::write(
+        lab.dir.join("text.html"),
+        "<input type=\"range\" min=\"2\" max=\"3\" value=\"3\" data-run=\"run-000001\" \
+         data-marks=\"3: 0,0,0 tip\">",
+    )
+    .unwrap();
+    let out = lab.report(&["--run", "run-000001", "--one-step"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert_eq!(file(&html, &format!("{base}/step-1.vtu")), None);
+    assert!(file(&html, &format!("{base}/step-2.vtu")).is_some());
+    assert!(
+        html.contains("min=\"1\" max=\"2\" value=\"2\"")
+            && html.contains("data-marks=\"2: 0,0,0 tip\""),
+        "the slider and the mark name their steps in the kept steps"
+    );
+}
+
+/// A control of the text that names a run, a field or a step that the report does not have
+/// gives no report, and the message names it.
+#[test]
+fn a_control_that_does_not_fit_its_run_gives_no_report() {
+    let lab = Lab::new("report-check");
+    let fixture = common::root().join("fixtures/results/cantilever-2step");
+    let out = lab.dir.join("state/runs/run-000001/out");
+    for name in ["results.pvd", "step-1.vtu", "step-2.vtu"] {
+        fs::copy(fixture.join(name), out.join(name)).unwrap();
+    }
+    for (control, error) in [
+        ("data-run=\"run-000009\"", "data-run=\"run-000009\""),
+        ("data-run=\"run-000001\" data-step=\"3\"", "step \"3\""),
+        (
+            "data-run=\"run-000001\" data-marks=\"3: 0,0,0 tip\"",
+            "step \"3\"",
+        ),
+        (
+            "data-run=\"run-000001\" type=\"range\" min=\"1\"",
+            "slider needs min and max",
+        ),
+        (
+            "data-run=\"run-000001\" data-fields=\"MISES, Ez\"",
+            "no field \"Ez\"",
+        ),
+    ] {
+        fs::write(lab.dir.join("text.html"), format!("<input {control}>")).unwrap();
+        let out = lab.report(&["--run", "run-000001"]);
+        assert_eq!(out.status.code(), Some(1), "{control}");
+        assert!(stderr(&out).contains(error), "{}", stderr(&out));
+        assert!(!lab.out().exists());
+    }
+    fs::write(
+        lab.dir.join("text.html"),
+        "<a data-run=\"run-000001\" data-fields=\"MISES\" data-step=\"2\">run</a>",
+    )
+    .unwrap();
+    let out = lab.report(&["--run", "run-000001"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
 }
 
 /// A bad curve file gives no report, and the message names the file and the line.
@@ -300,84 +377,5 @@ fn a_report_with_a_shared_viewer_holds_no_viewer() {
     assert!(
         html.contains(&format!("script-src 'nonce-{nonce}'")),
         "policy"
-    );
-}
-
-/// The view of a run is in the report under `/views/RUN`, as the text that the viewer reads.
-#[test]
-fn the_report_holds_the_view_of_a_run() {
-    let lab = Lab::new("report-view");
-    let view = lab.cantilever(
-        "[run-000001]\nfields = [\"U3\", \"MISES\"]\ncontrols = [\"deformation\", \"loads\"]\n\
-         step = 1\nscale = 1\n",
-    );
-    let out = lab.report(&["--run", "run-000001", "--view", p(&view)]);
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    let html = fs::read_to_string(lab.out()).unwrap();
-    assert_eq!(
-        String::from_utf8(file(&html, "/views/run-000001").unwrap()).unwrap(),
-        "field=U3\nfield=MISES\ncontrols=deformation,loads\nstep=1\nscale=1\n"
-    );
-    // With --one-step, the report keeps the step of the view, and the view names no step.
-    let out = lab.report(&["--run", "run-000001", "--view", p(&view), "--one-step"]);
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    let html = fs::read_to_string(lab.out()).unwrap();
-    let base = "/api/v1/runs/run-000001/files";
-    assert!(
-        file(&html, &format!("{base}/step-1.vtu")).is_some(),
-        "step 1"
-    );
-    assert_eq!(file(&html, &format!("{base}/step-2.vtu")), None, "step 2");
-    let text = String::from_utf8(file(&html, "/views/run-000001").unwrap()).unwrap();
-    assert_eq!(
-        text,
-        "field=U3\nfield=MISES\ncontrols=deformation,loads\nscale=1\n"
-    );
-}
-
-/// With `--one-step`, a view with steps in its controls gives a report. The view has no steps
-/// in its controls, and the text tells why.
-#[test]
-fn the_one_step_option_removes_steps_from_the_controls() {
-    let lab = Lab::new("report-one-step-controls");
-    let view = lab.cantilever("[run-000001]\ncontrols = [\"steps\", \"deformation\"]\n");
-    let out = lab.report(&["--run", "run-000001", "--view", p(&view), "--one-step"]);
-    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-    let html = fs::read_to_string(lab.out()).unwrap();
-    let text = String::from_utf8(file(&html, "/views/run-000001").unwrap()).unwrap();
-    assert_eq!(text, "controls=deformation\n");
-    assert!(
-        html.contains("Only 1 step of run-000001 is in this report"),
-        "note"
-    );
-}
-
-/// A view that does not fit its run gives no report, and the message tells why.
-#[test]
-fn a_view_that_does_not_fit_the_run_gives_no_report() {
-    let lab = Lab::new("report-bad-view");
-    for (view, want) in [
-        (
-            "fields = [\"Ez\"]",
-            "[run-000001]: field \"Ez\": the run has no such field",
-        ),
-        ("step = 3", "[run-000001]: step 3: the run has 2 steps"),
-        ("controls = [\"flow\"]", "no control \"flow\""),
-        ("colour = \"red\"", "no key `colour`"),
-    ] {
-        let path = lab.cantilever(&format!("[run-000001]\n{view}\n"));
-        let args = ["--run", "run-000001", "--view", p(&path)];
-        let _ = fs::remove_file(lab.out());
-        let out = lab.report(&args);
-        assert_eq!(out.status.code(), Some(1), "{view}: {}", stderr(&out));
-        assert!(stderr(&out).contains(want), "{view}: {}", stderr(&out));
-        assert!(!lab.out().exists(), "{view}");
-    }
-    let path = lab.cantilever("[run-000002]\nstep = 1\n");
-    let out = lab.report(&["--run", "run-000001", "--view", p(&path)]);
-    assert!(
-        stderr(&out).contains("[run-000002]: no --run names this run"),
-        "{}",
-        stderr(&out)
     );
 }

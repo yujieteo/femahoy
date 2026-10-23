@@ -1,8 +1,9 @@
 //! The browser entry point. The page of `fh serve` (`crates/fh/src/daemon/page.html`) calls
 //! `start` with its canvas and the token, and `Viewer::open` for each run that it shows.
 //! The viewer fetches the result files from the daemon with `Authorization: Bearer
-//! <token>`. A report (`crates/fh/src/daemon/report.html`) also gives the view of a run to
-//! `Viewer::open`.
+//! <token>`. A report (`crates/fh/src/daemon/report.html`) also gives the view of a run that
+//! the agent writes to `Viewer::open`, the step of a slider to `Viewer::step` and its switch
+//! "Show all controls" to `Viewer::all`.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -12,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
-use crate::app::{Content, ContentSlot, ViewerApp};
+use crate::app::{Content, Request, RequestSlot, ViewerApp};
 use crate::{preview, results, view, RESULTS_FILE};
 
 /// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer.
@@ -57,7 +58,7 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
 }
 
 /// Fetch the result files of a run and read them, with the supports and loads of its input and
-/// the view `view` (the text of [`view::View::text`]).
+/// the view `view` (the text of [`view::View::parse`]).
 async fn load_run(token: &str, run: &str, view: &str) -> Result<Content, String> {
     let view = view::View::parse(view).map_err(|e| format!("Run {run}: the view: {e}"))?;
     let base = format!("/api/v1/runs/{run}/files");
@@ -92,7 +93,7 @@ async fn model(token: &str, path: &str, name: &str) -> Result<Box<preview::Previ
 #[wasm_bindgen]
 pub struct Viewer {
     token: String,
-    slot: ContentSlot,
+    slot: RequestSlot,
     ctx: egui::Context,
     /// The number of the last `open`. A load that a later `open` replaced shows nothing.
     opened: Rc<Cell<u64>>,
@@ -117,9 +118,26 @@ impl Viewer {
             model(&token, &path, &name).await.map(Content::Preview)
         });
     }
+
+    /// Show the step `step` (from 1) of the open run, or of the run that loads.
+    pub fn step(&self, step: usize) {
+        self.ask(|r| r.step = Some(step.saturating_sub(1)));
+    }
+
+    /// Show all the controls of a run, also the controls that its view does not show.
+    pub fn all(&self, all: bool) {
+        self.ask(|r| r.all = Some(all));
+    }
 }
 
 impl Viewer {
+    fn ask(&self, change: impl FnOnce(&mut Request)) {
+        if let Ok(mut r) = self.slot.lock() {
+            change(&mut r);
+        }
+        self.ctx.request_repaint();
+    }
+
     fn load(
         &self,
         loading: &str,
@@ -127,12 +145,14 @@ impl Viewer {
     ) {
         let n = self.opened.get() + 1;
         self.opened.set(n);
-        let fill = |slot: &ContentSlot, ctx: &egui::Context, content| {
+        let fill = |slot: &RequestSlot, ctx: &egui::Context, content| {
             if let Ok(mut s) = slot.lock() {
-                *s = Some(content);
+                s.content = Some(content);
             }
             ctx.request_repaint();
         };
+        // A step that the page asked for before this load is for the run before.
+        self.ask(|r| r.step = None);
         fill(&self.slot, &self.ctx, Content::Text(loading.into()));
         let (slot, ctx, opened) = (self.slot.clone(), self.ctx.clone(), self.opened.clone());
         wasm_bindgen_futures::spawn_local(async move {
@@ -147,7 +167,7 @@ impl Viewer {
 /// Start the viewer on a canvas of the page, with the token of the daemon.
 #[wasm_bindgen]
 pub async fn start(canvas: web_sys::HtmlCanvasElement, token: String) -> Result<Viewer, JsValue> {
-    let slot: ContentSlot = Arc::new(Mutex::new(None));
+    let slot: RequestSlot = Arc::new(Mutex::new(Request::default()));
     let ctx: Rc<RefCell<Option<egui::Context>>> = Rc::default();
     let options = eframe::WebOptions {
         depth_buffer: crate::gpu::DEPTH_BITS,

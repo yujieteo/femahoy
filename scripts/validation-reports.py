@@ -8,19 +8,24 @@ cases. For each case:
 
 1. `fh validate` solves the case and gives the computed value of each check.
 2. `fh run` solves each input of the case again, for the 3D view of the report. A fit case gets
-   the plot of its fit (`fh fit -o`) in place of a run. Each curve file (a CSV file with a
-   `# y:` line) in the case folder or in the output of a run is a plot of the report.
-3. `fh report --viewer viewer.js` writes validation/reports/CASE.html: a table of the checks,
-   then derivation.md, then the runs. view.toml in the case folder is the view of each run of
-   the case (`fh report --view`): the keys of 1 table of the view file, for example
-   `fields = ["T", "U magnitude"]` and `controls = []`. A case with no view.toml shows the
-   important controls of each run.
+   the plot of its fit (`fh fit -o`) in place of a run. curves.py in the case folder, if there
+   is one, writes curve files from the outputs of the runs:
+   `python3 curves.py OUT INPUT=FOLDER...`, with the output folder of the run of each input.
+   Each curve file (a CSV file with a `# y:` line) in the case folder, in the output of a run
+   or in OUT is a plot of the report.
+3. `fh report --viewer viewer.js` writes validation/reports/CASE.html: the story of the case,
+   then a table of the checks, then derivation.md. The story is story.html in the case folder:
+   the conclusion of the case, with the controls that open the runs and the marks of the plots
+   (see "The story of a report" in crates/fh/src/daemon/agent.md). Its `data-run` names an
+   input of the case, for example `data-run="d10"`, and the script gives the name of its run.
+   A case that does not pass shows the table of the checks before the story. A case with no
+   story.html gets a link to each run.
 
 A case that cannot run (its solver is not installed on this computer) gets a report of the text
 only: the checks of check.toml and derivation.md. The report and the index name the solver and
 how to install it. A case that fails gets its report, which shows the failure. An
 input that writes no field (a CalculiX input with no *NODE FILE and no *EL FILE) has no 3D view.
-A report above 5 MB is made again with only the step that the view of each run shows first
+A report above 5 MB is made again with only the steps that the story of each run opens
 (`fh report --one-step`).
 A report above 10 MB is not kept: the index names its size.
 
@@ -55,7 +60,7 @@ FONTS = ROOT / "crates/fh/src/daemon/fonts"
 FH = Path(os.environ.get("FH_BIN") or ROOT / "target/release/fh")
 VIEWER = Path(os.environ.get("FH_VIEWER") or ROOT / "target/release/viewer")
 VIEWER_FILES = ["fh_viewer.js", "fh_viewer_bg.wasm"]
-# A report above SMALL bytes keeps only the step that the view of each run shows first. The
+# A report above SMALL bytes keeps only the steps that the story of each run opens. The
 # repository keeps no report above LIMIT bytes.
 SMALL = 5_000_000
 LIMIT = 10_000_000
@@ -239,7 +244,7 @@ def curve_files(files):
 
 def solve(case, tmp, env):
     """The runs, the curves, and the inputs with no field."""
-    runs, curves, nofield = [], curve_files((CASES / case).glob("*.csv")), []
+    runs, curves, nofield, folders = [], curve_files((CASES / case).glob("*.csv")), [], []
     for target in inputs(case):
         name = target.relative_to(CASES / case).as_posix()
         fit = target / "fit.toml"
@@ -258,12 +263,37 @@ def solve(case, tmp, env):
         if not m:
             tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-5:])
             raise RuntimeError(f"fh run {name}: {tail}")
+        folder = Path(env["FH_STATE"]) / "runs" / m[1] / "out"
+        folders.append(f"{name}={folder}")
         if "has no field to show" in r.stdout + r.stderr:
             nofield.append(name)
             continue
         runs.append((m[1], name))
-        curves += curve_files((Path(env["FH_STATE"]) / "runs" / m[1] / "out").rglob("*.csv"))
+        curves += curve_files(folder.rglob("*.csv"))
+    script = CASES / case / "curves.py"
+    if script.is_file():
+        out = tmp / f"curves-{case}"
+        out.mkdir()
+        r = subprocess.run([sys.executable, "-I", str(script), str(out), *folders], capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"curves.py: {r.stderr.strip()}")
+        curves += curve_files(out.glob("*.csv"))
     return runs, curves, nofield
+
+
+def story(case, runs):
+    """story.html of the case with the name of the run of each input, or None."""
+    path = CASES / case / "story.html"
+    if not path.is_file():
+        return None
+    names = {name: run for run, name in runs}
+
+    def run(m):
+        if m[1] not in names:
+            raise RuntimeError(f"story.html: no run of the input {m[1]}")
+        return f'data-run="{names[m[1]]}"'
+
+    return re.sub(r'data-run="([^"]*)"', run, path.read_text())
 
 
 def text(case, status, rows, runs, nofield, version, one_step=False):
@@ -292,17 +322,24 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
             for r in rows
         )
         body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{trs}</tbody></table>")
-    if runs:
+    told = story(case, runs)
+    last = " Only the steps that the text opens of each run are in this report, to keep the file small." if one_step else ""
+    if runs and not told:
         links = ", ".join(f'<a data-run="{run}">{esc(name)}</a>' for run, name in runs)
-        last = " Only 1 step of each run is in this report, to keep the file small." if one_step else ""
         body.append(f"<p>The 3D view shows the run of each input: {links}.{last}</p>")
+    elif last:
+        body.append(f"<p>{last.strip()}</p>")
     if nofield:
         names = ", ".join(f"<code>{esc(n)}</code>" for n in nofield)
         body.append(f"<p>{names} writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), "
                     "so this report has no 3D view of it.</p>")
     body.append(f"<p>Made by <code>scripts/validation-reports.py</code> on {date.today()}, femahoy {esc(version)}.</p>")
+    if told:
+        # The story gives the conclusion of a passed case. A case that does not pass shows its
+        # result first.
+        body = [told, *body] if result == "pass" else [*body, told]
     derivation = markdown((CASES / case / "derivation.md").read_text())
-    # The result goes after the title of derivation.md.
+    # The story and the result go after the title of derivation.md.
     title, _, rest = derivation.partition("\n")
     return title + "\n" + "\n".join(body) + "\n" + rest
 
@@ -439,20 +476,15 @@ def main(args):
                 continue
             try:
                 runs, curves, nofield = solve(case, tmp, env)
+                page.write_text(text(case, status, rows, runs, nofield, version))
             except RuntimeError as e:
                 report.unlink(missing_ok=True)
                 outcomes[case] = ["fail", str(e), "", version]
                 print(f"{case}: {e}", flush=True)
                 continue
-            page.write_text(text(case, status, rows, runs, nofield, version))
             args = [a for run, _ in runs for a in ("--run", run)] + [a for c in curves for a in ("--curve", c)]
             if runs:
                 args += ["--viewer", "viewer.js"]
-            view = CASES / case / "view.toml"
-            if runs and view.is_file():
-                views = tmp / f"{case}.view.toml"
-                views.write_text("".join(f"[{run}]\n{view.read_text()}\n" for run, _ in runs))
-                args += ["--view", views]
             r = fh("report", page, "-o", report, *args, env=env)
             if r.returncode == 0 and runs and report.stat().st_size > SMALL:
                 page.write_text(text(case, status, rows, runs, nofield, version, one_step=True))

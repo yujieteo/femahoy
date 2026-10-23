@@ -1,11 +1,12 @@
 //! The result view state: the selected step, the deformed shape and the contour field. It
 //! makes the vertex data for the GPU layer. Plain functions with no GPU types.
 //!
-//! The results panel shows the important controls of a run (see [`Important`]) and hides the
-//! others behind 1 switch, "Show all controls". A report can give the view of a run ([`View`]):
-//! the fields, the controls and the step that the panel shows first.
+//! A report gives the view of a run ([`View`]) that the agent writes for the story of the
+//! report: the fields, the controls, the step, the scale, the box that the camera shows and the
+//! marks on the model. A run with no view shows its important controls and hides the others
+//! behind 1 switch, "Show all controls".
 
-use crate::mesh::RenderMesh;
+use crate::mesh::{Bounds, RenderMesh};
 use crate::results::{self, Results, ScalarField, Step};
 
 /// The field that the contour shows first, when the run has it: the density of a topology run,
@@ -31,7 +32,8 @@ const SECONDARY_FIELDS: [&str; 12] = [
     "Force",
 ];
 
-/// A group of controls of the results panel. The contour field list always shows.
+/// A group of controls of the results panel. The contour field list shows when the view gives
+/// more than 1 field, or no field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     /// The step selector, the play button and the step slider.
@@ -59,8 +61,8 @@ impl Control {
     }
 }
 
-/// The view of a run that a report gives (`fh report --view`): what the results panel shows
-/// first. An empty or a `None` part comes from the run, as with no view.
+/// The view of a run that the agent gives in a report. A `None` or an empty part comes from
+/// the run.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct View {
     /// The fields of the contour list. The first shows first.
@@ -71,38 +73,73 @@ pub struct View {
     pub step: Option<usize>,
     /// The deformation scale at the start. 0 shows the undeformed shape.
     pub scale: Option<f64>,
+    /// The box that the camera shows first.
+    pub frame: Option<Bounds>,
+    /// The marks on the model.
+    pub marks: Vec<Mark>,
+}
+
+/// A mark of the agent on the model: a dot at a point with a text beside it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mark {
+    /// The index of the step that shows the mark, or `None` for each step.
+    pub step: Option<usize>,
+    /// The point, in the coordinates of the undeformed model.
+    pub at: [f32; 3],
+    pub text: String,
+}
+
+impl Mark {
+    /// Read `[N:]X,Y,Z TEXT`: the step N (from 1) is optional.
+    fn parse(part: &str) -> Result<Mark, String> {
+        let wrong = || format!("mark {part:?} is not [STEP:]X,Y,Z TEXT");
+        let (step, rest) = match part.split_once(':') {
+            Some((n, rest)) if n.trim().bytes().all(|b| b.is_ascii_digit()) => {
+                match n.trim().parse::<usize>() {
+                    Ok(n) if n > 0 => (Some(n - 1), rest.trim_start()),
+                    _ => return Err(wrong()),
+                }
+            }
+            _ => (None, part),
+        };
+        let mut parts = rest.splitn(3, ',');
+        let (x, y, zt) = (parts.next(), parts.next(), parts.next().ok_or_else(wrong)?);
+        let zt = zt.trim_start();
+        let (z, text) = zt.split_once(char::is_whitespace).unwrap_or((zt, ""));
+        let at: Vec<f32> = [x, y, Some(z)]
+            .into_iter()
+            .filter_map(|v| v?.trim().parse().ok())
+            .filter(|v: &f32| v.is_finite())
+            .collect();
+        match at[..] {
+            [x, y, z] => Ok(Mark {
+                step,
+                at: [x, y, z],
+                text: text.trim().to_owned(),
+            }),
+            _ => Err(wrong()),
+        }
+    }
 }
 
 impl View {
-    /// The view as text, 1 part on each line: `field=NAME` for each field, `controls=` with the
-    /// names of the groups separated by commas, `step=N` (from 1) and `scale=X`.
-    pub fn text(&self) -> String {
-        let mut out: String = self.fields.iter().map(|f| format!("field={f}\n")).collect();
-        if let Some(c) = &self.controls {
-            let names: Vec<&str> = c.iter().map(|c| c.name()).collect();
-            out.push_str(&format!("controls={}\n", names.join(",")));
-        }
-        if let Some(step) = self.step {
-            out.push_str(&format!("step={}\n", step + 1));
-        }
-        if let Some(scale) = self.scale {
-            out.push_str(&format!("scale={scale}\n"));
-        }
-        out
-    }
-
-    /// Read the text of [`View::text`].
+    /// Read a view: 1 part on each line, as the `data-` attributes of the report
+    /// (`crates/fh/src/daemon/report.html`). `fields=NAME,NAME`, `controls=` with the names of
+    /// the groups, `step=N` (from 1), `scale=X`, `box=X0,Y0,Z0,X1,Y1,Z1` and
+    /// `marks=[N:]X,Y,Z TEXT;...`, where a mark with the step N shows only at that step.
     pub fn parse(text: &str) -> Result<View, String> {
         let mut view = View::default();
+        fn list(value: &str) -> impl Iterator<Item = &str> {
+            value.split(',').map(str::trim).filter(|n| !n.is_empty())
+        }
         for line in text.lines().filter(|l| !l.is_empty()) {
             let (key, value) = line
                 .split_once('=')
                 .ok_or_else(|| format!("view line {line:?} has no ="))?;
             match key {
-                "field" => view.fields.push(value.to_owned()),
+                "fields" => view.fields = list(value).map(str::to_owned).collect(),
                 "controls" => {
-                    let names = value.split(',').filter(|n| !n.is_empty());
-                    let controls = names
+                    let controls = list(value)
                         .map(|n| Control::from_name(n).ok_or_else(|| format!("no control {n:?}")))
                         .collect::<Result<_, _>>()?;
                     view.controls = Some(controls);
@@ -115,93 +152,83 @@ impl View {
                     Ok(x) if x.is_finite() && x >= 0.0 => view.scale = Some(x),
                     _ => return Err(format!("scale {value:?} is not a number of 0 or more")),
                 },
+                "box" => {
+                    let v: Vec<f32> = list(value).filter_map(|x| x.parse().ok()).collect();
+                    match v[..] {
+                        [x0, y0, z0, x1, y1, z1] if v.iter().all(|x| x.is_finite()) => {
+                            view.frame = Some(Bounds {
+                                min: [x0.min(x1), y0.min(y1), z0.min(z1)],
+                                max: [x0.max(x1), y0.max(y1), z0.max(z1)],
+                            });
+                        }
+                        _ => return Err(format!("box {value:?} is not 6 numbers")),
+                    }
+                }
+                "marks" => {
+                    let parts = value.split(';').map(str::trim).filter(|p| !p.is_empty());
+                    view.marks = parts.map(Mark::parse).collect::<Result<_, _>>()?;
+                }
                 _ => return Err(format!("view line {line:?} has no known key")),
             }
         }
         Ok(view)
     }
-
-    /// An error when the view does not fit the run: a step that the run does not have, a field
-    /// that the run does not have or that the first step of the view does not have, or a group of
-    /// controls that cannot change the view of the run (see [`possible`]). `loads` is true when
-    /// the input of the run has a support or a load.
-    pub fn check(&self, results: &Results, loads: bool) -> Result<(), String> {
-        let n = results.steps.len();
-        let step = self.step.unwrap_or(n - 1);
-        if step >= n {
-            return Err(format!("step {}: the run has {n} steps", step + 1));
-        }
-        let names = field_names(results);
-        for f in &self.fields {
-            if !names.contains(f) {
-                return Err(format!(
-                    "field {f:?}: the run has no such field. Its fields are {}",
-                    names.join(", ")
-                ));
-            }
-        }
-        if let Some(f) = self.fields.first() {
-            if results.steps[step].field(f).is_none() {
-                return Err(format!("field {f:?}: step {} has no such field", step + 1));
-            }
-        }
-        let can = possible(results, loads);
-        for c in self.controls.iter().flatten() {
-            if !can.contains(c) {
-                let why = match c {
-                    Control::Steps => "the run has 1 step",
-                    Control::Deformation if results.moves => {
-                        "the points of the run move, so the shape always shows the true motion"
-                    }
-                    Control::Deformation => "the nodes of the run have no displacement",
-                    Control::Loads => "the input of the run has no support and no load",
-                };
-                return Err(format!("controls {:?}: {why}", c.name()));
-            }
-        }
-        Ok(())
-    }
 }
 
-/// The controls that show while "Show all controls" is off.
+/// What the results panel shows.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Important {
+pub struct Panel {
     /// The groups of controls that show.
     pub controls: Vec<Control>,
-    /// The fields of the contour list.
+    /// The fields of the contour list. No list shows when it is empty.
     pub fields: Vec<String>,
 }
 
-impl Important {
-    /// The important controls of a run, with the parts that `view` gives in place of those of
-    /// the run. `loads` is true when the input of the run has a support or a load.
+impl Panel {
+    /// The panel of a run with the view `view`: each group of controls of the view (each group
+    /// when the view names none) that can change the view of the run, and the fields of the
+    /// view (each field of the run when the view names none). A view with 1 field gives no
+    /// choice, thus no list. `loads` is true when the input of the run has a support or a load.
     ///
-    /// With no view: the steps when 2 or more steps change in time (a first step with only
-    /// constant fields is the start of a steady solve), the deformation when the nodes of a
-    /// structure have a displacement, the supports and loads when the input has them, and each
-    /// field that is not 1 component of a field and not in `SECONDARY_FIELDS`.
-    pub fn of(results: &Results, view: &View, loads: bool) -> Important {
+    /// With no view (`None`), the important controls: the steps when 2 or more steps change in
+    /// time (a first step with only constant fields is the start of a steady solve), the
+    /// deformation when the nodes of a structure have a displacement, the supports and loads
+    /// when the input has them, and each field that is not 1 component of a field and not in
+    /// `SECONDARY_FIELDS`.
+    pub fn of(results: &Results, view: Option<&View>, loads: bool) -> Panel {
         let steps = &results.steps;
-        let changing = steps.len() - usize::from(steps.first().is_some_and(start_of_steady_solve));
-        let auto = [
-            (Control::Steps, changing > 1),
-            (
-                Control::Deformation,
-                displaced(results) && !results.multibody && !topology(results),
-            ),
-            (Control::Loads, loads),
-        ];
-        let controls = view
-            .controls
-            .clone()
-            .unwrap_or_else(|| auto.iter().filter(|(_, on)| *on).map(|(c, _)| *c).collect());
-        let fields = if view.fields.is_empty() {
-            important_fields(results)
-        } else {
-            view.fields.clone()
+        let Some(view) = view else {
+            let changing =
+                steps.len() - usize::from(steps.first().is_some_and(start_of_steady_solve));
+            let structure = !results.multibody && !topology(results);
+            let can = [changing > 1, displaced(results) && structure, loads];
+            return Panel {
+                controls: groups(can, |_| true),
+                fields: important_fields(results),
+            };
         };
-        Important { controls, fields }
+        let can = [steps.len() > 1, displaced(results), loads];
+        let controls = groups(can, |c| {
+            view.controls.as_ref().is_none_or(|v| v.contains(c))
+        });
+        let fields = match view.fields.len() {
+            0 => field_names(results),
+            1 => Vec::new(),
+            _ => view.fields.clone(),
+        };
+        Panel { controls, fields }
     }
+}
+
+/// The groups of controls of `Control::ALL` that `can` (in the same sequence) gives and `keep`
+/// keeps.
+fn groups(can: [bool; 3], keep: impl Fn(&Control) -> bool) -> Vec<Control> {
+    Control::ALL
+        .into_iter()
+        .zip(can)
+        .filter(|(c, on)| *on && keep(c))
+        .map(|(c, _)| c)
+        .collect()
 }
 
 /// True when a step has no displacement and only constant fields, as the time 0 of a steady
@@ -212,30 +239,6 @@ fn start_of_steady_solve(step: &Step) -> bool {
             let (lo, hi) = results::contour_range(f);
             hi <= lo
         })
-}
-
-/// True when the nodes have a displacement that the deformation scale changes. The points of
-/// LAMMPS particles and of a moving OpenFOAM mesh move: the shape shows their true motion.
-fn displaced(results: &Results) -> bool {
-    !results.moves && results.steps.iter().any(|s| s.max_displacement() > 0.0)
-}
-
-/// True for a topology run: its density field is the design.
-fn topology(results: &Results) -> bool {
-    results.steps.iter().any(|s| s.field("density").is_some())
-}
-
-/// The groups of controls that can change the view of a run: the steps when there are 2 or
-/// more, the deformation when the nodes have a displacement (see `displaced`), and the supports
-/// and loads when `loads` is true.
-pub fn possible(results: &Results, loads: bool) -> Vec<Control> {
-    let can = [results.steps.len() > 1, displaced(results), loads];
-    Control::ALL
-        .into_iter()
-        .zip(can)
-        .filter(|(_, on)| *on)
-        .map(|(c, _)| c)
-        .collect()
 }
 
 /// The fields of a run that are not 1 component of a field and not in `SECONDARY_FIELDS`, or
@@ -256,6 +259,17 @@ fn important_fields(results: &Results) -> Vec<String> {
     } else {
         names
     }
+}
+
+/// True when the nodes have a displacement that the deformation scale changes. The points of
+/// LAMMPS particles and of a moving OpenFOAM mesh move: the shape shows their true motion.
+fn displaced(results: &Results) -> bool {
+    !results.moves && results.steps.iter().any(|s| s.max_displacement() > 0.0)
+}
+
+/// True for a topology run: its density field is the design.
+fn topology(results: &Results) -> bool {
+    results.steps.iter().any(|s| s.field("density").is_some())
 }
 
 /// The time in seconds that a playing animation shows each step.
@@ -314,16 +328,16 @@ pub enum Contour<'a> {
 
 impl ViewState {
     /// The first view state of a run: the step of the view, else the last step. The contour is
-    /// the first field of the view, else the first field of `DEFAULT_FIELDS` that is important
-    /// and in the step, else the first important field in the step. The scale of the view, else
-    /// the automatic scale when the deformation is an important control, else 1 (the true shape).
-    /// A topology run with no scale in its view shows the undeformed design.
-    pub fn open(results: &Results, view: &View, important: &Important) -> Self {
+    /// the first field of the view, else the first field of `DEFAULT_FIELDS` in the step, else
+    /// the first field of the panel in the step. The scale of the view, else the undeformed
+    /// design of a topology run, else 1 (the true motion) for a multibody run, else the
+    /// automatic scale when the panel shows the deformation, else 1 (the true shape).
+    pub fn open(results: &Results, view: &View, panel: &Panel) -> Self {
         let last = results.steps.len().saturating_sub(1);
         let step = view.step.unwrap_or(last).min(last);
         let has = |name: &&str| results.steps[step].field(name).is_some();
         let field = view.fields.first().cloned().or_else(|| {
-            let fields = || important.fields.iter().map(String::as_str);
+            let fields = || panel.fields.iter().map(String::as_str);
             DEFAULT_FIELDS
                 .into_iter()
                 .find(|d| fields().any(|f| f == *d) && has(d))
@@ -335,7 +349,8 @@ impl ViewState {
             Some(0.0) => (false, auto),
             Some(s) => (true, s),
             None if topology(results) => (false, auto),
-            None if important.controls.contains(&Control::Deformation) => (true, auto),
+            None if results.multibody => (true, 1.0),
+            None if panel.controls.contains(&Control::Deformation) => (true, auto),
             None => (true, 1.0),
         };
         ViewState {
@@ -470,11 +485,8 @@ mod tests {
 
     /// The first view state of a run with no view.
     fn state(r: &Results) -> ViewState {
-        ViewState::open(
-            r,
-            &View::default(),
-            &Important::of(r, &View::default(), false),
-        )
+        let view = View::default();
+        ViewState::open(r, &view, &Panel::of(r, None, false))
     }
 
     #[test]
@@ -500,76 +512,17 @@ mod tests {
         assert_eq!(state(&r).field.as_deref(), Some("Ez"));
     }
 
-    /// A structure: the steps, the deformation and the loads are important. The components, the
-    /// error estimate and the reaction force are not.
-    #[test]
-    fn a_structure_shows_its_steps_deformation_loads_and_main_fields() {
-        let r = fixture();
-        let i = Important::of(&r, &View::default(), true);
-        assert_eq!(
-            i.controls,
-            [Control::Steps, Control::Deformation, Control::Loads]
-        );
-        assert_eq!(i.fields, ["U magnitude", "MISES"], "{:?}", field_names(&r));
-        assert_eq!(Important::of(&r, &View::default(), false).controls.len(), 2);
-    }
-
-    /// A field run with no displacement (light, sound, heat): no deformation controls, and the
-    /// view cannot ask for them.
+    /// A field run with no displacement (light, sound, heat) shows no deformation controls, also
+    /// when the view asks for them: they can only show "Largest displacement: 0".
     #[test]
     fn a_run_with_no_displacement_shows_no_deformation_controls() {
         let mut r = fixture();
         for s in &mut r.steps {
             s.displacement.fill([0.0; 3]);
         }
-        let i = Important::of(&r, &View::default(), false);
-        assert_eq!(i.controls, [Control::Steps]);
-        assert_eq!(possible(&r, false), [Control::Steps]);
-        let view = View {
-            controls: Some(vec![Control::Deformation]),
-            ..View::default()
-        };
-        assert_eq!(
-            view.check(&r, false).unwrap_err(),
-            "controls \"deformation\": the nodes of the run have no displacement"
-        );
-    }
-
-    /// A steady solve writes the start (time 0, constant fields) and the result. The steps are
-    /// not important, and the result shows.
-    #[test]
-    fn the_start_of_a_steady_solve_is_not_an_important_step() {
-        let mut r = fixture();
-        let start = &mut r.steps[0];
-        start.displacement.fill([0.0; 3]);
-        for f in &mut start.fields {
-            f.values.fill(1.0);
-        }
-        let i = Important::of(&r, &View::default(), false);
-        assert_eq!(i.controls, [Control::Deformation]);
-        assert_eq!(ViewState::open(&r, &View::default(), &i).step, 1);
-    }
-
-    /// Multibody and topology runs: the shape moves, but the scale is no control of their story.
-    /// The topology design shows undeformed.
-    #[test]
-    fn multibody_and_topology_runs_hide_the_deformation() {
-        let mut r = fixture();
-        r.multibody = true;
-        let i = Important::of(&r, &View::default(), false);
-        assert_eq!(i.controls, [Control::Steps]);
-        let v = ViewState::open(&r, &View::default(), &i);
-        assert_ne!(results::auto_scale(&r), 1.0);
-        assert_eq!((v.deformed, v.scale), (true, 1.0), "the true shape");
-        r.multibody = false;
-        let mut density = r.steps[1].field("MISES").unwrap().clone();
-        density.name = "density".into();
-        r.steps[1].fields.push(density);
-        let i = Important::of(&r, &View::default(), false);
-        assert_eq!(i.controls, [Control::Steps]);
-        let v = ViewState::open(&r, &View::default(), &i);
-        assert_eq!(v.field.as_deref(), Some("density"));
-        assert!(!v.deformed);
+        assert_eq!(Panel::of(&r, None, false).controls, [Control::Steps]);
+        let view = View::parse("controls=deformation,loads").unwrap();
+        assert_eq!(Panel::of(&r, Some(&view), true).controls, [Control::Loads]);
     }
 
     /// A view with no deformation control and no scale shows the true shape, not a scaled shape
@@ -577,47 +530,100 @@ mod tests {
     #[test]
     fn a_view_with_no_deformation_control_shows_the_true_shape() {
         let r = fixture();
-        let view = View {
-            fields: vec!["MISES".into()],
-            controls: Some(vec![Control::Loads]),
-            ..View::default()
-        };
-        let v = ViewState::open(&r, &view, &Important::of(&r, &view, true));
+        let view = View::parse("fields=MISES\ncontrols=loads").unwrap();
+        let v = ViewState::open(&r, &view, &Panel::of(&r, Some(&view), true));
         assert_eq!((v.deformed, v.scale), (true, 1.0));
         let v = state(&r);
         assert_eq!((v.deformed, v.scale), (true, results::auto_scale(&r)));
     }
 
-    /// The view gives the fields, the controls, the first step and the scale. Its text goes
-    /// from `fh report` to the viewer.
+    /// With no view, a topology run shows the undeformed design and a multibody run its true
+    /// motion, not a scaled shape.
     #[test]
-    fn a_view_sets_the_first_view_and_reads_its_own_text() {
+    fn multibody_and_topology_runs_open_with_no_scaled_shape() {
+        let mut r = fixture();
+        r.multibody = true;
+        assert_ne!(results::auto_scale(&r), 1.0);
+        let v = state(&r);
+        assert_eq!((v.deformed, v.scale), (true, 1.0), "the true motion");
+        r.multibody = false;
+        let mut density = r.steps[1].field("MISES").unwrap().clone();
+        density.name = "density".into();
+        r.steps[1].fields.push(density);
+        let v = state(&r);
+        assert_eq!(v.field.as_deref(), Some("density"));
+        assert!(!v.deformed, "the undeformed design");
+    }
+
+    /// With no view, the panel shows the important controls and fields. "Show all controls" (an
+    /// empty view) shows each control and each field of the run.
+    #[test]
+    fn a_run_with_no_view_shows_its_important_controls() {
+        let mut r = fixture();
+        let mut rf = r.steps[1].field("MISES").unwrap().clone();
+        rf.name = "RF magnitude".into();
+        r.steps[1].fields.push(rf);
+        let all = Panel::of(&r, Some(&View::default()), false);
+        assert_eq!(all.controls, [Control::Steps, Control::Deformation]);
+        assert_eq!(all.fields, field_names(&r));
+        let important = Panel::of(&r, None, false);
+        assert!(important.fields.contains(&"MISES".into()));
+        assert!(!important.fields.contains(&"RF magnitude".into()));
+        assert!(!important.fields.contains(&"U3".into()), "a component");
+        r.multibody = true;
+        assert_eq!(Panel::of(&r, None, false).controls, [Control::Steps]);
+        r.multibody = false;
+        for s in &mut r.steps[..1] {
+            s.displacement.fill([0.0; 3]);
+            for f in &mut s.fields {
+                f.values.fill(1.0);
+            }
+        }
+        let steady = Panel::of(&r, None, false).controls;
+        assert_eq!(
+            steady,
+            [Control::Deformation],
+            "the start of a steady solve"
+        );
+    }
+
+    /// The view of the agent gives the fields, the controls, the first step, the scale, the
+    /// box of the camera and the marks, in the text of the `data-` attributes of a report.
+    #[test]
+    fn a_view_sets_the_first_view() {
         let r = fixture();
-        let view = View {
-            fields: vec!["U3".into(), "MISES".into()],
-            controls: Some(vec![]),
-            step: Some(0),
-            scale: Some(0.0),
-        };
-        assert_eq!(view.check(&r, false), Ok(()));
-        assert_eq!(View::parse(&view.text()), Ok(view.clone()));
-        let i = Important::of(&r, &view, true);
-        assert_eq!((i.controls.len(), i.fields.len()), (0, 2));
-        let v = ViewState::open(&r, &view, &i);
+        let text = "fields=U3, MISES\ncontrols=\nstep=1\nscale=0\nbox=2,0,0,0,1,1\n\
+                    marks=2: 1, 0,0.5 the tip: x = 1; 0,0,0 root";
+        let view = View::parse(text).unwrap();
+        let panel = Panel::of(&r, Some(&view), true);
+        assert_eq!(panel.controls, []);
+        assert_eq!(panel.fields, ["U3", "MISES"]);
+        let v = ViewState::open(&r, &view, &panel);
         assert_eq!(
             (v.step, v.field.as_deref(), v.deformed),
             (0, Some("U3"), false)
         );
-        let wrong = View {
-            fields: vec!["Ez".into()],
-            ..View::default()
+        let frame = view.frame.unwrap();
+        assert_eq!((frame.min, frame.max), ([0.0; 3], [2.0, 1.0, 1.0]));
+        let mark = |step, at, text: &str| Mark {
+            step,
+            at,
+            text: text.into(),
         };
-        assert!(wrong
-            .check(&r, false)
-            .unwrap_err()
-            .starts_with("field \"Ez\": the run has no"));
-        assert!(View::parse("controls=steps,flow").is_err());
-        assert!(View::parse("step=0").is_err());
+        assert_eq!(
+            view.marks,
+            [
+                mark(Some(1), [1.0, 0.0, 0.5], "the tip: x = 1"),
+                mark(None, [0.0; 3], "root")
+            ]
+        );
+        let wrong = ["controls=steps,flow", "step=0", "box=1,2,3", "colour=red"];
+        for wrong in wrong
+            .into_iter()
+            .chain(["marks=1,2 tip", "marks=0:1,2,3 tip"])
+        {
+            assert!(View::parse(wrong).is_err(), "{wrong}");
+        }
     }
 
     #[test]

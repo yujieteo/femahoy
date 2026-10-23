@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-004e9e48fc8f4210794ebdc894650af1' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-c75f05ab3cd37fd4a507dd10e24fca87' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -65,10 +65,14 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 [data-run] { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 [data-run]:hover { text-decoration-color: var(--accent); }
+button, select { max-width: 100%; margin: 0.125rem 0; padding: 0.25rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; text-decoration: none; cursor: pointer; }
+button:hover, select:hover { border-color: var(--text); }
+input[type="range"] { vertical-align: middle; accent-color: var(--accent); cursor: pointer; }
+output { margin-left: 0.5rem; font-variant-numeric: tabular-nums; }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-header { flex: none; padding: 0.75rem 1rem; }
-#runs { max-width: 100%; padding: 0.375rem 0.75rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: inherit; font: inherit; font-size: 0.9375rem; font-weight: 500; cursor: pointer; }
-#runs:hover { border-color: var(--text); }
+header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; padding: 0.75rem 1rem; }
+#bar { display: contents; }
+#all { margin-left: auto; color: var(--muted); font-size: 0.875rem; cursor: pointer; }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 1rem; text-align: center; color: var(--muted); }
@@ -76,11 +80,16 @@ header { flex: none; padding: 0.75rem 1rem; }
 </head>
 <body>
 <article><h1>buckling-column derivation</h1>
+<h2>Conclusion</h2>
+<p>The solid model gives the critical load of the column 0.10 % above the theory of Timoshenko and Gere (1961). The model gives 10806.05 N, and the theory gives 10794.88 N. The tolerance is 1 %.</p>
+<p>Mode 2 is at 10806.44 N, 0.004 % above mode 1. The square section has the same critical load in 2 directions, as derivation.md says.</p>
+<p>A finer mesh gives +0.06 %: the size 3.3 mm in derivation.md, and the size 2.5 mm in the chat run. Thus about 0.06 % is the difference between the solid and the theory, not a mesh error. The theory has no shear deformation, and the fixed base face of the solid stops the Poisson contraction there (derivation.md).</p>
+
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.01 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>p_cr</code></td><td style="text-align:right">10806</td><td style="text-align:right">10794.9</td><td style="text-align:right">107.9</td><td style="text-align:right">96.78</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 3493b3a.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 69e0c94.</p>
 <p>This case checks the critical load of a steel column that is fixed at the base and free at the top (units SI-mm).</p>
 <h2>Source</h2>
 <p>S. P. Timoshenko and J. M. Gere, <em>Theory of Elastic Stability</em>, 2nd ed., McGraw-Hill, New York, 1961, Art. 2.1, the column with the lower end built in and the upper end free: P_cr = π² E I / (4 L²).</p>
@@ -101,19 +110,31 @@ The run took 65 s and cost 0.34 USD. The chat had no failure. This case uses the
 <p>The mesh in <code>job.inp</code> comes from <code>fh mesh part.step --size 5 --face BASE=z:0 --face TOP=z:200</code>.
 <code>part.step</code> is a box of 10 x 10 x 200 mm with a corner at the origin.</p></article>
 <main id="model">
-  <header><select id="runs" aria-label="The run in the model view"></select></header>
+  <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="004e9e48fc8f4210794ebdc894650af1">
+<script type="module" nonce="c75f05ab3cd37fd4a507dd10e24fca87">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
 // `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
-// The view of a run of `fh report --view` is the file `/views/RUN`.
+//
+// The agent writes the controls of the report in its text. An element with `data-run="RUN"`
+// opens that run with the view of its other `data-` attributes, 1 line `KEY=VALUE` for each
+// (`View::parse` of the viewer): `data-fields`, `data-controls`, `data-step`, `data-scale`,
+// `data-box` and `data-marks`. A click opens the run of a link or a button. A change opens the
+// run of the chosen option of a `select`, or of a checked radio button. A slider
+// (`input type="range"`) shows the step of its value: its first move opens its run, the next
+// moves change only the step. Its `data-labels` gives the text of each value from `min`, with
+// "|" between them. An element with `data-bar` goes to the bar above the model view. The list
+// of the runs and the controls of the viewer that the view does not show stay behind the
+// switch "Show all controls". At the start, the report opens the first chosen element of the
+// bar, else of the text, else the first run of the list.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
+const text = document.querySelector("article");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -141,18 +162,54 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const open = async (run) => {
-      runs.value = run;
-      const path = "/views/" + run;
-      view.open(run, files.has(path) ? await (await fetch(path)).text() : undefined);
+    const bar = $("bar");
+    bar.append(...text.querySelectorAll("[data-bar]"));
+    const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
+    const slider = (e) => e instanceof HTMLInputElement && e.type === "range";
+    const chosen = (e) => (e instanceof HTMLOptionElement ? e.selected : e instanceof HTMLInputElement && !slider(e) ? e.checked : true);
+    // The text of the value of a slider, from its `data-labels`.
+    const label = (e) => {
+      const labels = e.dataset.labels?.split("|");
+      if (!labels) return;
+      if (!(e.nextElementSibling instanceof HTMLOutputElement)) e.after(document.createElement("output"));
+      e.nextElementSibling.value = labels[e.value - e.min] ?? e.value;
     };
-    runs.addEventListener("change", () => open(runs.value));
-    // An element of the text with `data-run="RUN"` opens that run.
-    document.addEventListener("click", (e) => {
-      const run = e.target.closest("[data-run]")?.dataset.run;
-      if (run && [...runs.options].some((o) => o.value === run)) open(run);
+    views().filter(slider).forEach(label);
+    let current = null;
+    // Open the run of the element `e`, with its view. False when the report has no such run.
+    const open = (e) => {
+      if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
+      runs.value = e.dataset.run;
+      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      if (slider(e)) lines.push(["step", e.value]);
+      view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
+      current = e;
+      return true;
+    };
+    // The list of the runs opens a run with the view of its first element.
+    runs.addEventListener("change", () => open(views().find((e) => e.dataset.run === runs.value) ?? runs.selectedOptions[0]));
+    $("all").addEventListener("change", (e) => {
+      runs.hidden = !e.target.checked;
+      view.all(e.target.checked);
     });
-    open(runs.value);
+    for (const area of [bar, text]) {
+      area.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-run]");
+        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+      });
+      area.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;
+        if (target?.dataset.run && !slider(target) && chosen(target)) open(target);
+      });
+      area.addEventListener("input", (e) => {
+        if (!slider(e.target) || !e.target.dataset.run) return;
+        label(e.target);
+        if (current === e.target) view.step(Number(e.target.value));
+        else open(e.target);
+      });
+    }
+    const first = views().find(chosen);
+    if (!first || !open(first)) open(runs.selectedOptions[0]);
   } catch (e) {
     $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }
