@@ -1,30 +1,82 @@
 # femahoy
 
-femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use it together.
+femahoy is a chat for finite element and CFD analyses. You ask for an analysis, and Claude Code, signed in with your own Claude subscription, does the work on your computer.
 
 ## Start
 
-Run these 2 commands in a clone of this repository, on macOS (Apple Silicon) or Linux (x86-64 or ARM64):
+Do these 4 steps on macOS (Apple Silicon) or Linux (x86-64 or ARM64).
 
-```sh
-scripts/install.sh
-fh serve
-```
+1. Install femahoy and the solvers for your user. You need no root and no Nix.
 
-1. `scripts/install.sh` installs femahoy for your user, with no root and no Nix. It builds `fh` and the browser viewer, installs gmsh and each solver, and copies `fh` to `~/.local/bin`. Use `--prefix DIR` for another folder. See "Install" below.
-2. `fh serve` starts a local daemon and opens the page in the browser (on a system that is not macOS, it only prints the address). Write a request in the chat of the page, for example "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face". The agent makes the part, meshes it with gmsh, writes the CalculiX input and solves it. The viewer of the page shows the results. The chat needs Claude Code (`claude`), signed in with your Claude subscription. If `claude` is not installed or has no login, the chat of the page tells you how to install it and sign in. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Stop the daemon with Ctrl+C.
+   ```sh
+   git clone https://github.com/yujieteo/femahoy
+   cd femahoy
+   scripts/install.sh
+   ```
 
-For your own model, give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. The table in section 6 of `DESIGN.md` gives the solver and the input of each analysis type. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click, and the chat uses it for its report. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX.
+   The script copies `fh` to `~/.local/bin`. If this folder is not on PATH, the script prints the line to add to your shell start file. See "Install" below.
 
-`validation/reports/index.html` links 1 report of `fh report` for each validation case: the checks, the derivation and the runs. `scripts/validation-reports.py` makes them again.
+2. Install Claude Code and sign in with your Claude subscription. If `claude auth status` already shows a login, skip this step.
+
+   ```sh
+   curl -fsSL https://claude.ai/install.sh | bash
+   claude
+   ```
+
+   femahoy reads no credential. The login stays in Claude Code.
+
+3. Start the page.
+
+   ```sh
+   fh serve
+   ```
+
+   On macOS, `fh serve` opens the page in your browser. On Linux, open the address that it prints. At start, `fh serve` checks that Claude Code starts and has a login. If not, the chat tells you what to do.
+
+4. Ask for an analysis in the chat. For example: "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face".
+
+   The agent writes a CAD script for the part, meshes it with gmsh, writes the solver input and solves it. It solves at least 2 meshes to find the mesh error. The chat shows each command of the agent, and the viewer beside the chat shows the model and the results. At the end, the agent writes 1 HTML report with the results, a hand check and the viewer.
+
+Stop `fh serve` with Ctrl+C. The chat ignores your personal Claude Code setup (`~/.claude/CLAUDE.md`, settings, hooks, plugins, MCP servers and connectors). Thus each person gets the same agent.
+
+## Analysis types
+
+The agent has instructions for each analysis type in this table. Validation cases check each type against a published or measured reference.
+
+| Analysis type | Example case | The case checks |
+|---|---|---|
+| Structures | [contact-hertz](validation/reports/contact-hertz.html) | The largest contact pressure of a steel ball on a flat steel block, against the Hertz theory |
+| CFD | [naca23012-flap](validation/reports/naca23012-flap.html) | The lift and the pitching moment of an airfoil with a plain flap at 3 flap angles, against wind tunnel tests |
+| Electromagnetics | [team7-eddy-current](validation/reports/team7-eddy-current.html) | The eddy currents at 50 Hz in an aluminium plate with a hole under a coil, against measurements |
+| Acoustics | [acoustics-pulsating-sphere](validation/reports/acoustics-pulsating-sphere.html) | The sound that a pulsating sphere radiates into air at 500 Hz, against the analytical solution |
+| Fluid-structure interaction | [turek-hron-fsi1](validation/reports/turek-hron-fsi1.html) | The steady shape of a soft flag behind a cylinder in a channel flow, against the Turek-Hron benchmark |
+| Topology optimization | [topology-mbb-beam](validation/reports/topology-mbb-beam.html) | The minimum compliance of the half MBB beam with 50 % of the volume, against a published SIMP code |
+| Shape and parameter optimization | [shape-hole-biaxial](validation/reports/shape-hole-biaxial.html) | The hole of minimum stress concentration in a plate under biaxial stress, against the exact optimum |
+| Random vibration | [random-vibration-cantilever](validation/reports/random-vibration-cantilever.html) | The RMS tip acceleration of a cantilever on a shaker, against the modal sum of the beam theory |
+| Multibody dynamics | [slider-crank](validation/reports/slider-crank.html) | The motion of a slider-crank with a motor, against the closed-form solution |
+| Particles (SPH, DEM) | [dam-break-martin-moyce](validation/reports/dam-break-martin-moyce.html) | The surge front of a 2D dam break, against the measurements of Martin and Moyce |
+| Explicit dynamics (impact) | [taylor-bar-impact](validation/reports/taylor-bar-impact.html) | The final length and the mushroom radius of a copper bar after an impact on a rigid wall, against a published benchmark |
+| Optics and photonics | [optics-mie-cylinder](validation/reports/optics-mie-cylinder.html) | The scatter of a plane wave of light on a dielectric cylinder, against the analytical series solution |
+| Antennas | [dipole-king-middleton](validation/reports/dipole-king-middleton.html) | The input impedance and the far field of a centre-fed dipole, against the theory of King and Middleton |
+
+Other structures cases check buckling, plasticity, rubber, cracks, composite laminates, shells, natural frequencies, a sudden load, heat transfer and measured warpage. Other CFD cases check natural convection, conjugate heat transfer, a free surface and a supersonic shock.
+
+`validation/reports/index.html` links the report of each case: the checks, the derivation and a 3D view of the runs. Each report is 1 HTML file that `fh report` wrote. In a clone, open it in a browser. `scripts/validation-reports.py` makes the reports again. In the root of the clone, `fh validate` runs all the cases.
+
+The table in section 6 of `DESIGN.md` gives the solver and the input of each analysis type.
+
+## Your own model
+
+Give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX. `fh --help` lists the commands.
 
 ## Install
 
-`scripts/install.sh` needs bash, git, tar, and curl or wget. On macOS, it also needs the Xcode command line tools (`xcode-select --install`). It installs no system package.
+`scripts/install.sh` needs bash, git, tar, and curl or wget. On macOS, it also needs the Xcode command line tools (`xcode-select --install`). It installs no system package, and it does not install Claude Code.
 
-- micromamba installs Rust, gmsh, CalculiX, PyChrono and Meep from conda-forge, and OpenFOAM on Linux x86-64. On macOS, the script downloads OpenFOAM.app from `github.com/gerlero/openfoam-app`. It downloads GetDP from `getdp.info`. It builds preCICE with its CalculiX and OpenFOAM adapters, LAMMPS with its SPH package, and openEMS, from source. It checks each download with its SHA-256.
-- All of it goes to `~/.local/share/femahoy` (`$XDG_DATA_HOME/femahoy`), except the OpenFOAM adapter of preCICE on macOS, which goes to the user folder of OpenFOAM (`~/OpenFOAM`). In the test runs, the folder used 11 to 14 GB. A second run builds `fh` again and keeps each solver that has the same version. The log of each solver is in the folder `logs` there.
-- The script writes `solvers.env` beside `fh`: 1 line `FH_NAME=PATH` for each solver that it installed. `fh` reads this file at start.
+- The script builds `fh` and the browser viewer from this clone. It installs gmsh and the solver of each analysis type from conda-forge or from the release files of the solver. It builds some solvers from source. The head of the script names each source. The script checks each download with its SHA-256.
+- All of it goes to `~/.local/share/femahoy` (`$XDG_DATA_HOME/femahoy`), except the OpenFOAM adapter of preCICE on macOS, which goes to the user folder of OpenFOAM (`~/OpenFOAM`). In the test runs, the folder used 11 to 14 GB. The log of each solver is in the folder `logs` there.
+- `~/.local/bin`, or the folder of `--prefix DIR`, gets `fh`, the viewer, `fh-python` (the Python of the CAD scripts, with build123d) and `solvers.env`. `solvers.env` has 1 line `FH_NAME=PATH` for each solver that the script installed. `fh` reads this file at start.
+- To update, run `git pull` and `scripts/install.sh` again. A second run builds `fh` again and keeps each solver that has the same version.
 - At the end, the script names each solver that it did not install, with the analysis types that it disables. On Linux ARM64, OpenFOAM and GetDP have no build, so CFD, fluid-structure interaction, electromagnetics and acoustics are not available there.
 
 To use your own solver, for example from Nix, set its variable (see "Environment variables") before you run the script. The script then does not install that solver, and `fh` uses the variable, because a variable of the environment has priority over `solvers.env`. `scripts/ccx-precice.nix` builds `ccx_preCICE` with Nix. preCICE also needs its OpenFOAM adapter, which the script builds only for the OpenFOAM that it installs.
@@ -44,7 +96,7 @@ A solver variable has priority over its line in `solvers.env`. With neither, `fh
 - `FH_OPENEMS`: the Python with openEMS of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
-- `FH_NO_OPEN`: a value that is not empty and not `0` stops `fh serve` from opening the browser.
+- `FH_NO_OPEN`: with a value that is not empty and not `0`, `fh serve` does not open the browser.
 
 ## Documents
 
