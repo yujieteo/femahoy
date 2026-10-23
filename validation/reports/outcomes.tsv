@@ -1,0 +1,33 @@
+case	result	detail	bytes	version
+acoustics-pulsating-sphere	pass		774727	980496d
+bar-pressure	pass		123918	980496d
+buckling-column	pass		123132	980496d
+cavity-devahldavis	pass		2663930	980496d
+cht-heated-channel	pass		660369	980496d
+contact-hertz	pass		125132	980496d
+dam-break-martin-moyce	pass		2334683	980496d
+dam-break-vof	pass		4268105	980496d
+dipole-king-middleton	pass		269398	980496d
+dynamics-bar-step	pass		126652	980496d
+fit-nist-pontius	pass		134528	980496d
+fracture-centre-crack	pass		286984	980496d
+frequency-cantilever	pass		123750	980496d
+heat-fin	pass		181273	980496d
+hyperelastic-tube	pass		4352278	980496d
+laminate-pagano	pass		594329	980496d
+naca0012-ladson	pass		9337834	980496d
+naca23012-flap	pass		9784113	980496d
+optics-mie-cylinder	not run	Meep is not installed on the machine that made this report. Install Meep (README.md) and set FH_MEEP to its Python.	140780	2e0dced
+plasticity-sphere	pass		123874	980496d
+random-vibration-cantilever	pass		1217720	980496d
+scordelis-lo-roof	pass		125343	980496d
+shape-hole-biaxial	pass		884145	980496d
+slider-crank	not run	PyChrono is not installed on the machine that made this report. Install PyChrono (README.md) and set FH_PYCHRONO to its Python.	128681	2e0dced
+taylor-bar-impact	pass		4257953	980496d
+team7-eddy-current	pass		2997593	980496d
+topology-mbb-beam	pass		213332	980496d
+topology-mbb-beam-cad	pass		214639	980496d
+turek-hron-fsi1	not run	ccx_preCICE is not installed on the machine that made this report. Install preCICE and its CalculiX adapter (README.md) and put ccx_preCICE on PATH, or set FH_CCX_PRECICE.	134820	2e0dced
+warpage-2p5d-frame	pass		619620	980496d
+warpage-thick-copper	pass		131410	980496d
+wedge-oblique-shock	pass		1321469	980496d

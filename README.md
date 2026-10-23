@@ -16,6 +16,8 @@ fh serve
 
 For your own model, give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. The table in section 6 of `DESIGN.md` gives the solver and the input of each analysis type, and the "Get" sections below tell how to install each solver. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click, and the chat uses it for its report. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX.
 
+`validation/reports/index.html` links 1 report of `fh report` for each validation case: the checks, the derivation and the runs. `scripts/validation-reports.py` makes them again.
+
 ## Get `ccx`
 
 `fh` starts CalculiX (`ccx`) as a separate program. You install it. `ccx` is also the explicit solver for impact (`*DYNAMIC, EXPLICIT`), so an impact needs no other program.

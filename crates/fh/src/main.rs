@@ -12,7 +12,7 @@ fn usage() -> &'static str {
          mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE [options] [-o OUT.inp])\n  \
          validate  run the validation suite of DIR/validation/cases, DIR is . by default (fh validate [--root DIR])\n  \
          run       solve a CalculiX input, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS, topology or shape optimization case (fh run MODEL.inp|CASE [--timeout SECONDS])\n  \
-         report    write 1 HTML file with a text, the viewer, the results of runs and plots of curves (fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]...)\n  \
+         report    write 1 HTML file with a text, the viewer, the results of runs and plots of curves (fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... [--viewer FILE.js] [--last-step])\n  \
          fit       fit a model to a curve by least squares (fh fit MODEL CURVE.csv [--series NAME] [-o OUT.csv])\n  \
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve)\n"
 }

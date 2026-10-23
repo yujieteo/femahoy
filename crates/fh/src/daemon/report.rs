@@ -7,20 +7,27 @@
 //! - The text, an HTML file that the agent writes, with an x-y plot of each curve file (see
 //!   [`crate::curve`]) after it. The template shows it beside the viewer.
 //! - The viewer files of `fh serve` (`fh_viewer.js` and `fh_viewer_bg.wasm`), so the report
-//!   uses the same viewer.
+//!   uses the same viewer. With `--viewer FILE`, the report has no viewer files: it loads the
+//!   script FILE, a path from the folder of the report. FILE sets `window.fhViewer` to an object
+//!   with each viewer file as raw deflate in base64, under its daemon path (for example
+//!   `/viewer/fh_viewer.js`). Many reports in 1 folder then share 1 copy of the viewer
+//!   (`scripts/validation-reports.py`).
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
-//!   and each step file. Each file is a `script` element that holds its bytes in base64, with
-//!   the daemon path of the file in `data-path`. A small script in the template answers the
-//!   fetches of the viewer from these elements. A report with no run has no viewer.
+//!   and each step file. With `--last-step`, only the last step of each run. Each file is a
+//!   `script` element that holds its bytes as raw deflate in base64, with the daemon path of the
+//!   file in `data-path`. A small script in the template answers the fetches of the viewer from
+//!   these elements. A report with no run has no viewer.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
-//! the text of the agent cannot run a script or load a file.
+//! the text of the agent cannot run a script or load a file. The fonts are in the template as
+//! `data:` URLs ([`font_faces`]).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use fh_core::vtu::read_pvd;
+use miniz_oxide::deflate::compress_to_vec;
 
 use super::http::VIEWER_FILES;
 use super::serve::viewer_dir;
@@ -31,8 +38,11 @@ use crate::curve::escape;
 use crate::fit::read_curve;
 
 const USAGE: &str =
-    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]...\n\
-     Name at least 1 run or 1 curve.";
+    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... \
+     [--viewer FILE.js] [--last-step]\n\
+     A report with no run and no curve is the text only. --viewer loads the viewer from the \
+     script FILE.js beside the report, which sets window.fhViewer, instead of a copy in the \
+     report. --last-step keeps only the last step of each run, for a smaller file.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
@@ -40,10 +50,13 @@ struct Options {
     out: PathBuf,
     runs: Vec<String>,
     curves: Vec<PathBuf>,
+    viewer: Option<String>,
+    last_step: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let (mut text, mut out, mut runs, mut curves) = (None, None, Vec::<String>::new(), Vec::new());
+    let (mut viewer, mut last_step) = (None, false);
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let mut value = |what: &str| {
@@ -54,6 +67,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
         match arg.as_str() {
             "-o" => out = Some(PathBuf::from(value("a file")?)),
             "--curve" => curves.push(PathBuf::from(value("a curve file")?)),
+            "--viewer" => viewer = Some(value("a script file")?),
+            "--last-step" => last_step = true,
             "--run" => {
                 let run = value("a run")?;
                 if !runs.contains(&run) {
@@ -66,11 +81,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
         }
     }
     match (text, out) {
-        (Some(text), Some(out)) if !runs.is_empty() || !curves.is_empty() => Ok(Options {
+        (Some(text), Some(out)) => Ok(Options {
             text,
             out,
             runs,
             curves,
+            viewer,
+            last_step,
         }),
         _ => Err(USAGE.into()),
     }
@@ -92,12 +109,40 @@ fn base64(out: &mut String, bytes: &[u8]) {
     }
 }
 
-/// Add the file `bytes` that the viewer fetches from the daemon path `path` to `out`.
+/// The `@font-face` rules of the fonts of the site style (`fonts/`, SIL Open Font License 1.1):
+/// Source Serif 4 for the titles and DM Sans for the text. The fonts are `data:` URLs, so the
+/// page of `fh serve` and a report load no font file.
+pub(super) fn font_faces() -> String {
+    let mut css = String::new();
+    for (family, weight, bytes) in [
+        (
+            "Source Serif 4",
+            "400",
+            &include_bytes!("fonts/source-serif-4.woff2")[..],
+        ),
+        (
+            "DM Sans",
+            "100 1000",
+            &include_bytes!("fonts/dm-sans.woff2")[..],
+        ),
+    ] {
+        css.push_str(&format!(
+            "@font-face {{ font-family: \"{family}\"; font-weight: {weight}; src: \
+             url(data:font/woff2;base64,"
+        ));
+        base64(&mut css, bytes);
+        css.push_str(") format(\"woff2\"); }\n");
+    }
+    css
+}
+
+/// Add the file `bytes` that the viewer fetches from the daemon path `path` to `out`, as raw
+/// deflate (the `deflate-raw` of `DecompressionStream`) in base64.
 fn add_file(out: &mut String, path: &str, bytes: &[u8]) {
     out.push_str("<script type=\"text/plain\" data-path=\"");
     out.push_str(path);
     out.push_str("\">");
-    base64(out, bytes);
+    base64(out, &compress_to_vec(bytes, 9));
     out.push_str("</script>\n");
 }
 
@@ -134,7 +179,18 @@ fn build(o: &Options) -> Result<String, String> {
         let label = escape(&format!("{run} · {}", short(source)));
         options.push_str(&format!("<option value=\"{run}\">{label}</option>"));
     }
-    let page = TEMPLATE.replace("NONCE", &random_hex(16)?);
+    let nonce = random_hex(16)?;
+    let shared = match (&o.viewer, o.runs.is_empty()) {
+        (Some(file), false) => format!(
+            "<script src=\"{}\" nonce=\"{nonce}\"></script>",
+            escape(file)
+        ),
+        _ => String::new(),
+    };
+    let page = TEMPLATE
+        .replace("NONCE", &nonce)
+        .replace("/*FONTS*/", &font_faces())
+        .replace("<!--VIEWER-->", &shared);
     let (head, tail) = page
         .split_once("<!--DATA-->")
         .ok_or("report.html has no data mark")?;
@@ -142,7 +198,7 @@ fn build(o: &Options) -> Result<String, String> {
     let mut html = head
         .replace("<!--OPTIONS-->", &options)
         .replace("<!--TEXT-->", &text);
-    if !o.runs.is_empty() {
+    if !o.runs.is_empty() && o.viewer.is_none() {
         let viewer = viewer_dir().ok_or(
             "the wasm viewer is not built. Run scripts/build-viewer.sh, or set FH_VIEWER to its \
              folder",
@@ -163,10 +219,22 @@ fn build(o: &Options) -> Result<String, String> {
             &format!("{base}/input"),
             &store.input_file(run).map_err(failed)?,
         );
-        let pvd = store.result_file(run, PVD_FILE).map_err(failed)?;
-        add_file(&mut html, &format!("{base}/files/{PVD_FILE}"), &pvd);
-        let entries = read_pvd(&String::from_utf8_lossy(&pvd))
-            .map_err(|e| format!("{run}: {PVD_FILE}: {e}"))?;
+        let pvd = String::from_utf8_lossy(&store.result_file(run, PVD_FILE).map_err(failed)?)
+            .into_owned();
+        let mut entries = read_pvd(&pvd).map_err(|e| format!("{run}: {PVD_FILE}: {e}"))?;
+        let pvd = match entries.last() {
+            Some(last) if o.last_step => {
+                let time = last.time;
+                entries.retain(|e| e.time == time);
+                last_step(&pvd, &entries)
+            }
+            _ => pvd,
+        };
+        add_file(
+            &mut html,
+            &format!("{base}/files/{PVD_FILE}"),
+            pvd.as_bytes(),
+        );
         for e in entries {
             let bytes = store.result_file(run, &e.file).map_err(failed)?;
             add_file(&mut html, &format!("{base}/files/{}", e.file), &bytes);
@@ -174,6 +242,23 @@ fn build(o: &Options) -> Result<String, String> {
     }
     html.push_str(tail);
     Ok(html)
+}
+
+/// The PVD file `pvd` with only the data sets of `kept`, the parts of the last step.
+fn last_step(pvd: &str, kept: &[fh_core::vtu::PvdEntry]) -> String {
+    let mut parts = pvd.split('<');
+    let mut out = parts.next().unwrap_or_default().to_owned();
+    for part in parts {
+        let keep = !part.starts_with("DataSet")
+            || kept
+                .iter()
+                .any(|e| part.contains(&format!("file=\"{}\"", e.file)));
+        if keep {
+            out.push('<');
+            out.push_str(part);
+        }
+    }
+    out
 }
 
 /// Run `fh report` with the arguments after `report`.
@@ -187,11 +272,15 @@ pub fn report(args: &[String]) -> Result<ExitCode, String> {
         Ok(bytes) => {
             let curves = o.curves.iter().map(|c| c.display().to_string());
             let parts: Vec<String> = o.runs.iter().cloned().chain(curves).collect();
+            let with = if parts.is_empty() {
+                "the text only".to_owned()
+            } else {
+                parts.join(", ")
+            };
             println!(
-                "fh report: wrote {} ({:.1} MiB) with {}",
+                "fh report: wrote {} ({:.1} MiB) with {with}",
                 o.out.display(),
                 bytes as f64 / f64::from(1 << 20),
-                parts.join(", ")
             );
             ExitCode::SUCCESS
         }

@@ -17,9 +17,9 @@ use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
 use crate::view::{self, face_vertices, Contour, Geometry, ViewState};
 
-/// The font of the controls and of the page: Inter (SIL Open Font License 1.1,
-/// `fonts/OFL.txt`). The page gets it from the viewer, so it loads no font from the network.
-pub const INTER: &[u8] = include_bytes!("../fonts/InterVariable.ttf");
+/// The font of the controls: DM Sans (SIL Open Font License 1.1, `fonts/OFL.txt`), the sans
+/// font of the page.
+const DM_SANS: &[u8] = include_bytes!("../fonts/DMSans.ttf");
 
 /// The text of the viewport when no run is open.
 const NO_RUN: &str = "No run is open. Select a run at the top, or ask the agent for a model.";
@@ -527,21 +527,22 @@ fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64,
     ));
 }
 
-/// The look of the page (`crates/fh/src/daemon/page.html`): the Inter font, and the colours
-/// `--bg`, `--raised` and `--line` of the page in the dark and the light theme.
+/// The look of the page (`crates/fh/src/daemon/page.html`): the DM Sans font, and the colours
+/// `--bg`, `--raised`, `--line` and `--text` of the page in the dark and the light theme.
 fn style(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
-    let inter = egui::FontData::from_static(INTER);
-    fonts.font_data.insert("Inter".into(), Arc::new(inter));
+    let sans = egui::FontData::from_static(DM_SANS);
+    fonts.font_data.insert("DM Sans".into(), Arc::new(sans));
     if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        family.insert(0, "Inter".into());
+        family.insert(0, "DM Sans".into());
     }
     ctx.set_fonts(fonts);
-    let gray = egui::Color32::from_gray;
-    for (theme, bg, raised, line) in [
-        (egui::Theme::Dark, gray(33), gray(48), gray(44)),
-        (egui::Theme::Light, gray(255), gray(240), gray(230)),
+    let hex = |c: u32| egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
+    for (theme, bg, raised, line, text) in [
+        (egui::Theme::Dark, 0x1c1b18, 0x2e2c27, 0x3a3730, 0xece8df),
+        (egui::Theme::Light, 0xf4f1ea, 0xe6e0d3, 0xd8d2c4, 0x1c1b18),
     ] {
+        let [bg, raised, line, text] = [bg, raised, line, text].map(hex);
         ctx.style_mut_of(theme, |s| {
             use egui::{FontId, TextStyle};
             s.text_styles = [
@@ -561,6 +562,7 @@ fn style(ctx: &egui::Context) {
             v.widgets.noninteractive.bg_stroke.color = line;
             v.widgets.inactive.bg_fill = raised;
             v.widgets.inactive.weak_bg_fill = raised;
+            v.override_text_color = Some(text);
             for w in [
                 &mut v.widgets.inactive,
                 &mut v.widgets.hovered,

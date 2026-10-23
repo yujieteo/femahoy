@@ -6,26 +6,33 @@
 <meta name="color-scheme" content="dark light">
 <title>femahoy</title>
 <style>
-/* The colours of the page. The model view (crates/viewer/src/app.rs) uses the same
-   background, line and button colours. */
+/* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
+   and its colours. The site has no dark theme: the dark colours are the light colours turned
+   over. A report (report.html) uses the same colours. The model view (crates/viewer/src/app.rs)
+   uses the same background, line, button and text colours. */
+/*FONTS*/
 :root {
-  --bg: #212121; --side: #181818; --raised: #303030; --line: #2c2c2c; --code: #141414;
-  --text: #ececec; --muted: #a0a0a0; --error: #f87171; --button: #ececec; --on-button: #0d0d0d;
+  --bg: #f4f1ea; --side: #efebe2; --raised: #e6e0d3; --line: #d8d2c4; --code: #ebe6dc;
+  --text: #1c1b18; --muted: #5c5950; --accent: #c4613f; --error: #b3261e;
+  --button: #1c1b18; --on-button: #f4f1ea;
+  --serif: "Source Serif 4", Georgia, serif; --sans: "DM Sans", system-ui, sans-serif;
 }
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg: #ffffff; --side: #f9f9f9; --raised: #f0f0f0; --line: #e6e6e6; --code: #f4f4f4;
-    --text: #0d0d0d; --muted: #6b6b6b; --error: #c62828; --button: #0d0d0d; --on-button: #ffffff;
+    --bg: #1c1b18; --side: #201f1b; --raised: #2e2c27; --line: #3a3730; --code: #252420;
+    --text: #ece8df; --muted: #a39e92; --accent: #e0805c; --error: #f2877b;
+    --button: #ece8df; --on-button: #1c1b18;
   }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body {
   display: flex; overflow: hidden; background: var(--bg); color: var(--text);
-  font: 15px/1.55 Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+  font: 16px/1.55 var(--sans);
 }
 button, select, textarea { font: inherit; color: inherit; }
 code, pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
 .bar { display: flex; flex: none; align-items: center; gap: 10px; height: 52px; padding: 0 16px; }
 
@@ -33,13 +40,13 @@ code, pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, mono
   display: flex; flex: none; flex-direction: column; width: clamp(320px, 30vw, 440px);
   background: var(--side); border-right: 1px solid var(--line);
 }
-#chat .bar { font-weight: 600; }
+#chat .bar { font: 1.25rem/1.2 var(--serif); }
 #log {
   display: flex; flex: 1; flex-direction: column; gap: 12px; overflow-y: auto;
   padding: 4px 16px 16px; scrollbar-width: thin; scrollbar-color: var(--raised) transparent;
 }
 #empty { margin: auto 0; padding: 0 8px; text-align: center; color: var(--muted); }
-#empty strong { display: block; margin-bottom: 6px; font-size: 18px; font-weight: 600; color: var(--text); }
+#empty strong { display: block; margin-bottom: 8px; font: 1.75rem/1.15 var(--serif); color: var(--text); text-wrap: balance; }
 .you { align-self: flex-end; max-width: 88%; padding: 8px 14px; border-radius: 18px; background: var(--raised); }
 .you, .say, pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 details { font-size: 13.5px; color: var(--muted); }
@@ -55,7 +62,7 @@ summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 .meta { flex: none; font-size: 12px; }
 .failed > summary, .failed .meta, pre.fail { color: var(--error); }
 .failure { padding: 8px 12px; border: 1px solid var(--error); border-radius: 10px; font-size: 13.5px; }
-.failure strong { display: block; font-weight: 600; color: var(--error); }
+.failure strong { display: block; font-weight: 500; color: var(--error); }
 .failure pre { margin-top: 4px; max-height: 200px; overflow: auto; }
 details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: auto; border-radius: 8px; background: var(--code); color: var(--text); }
 .note { margin: 0; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
@@ -93,7 +100,7 @@ details pre { margin-top: 6px; padding: 10px 12px; max-height: 360px; overflow: 
 .pick { position: relative; display: flex; align-items: center; min-width: 0; }
 #runs {
   max-width: 100%; padding: 6px 30px 6px 10px; border: 0; border-radius: 8px; outline: 0;
-  appearance: none; background: none; font-weight: 600; text-overflow: ellipsis; cursor: pointer;
+  appearance: none; background: none; font-weight: 500; text-overflow: ellipsis; cursor: pointer;
 }
 #runs:hover, #runs:focus-visible { background: var(--raised); }
 #runs option { background: var(--side); color: var(--text); font-weight: 400; }
@@ -252,7 +259,6 @@ async function startViewer() {
     const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
     const wasm = await (await call("/viewer/fh_viewer_bg.wasm")).arrayBuffer();
     await viewer.default({ module_or_path: wasm });
-    document.fonts.add(new FontFace("Inter", viewer.font(), { weight: "100 900" }));
     view = await viewer.start($("fh"), token);
     msg.remove();
     // The canvas takes the focus when it starts. The person writes first.

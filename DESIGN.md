@@ -62,9 +62,9 @@ Reason: a web page on another origin must not use the daemon, and a key in the b
 
 ### 4.2 Clients
 
-- **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the Inter font.
+- **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the style of the site teoyujie.org: the Source Serif 4 and DM Sans fonts, and its colours.
 - **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls.
-- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer, the results of the runs and an x-y plot of each curve that the agent names. `fh` draws each plot as inline SVG, with the reference points of the curve over it. The file opens with a double-click and needs no daemon and no network. The agent writes no PDF, image, plot or viewer code.
+- **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer, the results of the runs and an x-y plot of each curve that the agent names. `fh` draws each plot as inline SVG, with the reference points of the curve over it. The file opens with a double-click and needs no daemon and no network. With `--viewer`, many reports in 1 folder share 1 copy of the viewer (`validation/reports`). The agent writes no PDF, image, plot or viewer code.
 
 Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport needs the GPU, and egui hosts it well.
 
@@ -166,7 +166,7 @@ Reason of the selection: a change to 1 solver does not change the results of the
 
 ## 8. Font
 
-The Inter font is under the SIL Open Font License 1.1, in `crates/viewer/fonts` with its licence.
+The fonts are under the SIL Open Font License 1.1, each with its licence: DM Sans in `crates/viewer/fonts`, and Source Serif 4 and DM Sans in `crates/fh/src/daemon/fonts`.
 
 ---
 
