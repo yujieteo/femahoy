@@ -73,7 +73,7 @@ The result is σ_xx = 296.265 MPa, 0.029 % above the reference.
 The nodal value of `S11` at (0, a) in `job.frd` (the mean of the elements at the node) is 300.41 MPa, 0.14 % above 3σ.
 The global model alone gives 286.51 MPa at (0, a) in `global.frd`, 4.5 % below 3σ.
 
-`line-x0.csv` holds σ_xx on the line x = 0 of the 3 solutions (the nodal `S11` of `global.frd` and `job.frd`) as a curve for `fh report --curve`.
+`curves.py` writes σ_xx on the line x = 0 of the 3 solutions (the nodal `S11` of `global.frd` and `job.frd` of the run) to the curve `line-x0.csv` of the report.
 At y = 12.46 mm, the second node of the global model, the global model gives 8 % above Kirsch.
 From the hole to y = 18 mm, the submodel stays within 0.4 % of Kirsch at its nodes on the line.
 Near the cut, the submodel has the error of the global model: -1.0 % at y = 19.1 mm and -3.3 % at the cut, y = 20 mm. Thus read the results of a submodel away from its cut.
