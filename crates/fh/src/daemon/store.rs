@@ -29,7 +29,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use crate::ccx::{input_text, result_frames, stage_input};
+use crate::ccx::{input_text, result_frames, stage_input, INPUT_FILE};
 use crate::{foam, getdp, precice, topology, Solver};
 
 use super::message::{bad, fail, Failure};
@@ -38,7 +38,6 @@ const RUNS_DIR: &str = "runs";
 const PREVIEWS_DIR: &str = "previews";
 const SOURCE_FILE: &str = "source";
 const TITLE_FILE: &str = "title";
-const INPUT_FILE: &str = "input.inp";
 const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
 
