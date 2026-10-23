@@ -1,6 +1,7 @@
 case	result	detail	bytes	version
 acoustics-pulsating-sphere	pass		781326	3493b3a
 bar-pressure	pass		124093	3493b3a
+birth-death-column	pass		132109	e77fe7d
 buckling-column	pass		123307	3493b3a
 cavity-devahldavis	pass		2664333	3493b3a
 cht-heated-channel	pass		660658	3493b3a
