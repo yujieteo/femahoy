@@ -313,19 +313,11 @@ pub enum Contour<'a> {
 }
 
 impl ViewState {
-    /// The view state of a run with no view, with the important fields of the run.
-    pub fn new(results: &Results) -> Self {
-        Self::open(
-            results,
-            &View::default(),
-            &Important::of(results, &View::default(), false),
-        )
-    }
-
     /// The first view state of a run: the step of the view, else the last step. The contour is
     /// the first field of the view, else the first field of `DEFAULT_FIELDS` that is important
     /// and in the step, else the first important field in the step. The scale of the view, else
-    /// the automatic scale. A topology run with no scale in its view shows the undeformed design.
+    /// the automatic scale when the deformation is an important control, else 1 (the true shape).
+    /// A topology run with no scale in its view shows the undeformed design.
     pub fn open(results: &Results, view: &View, important: &Important) -> Self {
         let last = results.steps.len().saturating_sub(1);
         let step = view.step.unwrap_or(last).min(last);
@@ -342,7 +334,9 @@ impl ViewState {
         let (deformed, scale) = match view.scale {
             Some(0.0) => (false, auto),
             Some(s) => (true, s),
-            None => (!topology(results), auto),
+            None if topology(results) => (false, auto),
+            None if important.controls.contains(&Control::Deformation) => (true, auto),
+            None => (true, 1.0),
         };
         ViewState {
             step,
@@ -474,10 +468,19 @@ mod tests {
         crate::load_run(&dir.join("../../fixtures/results/cantilever-2step")).unwrap()
     }
 
+    /// The first view state of a run with no view.
+    fn state(r: &Results) -> ViewState {
+        ViewState::open(
+            r,
+            &View::default(),
+            &Important::of(r, &View::default(), false),
+        )
+    }
+
     #[test]
     fn new_state_shows_the_last_step_deformed_with_mises() {
         let r = fixture();
-        let v = ViewState::new(&r);
+        let v = state(&r);
         assert_eq!(v.step, 1);
         assert!(v.deformed && v.ghost);
         assert_eq!(v.scale, results::auto_scale(&r));
@@ -494,7 +497,7 @@ mod tests {
             s.fields.retain(|f| f.name == "MISES");
             s.fields[0].name = "Ez".into();
         }
-        assert_eq!(ViewState::new(&r).field.as_deref(), Some("Ez"));
+        assert_eq!(state(&r).field.as_deref(), Some("Ez"));
     }
 
     /// A structure: the steps, the deformation and the loads are important. The components, the
@@ -555,7 +558,9 @@ mod tests {
         r.multibody = true;
         let i = Important::of(&r, &View::default(), false);
         assert_eq!(i.controls, [Control::Steps]);
-        assert!(ViewState::open(&r, &View::default(), &i).deformed);
+        let v = ViewState::open(&r, &View::default(), &i);
+        assert_ne!(results::auto_scale(&r), 1.0);
+        assert_eq!((v.deformed, v.scale), (true, 1.0), "the true shape");
         r.multibody = false;
         let mut density = r.steps[1].field("MISES").unwrap().clone();
         density.name = "density".into();
@@ -565,6 +570,22 @@ mod tests {
         let v = ViewState::open(&r, &View::default(), &i);
         assert_eq!(v.field.as_deref(), Some("density"));
         assert!(!v.deformed);
+    }
+
+    /// A view with no deformation control and no scale shows the true shape, not a scaled shape
+    /// with no sign of its scale.
+    #[test]
+    fn a_view_with_no_deformation_control_shows_the_true_shape() {
+        let r = fixture();
+        let view = View {
+            fields: vec!["MISES".into()],
+            controls: Some(vec![Control::Loads]),
+            ..View::default()
+        };
+        let v = ViewState::open(&r, &view, &Important::of(&r, &view, true));
+        assert_eq!((v.deformed, v.scale), (true, 1.0));
+        let v = state(&r);
+        assert_eq!((v.deformed, v.scale), (true, results::auto_scale(&r)));
     }
 
     /// The view gives the fields, the controls, the first step and the scale. Its text goes
@@ -602,7 +623,7 @@ mod tests {
     #[test]
     fn the_step_selector_changes_the_shape_and_the_range() {
         let r = fixture();
-        let mut v = ViewState::new(&r);
+        let mut v = state(&r);
         v.field = Some("U3".into());
         let last = v.geometry(&r, 1);
         let Contour::On { lo: lo2, .. } = v.contour(&r) else {
@@ -626,7 +647,7 @@ mod tests {
     #[test]
     fn a_playing_animation_shows_each_step_in_turn() {
         let r = fixture();
-        let mut v = ViewState::new(&r);
+        let mut v = state(&r);
         assert_eq!(v.play(10.0, 2), None, "the steps do not play at first");
         v.playing = Some(10.0);
         let wait = v.play(10.1, 2).unwrap();
@@ -645,7 +666,7 @@ mod tests {
     #[test]
     fn face_vertices_carry_the_contour_value_of_each_corner() {
         let r = fixture();
-        let v = ViewState::new(&r);
+        let v = state(&r);
         let g = v.geometry(&r, 1);
         let mises = r.steps[1].field("MISES").unwrap();
         let (lo, hi) = results::contour_range(mises);

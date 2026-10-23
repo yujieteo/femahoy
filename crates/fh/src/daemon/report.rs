@@ -49,7 +49,7 @@ const USAGE: &str =
      table [RUN] with fields, controls, step and scale. --viewer loads the viewer from the \
      script FILE.js beside the report, which sets window.fhViewer, instead of a copy in the \
      report. --one-step keeps only the step that the view of each run shows first, for a \
-     smaller file.";
+     smaller file, and removes steps from the controls of each view.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
@@ -252,6 +252,17 @@ fn build(o: &Options) -> Result<String, String> {
         Some(path) => read_views(path, &o.runs)?,
         None => Vec::new(),
     };
+    if o.one_step {
+        for (run, view) in &views {
+            if view.controls.iter().flatten().any(|c| *c == Control::Steps) {
+                text.push_str(&format!(
+                    "<p>Only 1 step of {} is in this report, so its view has no step \
+                     selector.</p>",
+                    escape(run)
+                ));
+            }
+        }
+    }
     let store = Store::open(&state)?;
     let found = store.runs().map_err(|(_, m)| m)?;
     let mut options = String::new();
@@ -319,10 +330,8 @@ fn build(o: &Options) -> Result<String, String> {
             view.check(&results, has_loads(&input)).map_err(wrong)?;
             let mut shown = view.clone();
             if o.one_step {
-                if view.controls.iter().flatten().any(|c| *c == Control::Steps) {
-                    return Err(wrong(
-                        "--one-step keeps 1 step, so the controls cannot have steps".into(),
-                    ));
+                if let Some(controls) = &mut shown.controls {
+                    controls.retain(|c| *c != Control::Steps);
                 }
                 shown.step = None;
             }

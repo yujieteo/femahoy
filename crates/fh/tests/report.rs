@@ -335,30 +335,38 @@ fn the_report_holds_the_view_of_a_run() {
     );
 }
 
+/// With `--one-step`, a view with steps in its controls gives a report. The view has no steps
+/// in its controls, and the text tells why.
+#[test]
+fn the_one_step_option_removes_steps_from_the_controls() {
+    let lab = Lab::new("report-one-step-controls");
+    let view = lab.cantilever("[run-000001]\ncontrols = [\"steps\", \"deformation\"]\n");
+    let out = lab.report(&["--run", "run-000001", "--view", p(&view), "--one-step"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    let text = String::from_utf8(file(&html, "/views/run-000001").unwrap()).unwrap();
+    assert_eq!(text, "controls=deformation\n");
+    assert!(
+        html.contains("Only 1 step of run-000001 is in this report"),
+        "note"
+    );
+}
+
 /// A view that does not fit its run gives no report, and the message tells why.
 #[test]
 fn a_view_that_does_not_fit_the_run_gives_no_report() {
     let lab = Lab::new("report-bad-view");
-    for (view, extra, want) in [
+    for (view, want) in [
         (
             "fields = [\"Ez\"]",
-            "",
             "[run-000001]: field \"Ez\": the run has no such field",
         ),
-        ("step = 3", "", "[run-000001]: step 3: the run has 2 steps"),
-        ("controls = [\"flow\"]", "", "no control \"flow\""),
-        ("colour = \"red\"", "", "no key `colour`"),
-        (
-            "controls = [\"steps\"]",
-            "--one-step",
-            "--one-step keeps 1 step, so the controls cannot have steps",
-        ),
+        ("step = 3", "[run-000001]: step 3: the run has 2 steps"),
+        ("controls = [\"flow\"]", "no control \"flow\""),
+        ("colour = \"red\"", "no key `colour`"),
     ] {
         let path = lab.cantilever(&format!("[run-000001]\n{view}\n"));
-        let mut args = vec!["--run", "run-000001", "--view", p(&path)];
-        if !extra.is_empty() {
-            args.push(extra);
-        }
+        let args = ["--run", "run-000001", "--view", p(&path)];
         let _ = fs::remove_file(lab.out());
         let out = lab.report(&args);
         assert_eq!(out.status.code(), Some(1), "{view}: {}", stderr(&out));

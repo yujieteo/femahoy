@@ -223,7 +223,7 @@ controls = []
 - `fields`: the fields of the contour list. The first shows first: give the field of the result that the request asks for. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`.
 - `controls`: the groups of controls that show. `steps` is the step selector and the play button. `deformation` is the deformed shape and its scale. `loads` is the supports and loads on the model.
 - `step`: the step that shows first, from 1. The default is the last step.
-- `scale`: the deformation scale at the start. `1` shows the true shape and `0` the undeformed shape. The default is the automatic scale.
+- `scale`: the deformation scale at the start. `1` shows the true shape and `0` the undeformed shape. The default is the automatic scale when `controls` has `deformation`, else `1`. When the deformation is the story, put `deformation` in `controls`.
 - `fh report` stops with an error when the view does not fit the run: a field that the run does not have, `steps` for a run with 1 step, `deformation` for a run with no displacement or with moving points, or `loads` for an input with no support and no load.
 
 | Analysis | First field | Controls |
