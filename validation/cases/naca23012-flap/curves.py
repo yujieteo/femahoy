@@ -65,20 +65,20 @@ def main(out, folders):
             cells[k] = f"{cp:.4f}"
             rows.append(f"{x:.5f}," + ",".join(cells))
     (out / "cp.csv").write_text(
-        "# title: The pressure on the airfoil at 0 degrees (simpleFoam, mesh level 2)\n"
+        "# title: The pressure on the airfoil at the angle of attack 0 degrees (simpleFoam, mesh level 2)\n"
         "# y: -Cp [1]\n"
         "# note: The plot shows -Cp, thus the suction on the upper surface is at the top. "
         "Each line goes around the airfoil from the trailing edge.\n"
         "x / c [1]," + ",".join(f[2] for f in FLAPS) + "\n" + "\n".join(rows) + "\n"
     )
-    # Table I of the source: cl at 0 degrees and cm about the a.c.
+    # Table I of the source: cl at the angle of attack 0 degrees and cm about the a.c.
     test = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
     rows = []
     for name, angle, _, cl_test, cm_test in FLAPS:
         cl, cm = coefficients(Path(runs[name]) / "foam")
         rows.append(f"{angle},{cl:.4f},{test[cl_test]['value']},{cm:.4f},{test[cm_test]['value']}")
     (out / "flap.csv").write_text(
-        "# title: Lift and moment against the flap angle, at 0 degrees\n"
+        "# title: Lift and moment against the flap angle, at the angle of attack 0 degrees\n"
         "# y: cl and cm about the a.c. [1]\n"
         "# points cl test: Abbott and Greenberg (1939), NACA Report 661, Table I\n"
         "# points cm test: Abbott and Greenberg (1939), NACA Report 661, Table I\n"

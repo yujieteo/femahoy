@@ -29,8 +29,9 @@ def main(out, folders):
     (out / "spectrum.csv").write_text(
         "# title: Scattering efficiency of the cylinder against the size parameter\n"
         "# y: Q = C / (2 a) [1]\n"
-        "# note: Meep: 1 pulse, 40 grid points per a. Exact: the series solution of Bohren and Huffman "
-        "(1983), chapter 8 (reference.py).\n"
+        "# points exact series: Bohren and Huffman (1983), chapter 8, the series solution (reference.py)\n"
+        "# note: Meep: 1 pulse, 40 grid points per a. The dots are the exact Q at the same size "
+        "parameters, so the Meep line shows between them.\n"
         "x = 2 pi a / wavelength [1],Meep,exact series\n"
         + "".join(f"{x:.4f},{q:.6f},{e:.6f}\n" for (x, q), (_, e) in zip(model, exact))
     )

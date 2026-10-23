@@ -36,9 +36,10 @@ def main(out, folders):
     (Path(out) / "fin.csv").write_text(
         "# title: The temperature along the fin\n"
         "# y: T [°C]\n"
+        "# points model: the nodes of the edge y = 0, z = 0 of the solid, the coldest line of each section\n"
         "# note: The fin theory is Incropera et al. (2007), Table 3.4, case A, with 1 temperature in each section.\n"
-        "# note: The model line is the edge y = 0, z = 0 of the solid, the coldest line of each section. "
-        f"Its largest difference from the fin theory is {worst[1] - fin(worst[0]):+.3f} °C, at x = {worst[0]:g} mm.\n"
+        f"# note: The largest difference of the model from the fin theory is {worst[1] - fin(worst[0]):+.3f} °C, "
+        f"at x = {worst[0]:g} mm.\n"
         "x [mm],model,fin theory\n" + rows
     )
 

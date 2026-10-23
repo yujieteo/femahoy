@@ -66,14 +66,16 @@ def main(out, folders):
     write(Path(out) / "sx.csv",
           "# title: The thick plate (a/h = 4): σ_xx through the thickness at the centre\n"
           "# y: σ_xx [MPa]\n"
+          "# points model: the nodes of the line x = a/2, y = a/2 in the run\n"
           "# note: Pagano is the exact 3D solution of Pagano (1970) from pagano.py. The plies are 0, 90 and 0 degrees from the bottom.\n"
-          "# note: The model line is the nodes of the line x = a/2, y = a/2. It leaves out the 2 nodes on the ply interfaces "
+          "# note: The model leaves out the 2 nodes on the ply interfaces "
           f"z = {-h / 6:.2f} and {h / 6:.2f} mm. There the result file of ccx gives the mean of the 2 plies.\n",
           sx, exact(plate, A / 2, A / 2, SXX), largest(sx, plate, A / 2, A / 2, SXX))
     txz = column(step, x0, A / 2, S13)
     write(Path(out) / "txz.csv",
           "# title: The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2\n"
           "# y: τ_xz [MPa]\n"
+          "# points model: the nodes of the line x = 0, y = a/2 in the run\n"
           "# note: Pagano is the exact 3D solution of Pagano (1970) from pagano.py. τ_xz is continuous at the ply interfaces.\n",
           txz, exact(plate, 0.0, A / 2, TXZ), largest(txz, plate, 0.0, A / 2, TXZ))
 

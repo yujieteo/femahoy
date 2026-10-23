@@ -1,10 +1,10 @@
 <h2>Conclusion</h2>
 <p>The solid model gives the RMS acceleration of the tip of the cantilever within 0.08 % of the beam theory. The model gives 401236.1 mm/s2 (40.91 g), and the modal sum of the beam theory gives 400925.4 mm/s2 (40.883 g). The difference is 15 % of the tolerance of 0.5 %. Miles' equation for mode 1 alone gives 40.115 g, 1.9 % lower.</p>
+<label data-bar>Mode shape <select>
+<option data-run="job.inp" data-fields="U magnitude" data-controls="" data-step="1" data-scale="0.06" selected>Mode 1, 419.32 Hz: first bend in z</option>
+<option data-run="job.inp" data-fields="U magnitude" data-controls="" data-step="2" data-scale="0.06">Mode 2, 832.11 Hz: first bend in y</option>
+<option data-run="job.inp" data-fields="U magnitude" data-controls="" data-step="3" data-scale="0.06">Mode 3, 2599.9 Hz: second bend in z</option>
+</select></label>
 <!--curve psd.csv-->
 <p>The base input is flat at 0.04 g^2/Hz, 8.90 g RMS. At mode 1, the PSD of the tip in the model has its peak of 61.2 g^2/Hz, about 1500 times the input. Mode 1 of the solid is at 419.32 Hz, and mode 1 of the beam theory is at 417.76 Hz. Above mode 1, the PSD falls to about the input near 1170 Hz. Then it goes up toward mode 3 at 2599.9 Hz, above the band.</p>
-<p>The band from 20 to 2000 Hz holds 2 modes of the solid, but the plot has only 1 peak. Mode 2 bends the beam in y, and the base motion in z does not move it. Select a mode to see its shape. The size of a mode shape has no physical value.
-<select aria-label="The mode in the model view">
-<option data-run="job.inp" data-fields="U magnitude" data-controls="" data-step="1" data-scale="0.06" selected>Mode 1, 419.32 Hz: the first bend in z, 61 % of the mass in z</option>
-<option data-run="job.inp" data-fields="U magnitude" data-controls="" data-step="2" data-scale="0.06">Mode 2, 832.11 Hz: the first bend in y, no mass in z</option>
-<option data-run="job.inp" data-fields="U magnitude" data-controls="" data-step="3" data-scale="0.06">Mode 3, 2599.9 Hz: the second bend in z, 19 % of the mass in z</option>
-</select></p>
+<p>The band from 20 to 2000 Hz holds 2 modes of the solid, but the plot has only 1 peak. Mode 2 bends the beam in y, and the base motion in z does not move it. Mode 1 moves 61 % of the mass in z, mode 2 moves no mass in z, and mode 3 moves 19 %. Select a mode in the bar above the 3D view to see its shape. The size of a mode shape has no physical value.</p>

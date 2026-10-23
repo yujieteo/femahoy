@@ -1,8 +1,9 @@
 <h2>Conclusion</h2>
-<p>The model agrees with the exact conjugate solution: the 3 checked temperatures are 0.0002 K to 0.0043 K below the exact values, and the tolerance is 0.006 K. <code>heater_T</code> uses 72 % of the tolerance. The mesh error of the check mesh is -0.0040 K (see "Mesh study"), thus the mesh causes most of the difference.</p>
+<p>The model agrees with the exact conjugate solution. The 3 checked temperatures are 0.0002 K to 0.0043 K below the exact values, and the tolerance is 0.006 K. <code>heater_T</code> uses 72 % of the tolerance. The mesh error of the check mesh is -0.0040 K (see "Mesh study"), thus the mesh causes most of the difference.</p>
 <p>The model also has the correct temperature across the full section at x = 40 mm, not only at the checked points. In the air, the temperature increases by 3.0 K from the centre line to the interface. In the wall, it increases linearly by 0.48 K to the heater. At the scale of the plot, the model line is on the exact line.</p>
 <!--curve profile.csv-->
-<p>The air enters at 300 K with a uniform velocity. The heater on 20 &le; x &le; 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. Select a view:
-<button data-run="channel" data-fields="T,U magnitude" data-controls="" data-box="0.036,0,0,0.044,0.002,0">The station x = 40 mm</button>
-<button data-run="channel" data-fields="T,U magnitude" data-controls="">The full channel</button>
-</p>
+<label data-bar>View <select>
+<option data-run="channel" data-fields="T" data-controls="" data-box="0.036,0,0.0001,0.044,0.002,0.0001" data-marks="0.04,0.001,0.0001 interface_T = 312.9000 K;0.04,0.002,0.0001 heater_T = 313.3800 K" selected>The station x = 40 mm</option>
+<option data-run="channel" data-fields="T" data-controls="" data-box="0,0,0.0001,0.09,0.002,0.0001" data-marks="0.04,0.001,0.0001 the station x = 40 mm;0.09,0.001,0.0001 outlet_T = 329.9998 K">The full channel</option>
+</select></label>
+<p>The air enters at 300 K with a uniform velocity. The heater on 20 &le; x &le; 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. The view shows the temperature <code>T</code>, with a dot at each checked place. Select the station x = 40 mm or the full channel above the view.</p>

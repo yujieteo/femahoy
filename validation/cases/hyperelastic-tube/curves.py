@@ -49,8 +49,9 @@ def main(out, folders):
     (Path(out) / "pressure.csv").write_text(
         "# title: The pressure on the inner face against the inner stretch\n"
         "# y: p [MPa]\n"
-        "# note: exact is the pressure of the incompressible tube of Haughton and Ogden (1979) from reference.py. "
-        "The model p is the sum of the x reactions on the inner face of the quarter, divided by λ_a A t.\n"
+        "# points model: the sum of the x reactions on the inner face of the quarter, divided by λ_a A t, "
+        "at each increment of the run\n"
+        "# note: exact is the pressure of the incompressible tube of Haughton and Ogden (1979) from reference.py.\n"
         f"# note: The largest difference of the model is {100 * (worst[1] / worst[2] - 1):+.3f} %, at λ_a = {worst[0]:.3f}.\n"
         "λ_a = a / A [1],model,exact\n" + "".join(f"{la:.4f},{p:.6f},{e:.6f}\n" for la, p, e in rows)
     )

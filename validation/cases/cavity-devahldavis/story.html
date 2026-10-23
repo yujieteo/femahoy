@@ -3,8 +3,8 @@
 <p>Each velocity maximum of the model is at the position of Table V, within 0.003. The cell size is 0.0078.</p>
 <!--curve u.csv-->
 <!--curve v.csv-->
-<p>The hot wall heats the air, and the air turns clockwise in the cavity. At Ra = 1e5 the buoyancy is 10 times larger. The average Nusselt number is 2.0 times larger, and the largest vertical velocity is 3.5 times larger and nearer to the hot wall. Select a Rayleigh number to see the temperature and the velocity:
-<select aria-label="The Rayleigh number in the model view">
-<option data-run="ra1e4" data-fields="T,U magnitude,U1,U2" data-controls="" data-box="0,0,0.1,1,1,0.1">Ra = 1e4</option>
-<option data-run="ra1e5" data-fields="T,U magnitude,U1,U2" data-controls="" data-box="0,0,0.1,1,1,0.1">Ra = 1e5</option>
-</select></p>
+<label data-bar>Rayleigh number <select>
+<option data-run="ra1e4" data-fields="T,U1,U2" data-controls="" data-box="0,0,0.1,1,1,0.1" data-marks="0.5,0.8256,0.1 largest u = 16.18;0.1202,0.5,0.1 largest v = 19.63">Ra = 1e4</option>
+<option data-run="ra1e5" data-fields="T,U1,U2" data-controls="" data-box="0,0,0.1,1,1,0.1" data-marks="0.5,0.8566,0.1 largest u = 34.75;0.0659,0.5,0.1 largest v = 68.66">Ra = 1e5</option>
+</select></label>
+<p>The hot wall heats the air, and the air turns clockwise in the cavity. At Ra = 1e5 the buoyancy is 10 times larger. The average Nusselt number is 2.0 times larger. The largest vertical velocity is 3.5 times larger and nearer to the hot wall. Select a Rayleigh number above the view. The field list has the temperature <code>T</code> for the Nusselt number, and <code>U1</code> and <code>U2</code> for the 2 velocity checks. The dots mark the largest u on x = 0.5 and the largest v on y = 0.5.</p>
