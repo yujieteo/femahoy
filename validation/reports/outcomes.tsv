@@ -6,11 +6,11 @@ cavity-devahldavis	pass		2679706	69e0c94
 cht-heated-channel	pass		668427	69e0c94
 contact-hertz	pass		129403	69e0c94
 dam-break-martin-moyce	pass		2343643	69e0c94
-dam-break-vof	pass		4272678	69e0c94
+dam-break-vof	pass		4272732	3876896
 dipole-king-middleton	pass		280178	69e0c94
 dynamics-bar-step	pass		131003	69e0c94
 fit-nist-pontius	pass		139068	69e0c94
-fracture-centre-crack	pass		295128	69e0c94
+fracture-centre-crack	pass		295158	3876896
 frequency-cantilever	pass		131465	69e0c94
 heat-fin	pass		192506	69e0c94
 hyperelastic-tube	pass		4365601	69e0c94
