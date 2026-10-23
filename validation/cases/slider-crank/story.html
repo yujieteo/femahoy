@@ -1,0 +1,7 @@
+<h2>Conclusion</h2>
+<p>The Chrono model gives the closed-form motor torque and slider position of the slider-crank. At the check time t = 1.125 s, the torque of the model is 1.4269621 N m and the closed form is 1.42695517 N m. The difference is 6.9e-6 N m, 5 % of the tolerance. The slider position of the model differs from the closed form by 1.4e-10 m.</p>
+<!--curve torque.csv-->
+<p>The model agrees with the closed form at each time step, not only at the check time. The torque error is 0.26 N m after the first step, because the start accelerations of the time stepper do not agree with 60 rpm. From t = 0.05 s to the end, the error stays below 1.6e-5 N m. This is the time-step error of HHT (section "Time-step study" below).</p>
+<!--curve torque-error.csv-->
+<p>The model view shows the crank, the rod and the slider at t = 1.125 s, with the crank at 45 degrees. Play the steps to see the 2.25 turns at the true motion. The colour is the displacement from the start.</p>
+<p><button data-run="60rpm" data-fields="U magnitude" data-controls="steps" data-scale="1">The motion of the bodies</button></p>

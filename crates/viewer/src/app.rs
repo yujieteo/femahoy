@@ -4,8 +4,7 @@
 //! viewport shows the model with its supports and loads: the faces of each set in a colour,
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
-//! The results panel shows the important controls of the run (see [`view::Important`]). The
-//! switch "Show all controls" shows the others.
+//! The results panel shows the controls of the view of the run (see [`view::Panel`]).
 
 use std::sync::{Arc, Mutex};
 
@@ -17,7 +16,7 @@ use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
-use crate::view::{self, face_vertices, Contour, Control, Geometry, Important, View, ViewState};
+use crate::view::{self, face_vertices, Contour, Control, Geometry, Panel, View, ViewState};
 
 /// The font of the controls: DM Sans (SIL Open Font License 1.1, `fonts/OFL.txt`), the sans
 /// font of the page.
@@ -42,10 +41,9 @@ pub enum Content {
 /// A slot that a loader fills later, for example after an HTTP fetch in the browser.
 pub type ContentSlot = Arc<Mutex<Option<Content>>>;
 
-/// The results of a run with their view state and their important controls, or a model before
-/// the solve.
+/// The results of a run with their view state and their panel, or a model before the solve.
 enum Body {
-    Results(Box<Results>, ViewState, Loads, Important),
+    Results(Box<Results>, ViewState, Loads, Panel),
     Preview(Box<Preview>),
 }
 
@@ -72,8 +70,6 @@ pub struct ViewerApp {
     slot: ContentSlot,
     /// Show the labels and the arrows of the supports and loads on the model.
     labels: bool,
-    /// Show all the controls of the results, also those that are not important.
-    all: bool,
 }
 
 impl ViewerApp {
@@ -85,18 +81,19 @@ impl ViewerApp {
             message: Some((false, NO_RUN.into())),
             slot,
             labels: true,
-            all: false,
         }
     }
 
     fn set_content(&mut self, content: Content) {
+        let mut frame = None;
         let body = match content {
             Content::Results(r, preview, view) => {
                 let loads = preview.as_ref().is_ok_and(|p| !p.items.is_empty());
-                let important = Important::of(&r, &view, loads);
-                let state = ViewState::open(&r, &view, &important);
+                let panel = Panel::of(&r, &view, loads);
+                let state = ViewState::open(&r, &view, &panel);
                 let same_mesh = preview.as_ref().is_ok_and(|p| p.matches(&r.mesh));
-                Body::Results(r, state, Loads { preview, same_mesh }, important)
+                frame = view.frame;
+                Body::Results(r, state, Loads { preview, same_mesh }, panel)
             }
             Content::Preview(p) => Body::Preview(p),
             Content::Text(text) => {
@@ -113,14 +110,15 @@ impl ViewerApp {
             body,
             geometry: None,
             version: 0,
-            camera: Camera::fit(None),
-            home: Camera::fit(None),
+            camera: Camera::fit(None, false),
+            home: Camera::fit(None, false),
         };
         if let Some(rs) = self.render_state.as_ref() {
             let gpu = MeshGpu::new(rs, shown.mesh());
             rs.renderer.write().callback_resources.insert(gpu);
         }
-        shown.home = Camera::fit(shown.view_bounds());
+        let bounds = frame.or_else(|| shown.view_bounds());
+        shown.home = Camera::fit(bounds, bounds.is_some_and(|b| shown.plane(b)));
         shown.camera = shown.home;
         self.message = None;
         shown.refresh();
@@ -169,6 +167,20 @@ impl Shown {
         Some(b)
     }
 
+    /// True for a plane model, which shows from the top: the box `b` is flat (its z size is at
+    /// most 1/20 of its x or y size), and no node moves in z.
+    fn plane(&self, b: Bounds) -> bool {
+        let size: [f32; 3] = std::array::from_fn(|k| b.max[k] - b.min[k]);
+        let still = match &self.body {
+            Body::Results(r, ..) => r
+                .steps
+                .iter()
+                .all(|s| s.displacement.iter().all(|u| u[2] == 0.0)),
+            Body::Preview(_) => true,
+        };
+        still && size[2] <= size[0].max(size[1]) / 20.0
+    }
+
     fn mesh(&self) -> &RenderMesh {
         match &self.body {
             Body::Results(r, ..) => &r.mesh,
@@ -190,19 +202,18 @@ impl Shown {
         self.geometry = Some(Arc::new(geometry));
     }
 
-    /// True when the panel shows the group of controls `c`: it is important, or `all` is on.
-    /// A preview has no such group.
-    fn shows(&self, c: Control, all: bool) -> bool {
+    /// True when the panel shows the group of controls `c`. A preview has no such group.
+    fn shows(&self, c: Control) -> bool {
         match &self.body {
-            Body::Results(.., important) => all || important.controls.contains(&c),
+            Body::Results(.., panel) => panel.controls.contains(&c),
             Body::Preview(_) => false,
         }
     }
 
     /// The draw parameters of the body: the contour, the colours and the ghost outline. The ghost
     /// outline shows only with the deformation controls.
-    fn frame(&self, all: bool) -> (bool, Option<[[f32; 3]; BANDS]>, bool) {
-        let ghost = self.shows(Control::Deformation, all);
+    fn frame(&self) -> (bool, Option<[[f32; 3]; BANDS]>, bool) {
+        let ghost = self.shows(Control::Deformation);
         match &self.body {
             Body::Results(r, v, ..) => (
                 matches!(v.contour(r), Contour::On { .. }),
@@ -214,11 +225,11 @@ impl Shown {
     }
 
     /// The panel of the body. Returns true when the view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
+    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool) -> bool {
         match &mut self.body {
-            Body::Results(r, v, loads, important) => {
-                let changed = results_panel(ui, r, v, important, all);
-                if *all || important.controls.contains(&Control::Loads) {
+            Body::Results(r, v, loads, panel) => {
+                let changed = results_panel(ui, r, v, panel);
+                if panel.controls.contains(&Control::Loads) {
                     loads_panel(ui, loads, labels);
                 }
                 changed
@@ -232,12 +243,12 @@ impl Shown {
 
     /// The supports and loads on top of the model, with the positions of the drawn mesh. The
     /// results show them only with the supports and loads controls.
-    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, all: bool) {
+    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
         let eye = self.camera.eye();
         match &self.body {
             Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
             Body::Results(_, _, loads, _) => {
-                if !self.shows(Control::Loads, all) {
+                if !self.shows(Control::Loads) {
                     return;
                 }
                 let Ok(p) = &loads.preview else { return };
@@ -402,20 +413,12 @@ fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
     ui.painter().rect_filled(rect, 0.0, rgb(color));
 }
 
-/// The results panel: the important controls of `important`, or all the controls when `all` is
-/// on. Returns true when the view state changed.
-fn results_panel(
-    ui: &mut egui::Ui,
-    r: &Results,
-    v: &mut ViewState,
-    important: &Important,
-    all: &mut bool,
-) -> bool {
+/// The results panel: the controls and the fields of `panel`. Returns true when the view state
+/// changed.
+fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, panel: &Panel) -> bool {
     let before = v.clone();
     ui.heading("Results");
     ui.label(format!("Units: {}", r.units));
-    ui.checkbox(all, "Show all controls")
-        .on_hover_text("also the controls that are not important for this run");
     ui.separator();
 
     let n = r.steps.len();
@@ -424,7 +427,7 @@ fn results_panel(
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs_f64(wait));
     }
-    let shows = |c: Control| *all || important.controls.contains(&c);
+    let shows = |c: Control| panel.controls.contains(&c);
     if shows(Control::Steps) {
         steps_controls(ui, r, v);
     }
@@ -433,18 +436,10 @@ fn results_panel(
     }
 
     ui.strong("Contour");
-    let names = if *all {
-        view::field_names(r)
-    } else {
-        important.fields.clone()
-    };
     egui::ComboBox::from_id_salt("field")
         .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
         .show_ui(ui, |ui| {
-            if *all {
-                ui.selectable_value(&mut v.field, None, "None");
-            }
-            for name in &names {
+            for name in &panel.fields {
                 ui.selectable_value(&mut v.field, Some(name.clone()), name);
             }
         });
@@ -651,7 +646,7 @@ impl eframe::App for ViewerApp {
                 .min_size(260.0)
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        if shown.panel(ui, &mut self.labels, &mut self.all) {
+                        if shown.panel(ui, &mut self.labels) {
                             shown.refresh();
                         }
                     });
@@ -690,7 +685,7 @@ impl eframe::App for ViewerApp {
             if response.double_clicked() {
                 shown.camera = shown.home;
             }
-            let (contour, palette, ghost) = shown.frame(self.all);
+            let (contour, palette, ghost) = shown.frame();
             let view_proj = shown
                 .camera
                 .view_proj(rect.width() / rect.height().max(1.0));
@@ -710,7 +705,7 @@ impl eframe::App for ViewerApp {
                 },
             ));
             if self.labels {
-                shown.overlay(&ui.painter_at(rect), rect, &view_proj, self.all);
+                shown.overlay(&ui.painter_at(rect), rect, &view_proj);
             }
         });
     }

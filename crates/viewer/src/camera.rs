@@ -22,18 +22,24 @@ pub struct Camera {
 }
 
 impl Camera {
-    /// An isometric-like view of the whole bounding box.
-    pub fn fit(bounds: Option<Bounds>) -> Self {
+    /// An isometric-like view of the whole bounding box, or with `top` a view from the top with
+    /// x to the right.
+    pub fn fit(bounds: Option<Bounds>, top: bool) -> Self {
         let (target, radius) = match bounds {
             Some(b) if b.radius() > 0.0 => (b.center(), b.radius()),
             Some(b) => (b.center(), 1.0),
             None => ([0.0; 3], 1.0),
         };
+        let (yaw, pitch) = if top {
+            (-std::f32::consts::FRAC_PI_2, MAX_PITCH)
+        } else {
+            (-0.8, 0.5)
+        };
         Camera {
             target,
             distance: radius / (FOV_Y * 0.5).sin() * 1.1,
-            yaw: -0.8,
-            pitch: 0.5,
+            yaw,
+            pitch,
             radius,
         }
     }

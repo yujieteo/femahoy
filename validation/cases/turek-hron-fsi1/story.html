@@ -1,0 +1,9 @@
+<h2>Conclusion</h2>
+<p>The coupled model of OpenFOAM, CalculiX and preCICE passes FSI1 of Turek and Hron (2006). The drag and the lift are 0.33 % and 0.18 % below the reference. The displacement of point A is 3.1 % (ux) and 1.9 % (uy) below the reference, and <code>ux_a</code> uses 77 % of the tolerance of 4 %.</p>
+<p>The coarse mesh of the check causes most of the difference in the displacement. On the finer meshes of the mesh study, the drag and the displacements move to the reference, and the lift stays within 0.18 % of it. At zero cell size, the drag and ux are within 0.13 % of the reference, and uy is 0.70 % below it. The coupling is necessary: a rigid flag gives a lift 46 % above the reference (see "Tolerance").</p>
+<p>The coupling converges to a steady state. The inlet velocity increases in the first 2 time windows. From window 28 to window 30, uy changes by 0.011 %, and the other values by 0.001 % or less. The section "Mesh study" estimates the rest of the change after window 30 as +0.05 % in uy.</p>
+<!--curve history.csv-->
+<p>The flow around the cylinder bends the flag up to a steady shape. Point A, the middle of the free end of the flag, moves 0.81 mm up. The view shows the displacement 20 times larger. Select a view:
+<button data-run="fsi1" data-fields="U magnitude,p" data-controls="" data-scale="20" data-box="0.1,0.1,1,0.7,0.3,1">The cylinder and the flag</button>
+<button data-run="fsi1" data-fields="U magnitude,p" data-controls="" data-scale="20" data-box="0,0,1,2.5,0.41,1">The full channel</button>
+</p>

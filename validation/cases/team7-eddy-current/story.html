@@ -1,0 +1,7 @@
+<h2>Conclusion</h2>
+<p>The GetDP model agrees with the TEAM 7 measurements of Bz on the line A1-B1 at all 6 checked points, within the tolerance of 6 % + 1 G. At omega t = 0, the model is within 4.9 % of the measured values. The largest part of the tolerance is 51 %, at x = 36 mm and omega t = 90 degrees.</p>
+<p>The table "Result" below gives the 6 values. <code>bz0_36</code> is Bz at x = 36 mm at omega t = 0, and <code>bz90_36</code> is Bz at the same point at omega t = 90 degrees. x = 36 mm is above the hole.</p>
+<p>The eddy currents in the plate cause a large change of Bz. Without the plate, the coil alone gives 88.3 G at x = 126 mm, and 0 at 90 degrees (see "Check of the solve" below). The 90 degree values are small, thus their tolerance is mostly abs_tol = 1 G, the effect of 0.7 degree of phase at x = 126 mm.</p>
+<p>gmsh of another version can make another mesh of the same sizes. Thus the values of this run can differ a little from the tables below, which come from the check mesh of derivation.md.</p>
+<p>The view shows the eddy current density |j| in the plate in A/m^2, at omega t = 0, the peak of the coil current. |j| is largest at the corner of the hole at x = y = 126 mm, the corner nearest to the coil.</p>
+<p><button data-run="50hz" data-fields="j magnitude" data-controls="" data-step="1">The eddy current at omega t = 0</button></p>

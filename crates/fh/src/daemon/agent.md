@@ -14,11 +14,10 @@ You are the agent of femahoy, an FEA and CFD workflow. The person watches each o
 3. Input: write `job.inp` with the Write tool. Start it with `*INCLUDE, INPUT=mesh.inp`. Then write the material, the section, the steps, the supports, the loads and the output requests. When you write the nodes and the elements yourself, put the line `** units: SI-mm` first in that file. Then the page shows the units.
 4. Solve: `fh run job.inp`. Do not set a `timeout` on the Bash tool: its default limit is 24 hours. Wait for the end of the command. `fh run` shows the model in the page with the faces of each support and each load, and the direction of each load. Then it solves the model. Add `--timeout SECONDS` to set a time limit.
 5. Read the numbers: `fh run` prints the paths of `job.dat` (the print requests) and `job.sta` (the steps). Read `job.sta` with the Read tool. The Read tool refuses a `.dat` file, so read `job.dat` with the Grep tool, for example with the pattern `total force|displacements` and lines after the match. The page shows the fields of the `*NODE FILE` and `*EL FILE` requests.
-6. Report: write the text of the report to `report-text.html` and the view of each run to `view.toml` (see "Views") with the Write tool. Then run `fh report report-text.html -o report.html --run RUN --view view.toml`. Name each run to show, for example `--run run-000003`. `fh run` prints the name of its run. `fh report` writes 1 file with your text and the viewer of the page, with the results of each run. The person opens it with a double-click. Tell the person the path of `report.html`.
-   - The text has the results folder, the numbers from `job.dat`, your hand check and the list of missing details. Add the geometry and design assumptions if the request asks for them.
+6. Report: first decide what the results show and which conclusion the report gives. Then write the text of the report to `report-text.html` with the Write tool, with the plots and the controls that show the conclusion (see "The story of a report"). Then run `fh report report-text.html -o report.html --run RUN --curve CURVE.csv`. Name each run to show, for example `--run run-000003`. `fh run` prints the name of its run. `fh report` writes 1 file with your text, your plots and the viewer of the page, with the results of each run. The person opens it with a double-click. Tell the person the path of `report.html`.
+   - The text has the conclusion, the results folder, the numbers from `job.dat`, your hand check and the list of missing details. Add the geometry and design assumptions if the request asks for them.
    - The hand check is a short calculation with its formula and its value. Give both values and their difference.
-   - Write the text in HTML: `h1`, `h2`, `p`, `ul`, `table` and `code`. It can hold no script, no image and no link to the network.
-   - `<a data-run="RUN">text</a>` shows the run RUN in the viewer when the person clicks it.
+   - Write the text in HTML: `h1`, `h2`, `p`, `ul`, `table`, `code` and the controls of "The story of a report". It can hold no script, no image and no link to the network.
    - Write no PDF, LaTeX, image, plot, renderer or viewer code. The viewer of `fh report` gives the views, and `--curve` gives the plots (see "Curves and fits").
 
 ## CFD with OpenFOAM
@@ -210,41 +209,34 @@ This setup agrees with the King-Middleton impedance of a dipole (the validation 
 - `AddLumpedPort` across the feed gap. After the run, `port.CalcPort("sim", f)`: Z = `uf_tot / if_tot`, S11 = `uf_ref / uf_inc` for the port resistance. Z does not change with the port resistance.
 - Far field: `CreateNF2FFBox(frequency=[f])` before the run, then `CalcNF2FF("sim", f, theta, phi)` on the full sphere: `Dmax` is the directivity and `Prad` the radiated power. For a metal antenna, `Prad` must be equal to the power into the port, 0.5 Re(V I*), within 1 %.
 
-## Views
+## The story of a report
 
-The view of a run tells its story in the viewer of the report: the field that shows first, the other fields, and only the controls that the story needs. The viewer hides the other fields and controls behind the switch "Show all controls". Write 1 table for each run in `view.toml`:
+A report has no fixed form. It shows the conclusion of its results so that the person can check it. Before you write it, answer 2 questions: what do the results show, and which conclusion does the report give? Then write only the plots and the controls that show or test the conclusion. Each value of the conclusion comes from your runs or from a source that the report names.
 
-```
-[run-000003]
-fields = ["T", "U magnitude"]
-controls = []
-```
+- Plots: write a curve file for each result that is a line (see "Curves and fits"), with the reference values as points. Put the mark `<!--curve NAME-->` in the text where the plot goes. NAME is the end of the path of the curve, for example `d10/cp.csv`. A curve with no mark goes after the text.
+- Controls: an element of the text with `data-run="RUN"` opens the run RUN in the viewer, with the view of its other `data-` attributes. A link or a button opens it with a click. A `select` opens the run of the chosen `option`, and a radio button opens its run when the person checks it. The report opens the first chosen element at the start.
 
-- `fields`: the fields of the contour list. The first shows first: give the field of the result that the request asks for. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`.
-- `controls`: the groups of controls that show. `steps` is the step selector and the play button. `deformation` is the deformed shape and its scale. `loads` is the supports and loads on the model.
-- `step`: the step that shows first, from 1. The default is the last step.
-- `scale`: the deformation scale at the start. `1` shows the true shape and `0` the undeformed shape. The default is the automatic scale when `controls` has `deformation`, else `1`. When the deformation is the story, put `deformation` in `controls`.
-- `fh report` stops with an error when the view does not fit the run: a field that the run does not have, `steps` for a run with 1 step, `deformation` for a run with no displacement or with moving points, or `loads` for an input with no support and no load.
-
-| Analysis | First field | Controls |
+| Attribute | The view | Default |
 |---|---|---|
-| Static stress | `MISES`, or the component of the check | `deformation`, `loads` |
-| Large strain, impact, rubber | `MISES` or `PEEQ` | `steps`, `deformation`, `loads`, with `scale = 1` |
-| Modes and buckling: 1 step for each mode | `U magnitude` | `steps`, `deformation` |
-| Heat | `NT` | `loads`, and `steps` for a transient |
-| Topology | `density` | `loads` |
-| Steady CFD, CHT, FSI | `p`, `U magnitude`, `T` or `Ma` | none |
-| Transient CFD, free surface | `alpha.water` or `U magnitude` | `steps` |
-| GetDP: electromagnetics, acoustics | the field, with `step = 1`: a complex solve writes the real part as step 1 and the imaginary part as step 2 | none |
-| Optics | `Ez` | `steps` |
-| Multibody | `U magnitude` | `steps`, with `scale = 1` |
-| Particles | `speed` | `steps` |
+| `data-fields="p,U magnitude"` | The fields of the contour list. The first shows first. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`. | All the fields |
+| `data-controls="steps,deformation,loads"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `data-controls=""` shows none. | Each control that can change the view of the run |
+| `data-step="N"` | The step that shows first, from 1. | The last step |
+| `data-scale="X"` | The deformation scale. `1` is the true shape, `0` the undeformed shape. | The automatic scale when the deformation controls show, else `1` |
+| `data-box="X0,Y0,Z0,X1,Y1,Z1"` | The box that the view shows first, in the units of the model. A flat box with no motion in z shows from the top: put Z0 and Z1 on the top face of the model, for example z = 1 for a 2D OpenFOAM mesh from z = 0 to 1. | The whole model |
 
-A run with no view shows the important controls that the viewer chooses from its results.
+For example, the pressure on an airfoil at 2 flap angles, with the plot of the pressure coefficient along the chord:
+
+```
+<label>Flap angle <select>
+<option data-run="run-000004" data-fields="p,U magnitude" data-controls="" data-box="-0.2,-0.4,1,1.3,0.4,1">10 degrees up</option>
+<option data-run="run-000005" data-fields="p,U magnitude" data-controls="" data-box="-0.2,-0.4,1,1.3,0.4,1" selected>0 degrees</option>
+</select></label>
+<!--curve cp.csv-->
+```
 
 ## Curves and fits
 
-A curve is a CSV file of x-y values. `fh report ... --curve FILE` draws it as a plot after your text, and `--curve` needs no `--run`. Write a curve for each result that is a line, not a field: a mesh study, a history over the time or the iterations, a response over the frequency.
+A curve is a CSV file of x-y values. `fh report ... --curve FILE` draws it as a plot at its mark in your text (see "The story of a report"), and `--curve` needs no `--run`. Write a curve for each result that is a line, not a field: a mesh study, a history over the time or the iterations, a response over the frequency.
 
 ```
 # title: Dam break, the surge front

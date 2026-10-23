@@ -1,0 +1,14 @@
+<h2>Conclusion</h2>
+<p>Both CalculiX models of the square [0/90/0] plate agree with the exact 3D solution of Pagano (1970) within 0.17 %. The tolerance is 0.5 %. The thin plate (a/h = 100) uses composite shells. The thick plate (a/h = 4) uses 3D layers with 3 elements in each ply.</p>
+<p>The thick plate is the hard test. At a/h = 4, the classical laminate theory gives a deflection 78 % too small, and σ_xx is not symmetric about the mid-plane. The 3D layers follow the exact σ_xx through the thickness, with the jumps at the 2 ply interfaces:</p>
+<!--curve sx.csv-->
+<p>The plots show the stress at the nodes of the result file. Their largest difference from the exact σ_xx is 0.23 MPa at the top face, 1.8 % of the largest σ_xx. The checks use the stress at the integration points (see "Reference values").</p>
+<p>The transverse shear stress τ_xz is continuous through the plies. At the supported edge x = 0, the 3D layers follow the exact τ_xz within 0.056 MPa:</p>
+<!--curve txz.csv-->
+<p>Use composite shells of this material only for a/h of 50 or more. At a/h = 4, the 8 x 8 composite shells give a deflection 26 % too small (see "Composite shell and the span ratio").</p>
+<p>The view shows the 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm. Select a result:</p>
+<p>
+<button data-run="job.inp" data-fields="S11,U3,S13" data-controls="deformation">σ_xx (S11)</button>
+<button data-run="job.inp" data-fields="U3,S11,S13" data-controls="deformation">Deflection w (U3)</button>
+<button data-run="job.inp" data-fields="S13,S11,U3" data-controls="deformation">τ_xz (S13)</button>
+</p>

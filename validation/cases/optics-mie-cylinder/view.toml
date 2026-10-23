@@ -1,3 +1,0 @@
-# The light field Ez scatters on the cylinder: play the steps of 1 period.
-fields = ["Ez"]
-controls = ["steps"]

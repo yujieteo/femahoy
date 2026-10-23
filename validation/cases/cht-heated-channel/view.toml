@@ -1,3 +1,0 @@
-# The heat from the heaters goes through the walls into the air: the temperature of both regions.
-fields = ["T", "U magnitude"]
-controls = []

@@ -1,4 +1,0 @@
-# The tube inflates past its pressure maximum: the true shape at each step.
-fields = ["MISES", "U magnitude"]
-controls = ["steps", "deformation", "loads"]
-scale = 1

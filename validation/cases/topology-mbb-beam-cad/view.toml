@@ -1,3 +1,0 @@
-# The design of the loop. The CAD makes its solid from this density.
-fields = ["density"]
-controls = ["loads"]

@@ -1,8 +1,8 @@
 //! The browser entry point. The page of `fh serve` (`crates/fh/src/daemon/page.html`) calls
 //! `start` with its canvas and the token, and `Viewer::open` for each run that it shows.
 //! The viewer fetches the result files from the daemon with `Authorization: Bearer
-//! <token>`. A report (`crates/fh/src/daemon/report.html`) also gives the view of a run to
-//! `Viewer::open`.
+//! <token>`. A report (`crates/fh/src/daemon/report.html`) also gives the view of a run that
+//! the agent writes to `Viewer::open`.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -57,7 +57,7 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
 }
 
 /// Fetch the result files of a run and read them, with the supports and loads of its input and
-/// the view `view` (the text of [`view::View::text`]).
+/// the view `view` (the text of [`view::View::parse`]).
 async fn load_run(token: &str, run: &str, view: &str) -> Result<Content, String> {
     let view = view::View::parse(view).map_err(|e| format!("Run {run}: the view: {e}"))?;
     let base = format!("/api/v1/runs/{run}/files");
@@ -101,7 +101,7 @@ pub struct Viewer {
 #[wasm_bindgen]
 impl Viewer {
     /// Show the results of a run in place of the current content, with the view of a report.
-    /// With no view, the panel shows the important controls of the run.
+    /// With no view, the panel shows each control that can change the view of the run.
     pub fn open(&self, run: String, view: Option<String>) {
         let token = self.token.clone();
         self.load("Loading the results...", async move {

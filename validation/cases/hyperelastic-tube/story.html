@@ -1,0 +1,10 @@
+<h2>Conclusion</h2>
+<p>The CalculiX model inflates the Ogden rubber tube past its pressure maximum. At each of its 40 increments, the pressure of the model is within 0.018 % of the exact pressure of Haughton and Ogden (1979). The tolerance of the checks is 0.2 %.</p>
+<p>The exact pressure has its maximum 0.229790 MPa at the inner stretch λ_a = a/A = 2.566. After the maximum, the pressure decreases, and the model follows it to λ_a = 4.0. A pressure load cannot pass the maximum, thus the model moves the inner face and gets the pressure from the reaction forces.</p>
+<!--curve pressure.csv-->
+<p>The checks find a wrong rubber model. A Neo-Hooke rubber with the same shear modulus at small strain gives a force 14.2 % too large at λ_a = 2.5. At λ_a = 4.0, the force is 28.8 % too large (see "Wrong models").</p>
+<p>The view shows the true shape of the quarter tube at each increment. The inner radius grows from 10 mm to 40 mm. Select an increment:</p>
+<p>
+<button data-run="job.inp" data-fields="MISES,U magnitude" data-controls="steps,deformation" data-scale="1" data-box="0,0,-0.5,44,44,0.5" data-step="40">λ_a = 4.0, the end of step 2</button>
+<button data-run="job.inp" data-fields="MISES,U magnitude" data-controls="steps,deformation" data-scale="1" data-box="0,0,-0.5,44,44,0.5" data-step="20">λ_a = 2.5, the end of step 1</button>
+</p>

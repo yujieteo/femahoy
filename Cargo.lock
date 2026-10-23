@@ -627,7 +627,6 @@ name = "fh"
 version = "0.0.0"
 dependencies = [
  "fh-core",
- "fh-viewer",
  "miniz_oxide 0.9.1",
  "toml_edit",
 ]
