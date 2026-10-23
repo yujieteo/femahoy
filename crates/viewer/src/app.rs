@@ -4,6 +4,8 @@
 //! viewport shows the model with its supports and loads: the faces of each set in a colour,
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
+//! The results panel shows the important controls of the run (see [`view::Important`]). The
+//! switch "Show all controls" shows the others.
 
 use std::sync::{Arc, Mutex};
 
@@ -15,7 +17,7 @@ use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
-use crate::view::{self, face_vertices, Contour, Geometry, ViewState};
+use crate::view::{self, face_vertices, Contour, Control, Geometry, Important, View, ViewState};
 
 /// The font of the controls: DM Sans (SIL Open Font License 1.1, `fonts/OFL.txt`), the sans
 /// font of the page.
@@ -26,8 +28,9 @@ const NO_RUN: &str = "No run is open. Select a run at the top, or ask the agent 
 
 /// What the viewer shows.
 pub enum Content {
-    /// The results of a run, and the supports and loads of its input or why there are none.
-    Results(Box<Results>, Result<Box<Preview>, String>),
+    /// The results of a run, the supports and loads of its input or why there are none, and
+    /// the view of the report.
+    Results(Box<Results>, Result<Box<Preview>, String>, View),
     /// The model of a solver input with its supports and loads, before the solve.
     Preview(Box<Preview>),
     /// A text in place of the results, for example while they load.
@@ -39,9 +42,10 @@ pub enum Content {
 /// A slot that a loader fills later, for example after an HTTP fetch in the browser.
 pub type ContentSlot = Arc<Mutex<Option<Content>>>;
 
-/// The results of a run with their view state, or a model before the solve.
+/// The results of a run with their view state and their important controls, or a model before
+/// the solve.
 enum Body {
-    Results(Box<Results>, ViewState, Loads),
+    Results(Box<Results>, ViewState, Loads, Important),
     Preview(Box<Preview>),
 }
 
@@ -68,6 +72,8 @@ pub struct ViewerApp {
     slot: ContentSlot,
     /// Show the labels and the arrows of the supports and loads on the model.
     labels: bool,
+    /// Show all the controls of the results, also those that are not important.
+    all: bool,
 }
 
 impl ViewerApp {
@@ -79,15 +85,18 @@ impl ViewerApp {
             message: Some((false, NO_RUN.into())),
             slot,
             labels: true,
+            all: false,
         }
     }
 
     fn set_content(&mut self, content: Content) {
         let body = match content {
-            Content::Results(r, preview) => {
-                let view = ViewState::new(&r);
+            Content::Results(r, preview, view) => {
+                let loads = preview.as_ref().is_ok_and(|p| !p.items.is_empty());
+                let important = Important::of(&r, &view, loads);
+                let state = ViewState::open(&r, &view, &important);
                 let same_mesh = preview.as_ref().is_ok_and(|p| p.matches(&r.mesh));
-                Body::Results(r, view, Loads { preview, same_mesh })
+                Body::Results(r, state, Loads { preview, same_mesh }, important)
             }
             Content::Preview(p) => Body::Preview(p),
             Content::Text(text) => {
@@ -148,7 +157,7 @@ impl Shown {
     fn view_bounds(&self) -> Option<Bounds> {
         let (mut b, p) = match &self.body {
             Body::Preview(p) => (p.mesh.bounds?, p),
-            Body::Results(r, _, Loads { preview: Ok(p), .. }) => (results::view_bounds(r)?, p),
+            Body::Results(r, _, Loads { preview: Ok(p), .. }, _) => (results::view_bounds(r)?, p),
             Body::Results(r, ..) => return results::view_bounds(r),
         };
         for (tail, head) in p.items.iter().filter_map(|i| p.arrow(i)) {
@@ -171,7 +180,7 @@ impl Shown {
     fn refresh(&mut self) {
         self.version += 1;
         let geometry = match &self.body {
-            Body::Results(r, v, _) => v.geometry(r, self.version),
+            Body::Results(r, v, ..) => v.geometry(r, self.version),
             Body::Preview(p) => Geometry {
                 version: self.version,
                 positions: Vec::new(),
@@ -181,24 +190,37 @@ impl Shown {
         self.geometry = Some(Arc::new(geometry));
     }
 
-    /// The draw parameters of the body: the contour, the colours and the ghost outline.
-    fn frame(&self) -> (bool, Option<[[f32; 3]; BANDS]>, bool) {
+    /// True when the panel shows the group of controls `c`: it is important, or `all` is on.
+    /// A preview has no such group.
+    fn shows(&self, c: Control, all: bool) -> bool {
         match &self.body {
-            Body::Results(r, v, _) => (
+            Body::Results(.., important) => all || important.controls.contains(&c),
+            Body::Preview(_) => false,
+        }
+    }
+
+    /// The draw parameters of the body: the contour, the colours and the ghost outline. The ghost
+    /// outline shows only with the deformation controls.
+    fn frame(&self, all: bool) -> (bool, Option<[[f32; 3]; BANDS]>, bool) {
+        let ghost = self.shows(Control::Deformation, all);
+        match &self.body {
+            Body::Results(r, v, ..) => (
                 matches!(v.contour(r), Contour::On { .. }),
                 None,
-                v.deformed && v.ghost,
+                ghost && v.deformed && v.ghost,
             ),
             Body::Preview(_) => (true, Some(COLORS), false),
         }
     }
 
     /// The panel of the body. Returns true when the view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool) -> bool {
+    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
         match &mut self.body {
-            Body::Results(r, v, loads) => {
-                let changed = results_panel(ui, r, v);
-                loads_panel(ui, loads, labels);
+            Body::Results(r, v, loads, important) => {
+                let changed = results_panel(ui, r, v, important, all);
+                if *all || important.controls.contains(&Control::Loads) {
+                    loads_panel(ui, loads, labels);
+                }
                 changed
             }
             Body::Preview(p) => {
@@ -208,12 +230,16 @@ impl Shown {
         }
     }
 
-    /// The supports and loads on top of the model, with the positions of the drawn mesh.
-    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+    /// The supports and loads on top of the model, with the positions of the drawn mesh. The
+    /// results show them only with the supports and loads controls.
+    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, all: bool) {
         let eye = self.camera.eye();
         match &self.body {
             Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
-            Body::Results(_, _, loads) => {
+            Body::Results(_, _, loads, _) => {
+                if !self.shows(Control::Loads, all) {
+                    return;
+                }
                 let Ok(p) = &loads.preview else { return };
                 let positions = match (&self.geometry, loads.same_mesh) {
                     (Some(g), true) => &g.positions,
@@ -376,20 +402,69 @@ fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
     ui.painter().rect_filled(rect, 0.0, rgb(color));
 }
 
-/// The results panel. Returns true when the view state changed.
-fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) -> bool {
+/// The results panel: the important controls of `important`, or all the controls when `all` is
+/// on. Returns true when the view state changed.
+fn results_panel(
+    ui: &mut egui::Ui,
+    r: &Results,
+    v: &mut ViewState,
+    important: &Important,
+    all: &mut bool,
+) -> bool {
     let before = v.clone();
     ui.heading("Results");
     ui.label(format!("Units: {}", r.units));
+    ui.checkbox(all, "Show all controls")
+        .on_hover_text("also the controls that are not important for this run");
     ui.separator();
 
-    ui.strong("Step");
     let n = r.steps.len();
     // Before the controls, so that they show the step of the shape.
     if let Some(wait) = v.play(ui.input(|i| i.time), n) {
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs_f64(wait));
     }
+    let shows = |c: Control| *all || important.controls.contains(&c);
+    if shows(Control::Steps) {
+        steps_controls(ui, r, v);
+    }
+    if shows(Control::Deformation) {
+        deformation_controls(ui, r, v);
+    }
+
+    ui.strong("Contour");
+    let names = if *all {
+        view::field_names(r)
+    } else {
+        important.fields.clone()
+    };
+    egui::ComboBox::from_id_salt("field")
+        .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
+        .show_ui(ui, |ui| {
+            if *all {
+                ui.selectable_value(&mut v.field, None, "None");
+            }
+            for name in &names {
+                ui.selectable_value(&mut v.field, Some(name.clone()), name);
+            }
+        });
+    match v.contour(r) {
+        Contour::Off => {}
+        Contour::Missing(name) => {
+            ui.colored_label(
+                ui.visuals().error_fg_color,
+                format!("Step {} has no field {name}.", v.step + 1),
+            );
+        }
+        Contour::On { field, lo, hi } => legend(ui, &r.units, field, lo, hi),
+    }
+    *v != before
+}
+
+/// The step selector, the play button and the step slider.
+fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
+    let n = r.steps.len();
+    ui.strong("Step");
     ui.horizontal(|ui| {
         if ui
             .add_enabled(v.step > 0, egui::Button::new("<"))
@@ -431,7 +506,10 @@ fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) -> bool {
     }
     ui.label(format!("{n} step{}", if n == 1 { "" } else { "s" }));
     ui.separator();
+}
 
+/// The deformed shape, its scale and the undeformed outline.
+fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     ui.strong("Deformed shape");
     ui.checkbox(&mut v.deformed, "Show the deformed shape");
     ui.add_enabled_ui(v.deformed, |ui| {
@@ -460,28 +538,6 @@ fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) -> bool {
         view::format_value(step.max_displacement())
     ));
     ui.separator();
-
-    ui.strong("Contour");
-    let names = view::field_names(r);
-    egui::ComboBox::from_id_salt("field")
-        .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
-        .show_ui(ui, |ui| {
-            ui.selectable_value(&mut v.field, None, "None");
-            for name in &names {
-                ui.selectable_value(&mut v.field, Some(name.clone()), name);
-            }
-        });
-    match v.contour(r) {
-        Contour::Off => {}
-        Contour::Missing(name) => {
-            ui.colored_label(
-                ui.visuals().error_fg_color,
-                format!("Step {} has no field {name}.", v.step + 1),
-            );
-        }
-        Contour::On { field, lo, hi } => legend(ui, &r.units, field, lo, hi),
-    }
-    *v != before
 }
 
 /// The colour bands with their limits, the highest band at the top.
@@ -595,7 +651,7 @@ impl eframe::App for ViewerApp {
                 .min_size(260.0)
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        if shown.panel(ui, &mut self.labels) {
+                        if shown.panel(ui, &mut self.labels, &mut self.all) {
                             shown.refresh();
                         }
                     });
@@ -634,7 +690,7 @@ impl eframe::App for ViewerApp {
             if response.double_clicked() {
                 shown.camera = shown.home;
             }
-            let (contour, palette, ghost) = shown.frame();
+            let (contour, palette, ghost) = shown.frame(self.all);
             let view_proj = shown
                 .camera
                 .view_proj(rect.width() / rect.height().max(1.0));
@@ -654,7 +710,7 @@ impl eframe::App for ViewerApp {
                 },
             ));
             if self.labels {
-                shown.overlay(&ui.painter_at(rect), rect, &view_proj);
+                shown.overlay(&ui.painter_at(rect), rect, &view_proj, self.all);
             }
         });
     }

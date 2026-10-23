@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-26733224eb83a85f85ef3588e75bd031' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-0cfb70c93227e104becec27a06ddceea' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -80,7 +80,7 @@ header { flex: none; padding: 0.75rem 1rem; }
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.03 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>p0</code></td><td style="text-align:right">6379.47</td><td style="text-align:right">6363.06</td><td style="text-align:right">190.9</td><td style="text-align:right">174.5</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 980496d.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 3493b3a.</p>
 <p>This case checks the largest contact pressure of a steel ball on a flat steel block (units SI-mm).</p>
 <h2>Source</h2>
 <p>K. L. Johnson, <em>Contact Mechanics</em>, Cambridge University Press, 1985, section 4.2, the Hertz contact of 2 solids of revolution.
@@ -112,12 +112,13 @@ Its size field is 0.4 mm up to 1 mm from the contact point (0, 0, 10). Then the 
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="26733224eb83a85f85ef3588e75bd031">
+<script type="module" nonce="0cfb70c93227e104becec27a06ddceea">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
 // `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
+// The view of a run of `fh report --view` is the file `/views/RUN`.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
@@ -147,9 +148,10 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const open = (run) => {
+    const open = async (run) => {
       runs.value = run;
-      view.open(run);
+      const path = "/views/" + run;
+      view.open(run, files.has(path) ? await (await fetch(path)).text() : undefined);
     };
     runs.addEventListener("change", () => open(runs.value));
     // An element of the text with `data-run="RUN"` opens that run.

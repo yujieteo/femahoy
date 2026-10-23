@@ -1,0 +1,3 @@
+# The temperature drives the flow: the hot wall heats the air, and the air turns in the cavity.
+fields = ["T", "U magnitude"]
+controls = []

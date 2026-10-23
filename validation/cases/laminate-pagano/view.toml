@@ -1,0 +1,3 @@
+# The deflection w (U3) and the stresses sx (S11) and txz (S13) of the checks.
+fields = ["S11", "U3", "S13"]
+controls = ["deformation", "loads"]

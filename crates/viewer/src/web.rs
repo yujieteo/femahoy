@@ -1,7 +1,8 @@
 //! The browser entry point. The page of `fh serve` (`crates/fh/src/daemon/page.html`) calls
 //! `start` with its canvas and the token, and `Viewer::open` for each run that it shows.
 //! The viewer fetches the result files from the daemon with `Authorization: Bearer
-//! <token>`.
+//! <token>`. A report (`crates/fh/src/daemon/report.html`) also gives the view of a run to
+//! `Viewer::open`.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -12,7 +13,7 @@ use eframe::egui;
 use wasm_bindgen::{prelude::*, JsCast};
 
 use crate::app::{Content, ContentSlot, ViewerApp};
-use crate::{preview, results, RESULTS_FILE};
+use crate::{preview, results, view, RESULTS_FILE};
 
 /// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer.
 async fn get(token: &str, path: &str) -> Result<Vec<u8>, String> {
@@ -55,8 +56,10 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("{path}: not UTF-8 text"))
 }
 
-/// Fetch the result files of a run and read them, with the supports and loads of its input.
-async fn load_run(token: &str, run: &str) -> Result<Content, String> {
+/// Fetch the result files of a run and read them, with the supports and loads of its input and
+/// the view `view` (the text of [`view::View::text`]).
+async fn load_run(token: &str, run: &str, view: &str) -> Result<Content, String> {
+    let view = view::View::parse(view).map_err(|e| format!("Run {run}: the view: {e}"))?;
     let base = format!("/api/v1/runs/{run}/files");
     let pvd_path = format!("{base}/{RESULTS_FILE}");
     let pvd = text(get(token, &pvd_path).await?, &pvd_path)?;
@@ -74,7 +77,7 @@ async fn load_run(token: &str, run: &str) -> Result<Content, String> {
     })
     .map_err(|e| format!("Run {run}: {e}"))?;
     let loads = model(token, &format!("/api/v1/runs/{run}/input"), run).await;
-    Ok(Content::Results(Box::new(r), loads))
+    Ok(Content::Results(Box::new(r), loads, view))
 }
 
 /// Fetch an input file from the daemon path `path` and read its supports and loads.
@@ -97,11 +100,12 @@ pub struct Viewer {
 
 #[wasm_bindgen]
 impl Viewer {
-    /// Show the results of a run in place of the current content.
-    pub fn open(&self, run: String) {
+    /// Show the results of a run in place of the current content, with the view of a report.
+    /// With no view, the panel shows the important controls of the run.
+    pub fn open(&self, run: String, view: Option<String>) {
         let token = self.token.clone();
         self.load("Loading the results...", async move {
-            load_run(&token, &run).await
+            load_run(&token, &run, view.as_deref().unwrap_or("")).await
         });
     }
 

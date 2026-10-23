@@ -13,10 +13,13 @@
 //!   `/viewer/fh_viewer.js`). Many reports in 1 folder then share 1 copy of the viewer
 //!   (`scripts/validation-reports.py`).
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
-//!   and each step file. With `--last-step`, only the last step of each run. Each file is a
-//!   `script` element that holds its bytes as raw deflate in base64, with the daemon path of the
-//!   file in `data-path`. A small script in the template answers the fetches of the viewer from
-//!   these elements. A report with no run has no viewer.
+//!   and each step file. With `--one-step`, only the step that the view of each run shows
+//!   first. Each file is a `script` element that holds its bytes as raw deflate in base64, with
+//!   the daemon path of the file in `data-path`. A small script in the template answers the
+//!   fetches of the viewer from these elements. A report with no run has no viewer.
+//! - For each run in the file of `--view`, its view (see [`View`]) under the path
+//!   `/views/RUN`: the fields, the controls and the step that the viewer shows first. The view
+//!   must fit the run ([`View::check`]). A run with no view shows its important controls.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
 //! the text of the agent cannot run a script or load a file. The fonts are in the template as
@@ -27,7 +30,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use fh_core::vtu::read_pvd;
+use fh_viewer::view::{Control, View};
 use miniz_oxide::deflate::compress_to_vec;
+use toml_edit::{Document, Item};
 
 use super::http::VIEWER_FILES;
 use super::serve::viewer_dir;
@@ -39,10 +44,12 @@ use crate::fit::read_curve;
 
 const USAGE: &str =
     "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... \
-     [--viewer FILE.js] [--last-step]\n\
-     A report with no run and no curve is the text only. --viewer loads the viewer from the \
+     [--view VIEW.toml] [--viewer FILE.js] [--one-step]\n\
+     A report with no run and no curve is the text only. --view gives the view of each run: a \
+     table [RUN] with fields, controls, step and scale. --viewer loads the viewer from the \
      script FILE.js beside the report, which sets window.fhViewer, instead of a copy in the \
-     report. --last-step keeps only the last step of each run, for a smaller file.";
+     report. --one-step keeps only the step that the view of each run shows first, for a \
+     smaller file, and removes steps from the controls of each view.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
@@ -50,13 +57,14 @@ struct Options {
     out: PathBuf,
     runs: Vec<String>,
     curves: Vec<PathBuf>,
+    view: Option<PathBuf>,
     viewer: Option<String>,
-    last_step: bool,
+    one_step: bool,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let (mut text, mut out, mut runs, mut curves) = (None, None, Vec::<String>::new(), Vec::new());
-    let (mut viewer, mut last_step) = (None, false);
+    let (mut view, mut viewer, mut one_step) = (None, None, false);
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let mut value = |what: &str| {
@@ -67,8 +75,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
         match arg.as_str() {
             "-o" => out = Some(PathBuf::from(value("a file")?)),
             "--curve" => curves.push(PathBuf::from(value("a curve file")?)),
+            "--view" => view = Some(PathBuf::from(value("a view file")?)),
             "--viewer" => viewer = Some(value("a script file")?),
-            "--last-step" => last_step = true,
+            "--one-step" => one_step = true,
             "--run" => {
                 let run = value("a run")?;
                 if !runs.contains(&run) {
@@ -86,8 +95,9 @@ fn parse(args: &[String]) -> Result<Options, String> {
             out,
             runs,
             curves,
+            view,
             viewer,
-            last_step,
+            one_step,
         }),
         _ => Err(USAGE.into()),
     }
@@ -157,6 +167,79 @@ fn read(path: &Path) -> Result<Vec<u8>, String> {
     fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// The view of each run in the file `path` of `--view`: a table `[RUN]` for each run of `runs`,
+/// with the keys `fields` and `controls` (lists of names), `step` (from 1) and `scale`.
+fn read_views(path: &Path, runs: &[String]) -> Result<Vec<(String, View)>, String> {
+    let text = String::from_utf8(read(path)?)
+        .map_err(|_| format!("{}: not UTF-8 text", path.display()))?;
+    let doc = Document::parse(text.as_str()).map_err(|e| format!("{}: {e}", path.display()))?;
+    let names = |item: &Item| -> Option<Vec<String>> {
+        let list = item
+            .as_array()?
+            .iter()
+            .map(|v| v.as_str().map(str::to_owned));
+        list.collect()
+    };
+    let mut views = Vec::new();
+    for (run, item) in doc.as_table().iter() {
+        let err = |message: &str| format!("{}: [{run}]: {message}", path.display());
+        if !runs.iter().any(|r| r == run) {
+            return Err(err("no --run names this run"));
+        }
+        let table = item.as_table_like().ok_or_else(|| err("must be a table"))?;
+        let mut view = View::default();
+        for (key, value) in table.iter() {
+            match key {
+                "fields" => {
+                    view.fields = names(value)
+                        .ok_or_else(|| err("`fields` must be a list of field names"))?;
+                }
+                "controls" => {
+                    let list = names(value).ok_or_else(|| err("`controls` must be a list"))?;
+                    let controls = list.iter().map(|n| {
+                        Control::from_name(n).ok_or_else(|| {
+                            err(&format!(
+                                "`controls`: no control {n:?}. They are steps, deformation and loads"
+                            ))
+                        })
+                    });
+                    view.controls = Some(controls.collect::<Result<_, _>>()?);
+                }
+                "step" => {
+                    let n = value.as_integer().filter(|n| *n >= 1);
+                    let n = n.ok_or_else(|| err("`step` must be a step number from 1"))?;
+                    view.step = Some(n as usize - 1);
+                }
+                "scale" => {
+                    let x = value
+                        .as_float()
+                        .or_else(|| value.as_integer().map(|i| i as f64))
+                        .filter(|x| x.is_finite() && *x >= 0.0);
+                    view.scale =
+                        Some(x.ok_or_else(|| err("`scale` must be a number of 0 or more"))?);
+                }
+                _ => {
+                    return Err(err(&format!(
+                        "no key `{key}`. The keys are fields, controls, step and scale"
+                    )))
+                }
+            }
+        }
+        views.push((run.to_owned(), view));
+    }
+    Ok(views)
+}
+
+/// True when the input `input` of a run has a support or a load that the viewer shows.
+fn has_loads(input: &[u8]) -> bool {
+    std::str::from_utf8(input).is_ok_and(|text| {
+        let model = fh_core::inp::parse(text);
+        !fh_viewer::preview::build(&model, &fh_core::inp::units(text))
+            .items
+            .is_empty()
+    })
+}
+
 /// The report as HTML.
 fn build(o: &Options) -> Result<String, String> {
     let state = default_state_dir().ok_or("no home folder, so set FH_STATE")?;
@@ -164,6 +247,21 @@ fn build(o: &Options) -> Result<String, String> {
         .map_err(|_| format!("{}: not UTF-8 text", o.text.display()))?;
     for path in &o.curves {
         text.push_str(&read_curve(path)?.figure());
+    }
+    let views = match &o.view {
+        Some(path) => read_views(path, &o.runs)?,
+        None => Vec::new(),
+    };
+    if o.one_step {
+        for (run, view) in &views {
+            if view.controls.iter().flatten().any(|c| *c == Control::Steps) {
+                text.push_str(&format!(
+                    "<p>Only 1 step of {} is in this report, so its view has no step \
+                     selector.</p>",
+                    escape(run)
+                ));
+            }
+        }
     }
     let store = Store::open(&state)?;
     let found = store.runs().map_err(|(_, m)| m)?;
@@ -214,19 +312,37 @@ fn build(o: &Options) -> Result<String, String> {
     let failed = |(_, message): (u16, String)| message;
     for run in &o.runs {
         let base = format!("/api/v1/runs/{run}");
-        add_file(
-            &mut html,
-            &format!("{base}/input"),
-            &store.input_file(run).map_err(failed)?,
-        );
+        let input = store.input_file(run).map_err(failed)?;
+        add_file(&mut html, &format!("{base}/input"), &input);
         let pvd = String::from_utf8_lossy(&store.result_file(run, PVD_FILE).map_err(failed)?)
             .into_owned();
         let mut entries = read_pvd(&pvd).map_err(|e| format!("{run}: {PVD_FILE}: {e}"))?;
-        let pvd = match entries.last() {
-            Some(last) if o.last_step => {
-                let time = last.time;
+        let view = views.iter().find(|(r, _)| r == run).map(|(_, v)| v);
+        if let Some(view) = view {
+            let results = fh_viewer::results::load(PVD_FILE, &pvd, |file| {
+                store.result_file(run, file).map_err(|(_, m)| m)
+            })
+            .map_err(|e| format!("{run}: {e}"))?;
+            let wrong = |e: String| {
+                let file = o.view.as_deref().unwrap_or(Path::new("--view"));
+                format!("{}: [{run}]: {e}", file.display())
+            };
+            view.check(&results, has_loads(&input)).map_err(wrong)?;
+            let mut shown = view.clone();
+            if o.one_step {
+                if let Some(controls) = &mut shown.controls {
+                    controls.retain(|c| *c != Control::Steps);
+                }
+                shown.step = None;
+            }
+            add_file(&mut html, &format!("/views/{run}"), shown.text().as_bytes());
+        }
+        let first = view.and_then(|v| v.step);
+        let pvd = match first.or(entries.len().checked_sub(1)) {
+            Some(k) if o.one_step && k < entries.len() => {
+                let time = entries[k].time;
                 entries.retain(|e| e.time == time);
-                last_step(&pvd, &entries)
+                one_step(&pvd, &entries)
             }
             _ => pvd,
         };
@@ -244,8 +360,8 @@ fn build(o: &Options) -> Result<String, String> {
     Ok(html)
 }
 
-/// The PVD file `pvd` with only the data sets of `kept`, the parts of the last step.
-fn last_step(pvd: &str, kept: &[fh_core::vtu::PvdEntry]) -> String {
+/// The PVD file `pvd` with only the data sets of `kept`, the parts of 1 step.
+fn one_step(pvd: &str, kept: &[fh_core::vtu::PvdEntry]) -> String {
     let mut parts = pvd.split('<');
     let mut out = parts.next().unwrap_or_default().to_owned();
     for part in parts {

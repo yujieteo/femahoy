@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-f4eeb7ebb1629cefab5ee92027057b33' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-d458ef7a6615521742902059a605917d' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -79,7 +79,7 @@ header { flex: none; padding: 0.75rem 1rem; }
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 1e-10 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>c0</code></td><td style="text-align:right">0.000673566</td><td style="text-align:right">0.000673566</td><td style="text-align:right">6.736e-14</td><td style="text-align:right">6.693e-14</td></tr><tr><td><code>c1</code></td><td style="text-align:right">7.32059e-07</td><td style="text-align:right">7.32059e-07</td><td style="text-align:right">7.321e-17</td><td style="text-align:right">7.321e-17</td></tr><tr><td><code>c2</code></td><td style="text-align:right">-3.16082e-15</td><td style="text-align:right">-3.16082e-15</td><td style="text-align:right">3.161e-25</td><td style="text-align:right">3.16e-25</td></tr><tr><td><code>r2</code></td><td style="text-align:right">1</td><td style="text-align:right">1</td><td style="text-align:right">1e-10</td><td style="text-align:right">1e-10</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 980496d.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy 3493b3a.</p>
 <p>This case checks <code>fh fit</code>: the least squares fit of a model to a curve. The reference is a published fit with certified values. Thus the tolerance comes only from the rounding of the reference and from the round-off of the fit.</p>
 <h2>Why this case</h2>
 <p>No other case of the suite checks a fit. <code>fh fit</code> gives the parameters that the agent puts in a model, for example the constants of <code>*HYPERELASTIC</code>. A wrong fit gives a wrong model with no warning.</p>
@@ -109,12 +109,13 @@ The fit gives these relative differences to the certified values on a Mac (Apple
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="f4eeb7ebb1629cefab5ee92027057b33">
+<script type="module" nonce="d458ef7a6615521742902059a605917d">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
 // A report of `fh report --viewer FILE` has no viewer files. The script FILE beside it sets
 // `fhViewer` to each viewer file, under its daemon path. Each file is raw deflate in base64.
+// The view of a run of `fh report --view` is the file `/views/RUN`.
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
@@ -144,9 +145,10 @@ async function start() {
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
     $("msg").remove();
-    const open = (run) => {
+    const open = async (run) => {
       runs.value = run;
-      view.open(run);
+      const path = "/views/" + run;
+      view.open(run, files.has(path) ? await (await fetch(path)).text() : undefined);
     };
     runs.addEventListener("change", () => open(runs.value));
     // An element of the text with `data-run="RUN"` opens that run.

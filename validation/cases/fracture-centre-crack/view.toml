@@ -1,0 +1,3 @@
+# The crack opens, and the opening stress S22 is singular at the tip.
+fields = ["S22", "MISES", "U2"]
+controls = ["deformation", "loads"]

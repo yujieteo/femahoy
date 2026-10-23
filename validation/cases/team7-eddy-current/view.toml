@@ -1,0 +1,5 @@
+# The eddy current in the plate at the phase of the coil current (the real part, step 1). Step 2
+# is the imaginary part.
+fields = ["j magnitude"]
+controls = []
+step = 1

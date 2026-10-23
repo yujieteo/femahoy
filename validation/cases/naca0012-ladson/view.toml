@@ -1,0 +1,3 @@
+# The pressure on the airfoil gives the lift and the drag.
+fields = ["p", "U magnitude"]
+controls = []

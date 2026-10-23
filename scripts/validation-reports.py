@@ -11,13 +11,17 @@ cases. For each case:
    the plot of its fit (`fh fit -o`) in place of a run. Each curve file (a CSV file with a
    `# y:` line) in the case folder or in the output of a run is a plot of the report.
 3. `fh report --viewer viewer.js` writes validation/reports/CASE.html: a table of the checks,
-   then derivation.md, then the runs.
+   then derivation.md, then the runs. view.toml in the case folder is the view of each run of
+   the case (`fh report --view`): the keys of 1 table of the view file, for example
+   `fields = ["T", "U magnitude"]` and `controls = []`. A case with no view.toml shows the
+   important controls of each run.
 
 A case that cannot run (its solver is not installed on this computer) gets a report of the text
 only: the checks of check.toml and derivation.md. The report and the index name the solver and
 how to install it. A case that fails gets its report, which shows the failure. An
 input that writes no field (a CalculiX input with no *NODE FILE and no *EL FILE) has no 3D view.
-A report above 5 MB is made again with only the last step of each run (`fh report --last-step`).
+A report above 5 MB is made again with only the step that the view of each run shows first
+(`fh report --one-step`).
 A report above 10 MB is not kept: the index names its size.
 
 The reports share 1 copy of the wasm viewer, validation/reports/viewer.js. A report opens with a
@@ -51,8 +55,8 @@ FONTS = ROOT / "crates/fh/src/daemon/fonts"
 FH = Path(os.environ.get("FH_BIN") or ROOT / "target/release/fh")
 VIEWER = Path(os.environ.get("FH_VIEWER") or ROOT / "target/release/viewer")
 VIEWER_FILES = ["fh_viewer.js", "fh_viewer_bg.wasm"]
-# A report above SMALL bytes keeps only the last step of each run. The repository keeps no report
-# above LIMIT bytes.
+# A report above SMALL bytes keeps only the step that the view of each run shows first. The
+# repository keeps no report above LIMIT bytes.
 SMALL = 5_000_000
 LIMIT = 10_000_000
 
@@ -262,7 +266,7 @@ def solve(case, tmp, env):
     return runs, curves, nofield
 
 
-def text(case, status, rows, runs, nofield, version, last_step=False):
+def text(case, status, rows, runs, nofield, version, one_step=False):
     checks = tomllib.loads((CASES / case / "check.toml").read_text())
     rel, abs_ = checks.get("rel_tol", 0), checks.get("abs_tol", 0)
     result = status.split(":", 1)[0]
@@ -290,7 +294,7 @@ def text(case, status, rows, runs, nofield, version, last_step=False):
         body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{trs}</tbody></table>")
     if runs:
         links = ", ".join(f'<a data-run="{run}">{esc(name)}</a>' for run, name in runs)
-        last = " Only the last step of each run is in this report, to keep the file small." if last_step else ""
+        last = " Only 1 step of each run is in this report, to keep the file small." if one_step else ""
         body.append(f"<p>The 3D view shows the run of each input: {links}.{last}</p>")
     if nofield:
         names = ", ".join(f"<code>{esc(n)}</code>" for n in nofield)
@@ -444,10 +448,15 @@ def main(args):
             args = [a for run, _ in runs for a in ("--run", run)] + [a for c in curves for a in ("--curve", c)]
             if runs:
                 args += ["--viewer", "viewer.js"]
+            view = CASES / case / "view.toml"
+            if runs and view.is_file():
+                views = tmp / f"{case}.view.toml"
+                views.write_text("".join(f"[{run}]\n{view.read_text()}\n" for run, _ in runs))
+                args += ["--view", views]
             r = fh("report", page, "-o", report, *args, env=env)
             if r.returncode == 0 and runs and report.stat().st_size > SMALL:
-                page.write_text(text(case, status, rows, runs, nofield, version, last_step=True))
-                r = fh("report", page, "-o", report, *args, "--last-step", env=env)
+                page.write_text(text(case, status, rows, runs, nofield, version, one_step=True))
+                r = fh("report", page, "-o", report, *args, "--one-step", env=env)
             if r.returncode != 0:
                 report.unlink(missing_ok=True)
                 outcomes[case] = ["fail", r.stderr.strip(), "", version]
