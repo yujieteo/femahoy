@@ -5,8 +5,9 @@
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
 //! The results panel shows the controls of the view of the run (see [`view::Panel`]), and the
-//! viewport shows the marks of the view. A report can ask for all the controls of the run, and
-//! for a step of the open run (see [`Request`]).
+//! viewport shows the marks of the view. A run with no view shows its important controls and the
+//! switch "Show all controls". A report can ask for all the controls of the run, and for a step
+//! of the open run (see [`Request`]).
 
 use std::sync::{Arc, Mutex};
 
@@ -260,11 +261,17 @@ impl Shown {
         }
     }
 
-    /// The panel of the body. Returns true when the view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool) -> bool {
+    /// The panel of the body. A run with no view has the switch `all`. Returns true when the
+    /// view state changed.
+    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
         match &mut self.body {
-            Body::Results(r, v, loads, panel, _) => {
-                let changed = results_panel(ui, r, v, panel);
+            Body::Results(r, v, loads, panel, view) => {
+                let before = *all;
+                let switch = (*view == View::default()).then_some(&mut *all);
+                let changed = results_panel(ui, r, v, panel, switch);
+                if *all != before {
+                    *panel = self::panel(r, view, &loads.preview, *all);
+                }
                 if panel.controls.contains(&Control::Loads) {
                     loads_panel(ui, loads, labels);
                 }
@@ -358,12 +365,18 @@ fn tag(painter: &egui::Painter, rect: egui::Rect, at: egui::Pos2, text: &str, co
     painter.galley(place.min, galley, ink);
 }
 
-/// The panel of the results `r` with the view `view`, or with each control of the run when `all`
-/// is true. `preview` has the supports and loads of the input.
+/// The panel of the results `r` with the view `view` (the important controls when it is empty),
+/// or with each control of the run when `all` is true. `preview` has the supports and loads of
+/// the input.
 fn panel(r: &Results, view: &View, preview: &Result<Box<Preview>, String>, all: bool) -> Panel {
     let loads = preview.as_ref().is_ok_and(|p| !p.items.is_empty());
     let each = View::default();
-    Panel::of(r, if all { &each } else { view }, loads)
+    let view = if all {
+        Some(&each)
+    } else {
+        Some(view).filter(|v| **v != each)
+    };
+    Panel::of(r, view, loads)
 }
 
 /// True for a plane model, which shows from the top: the box `b` of the view is flat (its z
@@ -499,12 +512,22 @@ fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
     ui.painter().rect_filled(rect, 0.0, rgb(color));
 }
 
-/// The results panel: the controls and the fields of `panel`. Returns true when the view state
-/// changed.
-fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, panel: &Panel) -> bool {
+/// The results panel: the switch `all` when it is given, and the controls and the fields of
+/// `panel`. Returns true when the view state changed.
+fn results_panel(
+    ui: &mut egui::Ui,
+    r: &Results,
+    v: &mut ViewState,
+    panel: &Panel,
+    all: Option<&mut bool>,
+) -> bool {
     let before = v.clone();
     ui.heading("Results");
     ui.label(format!("Units: {}", r.units));
+    if let Some(all) = all {
+        ui.checkbox(all, "Show all controls")
+            .on_hover_text("also the controls that are not important for this run");
+    }
     ui.separator();
 
     let n = r.steps.len();
@@ -732,7 +755,7 @@ impl eframe::App for ViewerApp {
                 .min_size(260.0)
                 .show(ui, |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
-                        if shown.panel(ui, &mut self.labels) {
+                        if shown.panel(ui, &mut self.labels, &mut self.all) {
                             shown.refresh();
                         }
                     });

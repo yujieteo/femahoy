@@ -3,7 +3,8 @@
 //!
 //! A report gives the view of a run ([`View`]) that the agent writes for the story of the
 //! report: the fields, the controls, the step, the scale, the box that the camera shows and the
-//! marks on the model. A run with no view shows each control that can change its view.
+//! marks on the model. A run with no view shows its important controls and hides the others
+//! behind 1 switch, "Show all controls".
 
 use crate::mesh::{Bounds, RenderMesh};
 use crate::results::{self, Results, ScalarField, Step};
@@ -12,6 +13,24 @@ use crate::results::{self, Results, ScalarField, Step};
 /// the von Mises stress, the water of a free surface flow, the Mach number of a compressible
 /// flow, the displacement or the velocity magnitude, and the temperature.
 const DEFAULT_FIELDS: [&str; 6] = ["density", "MISES", "alpha.water", "Ma", "U magnitude", "NT"];
+
+/// The fields that are not important: the error estimate and the reaction force of CalculiX, the
+/// turbulence and the solver fields of OpenFOAM, and the fields of the mesh motion and the coupling
+/// force of a preCICE fluid. A name is a field or the field of a magnitude (`RF magnitude`).
+const SECONDARY_FIELDS: [&str; 12] = [
+    "ERROR",
+    "RF",
+    "nut",
+    "nuTilda",
+    "alphat",
+    "k",
+    "omega",
+    "epsilon",
+    "p_rgh",
+    "V0",
+    "cellDisplacement",
+    "Force",
+];
 
 /// A group of controls of the results panel. The contour field list shows when the view gives
 /// more than 1 field, or no field.
@@ -170,20 +189,75 @@ impl Panel {
     /// when the view names none) that can change the view of the run, and the fields of the
     /// view (each field of the run when the view names none). A view with 1 field gives no
     /// choice, thus no list. `loads` is true when the input of the run has a support or a load.
-    pub fn of(results: &Results, view: &View, loads: bool) -> Panel {
-        let can = [results.steps.len() > 1, displaced(results), loads];
-        let controls = Control::ALL
-            .into_iter()
-            .zip(can)
-            .filter(|(c, on)| *on && view.controls.as_ref().is_none_or(|v| v.contains(c)))
-            .map(|(c, _)| c)
-            .collect();
+    ///
+    /// With no view (`None`), the important controls: the steps when 2 or more steps change in
+    /// time (a first step with only constant fields is the start of a steady solve), the
+    /// deformation when the nodes of a structure have a displacement, the supports and loads
+    /// when the input has them, and each field that is not 1 component of a field and not in
+    /// `SECONDARY_FIELDS`.
+    pub fn of(results: &Results, view: Option<&View>, loads: bool) -> Panel {
+        let steps = &results.steps;
+        let Some(view) = view else {
+            let changing =
+                steps.len() - usize::from(steps.first().is_some_and(start_of_steady_solve));
+            let structure = !results.multibody && !topology(results);
+            let can = [changing > 1, displaced(results) && structure, loads];
+            return Panel {
+                controls: groups(can, |_| true),
+                fields: important_fields(results),
+            };
+        };
+        let can = [steps.len() > 1, displaced(results), loads];
+        let controls = groups(can, |c| {
+            view.controls.as_ref().is_none_or(|v| v.contains(c))
+        });
         let fields = match view.fields.len() {
             0 => field_names(results),
             1 => Vec::new(),
             _ => view.fields.clone(),
         };
         Panel { controls, fields }
+    }
+}
+
+/// The groups of controls of `Control::ALL` that `can` (in the same sequence) gives and `keep`
+/// keeps.
+fn groups(can: [bool; 3], keep: impl Fn(&Control) -> bool) -> Vec<Control> {
+    Control::ALL
+        .into_iter()
+        .zip(can)
+        .filter(|(c, on)| *on && keep(c))
+        .map(|(c, _)| c)
+        .collect()
+}
+
+/// True when a step has no displacement and only constant fields, as the time 0 of a steady
+/// OpenFOAM solve.
+fn start_of_steady_solve(step: &Step) -> bool {
+    step.max_displacement() == 0.0
+        && step.fields.iter().all(|f| {
+            let (lo, hi) = results::contour_range(f);
+            hi <= lo
+        })
+}
+
+/// The fields of a run that are not 1 component of a field and not in `SECONDARY_FIELDS`, or
+/// all the fields when no field is left.
+fn important_fields(results: &Results) -> Vec<String> {
+    let secondary = |name: &str| {
+        let base = name.strip_suffix(" magnitude").unwrap_or(name);
+        SECONDARY_FIELDS.contains(&base)
+    };
+    let mut names: Vec<String> = Vec::new();
+    for f in results.steps.iter().flat_map(|s| &s.fields) {
+        if !f.component && !secondary(&f.name) && !names.contains(&f.name) {
+            names.push(f.name.clone());
+        }
+    }
+    if names.is_empty() {
+        field_names(results)
+    } else {
+        names
     }
 }
 
@@ -412,7 +486,7 @@ mod tests {
     /// The first view state of a run with no view.
     fn state(r: &Results) -> ViewState {
         let view = View::default();
-        ViewState::open(r, &view, &Panel::of(r, &view, false))
+        ViewState::open(r, &view, &Panel::of(r, None, false))
     }
 
     #[test]
@@ -446,12 +520,9 @@ mod tests {
         for s in &mut r.steps {
             s.displacement.fill([0.0; 3]);
         }
-        assert_eq!(
-            Panel::of(&r, &View::default(), false).controls,
-            [Control::Steps]
-        );
+        assert_eq!(Panel::of(&r, None, false).controls, [Control::Steps]);
         let view = View::parse("controls=deformation,loads").unwrap();
-        assert_eq!(Panel::of(&r, &view, true).controls, [Control::Loads]);
+        assert_eq!(Panel::of(&r, Some(&view), true).controls, [Control::Loads]);
     }
 
     /// A view with no deformation control and no scale shows the true shape, not a scaled shape
@@ -460,7 +531,7 @@ mod tests {
     fn a_view_with_no_deformation_control_shows_the_true_shape() {
         let r = fixture();
         let view = View::parse("fields=MISES\ncontrols=loads").unwrap();
-        let v = ViewState::open(&r, &view, &Panel::of(&r, &view, true));
+        let v = ViewState::open(&r, &view, &Panel::of(&r, Some(&view), true));
         assert_eq!((v.deformed, v.scale), (true, 1.0));
         let v = state(&r);
         assert_eq!((v.deformed, v.scale), (true, results::auto_scale(&r)));
@@ -484,6 +555,38 @@ mod tests {
         assert!(!v.deformed, "the undeformed design");
     }
 
+    /// With no view, the panel shows the important controls and fields. "Show all controls" (an
+    /// empty view) shows each control and each field of the run.
+    #[test]
+    fn a_run_with_no_view_shows_its_important_controls() {
+        let mut r = fixture();
+        let mut rf = r.steps[1].field("MISES").unwrap().clone();
+        rf.name = "RF magnitude".into();
+        r.steps[1].fields.push(rf);
+        let all = Panel::of(&r, Some(&View::default()), false);
+        assert_eq!(all.controls, [Control::Steps, Control::Deformation]);
+        assert_eq!(all.fields, field_names(&r));
+        let important = Panel::of(&r, None, false);
+        assert!(important.fields.contains(&"MISES".into()));
+        assert!(!important.fields.contains(&"RF magnitude".into()));
+        assert!(!important.fields.contains(&"U3".into()), "a component");
+        r.multibody = true;
+        assert_eq!(Panel::of(&r, None, false).controls, [Control::Steps]);
+        r.multibody = false;
+        for s in &mut r.steps[..1] {
+            s.displacement.fill([0.0; 3]);
+            for f in &mut s.fields {
+                f.values.fill(1.0);
+            }
+        }
+        let steady = Panel::of(&r, None, false).controls;
+        assert_eq!(
+            steady,
+            [Control::Deformation],
+            "the start of a steady solve"
+        );
+    }
+
     /// The view of the agent gives the fields, the controls, the first step, the scale, the
     /// box of the camera and the marks, in the text of the `data-` attributes of a report.
     #[test]
@@ -492,7 +595,7 @@ mod tests {
         let text = "fields=U3, MISES\ncontrols=\nstep=1\nscale=0\nbox=2,0,0,0,1,1\n\
                     marks=2: 1, 0,0.5 the tip: x = 1; 0,0,0 root";
         let view = View::parse(text).unwrap();
-        let panel = Panel::of(&r, &view, true);
+        let panel = Panel::of(&r, Some(&view), true);
         assert_eq!(panel.controls, []);
         assert_eq!(panel.fields, ["U3", "MISES"]);
         let v = ViewState::open(&r, &view, &panel);
