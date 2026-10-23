@@ -80,7 +80,7 @@ The sum is less than 1/10 of the tolerance. The column with all lifts at once, o
 
 ## Plot
 
-`settlement.csv` shows the settlement at the top of each lift after step 10. The ccx points come from the set `AXIS` of the run of `job.inp`.
+`curves.py` writes `settlement.csv`: the settlement at the top of each lift after step 10. The ccx points come from the set `AXIS` in `job.dat` of the run of `job.inp`.
 The lift theory goes through each ccx point. The curve of all lifts at once shows the difference that the sequence makes.
 
 ## 3D view
