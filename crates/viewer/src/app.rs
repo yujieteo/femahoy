@@ -108,7 +108,7 @@ impl ViewerApp {
                 let state = ViewState::open(&r, &view, &panel(&r, &view, &preview, false));
                 let panel = panel(&r, &view, &preview, self.all);
                 let same_mesh = preview.as_ref().is_ok_and(|p| p.matches(&r.mesh));
-                frame = view.frame;
+                frame = view.frame.map(|b| (b, plane(&r, b)));
                 Body::Results(r, state, Loads { preview, same_mesh }, panel, view)
             }
             Content::Preview(p) => Body::Preview(p),
@@ -133,8 +133,10 @@ impl ViewerApp {
             let gpu = MeshGpu::new(rs, shown.mesh());
             rs.renderer.write().callback_resources.insert(gpu);
         }
-        let bounds = frame.or_else(|| shown.view_bounds());
-        shown.home = Camera::fit(bounds, bounds.is_some_and(|b| shown.plane(b)));
+        shown.home = match frame {
+            Some((b, top)) => Camera::fit(Some(b), top),
+            None => Camera::fit(shown.view_bounds(), false),
+        };
         shown.camera = shown.home;
         self.message = None;
         shown.refresh();
@@ -213,20 +215,6 @@ impl Shown {
             }
         }
         Some(b)
-    }
-
-    /// True for a plane model, which shows from the top: the box `b` is flat (its z size is at
-    /// most 1/20 of its x or y size), and no node moves in z.
-    fn plane(&self, b: Bounds) -> bool {
-        let size: [f32; 3] = std::array::from_fn(|k| b.max[k] - b.min[k]);
-        let still = match &self.body {
-            Body::Results(r, ..) => r
-                .steps
-                .iter()
-                .all(|s| s.displacement.iter().all(|u| u[2] == 0.0)),
-            Body::Preview(_) => true,
-        };
-        still && size[2] <= size[0].max(size[1]) / 20.0
     }
 
     fn mesh(&self) -> &RenderMesh {
@@ -376,6 +364,14 @@ fn panel(r: &Results, view: &View, preview: &Result<Box<Preview>, String>, all: 
     let loads = preview.as_ref().is_ok_and(|p| !p.items.is_empty());
     let each = View::default();
     Panel::of(r, if all { &each } else { view }, loads)
+}
+
+/// True for a plane model, which shows from the top: the box `b` of the view is flat (its z
+/// size is at most 1/20 of its x or y size), and no node of the run `r` moves in z.
+fn plane(r: &Results, b: Bounds) -> bool {
+    let size: [f32; 3] = std::array::from_fn(|k| b.max[k] - b.min[k]);
+    let still = r.steps.iter().all(|s| s.displacement.iter().all(|u| u[2] == 0.0));
+    still && size[2] <= size[0].max(size[1]) / 20.0
 }
 
 fn kind_text(kind: Kind) -> &'static str {
