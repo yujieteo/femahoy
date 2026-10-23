@@ -1,0 +1,65 @@
+** units: SI-mm
+** A cylindrical steel pad (R = 20 mm) on a steel block, in plane strain, 1 mm thick, with
+** friction mu = 0.3. Step 2 pushes the pad down with P = 4500 N. Step 3 adds the tangential
+** force Q = 0.75 mu P. The centre of the contact sticks and its edges slip. mesh.py writes mesh.inp.
+*INCLUDE, INPUT=mesh.inp
+*MATERIAL, NAME=STEEL
+*ELASTIC
+210000.0, 0.3
+*SOLID SECTION, ELSET=BLOCK, MATERIAL=STEEL
+*SOLID SECTION, ELSET=PAD, MATERIAL=STEEL
+*SURFACE INTERACTION, NAME=ROUGH
+*SURFACE BEHAVIOR, PRESSURE-OVERCLOSURE=LINEAR
+1.0e7
+*FRICTION
+0.3, 1.0e7
+*CONTACT PAIR, INTERACTION=ROUGH, TYPE=SURFACE TO SURFACE
+PADS, BLOCKS
+*TIME POINTS, NAME=TEND
+1.0
+*AMPLITUDE, NAME=FULL
+0.0, 1.0, 1.0, 1.0
+** Step 1: push the top of the pad down, near its position at P. This starts the contact.
+*STEP, INC=100
+*STATIC
+*BOUNDARY
+BOTTOM, 1, 2
+LEFT, 1, 1
+LEFT, 2, 2, -0.02
+RIGHT, 2, 2, -0.02
+*END STEP
+** Step 2: release the top in y and apply P at once, P/2 on each end of the top.
+*STEP, INC=100
+*STATIC
+*BOUNDARY, OP=NEW
+BOTTOM, 1, 2
+LEFT, 1, 1
+*CLOAD, AMPLITUDE=FULL
+LEFT, 2, -2250.0
+RIGHT, 2, -2250.0
+*END STEP
+** Step 3: release the top in x and increase Q from 0 to 1012.5 N. Q is on the top, 20 mm above
+** the contact. The couple F = 20 Q / 24 = 843.75 N on the 2 ends cancels the moment of Q about
+** the centre of the contact, as in the theory. P stays.
+*STEP, INC=100
+*STATIC
+0.05, 1.0, 1e-5, 0.05
+*BOUNDARY, OP=NEW
+BOTTOM, 1, 2
+*CLOAD
+LEFT, 1, 1012.5
+LEFT, 2, -3093.75
+RIGHT, 2, -1406.25
+*NODE PRINT, NSET=BOTTOM, TOTALS=ONLY
+RF
+*CONTACT PRINT, TIME POINTS=TEND
+CSTR
+*EL PRINT, ELSET=CENTRE, TIME POINTS=TEND
+S
+*NODE FILE, TIME POINTS=TEND
+U
+*EL FILE, TIME POINTS=TEND
+S
+*CONTACT FILE, TIME POINTS=TEND
+CDIS, CSTR
+*END STEP
