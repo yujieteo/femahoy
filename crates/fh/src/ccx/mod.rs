@@ -4,6 +4,9 @@
 //! with each `*INCLUDE` file, in `<run-dir>/ccx`. Then it converts every nodal field of the
 //! `.frd` file into one VTU file for each increment and each mode in the file, and writes
 //! `results.pvd` in the run folder.
+//! A submodel (`*SUBMODEL, INPUT=global.frd`) reads the result file of its global model. Thus
+//! the run copies the global model `global.inp` from the folder of the input, and solves it
+//! first in the same folder.
 //! After a `*STEADY STATE DYNAMICS` step, it writes `<run-dir>/ccx/rms.txt`, the RMS of the
 //! response of each node that the step prints (see [`rms`]).
 //! `ccx` is GPL, so femahoy only starts it as a separate program.
@@ -31,7 +34,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use fh_core::inp::flatten;
+use fh_core::inp::{flatten, global_inputs, Flat};
 use fh_core::vtu::{Grid, PvdEntry};
 
 use crate::vtu::{write_pvd, write_vtu};
@@ -69,11 +72,39 @@ fn copy_files(inp: &Path, files: &[PathBuf], dir: &Path, name: &str) -> std::io:
     Ok(())
 }
 
-/// Copy the input file `inp` to `dir/name`, and each file that it includes to its relative path
-/// in `dir`. Each copy is read-only. A later run of `dir/name` does not change when `inp` does.
+/// The global input of each `*SUBMODEL` of the input `inp` (its text is `flat`), and the files
+/// that a run copies with `inp`: each `*INCLUDE` file, and each global input with its `*INCLUDE`
+/// files. The paths are relative to the folder of `inp`.
+fn run_files(inp: &Path, flat: &Flat) -> Result<(Vec<PathBuf>, Vec<PathBuf>), String> {
+    let dir = inp.parent().unwrap_or(Path::new("."));
+    let globals = global_inputs(&flat.text)?;
+    let mut files = flat.files.clone();
+    for global in &globals {
+        let path = dir.join(global);
+        if !path.is_file() {
+            return Err(format!(
+                "{}: *SUBMODEL reads the result file of the global model: write the global \
+                 model {} beside the input. The run solves it first",
+                inp.display(),
+                global.display()
+            ));
+        }
+        for file in std::iter::once(global.clone()).chain(flatten(&path)?.files) {
+            if !files.contains(&file) {
+                files.push(file);
+            }
+        }
+    }
+    Ok((globals, files))
+}
+
+/// Copy the input file `inp` to `dir/name`, and each file of its run (see [`run_files`]) to its
+/// relative path in `dir`. Each copy is read-only. A later run of `dir/name` does not change when
+/// `inp` does.
 pub(crate) fn stage_input(inp: &Path, dir: &Path, name: &str) -> Result<(), String> {
     let flat = flatten(inp)?;
-    copy_files(inp, &flat.files, dir, name).map_err(|e| format!("input copy: {e}"))
+    let (_, files) = run_files(inp, &flat)?;
+    copy_files(inp, &files, dir, name).map_err(|e| format!("input copy: {e}"))
 }
 
 /// The text of an input file, with the text of each `*INCLUDE` file in the place of its line.
@@ -306,19 +337,19 @@ impl Ccx {
         let inp =
             fs::canonicalize(inp).map_err(|e| format!("{}: input file: {e}", inp.display()))?;
         let flat = flatten(&inp)?;
+        let (globals, files) = run_files(&inp, &flat)?;
         let run_dir = prepare_run_dir(run_dir, &inp)?;
         let work = run_dir.join("ccx");
         let folder = |e: std::io::Error| format!("run folder: {e}");
         fs::create_dir_all(&work).map_err(folder)?;
         // `ccx` gets the file unchanged. An `*INCLUDE` path is relative to the folder of `ccx`.
-        copy_files(&inp, &flat.files, &work, &format!("{JOB}.inp")).map_err(folder)?;
-        let log_file = work.join(format!("{JOB}.log"));
-        let log = fs::File::create(&log_file).map_err(folder)?;
-        let status = self.solve(&work, &log_file, log, cancel, on_progress)?;
-        let log = fs::read_to_string(&log_file).unwrap_or_default();
-        if !status.success() || log.contains("*ERROR") {
-            return Err(ccx_failure(status, &log, &log_file));
+        copy_files(&inp, &files, &work, &format!("{JOB}.inp")).map_err(folder)?;
+        let start = Instant::now();
+        for global in &globals {
+            let job = global.with_extension("");
+            self.solve(&work, &job.to_string_lossy(), start, cancel, on_progress)?;
         }
+        self.solve(&work, JOB, start, cancel, on_progress)?;
         write_rms(&work, &flat.text)?;
         let file = work.join(format!("{JOB}.frd"));
         let bytes = fs::read(&file).map_err(|e| format!("{JOB}.frd: {e}"))?;
@@ -333,24 +364,27 @@ impl Ccx {
         write_frames(&run_dir, units, false, frames)
     }
 
-    /// Run `ccx -i job` in `work` with its output in `log`, in its own process group, to its
-    /// end or to a stop.
+    /// Run `ccx -i job` in `work` with its output in `job.log`, in its own process group, to its
+    /// end or to a stop. The time limit counts from `start`. A failure of `ccx` or an `*ERROR` in
+    /// its output is an error.
     fn solve(
         &self,
         work: &Path,
-        log_file: &Path,
-        log: fs::File,
+        job: &str,
+        start: Instant,
         cancel: &CancelToken,
         on_progress: &mut dyn FnMut(Progress),
-    ) -> Result<ExitStatus, String> {
+    ) -> Result<(), String> {
+        let log_file = work.join(format!("{job}.log"));
+        let log = fs::File::create(&log_file).map_err(|e| format!("run folder: {e}"))?;
         let mut cmd = Command::new(&self.exe);
-        cmd.args(["-i", JOB])
+        cmd.args(["-i", job])
             .current_dir(work)
             .stdin(Stdio::null())
             .stdout(log.try_clone().map_err(|e| format!("run folder: {e}"))?)
             .stderr(log);
         let mut tail = LogTail {
-            file: log_file.to_owned(),
+            file: log_file.clone(),
             pos: 0,
             last: None,
         };
@@ -358,10 +392,15 @@ impl Ccx {
             name: "ccx",
             install: "Install CalculiX (README.md) and put ccx on PATH, or set FH_CCX",
         };
-        let limits = (Instant::now(), self.timeout, self.memory_limit);
-        supervise(&program, &mut cmd, limits, cancel, &mut || {
+        let limits = (start, self.timeout, self.memory_limit);
+        let status = supervise(&program, &mut cmd, limits, cancel, &mut || {
             tail.poll(on_progress)
-        })
+        })?;
+        let log = fs::read_to_string(&log_file).unwrap_or_default();
+        if !status.success() || log.contains("*ERROR") {
+            return Err(ccx_failure(status, &log, &log_file));
+        }
+        Ok(())
     }
 }
 

@@ -1,4 +1,5 @@
-//! The text of an input: its units line and its `*INCLUDE` files.
+//! The text of an input: its units line, its `*INCLUDE` files and the global inputs of its
+//! `*SUBMODEL` keywords.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -11,9 +12,14 @@ pub fn units(text: &str) -> String {
 
 /// The file of a line `*INCLUDE, INPUT=FILE`, as the line writes it.
 fn include_of(line: &str) -> Option<&str> {
+    input_of(line, "INCLUDE")
+}
+
+/// The value of the parameter `INPUT` of a line of the keyword `keyword`, as the line writes it.
+fn input_of<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
     let rest = line.trim().strip_prefix('*')?;
     let mut parts = rest.split(',');
-    if !parts.next()?.trim().eq_ignore_ascii_case("INCLUDE") {
+    if !parts.next()?.trim().eq_ignore_ascii_case(keyword) {
         return None;
     }
     parts.find_map(|p| {
@@ -27,6 +33,28 @@ fn include_of(line: &str) -> Option<&str> {
 /// The files that the text includes with `*INCLUDE, INPUT=FILE`, as the text writes them.
 pub fn includes(text: &str) -> Vec<&str> {
     text.lines().filter_map(include_of).collect()
+}
+
+/// The global input of each `*SUBMODEL, INPUT=NAME.frd` of the text: the file `NAME.inp` in the
+/// folder of the input. `NAME.frd` is the result file of the global model. CalculiX reads it in
+/// the folder where it runs, so `fh` solves `NAME.inp` in that folder first.
+pub fn global_inputs(text: &str) -> Result<Vec<PathBuf>, String> {
+    let mut inputs = Vec::new();
+    for name in text.lines().filter_map(|l| input_of(l, "SUBMODEL")) {
+        let path = Path::new(name);
+        let plain = path.file_name() == Some(path.as_os_str());
+        if !plain || path.extension().is_none_or(|e| e != "frd") {
+            return Err(format!(
+                "*SUBMODEL, INPUT={name}: name the result file of the global model in the \
+                 folder of the input, for example INPUT=global.frd"
+            ));
+        }
+        let input = path.with_extension("inp");
+        if !inputs.contains(&input) {
+            inputs.push(input);
+        }
+    }
+    Ok(inputs)
 }
 
 /// Check that an include path stays inside the folder of the input. The path is relative to
@@ -95,6 +123,22 @@ fn add(flat: &mut Flat, file: &Path, dir: &Path, depth: usize) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_submodel_names_the_global_input_beside_it() {
+        let text = "*NODE\n*SUBMODEL, TYPE=NODE, input=global.frd\nCUT\n**SUBMODEL, INPUT=x.frd\n";
+        assert_eq!(global_inputs(text), Ok(vec![PathBuf::from("global.inp")]));
+        for bad in [
+            "g/global.frd",
+            "../global.frd",
+            "/tmp/global.frd",
+            "global.dat",
+            "global",
+        ] {
+            let text = format!("*SUBMODEL, TYPE=NODE, INPUT={bad}\nCUT\n");
+            assert!(global_inputs(&text).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn include_paths_stay_inside() {
