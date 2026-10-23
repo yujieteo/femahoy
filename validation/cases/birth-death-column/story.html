@@ -1,4 +1,6 @@
 <h2>Conclusion</h2>
 <p>ccx builds the column in 10 lifts with element birth and gives the settlement of the lift theory. At mid-height (z = 5 m), ccx gives 0.02315179 mm, and the lift theory gives 0.0231516 mm. The difference is 8.2e-6 of the reference, and the tolerance is 1e-4. At the top of each lift, the largest difference is 2.0e-7 mm.</p>
+<label data-bar>Built to <input type="range" min="1" max="10" value="10" data-run="job.inp" data-fields="U3" data-controls="" data-labels="lift 1|lift 2|lift 3|lift 4|lift 5|lift 6|lift 7|lift 8|lift 9|lift 10" data-marks="10:0,0,5000 mid-height: u_mid = -0.02315179 mm"></label>
+<p>The 3D view shows the column after each lift, with the settlement U3 in mm. Each step shows only the lifts in the model in that step.</p>
 <!--curve settlement.csv-->
 <p>Each lift goes on the deformed column strain free. Thus the top of lift 5 or 6 settles most, and the top of the column settles only 0.0074556 mm. A column with all lifts at once settles 0.02943 mm at mid-height, 27 % more, and most at the top. ccx with <code>ADD=WITH STRAIN</code> gives this curve (derivation.md). Thus the check fails if ccx does not add the lifts strain free.</p>

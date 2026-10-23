@@ -88,6 +88,10 @@ EALL, GRAV, 9810.0, 0.0, 0.0, -1.0
 U
 *NODE PRINT, NSET=AXIS
 U
+** For the 3D view. OUTPUT ALL writes the lifts that are not built yet too. femahoy shows in
+** each step only the lifts in the model in that step.
+*NODE FILE, OUTPUT ALL
+U
 *END STEP
 ** Lift 2: add it strain free on the deformed column.
 *STEP

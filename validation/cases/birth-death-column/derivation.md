@@ -85,8 +85,10 @@ The lift theory goes through each ccx point. The curve of all lifts at once show
 
 ## 3D view
 
-`job.inp` writes no field to the `.frd` file. ccx writes the mesh to the `.frd` file only at the first output, with only the elements in the model at that time.
-In this case that is lift 1. Thus a 3D view shows lift 1 only, in each step. With `*NODE FILE, OUTPUT ALL`, ccx writes all elements, also the lifts that are not built yet.
+ccx writes the mesh to the `.frd` file only 1 time, at the first output. Without `OUTPUT ALL`, that mesh has only the elements in the model at that time: in this case, lift 1.
+Thus `job.inp` writes U with `*NODE FILE, OUTPUT ALL`, and the `.frd` file has all 10 lifts in each step.
+femahoy reads the `*MODEL CHANGE` cards of `job.inp`, and the VTU file of step n has only lifts 1 to n.
+The `.frd` file has the settlement of `job.dat` with 6 digits, for example -0.0231518 mm at mid-height. The check reads `job.dat`.
 
 ## Files
 
