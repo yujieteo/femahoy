@@ -284,7 +284,7 @@ def solve(case, tmp, env):
 def story(case, runs):
     """story.html of the case with the name of the run of each input, or None."""
     path = CASES / case / "story.html"
-    if not runs or not path.is_file():
+    if not path.is_file():
         return None
     names = {name: run for run, name in runs}
 

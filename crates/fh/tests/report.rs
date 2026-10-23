@@ -235,7 +235,8 @@ fn a_report_of_the_text_only_needs_no_run_and_no_curve() {
 
 /// With `--one-step`, the report holds only the last step of the run, and its `results.pvd`
 /// names only that step. When the text opens the run at some steps, the report holds those
-/// steps, and each `data-step` names its step in the kept steps.
+/// steps, and each step number names its step in the kept steps. A slider keeps each of its
+/// steps.
 #[test]
 fn the_one_step_option_keeps_only_the_steps_that_the_text_opens() {
     let lab = Lab::new("report-one-step");
@@ -282,6 +283,22 @@ fn the_one_step_option_keeps_only_the_steps_that_the_text_opens() {
             && html.contains("data-step=\"1\">start</button>"),
         "each control opens its step in the kept steps"
     );
+    fs::write(
+        lab.dir.join("text.html"),
+        "<input type=\"range\" min=\"2\" max=\"3\" value=\"3\" data-run=\"run-000001\" \
+         data-marks=\"3: 0,0,0 tip\">",
+    )
+    .unwrap();
+    let out = lab.report(&["--run", "run-000001", "--one-step"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert_eq!(file(&html, &format!("{base}/step-1.vtu")), None);
+    assert!(file(&html, &format!("{base}/step-2.vtu")).is_some());
+    assert!(
+        html.contains("min=\"1\" max=\"2\" value=\"2\"")
+            && html.contains("data-marks=\"2: 0,0,0 tip\""),
+        "the slider and the mark name their steps in the kept steps"
+    );
 }
 
 /// A control of the text that names a run, a field or a step that the report does not have
@@ -296,13 +313,21 @@ fn a_control_that_does_not_fit_its_run_gives_no_report() {
     }
     for (control, error) in [
         ("data-run=\"run-000009\"", "data-run=\"run-000009\""),
-        ("data-run=\"run-000001\" data-step=\"3\"", "data-step=\"3\""),
+        ("data-run=\"run-000001\" data-step=\"3\"", "step \"3\""),
+        (
+            "data-run=\"run-000001\" data-marks=\"3: 0,0,0 tip\"",
+            "step \"3\"",
+        ),
+        (
+            "data-run=\"run-000001\" type=\"range\" min=\"1\"",
+            "slider needs min and max",
+        ),
         (
             "data-run=\"run-000001\" data-fields=\"MISES, Ez\"",
             "no field \"Ez\"",
         ),
     ] {
-        fs::write(lab.dir.join("text.html"), format!("<a {control}>run</a>")).unwrap();
+        fs::write(lab.dir.join("text.html"), format!("<input {control}>")).unwrap();
         let out = lab.report(&["--run", "run-000001"]);
         assert_eq!(out.status.code(), Some(1), "{control}");
         assert!(stderr(&out).contains(error), "{}", stderr(&out));

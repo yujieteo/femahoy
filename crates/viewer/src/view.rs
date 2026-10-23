@@ -2,8 +2,8 @@
 //! makes the vertex data for the GPU layer. Plain functions with no GPU types.
 //!
 //! A report gives the view of a run ([`View`]) that the agent writes for the story of the
-//! report: the fields, the controls, the step, the scale and the box that the camera shows.
-//! A run with no view shows each control that can change its view.
+//! report: the fields, the controls, the step, the scale, the box that the camera shows and the
+//! marks on the model. A run with no view shows each control that can change its view.
 
 use crate::mesh::{Bounds, RenderMesh};
 use crate::results::{self, Results, ScalarField, Step};
@@ -13,7 +13,8 @@ use crate::results::{self, Results, ScalarField, Step};
 /// flow, the displacement or the velocity magnitude, and the temperature.
 const DEFAULT_FIELDS: [&str; 6] = ["density", "MISES", "alpha.water", "Ma", "U magnitude", "NT"];
 
-/// A group of controls of the results panel. The contour field list always shows.
+/// A group of controls of the results panel. The contour field list shows when the view gives
+/// more than 1 field, or no field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
     /// The step selector, the play button and the step slider.
@@ -55,12 +56,58 @@ pub struct View {
     pub scale: Option<f64>,
     /// The box that the camera shows first.
     pub frame: Option<Bounds>,
+    /// The marks on the model.
+    pub marks: Vec<Mark>,
+}
+
+/// A mark of the agent on the model: a dot at a point with a text beside it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mark {
+    /// The index of the step that shows the mark, or `None` for each step.
+    pub step: Option<usize>,
+    /// The point, in the coordinates of the undeformed model.
+    pub at: [f32; 3],
+    pub text: String,
+}
+
+impl Mark {
+    /// Read `[N:]X,Y,Z TEXT`: the step N (from 1) is optional.
+    fn parse(part: &str) -> Result<Mark, String> {
+        let wrong = || format!("mark {part:?} is not [STEP:]X,Y,Z TEXT");
+        let (step, rest) = match part.split_once(':') {
+            Some((n, rest)) if n.trim().bytes().all(|b| b.is_ascii_digit()) => {
+                match n.trim().parse::<usize>() {
+                    Ok(n) if n > 0 => (Some(n - 1), rest.trim_start()),
+                    _ => return Err(wrong()),
+                }
+            }
+            _ => (None, part),
+        };
+        let mut parts = rest.splitn(3, ',');
+        let (x, y, zt) = (parts.next(), parts.next(), parts.next().ok_or_else(wrong)?);
+        let zt = zt.trim_start();
+        let (z, text) = zt.split_once(char::is_whitespace).unwrap_or((zt, ""));
+        let at: Vec<f32> = [x, y, Some(z)]
+            .into_iter()
+            .filter_map(|v| v?.trim().parse().ok())
+            .filter(|v: &f32| v.is_finite())
+            .collect();
+        match at[..] {
+            [x, y, z] => Ok(Mark {
+                step,
+                at: [x, y, z],
+                text: text.trim().to_owned(),
+            }),
+            _ => Err(wrong()),
+        }
+    }
 }
 
 impl View {
     /// Read a view: 1 part on each line, as the `data-` attributes of the report
     /// (`crates/fh/src/daemon/report.html`). `fields=NAME,NAME`, `controls=` with the names of
-    /// the groups, `step=N` (from 1), `scale=X` and `box=X0,Y0,Z0,X1,Y1,Z1`.
+    /// the groups, `step=N` (from 1), `scale=X`, `box=X0,Y0,Z0,X1,Y1,Z1` and
+    /// `marks=[N:]X,Y,Z TEXT;...`, where a mark with the step N shows only at that step.
     pub fn parse(text: &str) -> Result<View, String> {
         let mut view = View::default();
         fn list(value: &str) -> impl Iterator<Item = &str> {
@@ -98,6 +145,10 @@ impl View {
                         _ => return Err(format!("box {value:?} is not 6 numbers")),
                     }
                 }
+                "marks" => {
+                    let parts = value.split(';').map(str::trim).filter(|p| !p.is_empty());
+                    view.marks = parts.map(Mark::parse).collect::<Result<_, _>>()?;
+                }
                 _ => return Err(format!("view line {line:?} has no known key")),
             }
         }
@@ -110,15 +161,15 @@ impl View {
 pub struct Panel {
     /// The groups of controls that show.
     pub controls: Vec<Control>,
-    /// The fields of the contour list.
+    /// The fields of the contour list. No list shows when it is empty.
     pub fields: Vec<String>,
 }
 
 impl Panel {
     /// The panel of a run with the view `view`: each group of controls of the view (each group
     /// when the view names none) that can change the view of the run, and the fields of the
-    /// view (each field of the run when the view names none). `loads` is true when the input of
-    /// the run has a support or a load.
+    /// view (each field of the run when the view names none). A view with 1 field gives no
+    /// choice, thus no list. `loads` is true when the input of the run has a support or a load.
     pub fn of(results: &Results, view: &View, loads: bool) -> Panel {
         let can = [results.steps.len() > 1, displaced(results), loads];
         let controls = Control::ALL
@@ -127,10 +178,10 @@ impl Panel {
             .filter(|(c, on)| *on && view.controls.as_ref().is_none_or(|v| v.contains(c)))
             .map(|(c, _)| c)
             .collect();
-        let fields = if view.fields.is_empty() {
-            field_names(results)
-        } else {
-            view.fields.clone()
+        let fields = match view.fields.len() {
+            0 => field_names(results),
+            1 => Vec::new(),
+            _ => view.fields.clone(),
         };
         Panel { controls, fields }
     }
@@ -433,12 +484,13 @@ mod tests {
         assert!(!v.deformed, "the undeformed design");
     }
 
-    /// The view of the agent gives the fields, the controls, the first step, the scale and the
-    /// box of the camera, in the text of the `data-` attributes of a report.
+    /// The view of the agent gives the fields, the controls, the first step, the scale, the
+    /// box of the camera and the marks, in the text of the `data-` attributes of a report.
     #[test]
     fn a_view_sets_the_first_view() {
         let r = fixture();
-        let text = "fields=U3, MISES\ncontrols=\nstep=1\nscale=0\nbox=2,0,0,0,1,1";
+        let text = "fields=U3, MISES\ncontrols=\nstep=1\nscale=0\nbox=2,0,0,0,1,1\n\
+                    marks=2: 1, 0,0.5 the tip: x = 1; 0,0,0 root";
         let view = View::parse(text).unwrap();
         let panel = Panel::of(&r, &view, true);
         assert_eq!(panel.controls, []);
@@ -450,7 +502,23 @@ mod tests {
         );
         let frame = view.frame.unwrap();
         assert_eq!((frame.min, frame.max), ([0.0; 3], [2.0, 1.0, 1.0]));
-        for wrong in ["controls=steps,flow", "step=0", "box=1,2,3", "colour=red"] {
+        let mark = |step, at, text: &str| Mark {
+            step,
+            at,
+            text: text.into(),
+        };
+        assert_eq!(
+            view.marks,
+            [
+                mark(Some(1), [1.0, 0.0, 0.5], "the tip: x = 1"),
+                mark(None, [0.0; 3], "root")
+            ]
+        );
+        let wrong = ["controls=steps,flow", "step=0", "box=1,2,3", "colour=red"];
+        for wrong in wrong
+            .into_iter()
+            .chain(["marks=1,2 tip", "marks=0:1,2,3 tip"])
+        {
             assert!(View::parse(wrong).is_err(), "{wrong}");
         }
     }

@@ -21,9 +21,10 @@
 //!
 //! The run writes `<run-dir>/topology/history.txt`, with 1 row for each iteration: the
 //! iteration, the compliance and the volume fraction of the solved design, and the largest
-//! change of a density after the solve. The last solve is in `<run-dir>/topology/solve`. Its
-//! fields, with the density of each element as the cell field `density`, go to `step-N.vtu` and
-//! `results.pvd`.
+//! change of a density after the solve. The last solve is in `<run-dir>/topology/solve`. The
+//! steps of `results.pvd` show how the design grows: 1 step with only the cell field `density`
+//! for each iteration 1, 2, 4, 8 and so on, then the fields of the last solve with its density.
+//! The time of a step is its iteration.
 //!
 //! For a mesh of plane elements, the run then writes the CAD of the last design in
 //! `<run-dir>/topology/cad`: `design.step`, the solid of the material (the density 0.5 or more),
@@ -360,6 +361,7 @@ pub fn run_with(
     let mut volumes = Vec::new();
     let mut solved = x.clone();
     let mut last = None;
+    let mut designs = Vec::new();
     for number in 1..=ITERATIONS {
         if cancel.is_cancelled() {
             return Err("run cancelled".into());
@@ -405,6 +407,9 @@ pub fn run_with(
         on_iteration(&row);
         last = Some(row);
         solved = std::mem::replace(&mut x, next);
+        if number.is_power_of_two() {
+            designs.push((number, solved.clone()));
+        }
         if row.change <= CHANGE {
             break;
         }
@@ -413,21 +418,33 @@ pub fn run_with(
     let bytes = fs::read(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     let results = frd::read(&String::from_utf8_lossy(&bytes))?;
     let at: HashMap<u32, usize> = ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
-    let density: Vec<f64> = (results.elements.iter())
-        .map(|id| at.get(id).map_or(0.0, |i| solved[*i]))
-        .collect();
+    let density = |design: &[f64]| -> Vec<f64> {
+        (results.elements.iter())
+            .map(|id| at.get(id).map_or(0.0, |i| design[*i]))
+            .collect()
+    };
+    let last = last.expect("the loop solves at least once");
     let units = fh_core::inp::units(&flat.text);
     let units = match units.as_str() {
         "SI-mm" | "SI-m" => units.as_str(),
         _ => "unspecified",
     };
-    let frames = results.frames.iter().map(|f| {
+    let mut frames = Vec::new();
+    if let Some(f) = results.frames.first() {
+        for (number, design) in designs.iter().filter(|(n, _)| *n < last.number) {
+            let mut grid = results.grid(f);
+            grid.point_data.clear();
+            grid.cell_data = vec![Field::f64("density", 1, density(design))];
+            frames.push((*number as f64, grid));
+        }
+    }
+    for f in &results.frames {
         let mut grid = results.grid(f);
         grid.cell_data
-            .push(Field::f64("density", 1, density.clone()));
-        (f.time, grid)
-    });
-    write_frames(&run_dir, units, false, frames)?;
+            .push(Field::f64("density", 1, density(&solved)));
+        frames.push((last.number as f64, grid));
+    }
+    write_frames(&run_dir, units, false, frames.into_iter())?;
     let volume = volumes.iter().sum();
     let cad = cad::write(
         &model, &flat.text, &solved, &s, volume, ccx, start, cancel, &work,
@@ -435,10 +452,7 @@ pub fn run_with(
     if cancel.is_cancelled() {
         return Err("run cancelled".into());
     }
-    Ok(Outcome {
-        last: last.expect("the loop solves at least once"),
-        cad,
-    })
+    Ok(Outcome { last, cad })
 }
 
 #[cfg(test)]

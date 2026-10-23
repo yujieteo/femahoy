@@ -4,7 +4,9 @@
 //! viewport shows the model with its supports and loads: the faces of each set in a colour,
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
-//! The results panel shows the controls of the view of the run (see [`view::Panel`]).
+//! The results panel shows the controls of the view of the run (see [`view::Panel`]), and the
+//! viewport shows the marks of the view. A report can ask for all the controls of the run, and
+//! for a step of the open run (see [`Request`]).
 
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +18,7 @@ use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
 use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
-use crate::view::{self, face_vertices, Contour, Control, Geometry, Panel, View, ViewState};
+use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
 
 /// The font of the controls: DM Sans (SIL Open Font License 1.1, `fonts/OFL.txt`), the sans
 /// font of the page.
@@ -38,12 +40,24 @@ pub enum Content {
     Failed(String),
 }
 
-/// A slot that a loader fills later, for example after an HTTP fetch in the browser.
-pub type ContentSlot = Arc<Mutex<Option<Content>>>;
+/// What the page asks the viewer to show. The app takes each part in its next frame.
+#[derive(Default)]
+pub struct Request {
+    /// The new content, for example after an HTTP fetch in the browser.
+    pub content: Option<Content>,
+    /// The step (from 0) of the open run. It waits while a run loads: it is for that run.
+    pub step: Option<usize>,
+    /// Show all the controls of a run, also the controls that its view does not show.
+    pub all: Option<bool>,
+}
 
-/// The results of a run with their view state and their panel, or a model before the solve.
+/// A request that the page fills, then asks for a repaint.
+pub type RequestSlot = Arc<Mutex<Request>>;
+
+/// The results of a run with their view state, their panel and their view, or a model before
+/// the solve.
 enum Body {
-    Results(Box<Results>, ViewState, Loads, Panel),
+    Results(Box<Results>, ViewState, Loads, Panel, View),
     Preview(Box<Preview>),
 }
 
@@ -67,13 +81,15 @@ pub struct ViewerApp {
     shown: Option<Shown>,
     message: Option<(bool, String)>,
     /// The page fills the slot when it opens a run, then asks for a repaint.
-    slot: ContentSlot,
+    slot: RequestSlot,
     /// Show the labels and the arrows of the supports and loads on the model.
     labels: bool,
+    /// Show all the controls of a run, also the controls that its view does not show.
+    all: bool,
 }
 
 impl ViewerApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, slot: ContentSlot) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, slot: RequestSlot) -> Self {
         style(&cc.egui_ctx);
         Self {
             render_state: cc.wgpu_render_state.clone(),
@@ -81,6 +97,7 @@ impl ViewerApp {
             message: Some((false, NO_RUN.into())),
             slot,
             labels: true,
+            all: false,
         }
     }
 
@@ -88,12 +105,11 @@ impl ViewerApp {
         let mut frame = None;
         let body = match content {
             Content::Results(r, preview, view) => {
-                let loads = preview.as_ref().is_ok_and(|p| !p.items.is_empty());
-                let panel = Panel::of(&r, &view, loads);
-                let state = ViewState::open(&r, &view, &panel);
+                let state = ViewState::open(&r, &view, &panel(&r, &view, &preview, false));
+                let panel = panel(&r, &view, &preview, self.all);
                 let same_mesh = preview.as_ref().is_ok_and(|p| p.matches(&r.mesh));
                 frame = view.frame;
-                Body::Results(r, state, Loads { preview, same_mesh }, panel)
+                Body::Results(r, state, Loads { preview, same_mesh }, panel, view)
             }
             Content::Preview(p) => Body::Preview(p),
             Content::Text(text) => {
@@ -123,6 +139,38 @@ impl ViewerApp {
         self.message = None;
         shown.refresh();
         self.shown = Some(shown);
+    }
+
+    /// Take the parts of the request of the page.
+    fn take_request(&mut self) {
+        let slot = self.slot.clone();
+        let Ok(mut request) = slot.lock() else {
+            return;
+        };
+        if let Some(content) = request.content.take() {
+            self.set_content(content);
+        }
+        if let Some(all) = request.all.take() {
+            self.all = all;
+            if let Some(Body::Results(r, _, loads, p, view)) =
+                self.shown.as_mut().map(|s| &mut s.body)
+            {
+                *p = panel(r, view, &loads.preview, all);
+            }
+        }
+        if self.message.is_some() {
+            return;
+        }
+        let Some(step) = request.step.take() else {
+            return;
+        };
+        if let Some(shown) = self.shown.as_mut() {
+            if let Body::Results(r, v, ..) = &mut shown.body {
+                v.step = step.min(r.steps.len().saturating_sub(1));
+                v.playing = None;
+                shown.refresh();
+            }
+        }
     }
 
     fn status_text(&self) -> String {
@@ -155,7 +203,7 @@ impl Shown {
     fn view_bounds(&self) -> Option<Bounds> {
         let (mut b, p) = match &self.body {
             Body::Preview(p) => (p.mesh.bounds?, p),
-            Body::Results(r, _, Loads { preview: Ok(p), .. }, _) => (results::view_bounds(r)?, p),
+            Body::Results(r, _, Loads { preview: Ok(p), .. }, ..) => (results::view_bounds(r)?, p),
             Body::Results(r, ..) => return results::view_bounds(r),
         };
         for (tail, head) in p.items.iter().filter_map(|i| p.arrow(i)) {
@@ -205,7 +253,7 @@ impl Shown {
     /// True when the panel shows the group of controls `c`. A preview has no such group.
     fn shows(&self, c: Control) -> bool {
         match &self.body {
-            Body::Results(.., panel) => panel.controls.contains(&c),
+            Body::Results(_, _, _, panel, _) => panel.controls.contains(&c),
             Body::Preview(_) => false,
         }
     }
@@ -227,7 +275,7 @@ impl Shown {
     /// The panel of the body. Returns true when the view state changed.
     fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool) -> bool {
         match &mut self.body {
-            Body::Results(r, v, loads, panel) => {
+            Body::Results(r, v, loads, panel, _) => {
                 let changed = results_panel(ui, r, v, panel);
                 if panel.controls.contains(&Control::Loads) {
                     loads_panel(ui, loads, labels);
@@ -247,7 +295,7 @@ impl Shown {
         let eye = self.camera.eye();
         match &self.body {
             Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
-            Body::Results(_, _, loads, _) => {
+            Body::Results(_, _, loads, ..) => {
                 if !self.shows(Control::Loads) {
                     return;
                 }
@@ -260,6 +308,74 @@ impl Shown {
             }
         }
     }
+
+    /// The marks of the view at the shown step.
+    fn marks(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+        let Body::Results(_, v, _, _, view) = &self.body else {
+            return;
+        };
+        let shown = |mark: &&Mark| mark.step.is_none_or(|s| s == v.step);
+        for mark in view.marks.iter().filter(shown) {
+            let Some(at) = screen(m, rect, mark.at) else {
+                continue;
+            };
+            painter.circle(
+                at,
+                5.0,
+                rgb(MARK),
+                egui::Stroke::new(2.0, egui::Color32::BLACK),
+            );
+            tag(painter, rect, at, &mark.text, MARK);
+        }
+    }
+}
+
+/// The colour of a mark: the accent colour of the page.
+const MARK: [f32; 3] = [0.769, 0.380, 0.247];
+
+/// The place of the point `x` on the view `rect` with the matrix `m`, or `None` behind the eye.
+fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2> {
+    let c = camera::transform(m, x);
+    (c[3] > 1e-6).then(|| {
+        let (x, y) = (c[0] / c[3], c[1] / c[3]);
+        egui::pos2(
+            rect.left() + (x + 1.0) * 0.5 * rect.width(),
+            rect.top() + (1.0 - y) * 0.5 * rect.height(),
+        )
+    })
+}
+
+/// The text `text` on a box of the colour `color`, up and to the right of the point `at`, in
+/// the view `rect`.
+fn tag(painter: &egui::Painter, rect: egui::Rect, at: egui::Pos2, text: &str, color: [f32; 3]) {
+    let [r, g, b] = color;
+    let ink = if 0.3 * r + 0.6 * g + 0.1 * b > 0.5 {
+        egui::Color32::BLACK
+    } else {
+        egui::Color32::WHITE
+    };
+    let font = egui::FontId::proportional(14.0);
+    let galley = painter.layout_no_wrap(text.to_owned(), font, ink);
+    let place = egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
+    // Keep the text in the view.
+    let inner = rect.shrink(4.0);
+    let dx = (inner.right() - place.right())
+        .min(0.0)
+        .max(inner.left() - place.left());
+    let dy = (inner.bottom() - place.bottom())
+        .min(0.0)
+        .max(inner.top() - place.top());
+    let place = place.translate(egui::vec2(dx, dy));
+    painter.rect_filled(place.expand(3.0), 3.0, rgb(color));
+    painter.galley(place.min, galley, ink);
+}
+
+/// The panel of the results `r` with the view `view`, or with each control of the run when `all`
+/// is true. `preview` has the supports and loads of the input.
+fn panel(r: &Results, view: &View, preview: &Result<Box<Preview>, String>, all: bool) -> Panel {
+    let loads = preview.as_ref().is_ok_and(|p| !p.items.is_empty());
+    let each = View::default();
+    Panel::of(r, if all { &each } else { view }, loads)
 }
 
 fn kind_text(kind: Kind) -> &'static str {
@@ -336,16 +452,7 @@ fn loads_overlay(
     positions: &[[f32; 3]],
     outline: bool,
 ) {
-    let screen = |x: [f32; 3]| {
-        let c = camera::transform(m, x);
-        (c[3] > 1e-6).then(|| {
-            let (x, y) = (c[0] / c[3], c[1] / c[3]);
-            egui::pos2(
-                rect.left() + (x + 1.0) * 0.5 * rect.width(),
-                rect.top() + (1.0 - y) * 0.5 * rect.height(),
-            )
-        })
-    };
+    let screen = |x: [f32; 3]| screen(m, rect, x);
     for item in p.items.iter().filter(|_| outline) {
         let color = rgb(COLORS[item.color]);
         for &([a, b], normal) in &item.outline {
@@ -379,27 +486,7 @@ fn loads_overlay(
             }
         }
         let Some(at) = at else { continue };
-        let [r, g, b] = COLORS[item.color];
-        let text = if 0.3 * r + 0.6 * g + 0.1 * b > 0.5 {
-            egui::Color32::BLACK
-        } else {
-            egui::Color32::WHITE
-        };
-        let font = egui::FontId::proportional(14.0);
-        let galley = painter.layout_no_wrap(item.label.clone(), font, text);
-        let place =
-            egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
-        // Keep the label in the view.
-        let inner = rect.shrink(4.0);
-        let dx = (inner.right() - place.right())
-            .min(0.0)
-            .max(inner.left() - place.left());
-        let dy = (inner.bottom() - place.bottom())
-            .min(0.0)
-            .max(inner.top() - place.top());
-        let place = place.translate(egui::vec2(dx, dy));
-        painter.rect_filled(place.expand(3.0), 3.0, color);
-        painter.galley(place.min, galley, text);
+        tag(painter, rect, at, &item.label, COLORS[item.color]);
     }
 }
 
@@ -436,14 +523,16 @@ fn results_panel(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, panel: &Pane
     }
 
     ui.strong("Contour");
-    egui::ComboBox::from_id_salt("field")
-        .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
-        .show_ui(ui, |ui| {
-            ui.selectable_value(&mut v.field, None, "None");
-            for name in &panel.fields {
-                ui.selectable_value(&mut v.field, Some(name.clone()), name);
-            }
-        });
+    if !panel.fields.is_empty() {
+        egui::ComboBox::from_id_salt("field")
+            .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut v.field, None, "None");
+                for name in &panel.fields {
+                    ui.selectable_value(&mut v.field, Some(name.clone()), name);
+                }
+            });
+    }
     match v.contour(r) {
         Contour::Off => {}
         Contour::Missing(name) => {
@@ -629,10 +718,7 @@ fn style(ctx: &egui::Context) {
 
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let next = self.slot.lock().ok().and_then(|mut s| s.take());
-        if let Some(content) = next {
-            self.set_content(content);
-        }
+        self.take_request();
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.weak(self.status_text());
@@ -705,9 +791,11 @@ impl eframe::App for ViewerApp {
                     geometry: shown.geometry.clone(),
                 },
             ));
+            let painter = ui.painter_at(rect);
             if self.labels {
-                shown.overlay(&ui.painter_at(rect), rect, &view_proj);
+                shown.overlay(&painter, rect, &view_proj);
             }
+            shown.marks(&painter, rect, &view_proj);
         });
     }
 }

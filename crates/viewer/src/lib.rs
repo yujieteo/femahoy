@@ -19,7 +19,7 @@ pub mod view;
 mod web;
 
 #[cfg(target_arch = "wasm32")]
-pub use app::{Content, ContentSlot, ViewerApp};
+pub use app::{Content, Request, RequestSlot, ViewerApp};
 
 /// The results file of a run folder.
 pub const RESULTS_FILE: &str = "results.pvd";

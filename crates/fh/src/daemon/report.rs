@@ -9,8 +9,10 @@
 //!   text, where the path of the curve ends with NAME, else after the text. The template shows
 //!   the text beside the viewer. The template script makes the controls that the agent writes
 //!   in the text work: an element with `data-run` opens that run with the view of its other
-//!   `data-` attributes (`report.html`). Each `data-run` must name a run of the report, each
-//!   name of its `data-fields` a field of the run, and its `data-step` a step of the run
+//!   `data-` attributes (`report.html`), and a slider (`input type="range"`) shows the step of
+//!   its value. Each `data-run` must name a run of the report, each name of its `data-fields` a
+//!   field of the run, and each step number of the element a step of the run: its `data-step`,
+//!   the step of each mark of its `data-marks`, and the `min`, `max` and `value` of a slider
 //!   ([`check`]).
 //! - The viewer files of `fh serve` (`fh_viewer.js` and `fh_viewer_bg.wasm`), so the report
 //!   uses the same viewer. With `--viewer FILE`, the report has no viewer files: it loads the
@@ -20,12 +22,12 @@
 //!   (`scripts/validation-reports.py`).
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
 //!   and each step file. With `--one-step`, only the steps of each run that the elements of the
-//!   text for the run open: the step of each `data-step`, and the last step for an element with
-//!   no `data-step` or a run with no element. Each `data-step` then names its step in the kept
-//!   steps ([`kept_steps`]). Each file is a `script` element that holds its bytes as raw
-//!   deflate in base64, with the daemon path of the file in `data-path`. A small script in the
-//!   template answers the fetches of the viewer from these elements. A report with no run has
-//!   no viewer.
+//!   text for the run open: each step number of an element, each step of a slider, and the
+//!   last step for an element with no `data-step` or a run with no element. Each step number
+//!   then names its step in the kept steps ([`kept_steps`]). Each file is a `script` element
+//!   that holds its bytes as raw deflate in base64, with the daemon path of the file in
+//!   `data-path`. A small script in the template answers the fetches of the viewer from these
+//!   elements. A report with no run has no viewer.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
 //! the text of the agent cannot run a script or load a file. The fonts are in the template as
@@ -54,10 +56,12 @@ const USAGE: &str =
      the mark <!--curve NAME--> of the text, where the path of the curve ends with NAME, else \
      after the text. --viewer loads the viewer from the script FILE.js beside the report, \
      which sets window.fhViewer, instead of a copy in the report. Each data-run of the text \
-     must name a --run, each name of its data-fields a field of the run, and its data-step a \
-     step of the run. --one-step keeps only the steps of each run that the text opens, for a \
-     smaller file: the step of each data-step, and the last step for an element with no \
-     data-step or a run with no element.";
+     must name a --run, each name of its data-fields a field of the run, and each step number \
+     of the element a step of the run: its data-step, the step of each mark of its data-marks, \
+     and the min, max and value of a slider (input type=\"range\"). --one-step keeps only the \
+     steps of each run that the text opens, for a smaller file: each step number of an \
+     element, each step of a slider, and the last step for an element with no data-step or a \
+     run with no element.";
 const TEMPLATE: &str = include_str!("report.html");
 
 struct Options {
@@ -203,11 +207,37 @@ fn attribute(tag: &str, name: &str) -> Option<Range<usize>> {
 }
 
 /// An element of the text that opens a run: its run, and the place in the text of the values
-/// of its `data-fields` and its `data-step`.
+/// of its `data-fields` and of each step number.
 struct Control<'a> {
     run: &'a str,
     fields: Option<Range<usize>>,
-    step: Option<Range<usize>>,
+    /// Each step number: the `data-step`, the step of each mark of the `data-marks`, and the
+    /// `min`, `max` and `value` of a slider.
+    steps: Vec<Range<usize>>,
+    /// The element is a slider (`input type="range"`).
+    slider: bool,
+    /// The place of the `min` and of the `max` of a slider that has both.
+    ends: Option<(Range<usize>, Range<usize>)>,
+    /// The element opens the last step: it has no `data-step` and it is no slider.
+    last: bool,
+}
+
+/// The place of the step number `N` of each mark `N:X,Y,Z TEXT` of the value of `data-marks`
+/// at `range` in `text`.
+fn mark_steps(text: &str, range: Range<usize>) -> Vec<Range<usize>> {
+    let mut steps = Vec::new();
+    let mut at = range.start;
+    for part in text[range].split(';') {
+        let start = at + part.len() - part.trim_start().len();
+        if let Some((n, _)) = part.split_once(':') {
+            let n = n.trim();
+            if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) {
+                steps.push(start..start + n.len());
+            }
+        }
+        at += part.len() + 1;
+    }
+    steps
 }
 
 /// Each element of the text with `data-run`.
@@ -225,23 +255,38 @@ fn controls(text: &str) -> Vec<Control<'_>> {
         };
         let value =
             |name| attribute(&text[start..end], name).map(|r| start + r.start..start + r.end);
-        let (Some(run), fields, step) =
-            (value("data-run"), value("data-fields"), value("data-step"))
-        else {
+        let Some(run) = value("data-run") else {
             continue;
         };
+        let range = text[start..end].starts_with("<input")
+            && value("type").is_some_and(|r| &text[r] == "range");
+        let ends = value("min").zip(value("max")).filter(|_| range);
+        let mut steps: Vec<Range<usize>> = value("data-step").into_iter().collect();
+        let last = steps.is_empty() && !range;
+        steps.extend(value("data-marks").map_or(Vec::new(), |r| mark_steps(text, r)));
+        if range {
+            steps.extend(["min", "max", "value"].into_iter().filter_map(value));
+        }
         found.push(Control {
             run: &text[run],
-            fields,
-            step,
+            fields: value("data-fields"),
+            steps,
+            slider: range,
+            ends,
+            last,
         });
     }
     found
 }
 
-/// An error when a control of `run` does not fit the run: a `data-step` that is not a step of
-/// its `steps` steps, or a name of its `data-fields` that is not a field of the run. The fields
-/// come from `results` only when a control names a field.
+/// The step (from 1) at `range` in `text`, when it is a number.
+fn step_at(text: &str, range: &Range<usize>) -> Option<usize> {
+    text[range.clone()].trim().parse().ok()
+}
+
+/// An error when a control of `run` does not fit the run: a step number that is not a step of
+/// its `steps` steps, a slider with no `min` or no `max`, or a name of its `data-fields` that is
+/// not a field of the run. The fields come from `results` only when a control names a field.
 fn check(
     text: &str,
     run: &str,
@@ -250,14 +295,16 @@ fn check(
     results: impl FnOnce() -> Result<fh_viewer::results::Results, String>,
 ) -> Result<(), String> {
     for c in controls {
-        if let Some(range) = &c.step {
-            let value = &text[range.clone()];
-            if !value
-                .parse::<usize>()
-                .is_ok_and(|n| (1..=steps).contains(&n))
-            {
+        if c.slider && c.ends.is_none() {
+            return Err(format!(
+                "{run}: a slider needs min and max, the first and the last step that it shows"
+            ));
+        }
+        for range in &c.steps {
+            if !step_at(text, range).is_some_and(|n| (1..=steps).contains(&n)) {
                 return Err(format!(
-                    "{run}: data-step=\"{value}\": the run has {steps} steps"
+                    "{run}: step \"{}\": the run has {steps} steps",
+                    &text[range.clone()]
                 ));
             }
         }
@@ -282,18 +329,30 @@ fn check(
     }
 }
 
-/// The steps (from 0) of a run of `steps` steps that its controls open: the step of each
-/// `data-step`, and the last step for a control with no `data-step` or a run with no control.
-/// In order, with no step 2 times.
+/// The steps (from 0) of a run of `steps` steps that its controls open: each step number of a
+/// control, each step of a slider, and the last step for a control with no `data-step` or a
+/// run with no control. In order, with no step 2 times.
 fn kept_steps(text: &str, controls: &[&Control], steps: usize) -> Vec<usize> {
     let last = steps.saturating_sub(1);
-    let mut kept: Vec<usize> = controls
-        .iter()
-        .map(|c| match &c.step {
-            Some(range) => text[range.clone()].parse::<usize>().map_or(last, |n| n - 1),
-            None => last,
-        })
-        .collect();
+    let mut kept = Vec::new();
+    for c in controls {
+        kept.extend(
+            c.steps
+                .iter()
+                .filter_map(|r| step_at(text, r))
+                .map(|n| n - 1),
+        );
+        let ends = c
+            .ends
+            .as_ref()
+            .map(|(a, b)| (step_at(text, a), step_at(text, b)));
+        if let Some((Some(min), Some(max))) = ends {
+            kept.extend(min - 1..max);
+        }
+        if c.last {
+            kept.push(last);
+        }
+    }
     if kept.is_empty() {
         kept.push(last);
     }
@@ -359,12 +418,10 @@ fn build(o: &Options) -> Result<String, String> {
         })?;
         let pvd = if o.one_step && !entries.is_empty() {
             let kept = kept_steps(&text, &mine, entries.len());
-            for c in &mine {
-                if let Some(range) = &c.step {
-                    let n = text[range.clone()].parse::<usize>().map_or(0, |n| n - 1);
-                    let at = kept.iter().position(|k| *k == n).unwrap_or(0);
-                    steps_of.push((range.clone(), (at + 1).to_string()));
-                }
+            for range in mine.iter().flat_map(|c| &c.steps) {
+                let n = step_at(&text, range).map_or(0, |n| n - 1);
+                let at = kept.iter().position(|k| *k == n).unwrap_or(0);
+                steps_of.push((range.clone(), (at + 1).to_string()));
             }
             entries = kept.into_iter().map(|k| entries[k].clone()).collect();
             keep_steps(&pvd, &entries)

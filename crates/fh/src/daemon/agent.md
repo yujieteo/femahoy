@@ -114,7 +114,7 @@ For a request to find the stiffest layout of a fraction of the material in a des
 1. `job.inp`: the mesh, the supports and 1 `*STATIC` step with the loads. Write no material and no section: each element is a design element, and `fh` writes its material and its section. Use solid or 2D elements of about equal size, not shells or beams.
 2. `topology.toml`: `volume` (the fraction of the volume that the material fills, for example 0.5), `radius` (the filter radius, in the length unit of the mesh, at least 1.5 element sizes), `young`, `poisson` and, for 2D elements, `thickness` (default 1).
 3. Solve: `fh run CASE`. Each iteration solves the model with `ccx` and prints the compliance, the volume fraction and the largest change of a density. The loop stops when no density changes by more than 0.01, after about 100 iterations. Thus use a mesh that `ccx` solves in about 1 s.
-4. Results: the last row of `topology/history.txt` holds the compliance of the last design. The page shows the cell field `density`: 1 is material and 0 is void.
+4. Results: the last row of `topology/history.txt` holds the compliance of the last design. The page shows the cell field `density`: 1 is material and 0 is void. The steps show how the design grows: the design of the iterations 1, 2, 4, 8 and so on, then the last design with its displacement and stress. The time of a step in `results.pvd` is its iteration.
 5. CAD: for 2D elements (`CPS` or `CPE`), the run also writes the solid of the density 0.5 or more to `topology/cad/design.step` (in mm), with its gmsh script `design.geo`. This needs gmsh. Then `ccx` solves the solid with the same supports and loads, and `topology/cad/check.txt` holds its compliance. The solid has no gray material, thus its compliance is lower than the compliance of the loop. If the supports do not hold each part of the solid, the run has no check: use a finer mesh or a larger `radius`. A run with 3D solid elements (for example `C3D8` or `C3D10`) gives no CAD yet, and `fh run` prints the reason. For a half model, mirror the solid in gmsh with `Symmetry` and `Duplicata`, then join the 2 halves with `BooleanUnion`.
 
 This loop agrees with the published result of the MBB beam (the validation case `topology-mbb-beam`): 60 x 20 elements, `volume = 0.5` and `radius = 2.4` give a compliance of 216.81, as in Andreassen et al. (2011). The solid of this design gives 190.48, 12 % lower (the validation case `topology-mbb-beam-cad`).
@@ -214,24 +214,34 @@ This setup agrees with the King-Middleton impedance of a dipole (the validation 
 A report has no fixed form. It shows the conclusion of its results so that the person can check it. Before you write it, answer 2 questions: what do the results show, and which conclusion does the report give? Then write only the plots and the controls that show or test the conclusion. Each value of the conclusion comes from your runs or from a source that the report names.
 
 - Plots: write a curve file for each result that is a line (see "Curves and fits"), with the reference values as points. Put the mark `<!--curve NAME-->` in the text where the plot goes. NAME is the end of the path of the curve, for example `d10/cp.csv`. A curve with no mark goes after the text.
-- Controls: an element of the text with `data-run="RUN"` opens the run RUN in the viewer, with the view of its other `data-` attributes. A link or a button opens it with a click. A `select` opens the run of the chosen `option`, and a radio button opens its run when the person checks it. The report opens the first chosen element at the start. `fh report` stops with an error when a `data-run` names no `--run`, a name of `data-fields` is no field of the run, or `data-step` is no step of the run.
+- Controls: an element of the text with `data-run="RUN"` opens the run RUN in the viewer, with the view of its other `data-` attributes. A link or a button opens it with a click. A `select` opens the run of the chosen `option`, and a radio button opens its run when the person checks it. A slider `<input type="range" min="A" max="B" value="N">` opens its run at the step of its value, and each move shows the step of the new value. Its `data-labels="TEXT|TEXT"` gives the text of each value from `min`, for example the time, the phase or the iteration of each step.
+- The controls of the 3D view: put the controls that change the 3D view in an element with `data-bar`. That element goes to the bar above the viewer. Write them from the conclusion, for each report again: for example a choice of the flap angle, a slider of the phase of a wave, a slider of the time with the front marked, or a slider of the iterations of a design. Give no control that the conclusion does not use. The viewer shows its own controls (the step, the deformation, the supports and loads, and the contour list) only when the view names them. The switch "Show all controls" shows all of them and the list of the runs.
+- Marks: `data-marks` puts a dot with a text on the model, at a point that the conclusion names, for example the front of a flow or the point of the highest stress.
+- `fh report` stops with an error when a `data-run` names no `--run`, a name of `data-fields` is no field of the run, a step number (`data-step`, the step of a mark, the `min`, `max` or `value` of a slider) is no step of the run, or a slider has no `min` or no `max`.
 
 | Attribute | The view | Default |
 |---|---|---|
-| `data-fields="p,U magnitude"` | The fields of the contour list. The first shows first. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`. | All the fields |
+| `data-fields="p,U magnitude"` | The fields of the contour list. The first shows first. With 1 field, the viewer shows its legend and no list. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`. | All the fields |
 | `data-controls="steps,deformation,loads"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `data-controls=""` shows none. | Each control that can change the view of the run |
 | `data-step="N"` | The step that shows first, from 1. | The last step |
 | `data-scale="X"` | The deformation scale. `1` is the true shape, `0` the undeformed shape. | `0` for a topology run, `1` for a multibody run, else the automatic scale when the deformation controls show, else `1` |
 | `data-box="X0,Y0,Z0,X1,Y1,Z1"` | The box that the view shows first, in the units of the model. A flat box with no motion in z shows from the top: put Z0 and Z1 on the top face of the model, for example z = 1 for a 2D OpenFOAM mesh from z = 0 to 1. | The whole model |
+| `data-marks="N:X,Y,Z TEXT;X,Y,Z TEXT"` | The marks on the model, with `;` between them. A mark with `N:` shows only at the step N, for example the front of a flow at each step of a time slider. The point is in the units of the undeformed model. | No mark |
 
-For example, the pressure on an airfoil at 2 flap angles, with the plot of the pressure coefficient along the chord:
+For example, the pressure on an airfoil at 2 flap angles in the bar of the viewer, with the plot of the pressure coefficient along the chord:
 
 ```
-<label>Flap angle <select>
+<label data-bar>Flap angle <select>
 <option data-run="run-000004" data-fields="p,U magnitude" data-controls="" data-box="-0.2,-0.4,1,1.3,0.4,1">10 degrees up</option>
 <option data-run="run-000005" data-fields="p,U magnitude" data-controls="" data-box="-0.2,-0.4,1,1.3,0.4,1" selected>0 degrees</option>
 </select></label>
 <!--curve cp.csv-->
+```
+
+A slider of the time of a run with 3 steps, with the front of the water marked at each step:
+
+```
+<label data-bar>Time <input type="range" min="1" max="3" value="3" data-run="run-000006" data-fields="alpha.water" data-controls="" data-labels="0 s|0.1 s|0.2 s" data-marks="1:0.11,0,1 front;2:0.25,0,1 front;3:0.4,0,1 front"></label>
 ```
 
 ## Curves and fits
