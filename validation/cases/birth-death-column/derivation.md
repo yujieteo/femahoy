@@ -25,17 +25,17 @@ The weight of a lift acts only when the lift is in the model.
 ccx adds an element strain free only in a nonlinear step: `modelchanges.f` of ccx 2.23 stops with an error in a linear step. Thus the steps have `NLGEOM`.
 With nu = 0, the column has a uniaxial stress and no lateral strain. Thus 1 element across the section gives the axial bar of the theory.
 
-The check is the mean of `U`, component 3, of the set `MID` (the 4 nodes at z = 5000 mm, the top of lift 5) after step 10.
+The check is the mean of `U`, component 3, of the set `MID` after step 10. `MID` is the 4 nodes at z = 5000 mm, the top of lift 5.
 
 ## Theory
 
 A new lift is strain free on the deformed column. Thus the displacement of a point is its displacement after its lift goes on the column.
 The column is statically determinate. The axial force at a section is the weight of the lifts above it.
-Let W = rho g A h be the weight of 1 lift, and c = rho g h² / (2E) = W h / (2 E A).
+Let W = rho g A h be the weight of 1 lift. Let c = rho g h² / (2E) = W h / (2 E A).
 Step j adds lift j. In step j, the top of lift i (z = i h, i <= j) moves down by:
 
 - j > i: all of W goes through 0 <= z <= i h. The top of lift i moves W i h / (E A) = 2 i c.
-- j = i: all of W goes through 0 <= z <= (i - 1) h, and lift i shortens under its own weight by rho g h² / (2E) = c. The top moves (2 i - 1) c.
+- j = i: all of W goes through 0 <= z <= (i - 1) h. Lift i also shortens under its own weight by rho g h² / (2E) = c. The top moves (2 i - 1) c.
 
 The sum for j = i to N gives the settlement at the end:
 
@@ -44,8 +44,8 @@ u_i = -c (2 i (N - i) + 2 i - 1) = -c (2 i (N + 1 - i) - 1)
 c = 2.4e-9 · 9810 · 1000² / (2 · 30000) = 3.924e-4 mm. At mid-height (i = 5), u_5 = -59 c = -0.0231516 mm.
 
 The largest settlement is at the top of lifts 5 and 6 (z = 5000 and 6000 mm). The top of the column settles only 19 c = 0.0074556 mm.
-A column that gets all its lifts at once has u(z) = -(rho g / E) (H z - z² / 2), which is -c i (2 N - i) at the top of lift i. Its largest settlement is at the top: 100 c = 0.03924 mm. At z = 5000 mm it is 75 c = 0.0294300 mm, 27 % more than the column built in lifts.
-For thin lifts (h to 0), u_i goes to -rho g z (H - z) / E, the settlement of a body that grows by accretion. The lifts add -rho g h (2 z - h) / (2E).
+A column that gets all its lifts at once has u(z) = -(rho g / E) (H z - z² / 2). At the top of lift i, this is -c i (2 N - i). Its largest settlement is at the top: 100 c = 0.03924 mm. At z = 5000 mm it is 75 c = 0.0294300 mm, 27 % more than the column built in lifts.
+For thin lifts (h to 0), u_i goes to -rho g z (H - z) / E. This is the settlement of a body that grows by accretion. The lifts add -rho g h (2 z - h) / (2E).
 The axial stress is -rho g (H - z) in the 2 columns, because the column is statically determinate. Only the displacement shows the sequence of the construction. Thus the check is a displacement.
 
 A bar of linear elements with the consistent load of its weight gives the exact displacement at its nodes. Each `C3D8` puts W/2 on its bottom face and W/2 on its top face. With nu = 0, the column is this bar.
