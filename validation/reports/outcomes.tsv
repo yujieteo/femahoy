@@ -4,6 +4,7 @@ bar-pressure	pass		124093	3493b3a
 buckling-column	pass		123307	3493b3a
 cavity-devahldavis	pass		2664333	3493b3a
 cht-heated-channel	pass		660658	3493b3a
+contact-cattaneo	pass		995027	1b8b2e0
 contact-hertz	pass		125307	3493b3a
 dam-break-martin-moyce	pass		2335008	3493b3a
 dam-break-vof	pass		4268378	3493b3a
