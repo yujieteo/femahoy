@@ -27,7 +27,7 @@ taylor-bar-impact	pass		4265993	69e0c94
 team7-eddy-current	pass		5872340	69e0c94
 topology-mbb-beam	pass		511409	69e0c94
 topology-mbb-beam-cad	pass		506451	69e0c94
-turek-hron-fsi1	pass		639076	69e0c94
+turek-hron-fsi1	pass		639053	1082d23
 warpage-2p5d-frame	pass		624798	69e0c94
 warpage-thick-copper	pass		135776	69e0c94
 wedge-oblique-shock	pass		1333607	69e0c94
