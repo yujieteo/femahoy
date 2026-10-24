@@ -65,8 +65,9 @@ enum Body {
 /// The supports and loads of the input of a run.
 struct Loads {
     preview: Result<Box<Preview>, String>,
-    /// The results have the mesh of the input, so the labels move with the deformed shape.
-    same_mesh: bool,
+    /// For each mesh of the results: the mesh is the mesh of the input, so the labels move with
+    /// the deformed shape.
+    same_mesh: Vec<bool>,
 }
 
 struct Shown {
@@ -75,6 +76,8 @@ struct Shown {
     version: u64,
     camera: Camera,
     home: Camera,
+    /// The index of the mesh on the GPU.
+    uploaded: Option<usize>,
 }
 
 pub struct ViewerApp {
@@ -108,7 +111,9 @@ impl ViewerApp {
             Content::Results(r, preview, view) => {
                 let state = ViewState::open(&r, &view, &panel(&r, &view, &preview, false));
                 let panel = panel(&r, &view, &preview, self.all);
-                let same_mesh = preview.as_ref().is_ok_and(|p| p.matches(&r.mesh));
+                let same_mesh = (r.meshes.iter())
+                    .map(|m| preview.as_ref().is_ok_and(|p| p.matches(m)))
+                    .collect();
                 frame = view.frame.map(|b| (b, plane(&r, b)));
                 Body::Results(r, state, Loads { preview, same_mesh }, panel, view)
             }
@@ -129,11 +134,8 @@ impl ViewerApp {
             version: 0,
             camera: Camera::fit(None, false),
             home: Camera::fit(None, false),
+            uploaded: None,
         };
-        if let Some(rs) = self.render_state.as_ref() {
-            let gpu = MeshGpu::new(rs, shown.mesh());
-            rs.renderer.write().callback_resources.insert(gpu);
-        }
         shown.home = match frame {
             Some((b, top)) => Camera::fit(Some(b), top),
             None => Camera::fit(shown.view_bounds(), false),
@@ -173,6 +175,20 @@ impl ViewerApp {
                 v.playing = None;
                 shown.refresh();
             }
+        }
+    }
+
+    /// Put the mesh of the shown step on the GPU when it is not there. A step of a staged model
+    /// can have another mesh than the step before it.
+    fn upload(&mut self) {
+        let (Some(rs), Some(shown)) = (&self.render_state, &mut self.shown) else {
+            return;
+        };
+        let index = shown.mesh_index();
+        if shown.uploaded != Some(index) {
+            let gpu = MeshGpu::new(rs, shown.mesh());
+            rs.renderer.write().callback_resources.insert(gpu);
+            shown.uploaded = Some(index);
         }
     }
 
@@ -218,10 +234,19 @@ impl Shown {
         Some(b)
     }
 
+    /// The mesh of the shown step.
     fn mesh(&self) -> &RenderMesh {
         match &self.body {
-            Body::Results(r, ..) => &r.mesh,
+            Body::Results(r, v, ..) => r.mesh(v.current(r)),
             Body::Preview(p) => &p.mesh,
+        }
+    }
+
+    /// The index of the mesh of the shown step. A preview has 1 mesh.
+    fn mesh_index(&self) -> usize {
+        match &self.body {
+            Body::Results(r, v, ..) => v.current(r).mesh,
+            Body::Preview(_) => 0,
         }
     }
 
@@ -273,7 +298,8 @@ impl Shown {
                     *panel = self::panel(r, view, &loads.preview, *all);
                 }
                 if panel.controls.contains(&Control::Loads) {
-                    loads_panel(ui, loads, labels);
+                    let same_mesh = loads.same_mesh[v.current(r).mesh];
+                    loads_panel(ui, loads, same_mesh, labels);
                 }
                 changed
             }
@@ -290,12 +316,12 @@ impl Shown {
         let eye = self.camera.eye();
         match &self.body {
             Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
-            Body::Results(_, _, loads, ..) => {
+            Body::Results(r, v, loads, ..) => {
                 if !self.shows(Control::Loads) {
                     return;
                 }
                 let Ok(p) = &loads.preview else { return };
-                let positions = match (&self.geometry, loads.same_mesh) {
+                let positions = match (&self.geometry, loads.same_mesh[v.current(r).mesh]) {
                     (Some(g), true) => &g.positions,
                     _ => &p.mesh.positions,
                 };
@@ -398,7 +424,8 @@ fn kind_text(kind: Kind) -> &'static str {
 }
 
 /// The supports and loads of a run under its results: a switch and the label of each set.
-fn loads_panel(ui: &mut egui::Ui, loads: &Loads, labels: &mut bool) {
+/// `same_mesh`: the mesh of the shown step is the mesh of the input.
+fn loads_panel(ui: &mut egui::Ui, loads: &Loads, same_mesh: bool, labels: &mut bool) {
     ui.separator();
     ui.strong("Supports and loads");
     let p = match &loads.preview {
@@ -415,7 +442,7 @@ fn loads_panel(ui: &mut egui::Ui, loads: &Loads, labels: &mut bool) {
             ui.label(&item.label);
         });
     }
-    if !loads.same_mesh {
+    if !same_mesh {
         ui.weak("They show on the undeformed shape: the results mesh is not the input mesh.");
     }
 }
@@ -761,6 +788,7 @@ impl eframe::App for ViewerApp {
                     });
                 });
         }
+        self.upload();
         egui::CentralPanel::default().show(ui, |ui| {
             if let Some((error, text)) = &self.message {
                 ui.centered_and_justified(|ui| {

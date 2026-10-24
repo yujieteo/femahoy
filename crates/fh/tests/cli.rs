@@ -134,9 +134,15 @@ fn without_a_solver_each_case_tells_how_to_install_it() {
 /// environment has priority.
 #[test]
 fn fh_takes_each_solver_from_solvers_env_beside_it() {
-    let dir = common::scratch("solvers-env");
+    // A hard link, not a copy: a copy is open for write, and a test that forks in parallel
+    // keeps it open, so its exec fails with "Text file busy". The target folder keeps the link
+    // on the file system of the program.
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("fh-solvers-env-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
     let fh = dir.join("fh");
-    std::fs::copy(env!("CARGO_BIN_EXE_fh"), &fh).unwrap();
+    std::fs::hard_link(env!("CARGO_BIN_EXE_fh"), &fh).unwrap();
     std::fs::write(dir.join("solvers.env"), "FH_CCX=/nonexistent/file-ccx\n").unwrap();
     let model = format!("{}/validation/cases/bar-pressure/job.inp", root());
     let run = |ccx: Option<&str>| {

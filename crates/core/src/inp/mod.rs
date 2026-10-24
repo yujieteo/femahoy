@@ -1,7 +1,7 @@
 //! A small reader of CalculiX `.inp` text for the preview of supports and loads, and the files
 //! of an input (`*INCLUDE`). CalculiX reads and checks the input itself. The reader takes the
-//! mesh, the sets, the surfaces, `*BOUNDARY`, `*CLOAD`, `*DLOAD` and `*DSLOAD`, and skips every
-//! other keyword with no error.
+//! mesh, the sets, the surfaces, `*BOUNDARY`, `*CLOAD`, `*DLOAD`, `*DSLOAD` and
+//! `*MODEL CHANGE, TYPE=ELEMENT`, and skips every other keyword with no error.
 
 mod files;
 mod lexer;
@@ -10,7 +10,7 @@ mod parse;
 
 pub use files::{flatten, include_path, includes, units, Flat};
 pub use model::{
-    Boundary, Cload, Dload, Dsload, Element, ElementSet, ElementSurface, ElementTarget, IdSet,
-    Model, Node, NodeSet, Step, Target,
+    Boundary, Cload, Dload, Dsload, Element, ElementChange, ElementSet, ElementSurface,
+    ElementTarget, IdSet, Model, Node, NodeSet, Step, Target,
 };
 pub use parse::parse;

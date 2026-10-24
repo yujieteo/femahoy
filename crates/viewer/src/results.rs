@@ -71,6 +71,8 @@ pub struct Step {
     pub time: f64,
     /// The VTU file name, from `results.pvd`.
     pub file: String,
+    /// The index of the mesh of the step in [`Results::meshes`].
+    pub mesh: usize,
     /// The displacement `U` of each node, in model order.
     pub displacement: Vec<[f64; 3]>,
     pub fields: Vec<ScalarField>,
@@ -90,18 +92,37 @@ impl Step {
     }
 }
 
-/// All the steps of one run on one mesh.
+/// All the steps of one run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Results {
     /// The unit system of the run (`SI-mm`, `SI-m` or `unspecified`).
     pub units: String,
     /// True for the motion of rigid bodies (`kind="multibody"` in `results.pvd`).
     pub multibody: bool,
-    pub mesh: RenderMesh,
+    /// The mesh of each different list of cells, in step order. The steps with the same cells
+    /// share a mesh. A step of a staged model (`*MODEL CHANGE` of `ccx`) has only the elements
+    /// in the model in that step.
+    pub meshes: Vec<RenderMesh>,
     pub steps: Vec<Step>,
     /// True when the points of a step are not the points of the first step, for example the
     /// particles of a LAMMPS run. The displacement is then the true motion.
     pub moves: bool,
+}
+
+impl Results {
+    /// The mesh of `step`.
+    pub fn mesh(&self, step: &Step) -> &RenderMesh {
+        &self.meshes[step.mesh]
+    }
+
+    /// The bounds of all the meshes.
+    pub fn bounds(&self) -> Option<mesh::Bounds> {
+        let corners: Vec<[f32; 3]> = (self.meshes.iter())
+            .filter_map(|m| m.bounds)
+            .flat_map(|b| [b.min, b.max])
+            .collect();
+        mesh::bounds(&corners)
+    }
 }
 
 /// The attribute `name` of the `Collection` element, or `None` when it is absent.
@@ -212,9 +233,10 @@ pub fn is_plain_file_name(name: &str) -> bool {
 }
 
 /// Read the results of a run. `pvd` is the text of `results.pvd`. `read` gives the bytes of a
-/// file that `results.pvd` names. Each step must have the cells of the first step. A step with no
-/// displacement field `U` (a heat transfer step) has a displacement of zero. When the points of a
-/// step are not the points of the first step, the displacement of each node adds its move.
+/// file that `results.pvd` names. Each step must have as many points as the first step. A step
+/// with other cells than the step before it gets its own mesh. A step with no displacement field
+/// `U` (a heat transfer step) has a displacement of zero. When the points of a step are not the
+/// points of the first step, the displacement of each node adds its move.
 pub fn load(
     pvd_name: &str,
     pvd: &str,
@@ -227,7 +249,10 @@ pub fn load(
     if entries.is_empty() {
         return fail(pvd_name, "the collection names no step file");
     }
-    let mut first: Option<Grid> = None;
+    let mut first: Option<Vec<[f64; 3]>> = None;
+    // The cells and the cell types of the last mesh.
+    let mut last: Option<(Vec<Vec<u32>>, Vec<u8>)> = None;
+    let mut meshes = Vec::new();
     let mut steps = Vec::with_capacity(entries.len());
     let mut moves = false;
     for entry in entries {
@@ -249,16 +274,11 @@ pub fn load(
         if grid.points.is_empty() || grid.cells.is_empty() {
             return fail(file, "the grid has no point or no cell");
         }
-        if let Some(f) = &first {
-            if f.points.len() != grid.points.len()
-                || f.cells != grid.cells
-                || f.cell_types != grid.cell_types
-            {
-                return fail(
-                    file,
-                    format!("the mesh is not the mesh of {}", steps_file(&steps)),
-                );
-            }
+        if first.as_ref().is_some_and(|f| f.len() != grid.points.len()) {
+            return fail(
+                file,
+                format!("the points are not the points of {}", steps_file(&steps)),
+            );
         }
         if grid.points.iter().flatten().any(|c| !c.is_finite()) {
             return fail(file, "a point coordinate is not a finite number");
@@ -269,39 +289,44 @@ pub fn load(
             Some(u) if u.components == 3 => u.values.as_chunks::<3>().0.to_vec(),
             Some(_) => return fail(file, "the displacement field U must have 3 components"),
         };
-        if let Some(f) = first.as_ref().filter(|f| f.points != grid.points) {
+        if let Some(f) = first.as_ref().filter(|f| **f != grid.points) {
             moves = true;
-            for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(&f.points) {
+            for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(f) {
                 for k in 0..3 {
                     u[k] += p[k] - p0[k];
                 }
             }
         }
+        let same = (last.as_ref()).is_some_and(|(c, t)| *c == grid.cells && *t == grid.cell_types);
+        if !same {
+            let mesh = mesh::build_grid(&grid);
+            if mesh.triangles.is_empty() {
+                return fail(
+                    file,
+                    format!(
+                        "no cell type that the page draws ({} cells)",
+                        grid.cells.len()
+                    ),
+                );
+            }
+            meshes.push(mesh);
+            last = Some((grid.cells, grid.cell_types));
+        }
         steps.push(Step {
             time: entry.time,
             file: entry.file.clone(),
+            mesh: meshes.len() - 1,
             displacement,
             fields,
         });
         if first.is_none() {
-            first = Some(grid);
+            first = Some(grid.points);
         }
-    }
-    let grid = first.expect("one step at least");
-    let mesh = mesh::build_grid(&grid);
-    if mesh.triangles.is_empty() {
-        return fail(
-            &steps[0].file,
-            format!(
-                "no cell type that the page draws ({} cells)",
-                grid.cells.len()
-            ),
-        );
     }
     Ok(Results {
         units: pvd_units(pvd),
         multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
-        mesh,
+        meshes,
         steps,
         moves,
     })
@@ -352,8 +377,7 @@ pub fn auto_scale(results: &Results) -> f64 {
         return 1.0;
     }
     let size = results
-        .mesh
-        .bounds
+        .bounds()
         .map_or(0.0, |b| 2.0 * f64::from(b.radius()));
     let max = results
         .steps
@@ -384,15 +408,17 @@ pub fn deformed_positions(mesh: &RenderMesh, step: &Step, scale: f64) -> Vec<[f3
         .collect()
 }
 
-/// The bounds of the first view. When the points move, the bounds also hold the moved points of
-/// all steps, at scale 1.
+/// The bounds of the first view: the bounds of all the meshes. When the points move, the bounds
+/// also hold the moved points of all steps, at scale 1.
 pub fn view_bounds(results: &Results) -> Option<mesh::Bounds> {
     if !results.moves {
-        return results.mesh.bounds;
+        return results.bounds();
     }
-    let mut points = results.mesh.positions.clone();
+    let mut points: Vec<[f32; 3]> = (results.meshes.iter())
+        .flat_map(|m| m.positions.iter().copied())
+        .collect();
     for step in &results.steps {
-        points.extend(deformed_positions(&results.mesh, step, 1.0));
+        points.extend(deformed_positions(results.mesh(step), step, 1.0));
     }
     mesh::bounds(&points)
 }
@@ -483,8 +509,11 @@ mod tests {
         assert_eq!(r.steps.len(), 2);
         assert_eq!((r.steps[0].time, r.steps[1].time), (1.0, 2.0));
         assert_eq!(r.steps[1].file, "step-2.vtu");
-        assert_eq!((r.mesh.node_count, r.mesh.element_count), (81, 24));
-        assert_eq!(r.mesh.skipped_elements, 0);
+        assert_eq!(
+            (r.meshes[0].node_count, r.meshes[0].element_count),
+            (81, 24)
+        );
+        assert_eq!(r.meshes[0].skipped_elements, 0);
         let names: Vec<&str> = r.steps[0].fields.iter().map(|f| f.name.as_str()).collect();
         for want in [
             "U magnitude",
@@ -580,22 +609,31 @@ mod tests {
         let r = crate::load_run(&fixture_dir()).unwrap();
         let step = &r.steps[1];
         let scale = 50.0;
-        let moved = deformed_positions(&r.mesh, step, scale);
-        assert_eq!(moved.len(), r.mesh.positions.len());
+        let moved = deformed_positions(&r.meshes[0], step, scale);
+        assert_eq!(moved.len(), r.meshes[0].positions.len());
         for (i, p) in moved.iter().enumerate() {
-            let u = step.displacement[r.mesh.source_node[i] as usize];
+            let u = step.displacement[r.meshes[0].source_node[i] as usize];
             for k in 0..3 {
-                let want = f64::from(r.mesh.positions[i][k]) + scale * u[k];
+                let want = f64::from(r.meshes[0].positions[i][k]) + scale * u[k];
                 assert!((f64::from(p[k]) - want).abs() < 1e-5, "position {i}");
             }
         }
         // The tip (x = 10) moves down in z by 50 x the tip U3 of step 2.
-        let tip = r.mesh.positions.iter().position(|p| p[0] == 10.0).unwrap();
-        let u3 = step.displacement[r.mesh.source_node[tip] as usize][2];
+        let tip = r.meshes[0]
+            .positions
+            .iter()
+            .position(|p| p[0] == 10.0)
+            .unwrap();
+        let u3 = step.displacement[r.meshes[0].source_node[tip] as usize][2];
         assert!((u3 - -0.0814817).abs() < 1e-6, "{u3}");
-        assert!((f64::from(moved[tip][2] - r.mesh.positions[tip][2]) - scale * u3).abs() < 1e-5);
+        assert!(
+            (f64::from(moved[tip][2] - r.meshes[0].positions[tip][2]) - scale * u3).abs() < 1e-5
+        );
         // Scale 0 is the undeformed shape.
-        assert_eq!(deformed_positions(&r.mesh, step, 0.0), r.mesh.positions);
+        assert_eq!(
+            deformed_positions(&r.meshes[0], step, 0.0),
+            r.meshes[0].positions
+        );
     }
 
     /// LAMMPS particles move: the displacement is the move of the points, at the true scale.
@@ -612,9 +650,9 @@ mod tests {
             .iter()
             .all(|u| *u == [0.5, 0.0, 0.0]));
         let grid = read_vtu(&std::fs::read(dir.join("step-2.vtu")).unwrap()).unwrap();
-        let moved = deformed_positions(&r.mesh, &r.steps[1], 1.0);
+        let moved = deformed_positions(&r.meshes[0], &r.steps[1], 1.0);
         for (i, p) in moved.iter().enumerate() {
-            let want = grid.points[r.mesh.source_node[i] as usize];
+            let want = grid.points[r.meshes[0].source_node[i] as usize];
             assert_eq!(p.map(f64::from), want, "position {i}");
         }
     }
@@ -623,12 +661,12 @@ mod tests {
     #[test]
     fn view_bounds_hold_the_moved_points_of_all_steps() {
         let r = crate::load_run(&fixture_dir().join("../particles-2step")).unwrap();
-        let first = r.mesh.bounds.unwrap();
+        let first = r.meshes[0].bounds.unwrap();
         let b = view_bounds(&r).unwrap();
         assert_eq!(b.min, first.min);
         assert_eq!(b.max, [first.max[0] + 0.5, first.max[1], first.max[2]]);
         let fixed = crate::load_run(&fixture_dir()).unwrap();
-        assert_eq!(view_bounds(&fixed), fixed.mesh.bounds);
+        assert_eq!(view_bounds(&fixed), fixed.meshes[0].bounds);
     }
 
     /// The positions that the shader bands agree with the bands of the legend.

@@ -23,6 +23,7 @@ Sources: [reader](../../crates/core/src/inp/parse.rs), [lexer](../../crates/core
 | `*CLOAD` | — | Node ID or node set, DOF, magnitude. In a step. |
 | `*DLOAD` | — | Element ID or element set, `P1` to `P6`, pressure. In a step. |
 | `*DSLOAD` | — | Element surface name, `P`, pressure. In a step. Positive pressure pushes into the body. |
+| `*MODEL CHANGE` | `TYPE=ELEMENT`, `ADD` or `REMOVE` | Element IDs or element sets. In a step. The run shows in each step only the elements in the model in that step. |
 | `*INCLUDE` | `INPUT` | A file in the folder of the input, or in a folder below it. The path is relative, with no `..`. |
 
 Names of keywords, parameters, sets and surfaces ignore letter case.

@@ -4,6 +4,9 @@
 //! with each `*INCLUDE` file, in `<run-dir>/ccx`. Then it converts every nodal field of the
 //! `.frd` file into one VTU file for each increment and each mode in the file, and writes
 //! `results.pvd` in the run folder.
+//! The VTU file of a step holds only the elements in the model in that step
+//! (`*MODEL CHANGE, TYPE=ELEMENT`). The `.frd` file holds the elements out of the model only
+//! with `*NODE FILE, OUTPUT ALL`.
 //! After a `*STEADY STATE DYNAMICS` step, it writes `<run-dir>/ccx/rms.txt`, the RMS of the
 //! response of each node that the step prints (see [`rms`]).
 //! `ccx` is GPL, so femahoy only starts it as a separate program.
@@ -24,6 +27,7 @@ pub(crate) mod frd;
 pub mod rms;
 mod sys;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -31,7 +35,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use fh_core::inp::flatten;
+use fh_core::inp::{flatten, Model, Step};
 use fh_core::vtu::{Grid, PvdEntry};
 
 use crate::vtu::{write_pvd, write_vtu};
@@ -193,6 +197,25 @@ fn write_rms(work: &Path, text: &str) -> Result<(), String> {
     fs::write(work.join(RMS_FILE), rms::table(&sets)).map_err(|e| format!("{RMS_FILE}: {e}"))
 }
 
+/// The elements out of the model in each step: `*MODEL CHANGE, TYPE=ELEMENT, REMOVE` takes an
+/// element out from its step on, and `ADD` puts it back. Item `s` is step `s + 1`.
+fn removed_elements(model: &Model) -> Vec<HashSet<u32>> {
+    let mut out = HashSet::new();
+    let step = |s: &Step| {
+        for change in &s.element_changes {
+            for e in &change.elements {
+                if change.add {
+                    out.remove(e);
+                } else {
+                    out.insert(*e);
+                }
+            }
+        }
+        out.clone()
+    };
+    model.steps.iter().map(step).collect()
+}
+
 /// The number of result frames that `results.pvd` in the run folder `out` lists. A run folder
 /// with no `results.pvd` has none.
 pub fn result_frames(out: &Path) -> usize {
@@ -329,7 +352,14 @@ impl Ccx {
         } else {
             "unspecified"
         };
-        let frames = results.frames.iter().map(|f| (f.time, results.grid(f)));
+        let removed = removed_elements(&fh_core::inp::parse(&flat.text));
+        let frames = results.frames.iter().map(|f| {
+            let out = f.step.checked_sub(1).and_then(|s| removed.get(s));
+            (
+                f.time,
+                results.grid_with(f, |e| out.is_none_or(|o| !o.contains(&e))),
+            )
+        });
         write_frames(&run_dir, units, false, frames)
     }
 
