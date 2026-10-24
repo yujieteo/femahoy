@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-3c39a4a7426a70dedfce4775434263a0' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-90a6927ff91c98f5ad68682d6cb14e54' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The style of the site (teoyujie.org): Source Serif 4 for the titles, DM Sans for the text,
@@ -101,7 +101,7 @@ header { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 0
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.001 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>sxx_hole</code></td><td style="text-align:right">296.265</td><td style="text-align:right">296.179</td><td style="text-align:right">0.2962</td><td style="text-align:right">0.2099</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-23, femahoy d64b459.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-24, femahoy 4ef91c8.</p>
 <p>This case checks a submodel: a fine model of the region at a hole that gets its displacement on the cut boundary from a coarse global model (units SI-mm).
 The coarse global model alone gives the peak stress at the hole 4.5 % low. The submodel gives it 0.14 % high, and 0.029 % high at the integration point of the check.</p>
 <h2>Source</h2>
@@ -166,8 +166,8 @@ An error of the method is larger: a cut at R = 1.5a gives -1.0 %, a global model
   <header><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000001" data-run="run-000001">run-000001 · submodel-kirsch-hole/job.inp</option></select><label id="all"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="3c39a4a7426a70dedfce4775434263a0"></script>
-<script type="module" nonce="3c39a4a7426a70dedfce4775434263a0">
+<script src="viewer.js" nonce="90a6927ff91c98f5ad68682d6cb14e54"></script>
+<script type="module" nonce="90a6927ff91c98f5ad68682d6cb14e54">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
