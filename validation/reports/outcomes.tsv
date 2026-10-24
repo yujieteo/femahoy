@@ -25,6 +25,7 @@ random-vibration-cantilever	pass		1281221	69e0c94
 scordelis-lo-roof	pass		131908	69e0c94
 shape-hole-biaxial	pass		899363	69e0c94
 slider-crank	pass		222689	69e0c94
+submodel-kirsch-hole	pass		320925	4ef91c8
 taylor-bar-impact	pass		4265993	69e0c94
 team7-eddy-current	pass		5872340	69e0c94
 topology-mbb-beam	pass		511409	69e0c94

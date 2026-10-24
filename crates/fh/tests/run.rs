@@ -187,6 +187,84 @@ fn fh_run_solves_a_validation_input_and_writes_the_result_files() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// The real ccx solves the submodel of `submodel-kirsch-hole`: `fh run` copies the global model
+/// `global.inp` with the submodel, and solves it first, because the submodel reads `global.frd`.
+#[test]
+fn fh_run_solves_the_global_model_of_a_submodel_first() {
+    let Some(solver) = ccx_solver() else { return };
+    let dir = scratch("run-submodel");
+    let case = root().join("validation/cases/submodel-kirsch-hole");
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case.join("job.inp"))])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", &solver)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    let run = dir.join("state/runs/run-000001");
+    for file in ["global.inp", "global-mesh.inp", "mesh.inp"] {
+        assert!(run.join("in").join(file).is_file(), "no in/{file}");
+    }
+    for file in ["global.frd", "job.frd", "job.dat"] {
+        assert!(run.join("out/ccx").join(file).is_file(), "no ccx/{file}");
+    }
+    let dat = fs::read_to_string(run.join("out/ccx/job.dat")).unwrap();
+    let sxx = dat
+        .lines()
+        .filter_map(|l| l.split_whitespace().nth(2)?.parse::<f64>().ok())
+        .fold(f64::MIN, f64::max);
+    assert!((sxx - 296.179).abs() < 0.3, "sxx {sxx}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A submodel with no global model beside it fails before ccx starts, and tells what to write.
+#[test]
+fn a_submodel_with_no_global_input_fails_with_the_name_of_the_file() {
+    let dir = scratch("run-submodel-alone");
+    let input = dir.join("job.inp");
+    fs::write(&input, "*SUBMODEL, TYPE=NODE, INPUT=coarse.frd\nCUT\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&input)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", dir.join("no-ccx"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let shown = stdout(&out) + &stderr(&out);
+    assert!(
+        shown.contains("write the global model coarse.inp beside the input"),
+        "{shown}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_global_input_with_the_name_of_the_run_copy_fails_with_the_name() {
+    let dir = scratch("run-submodel-job");
+    let input = dir.join("sub.inp");
+    fs::write(&input, "*SUBMODEL, TYPE=NODE, INPUT=job.frd\nCUT\n").unwrap();
+    fs::write(dir.join("job.inp"), "*NODE\n1, 0, 0, 0\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&input)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_CCX", dir.join("no-ccx"))
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let shown = stdout(&out) + &stderr(&out);
+    assert!(
+        shown.contains("the global model job.inp has the name job.inp"),
+        "{shown}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// A fake `openfoam`. It writes its arguments to CALLS, and the files that each program writes:
 /// the mesh, a time folder, and for the times 100 and 0 a legacy VTK file with 1 hexahedron and
 /// its cell fields (U x is the time / 100). With FAIL as its program, it fails as OpenFOAM does.

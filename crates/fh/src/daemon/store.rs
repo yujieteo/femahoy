@@ -4,7 +4,7 @@
 //! ```text
 //! <state>/runs/<run>/source           the path of the input file or the case that the run solves
 //! <state>/runs/<run>/in/input.inp     the read-only copy of that input, with the copies of its
-//!                                     `*INCLUDE` files
+//!                                     `*INCLUDE` files and of the global model of a `*SUBMODEL`
 //! <state>/runs/<run>/in/system/ ...   or the read-only copy of an OpenFOAM case
 //! <state>/runs/<run>/in/case.pro ...  or the read-only copy of a GetDP case
 //! <state>/runs/<run>/in/topology.toml or the read-only copy of a topology case
@@ -29,7 +29,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use crate::ccx::{input_text, result_frames, stage_input};
+use crate::ccx::{input_text, result_frames, stage_input, INPUT_FILE};
 use crate::{foam, getdp, precice, topology, Solver};
 
 use super::message::{bad, fail, Failure};
@@ -38,7 +38,6 @@ const RUNS_DIR: &str = "runs";
 const PREVIEWS_DIR: &str = "previews";
 const SOURCE_FILE: &str = "source";
 const TITLE_FILE: &str = "title";
-const INPUT_FILE: &str = "input.inp";
 const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
 
@@ -69,7 +68,8 @@ fn last_number(dir: &Path, number: impl Fn(&str) -> Option<u64>) -> u64 {
     numbers.max().unwrap_or(0)
 }
 
-/// Copy the input file and its `*INCLUDE` files into `dir`. A missing include file is a bad input.
+/// Copy the input file, its `*INCLUDE` files and the global model of a `*SUBMODEL` into `dir`.
+/// A missing include file or global model is a bad input.
 fn stage(input: &Path, dir: &Path) -> Result<(), String> {
     stage_input(input, dir, INPUT_FILE)
 }
