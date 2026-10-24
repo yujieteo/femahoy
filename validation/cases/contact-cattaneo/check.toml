@@ -1,0 +1,22 @@
+# Cattaneo (1938), Johnson (1985) chapters 4 and 7: a cylinder on a flat of the same steel in
+# plane strain, P = 4500 N/mm, then Q = 0.75 mu P with mu = 0.3 (curves.py):
+# a = sqrt(4 P R / (pi E*)), p0 = 2 P / (pi a), c = a sqrt(1 - Q / (mu P)), q(0) = mu p0 (1 - c/a).
+# q(0) is S12 of the block at the centre of the contact.
+# Budget: mesh 0.13 %, penalties 0.4 %, body size 0.22 %. The model gives +0.48 % (p0) and
+# +0.43 % (q(0)). 2 % rejects a soft stick slope (+3.4 %), mu = 0.35 (-6 %) and no slip (-25 %).
+# See derivation.md.
+rel_tol = 0.02
+abs_tol = 0.0
+
+[p0]
+value = 2874.69
+field = "CSTR"
+component = 1
+op = "max"
+
+[q_centre]
+value = 431.203
+set = "CENTRE"
+field = "S"
+component = 12
+op = "mean"

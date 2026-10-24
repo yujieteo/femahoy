@@ -410,6 +410,8 @@ The page shows every field that these requests write, at each increment that the
 
 For 2D elements (`CPE`, `CPS`, `CAX`), write `*NODE FILE, OUTPUT=3D` in the first step. ccx ignores `OUTPUT=3D` in a later step and writes 2D elements, and the page does not show them. The file requests of step 1 stay on in the next steps.
 
+For a model with `*MODEL CHANGE, TYPE=ELEMENT`, write `*NODE FILE, OUTPUT ALL` in the first step. ccx writes the mesh only at the first output: without `OUTPUT ALL`, it has only the elements in the model at that time. With it, the page shows in each step only the elements in the model in that step.
+
 ## Supports and loads
 
 A wrong support face or a wrong load direction gives a result that looks correct. Thus, when the request does not give a support or a load, put your choice in the list of missing details.

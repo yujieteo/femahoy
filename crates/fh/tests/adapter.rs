@@ -199,6 +199,114 @@ fn a_new_ccx_has_no_time_limit_and_85_percent_of_the_ram() {
     }
 }
 
+/// 2 `C3D8` elements, 1 on top of the other, in 3 steps. Step 1 removes element 2 (by its set),
+/// step 2 adds it, and step 3 removes element 1.
+const STAGED: &str = "** units: SI-mm
+*NODE
+1, 0, 0, 0
+2, 1, 0, 0
+3, 1, 1, 0
+4, 0, 1, 0
+5, 0, 0, 1
+6, 1, 0, 1
+7, 1, 1, 1
+8, 0, 1, 1
+9, 0, 0, 2
+10, 1, 0, 2
+11, 1, 1, 2
+12, 0, 1, 2
+*ELEMENT, TYPE=C3D8, ELSET=ALL
+1, 1, 2, 3, 4, 5, 6, 7, 8
+2, 5, 6, 7, 8, 9, 10, 11, 12
+*ELSET, ELSET=LATER
+2
+*STEP, NLGEOM
+*STATIC
+*MODEL CHANGE, TYPE=ELEMENT, REMOVE
+LATER
+*END STEP
+*STEP
+*STATIC
+*MODEL CHANGE, TYPE=ELEMENT, ADD
+2
+*END STEP
+*STEP
+*STATIC
+*MODEL CHANGE, TYPE=ELEMENT, REMOVE
+1
+*END STEP
+";
+
+/// The `.frd` file of `STAGED` with `*NODE FILE, OUTPUT ALL`: both elements, and `U` of the 12
+/// nodes in each step.
+fn staged_frd() -> String {
+    let mut frd = String::from(
+        "    2C                            12                                     1\n",
+    );
+    for id in 1..=12 {
+        let (x, y, z) = (
+            [0.0, 1.0, 1.0, 0.0][(id - 1) % 4],
+            [0.0, 0.0, 1.0, 1.0][(id - 1) % 4],
+            ((id - 1) / 4) as f64,
+        );
+        frd += &format!(" -1{id:10}{x:12.5E}{y:12.5E}{z:12.5E}\n");
+    }
+    frd += " -3\n    3C                             2                                     1\n";
+    for e in 1..=2 {
+        let nodes: String = (4 * e - 3..=4 * e + 4).map(|n| format!("{n:10}")).collect();
+        frd += &format!(" -1{e:10}    1    0    1\n -2{nodes}\n");
+    }
+    frd += " -3\n";
+    for step in 1..=3 {
+        frd += &format!("    1PSTEP{step:25}{:12}{step:12}\n", 1);
+        frd += &format!(
+            "  100CL  1{step:02}{:12.5E}\n -4  DISP        4    1\n",
+            step as f64
+        );
+        for id in 1..=12 {
+            frd += &format!(" -1{id:10}{:12.5E}{:12.5E}{:12.5E}\n", 0.0, 0.0, 0.0);
+        }
+        frd += " -3\n";
+    }
+    frd + " 9999\n"
+}
+
+/// The 3D view of each step shows only the elements that are in the model in that step: an
+/// element of `*MODEL CHANGE, TYPE=ELEMENT, REMOVE` is not shown until a later `ADD`.
+#[test]
+fn each_step_shows_only_the_elements_in_the_model() {
+    let dir = scratch("staged");
+    std::fs::write(dir.join("staged.frd"), staged_frd()).unwrap();
+    std::fs::write(dir.join("staged.inp"), STAGED).unwrap();
+    let ccx = fake_ccx(&dir, &format!("cp {}/staged.frd job.frd", dir.display()));
+    run(&dir.join("staged.inp"), &dir.join("run"), &ccx).unwrap();
+    let cells: Vec<Vec<Vec<u32>>> = (1..=3)
+        .map(|k| {
+            let bytes = std::fs::read(dir.join(format!("run/step-{k}.vtu"))).unwrap();
+            let grid = fh_core::vtu::read_vtu(&bytes).unwrap();
+            assert_eq!(grid.points.len(), 12, "step {k}");
+            grid.cells
+        })
+        .collect();
+    let (lower, upper): (Vec<u32>, Vec<u32>) = ((0..8).collect(), (4..12).collect());
+    assert_eq!(
+        cells,
+        [vec![lower.clone()], vec![lower, upper.clone()], vec![upper]]
+    );
+    // The viewer shows each step with its own elements.
+    let out = dir.join("run");
+    let pvd = std::fs::read_to_string(out.join("results.pvd")).unwrap();
+    let results = fh_viewer::results::load("results.pvd", &pvd, |f| {
+        std::fs::read(out.join(f)).map_err(|e| e.to_string())
+    })
+    .unwrap();
+    let elements: Vec<usize> = (results.steps.iter())
+        .map(|s| results.mesh(s).element_count)
+        .collect();
+    assert_eq!(elements, [1, 2, 1]);
+    assert_eq!(results.meshes.len(), 3);
+}
+
 #[test]
 fn a_run_folder_with_foreign_files_is_not_cleared() {
     let dir = scratch("foreign");

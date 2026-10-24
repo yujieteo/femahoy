@@ -1,0 +1,15 @@
+# A column built in N = 10 lifts of h = 1000 mm. Each lift is added strain free on the deformed
+# column. At the top of lift i, u = -(rho g h^2 / 2E) (2i (N - i) + 2i - 1). See derivation.md.
+# At mid-height (i = 5): u = -3.924e-4 * 59 = -0.0231516 mm.
+# If the lifts were added with strain, or all at once, u = -0.0294300 mm (27 % more).
+# The tolerance covers the geometric nonlinearity of the NLGEOM steps, about 1e-5. The mesh
+# error at the top of each lift is 0. See derivation.md, "Tolerance".
+rel_tol = 1e-4
+abs_tol = 0.0
+
+[u_mid]
+value = -0.0231516
+set = "MID"
+field = "U"
+component = 3
+op = "mean"

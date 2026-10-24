@@ -92,7 +92,15 @@ pub struct Dsload {
     pub pressure: f64,
 }
 
-/// A `*STEP` with its supports and loads.
+/// One `*MODEL CHANGE, TYPE=ELEMENT` card: at the start of its step, it adds the elements
+/// (`ADD`) or removes them (`REMOVE`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ElementChange {
+    pub add: bool,
+    pub elements: Vec<u32>,
+}
+
+/// A `*STEP` with its supports, its loads and its element changes.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Step {
     pub name: Option<String>,
@@ -100,6 +108,8 @@ pub struct Step {
     pub cloads: Vec<Cload>,
     pub dloads: Vec<Dload>,
     pub dsloads: Vec<Dsload>,
+    /// In input order.
+    pub element_changes: Vec<ElementChange>,
 }
 
 impl Model {
