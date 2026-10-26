@@ -278,10 +278,11 @@ pub fn build(model: &Model, units: &str) -> Preview {
     for (tag, b) in boundaries.chain(in_steps) {
         let (name, nodes) = nodes_of(&b.target);
         let i = draft(&mut drafts, &name, Kind::Support, false);
-        let value = if b.value == 0.0 {
-            "0".to_owned()
-        } else {
-            format!("{} {length_unit}", b.value)
+        // Only U1 to U3 are lengths. DOF 4 to 6 are rotations, DOF 11 is the temperature.
+        let value = match (b.value == 0.0, b.last_dof.max(b.first_dof) <= 3) {
+            (true, _) => "0".to_owned(),
+            (false, true) => with_unit(b.value.to_string(), length_unit),
+            (false, false) => b.value.to_string(),
         };
         let dofs = dofs(b.first_dof, b.last_dof);
         drafts[i]
@@ -707,5 +708,15 @@ mod tests {
         let (tail, head) = p.arrow(tip).unwrap();
         assert_eq!(tail, [2.0, 0.5, 0.5]);
         assert!(head[2] < 0.5 && head[0] == 2.0, "{head:?}");
+    }
+    #[test]
+    fn a_temperature_support_has_no_length_unit() {
+        // DOF 11 is the temperature, so the label must not show the length unit mm.
+        let text = format!(
+            "{TWO_CUBES}*STEP\n*HEAT TRANSFER, STEADY STATE\n*BOUNDARY\nFIXED, 11, 11, 100\n*END STEP\n"
+        );
+        let p = from_text(&text);
+        assert_eq!(p.items[0].actions, ["DOF 11 = 100"]);
+        assert_eq!(p.items[0].label, "FIXED: dof 11 = 100");
     }
 }
