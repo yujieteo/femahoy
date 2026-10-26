@@ -23,7 +23,7 @@ Step 1 moves the top of the ball down by 0.075 mm, the Hertz approach a²/R. Thi
 Step 2 removes this displacement and applies the pressure.
 The check is the largest contact pressure (`CSTR`, component 1) at the end of step 2.
 
-E* = 210000 / (2 · 0.91) = 115384.6 MPa, a = 0.86624 mm and p0 = 6363.06 MPa.
+The hand check beside the result gives the substituted values and the pressure unit.
 
 ## Tolerance
 

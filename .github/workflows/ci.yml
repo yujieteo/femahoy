@@ -19,6 +19,9 @@ jobs:
         with:
           # The merge commit of a pull request and its first parent, the base branch.
           fetch-depth: 2
+      # These tests protect the units and differences of the validation reports. They need no solver.
+      - name: Test the validation reports
+        run: python3 scripts/test-validation-reports.py
       # On a pull request, the changed paths select the solvers to install and the cases to run
       # (DESIGN.md section 7). A push to main selects every solver and runs the full suite. Each
       # selected solver gets FH_REQUIRE_<SOLVER>=1 in the Test step.
