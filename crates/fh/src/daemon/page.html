@@ -241,11 +241,14 @@ function openRun(run) {
   loadFiles(run);
 }
 
-// On a phone the model is below the chat, so a tap that opens a run scrolls the model into view.
-function openRunAndShow(run) {
-  openRun(run);
+// On a phone the model is below the chat, so a tap that shows a model scrolls it into view.
+function reveal() {
   const model = $("model");
   if (model.getBoundingClientRect().top > 0) model.scrollIntoView({ block: "start" });
+}
+function openRunAndShow(run) {
+  openRun(run);
+  reveal();
 }
 
 function select() {
@@ -589,7 +592,7 @@ function entry(kind, text, fresh) {
         select();
         if (view) view.show(preview, title);
       };
-      b.addEventListener("click", open);
+      b.addEventListener("click", () => { open(); reveal(); });
       if (fresh && !$("compare").checked) open();
       return b;
     }
