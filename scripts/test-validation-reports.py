@@ -32,6 +32,7 @@ class ReportResults(unittest.TestCase):
     def test_zero_reference_has_absolute_difference(self):
         self.assertEqual(reports.difference(2, 0, 'mm'), '+2 mm (absolute)')
         self.assertEqual(reports.difference(-2, -4, 'MPa'), '+2 MPa (+50 %)')
+        self.assertEqual(reports.difference(2, 1, ''), '+1 (+100 %)')
 
 
 if __name__ == '__main__':

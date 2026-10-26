@@ -135,7 +135,8 @@ const identity = () => {
 identity();
 $("report-tools").hidden = !hints.length && $("identity").hidden;
 document.addEventListener("keydown", (e) => {
-  if (!e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.target.tagName === "TEXTAREA" || e.target.isContentEditable
+    || (e.target.tagName === "INPUT" && !/^(radio|checkbox|range)$/.test(e.target.type))) return;
   const key = e.code?.startsWith("Key") ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
   if (key === "s" && !$("section-control").hidden) { e.preventDefault(); $("sections").focus(); }
   if ((key === "t" || key === "v") && !$("layout-control").hidden) {

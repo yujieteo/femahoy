@@ -19,7 +19,11 @@ cases. For each case:
    (see "The story of a report" in crates/fh/src/daemon/agent.md). Its `data-run` names an
    input of the case, for example `data-run="d10"`, and the script gives the name of its run.
    A case that does not pass shows the table of the checks before the story. A case with no
-   story.html gets a link to each run.
+   story.html gets a link to each run. The story chooses its own report controls with
+   `<div data-report-controls="...">` (agent.md). In the story,
+   `<!--hand-check CHECK UNIT-->...<!--/hand-check-->` puts its formula and scope beside the
+   result of the check CHECK of check.toml. UNIT comes from the case. The table gives the
+   difference in that unit, and "Not specified" for the unit of each other check.
 
 A case that cannot run (its solver is not installed on this computer) gets a report of the text
 only: the checks of check.toml and derivation.md. The report and the index name the solver and
@@ -302,7 +306,7 @@ HAND_CHECK = re.compile(r'<!--hand-check ([^ ]+) ([^>]+)-->(.*?)<!--/hand-check-
 
 def difference(computed, reference, unit):
     delta = computed - reference
-    absolute = f"{delta:+.6g} {unit}"
+    absolute = f"{delta:+.6g}" + (f" {unit}" if unit else "")
     return absolute + (f" ({100 * delta / abs(reference):+.6g} %)" if reference else " (absolute)")
 
 
@@ -331,11 +335,11 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
         head = "".join(f'<th style="text-align:{"left" if h == "Check" else "right"}">{h}</th>' for h in columns)
         trs = []
         for row in rows:
-            unit, formula = hand_checks.get(row[0], ("Not specified", ""))
+            unit, formula = hand_checks.get(row[0], ("", ""))
             values = [f"{v:.6g}" for v in row[1:]]
             if result != "not run":
                 values.insert(2, difference(row[1], row[2], unit))
-            trs.append(f"<tr><td><code>{esc(row[0])}</code></td><td>{esc(unit)}</td>"
+            trs.append(f"<tr><td><code>{esc(row[0])}</code></td><td>{esc(unit or 'Not specified')}</td>"
                        + "".join(f'<td style="text-align:right">{esc(v)}</td>' for v in values) + "</tr>")
         body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(trs)}</tbody></table>")
         for name, (unit, formula) in hand_checks.items():
@@ -367,7 +371,7 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
                                 derivation, count=1, flags=re.S)
     # The story and the result go after the title of derivation.md.
     title, _, rest = derivation.partition("\n")
-    return '<div data-report-controls="sections,layout,identity"></div>\n' + title + "\n" + "\n".join(body) + "\n" + rest
+    return title + "\n" + "\n".join(body) + "\n" + rest
 
 
 def deflate(data):

@@ -224,8 +224,6 @@ A report has no fixed form. It shows the conclusion of its results so that the p
   Reason: the flap report required repeated scroll actions and hid its run identity.
 - Mesh trend: use `<div data-mesh-trend>` with one `section` per metric and analysis condition. Give each section an `h3`, a curve mark, and a compact table of cells, result, and change. The shared menu selects one section. Derive the curve and table from the same rows. Name the iteration count. Keep check runs separate. Put the full evidence table in `details` with a `summary`. Do not claim convergence from 2 points.
   Reason: the flap mesh table exceeded its text panel by 155 pixels.
-- Validation hand checks: in a case story, `<!--hand-check CHECK UNIT-->...<!--/hand-check-->` puts its formula and scope beside the generated result. Use a check name from `check.toml` and a unit from the case. The generator derives both values and their difference from the validation result. It labels other units "Not specified".
-  Reason: the Hertz result had no pressure unit, and a zero reference cannot define a relative difference.
 - Marks: `data-marks` puts a dot with a text on the model, at a point that the conclusion names, for example the front of a flow or the point of the highest stress.
 - `fh report` stops with an error when a `data-run` names no `--run`, a name of `data-fields` is no field of the run, a step number (`data-step`, the step of a mark, the `min`, `max` or `value` of a slider) is no step of the run, or a slider has no `min` or no `max`.
 
