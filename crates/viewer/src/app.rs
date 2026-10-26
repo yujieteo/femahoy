@@ -109,6 +109,8 @@ pub struct ViewerApp {
     camera_link: Option<CameraLink>,
     /// The scale of the panel text at the last style. A new Dynamic Type size changes it.
     text_scale: f32,
+    /// The height that the results panel below the model needed at the last frame.
+    results_height: Option<f32>,
 }
 
 impl ViewerApp {
@@ -116,6 +118,7 @@ impl ViewerApp {
         Self {
             canvas_id,
             text_scale: 0.0,
+            results_height: None,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
@@ -1119,19 +1122,33 @@ impl eframe::App for ViewerApp {
             // the right when the model area then stays at least as wide as it is high.
             const RIGHT: f32 = 260.0;
             let size = ui.available_size();
-            let panel = if size.x < 600.0 && size.x - RIGHT < size.y {
-                egui::Panel::bottom("results").exact_size(size.y * 0.4)
+            // Below the model, the panel is only as high as its content, so that a view
+            // with few controls (a report) gives the rest of the height to the model.
+            let below = size.x < 600.0 && size.x - RIGHT < size.y;
+            let panel = if below {
+                let most = size.y * 0.4;
+                egui::Panel::bottom("results")
+                    .exact_size(self.results_height.map_or(most, |needed| needed.min(most)))
             } else {
                 egui::Panel::right("results").min_size(RIGHT)
             };
-            panel.resizable(false).show(ui, |ui| {
+            let response = panel.resizable(false).show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let all = (!self.page_switch).then_some(&mut self.all);
                     if shown.panel(ui, &mut self.labels, all) {
                         shown.refresh();
                     }
-                });
+                })
             });
+            if below {
+                let scroll = &response.inner;
+                let needed = response.response.rect.height() - scroll.inner_rect.height()
+                    + scroll.content_size.y;
+                if self.results_height != Some(needed) {
+                    self.results_height = Some(needed);
+                    ui.ctx().request_repaint();
+                }
+            }
         }
         self.upload();
         if let Some(shown) = &self.shown {
