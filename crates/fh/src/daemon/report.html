@@ -244,6 +244,7 @@ async function start() {
     $("model").remove();
     return;
   }
+  $("all").addEventListener("change", (e) => cfd.all(e.target.checked));
   try {
     const js = await (await fetch("/viewer/fh_viewer.js")).text();
     const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
@@ -282,7 +283,6 @@ async function start() {
     $("all").addEventListener("change", (e) => {
       runs.hidden = !e.target.checked;
       view.all(e.target.checked);
-      cfd.all(e.target.checked);
     });
     for (const area of [bar, text]) {
       area.addEventListener("click", (e) => {

@@ -1,6 +1,6 @@
 // Optional CFD report controls. The author supplies each control in the shared UI layer.
 // Data comes from --cfd, never from an inferred or fabricated force history.
-async function cfdControls(text, bar, open) {
+async function cfdControls(text, bar, open = () => false) {
   const root = text.querySelector('[data-cfd]');
   if (!root) return {view: e => e.dataset, select: () => {}, all: () => {}};
   const inflate = async encoded => new Response(new Blob([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
@@ -163,7 +163,15 @@ async function cfdControls(text, bar, open) {
   all('[data-cfd-field], [data-cfd-mesh], [data-cfd-station]').forEach(e => e.addEventListener('change', refresh));
   all('[data-cfd-station], [data-cfd-interval]').forEach(e => e.addEventListener('input', update));
   all('[data-cfd-streamlines], [data-cfd-seed]').forEach(e => e.addEventListener('change', drawFlow));
-  update();
+  const select = e => {
+    const o = [...(canonical()?.options ?? [])].find(o => o.dataset.run === e.dataset.run);
+    if (o) angle = o.dataset.angle;
+    const controls = e.dataset.controls ?? o?.dataset.controls;
+    named = controls === undefined ? null : controls.split(',').map(n => n.trim()).filter(Boolean);
+    update();
+  };
+  all('[data-cfd-flap]').forEach(s => s.addEventListener('change', () => { if (s.selectedOptions[0]) select(s.selectedOptions[0]); }));
+  if (option()) select(option()); else update();
   return {
     view(e) {
       const base = [...(canonical()?.options ?? [])].find(o => o.dataset.run === e.dataset.run);
@@ -193,12 +201,6 @@ async function cfdControls(text, bar, open) {
       return settings;
     },
     all(value) { showAll = value; visibility(); },
-    select(e) {
-      const o = [...(canonical()?.options ?? [])].find(o => o.dataset.run === e.dataset.run);
-      if (o) angle = o.dataset.angle;
-      const controls = e.dataset.controls ?? o?.dataset.controls;
-      named = controls === undefined ? null : controls.split(',').map(n => n.trim()).filter(Boolean);
-      update();
-    }
+    select
   };
 }
