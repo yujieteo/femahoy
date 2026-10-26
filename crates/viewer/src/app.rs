@@ -892,7 +892,10 @@ fn probe_controls(
         if widgets::button(ui, "Max", "locate the actual maximum item").clicked() {
             chosen = Some(true);
         }
-        if widgets::button(ui, "Clear", "clear probe (Escape)").clicked() {
+        let clear = ui.add_enabled_ui(v.probe.is_some(), |ui| {
+            widgets::button(ui, "Clear", "clear probe (Escape)")
+        });
+        if clear.inner.clicked() {
             chosen = None;
             v.probe = None;
         }
