@@ -31,13 +31,13 @@ article button, article select, .toolbar button, .toolbar select { font-size: va
 body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
 body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
 body.text-mode #model { display: none; }
-#identity { overflow-wrap: anywhere; }
+#identity { overflow-wrap: anywhere; font-size: var(--small); }
 [data-mesh-trend] > section > h3 { margin-top: var(--space-4); }
 summary { min-height: var(--target); cursor: pointer; padding-block: var(--space-2); }
 @media (max-width: 800px) {
   body { flex-direction: column; }
   #report { width: 100%; flex: 1; min-height: 0; }
-  #model { flex: none !important; height: 60%; }
+  #model { flex: none !important; height: 55%; }
 }
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
@@ -57,6 +57,8 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
 output { margin-left: var(--space-2); }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #bar { display: contents; }
+/* With no bar controls and no list of the runs, the header of the model is empty: the model takes its height. */
+#model > header:has(> #bar:empty):has(> #runs[hidden]) { display: none; }
 #all { color: var(--muted); font-size: var(--small); }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
@@ -72,12 +74,13 @@ output { margin-left: var(--space-2); }
 <label><input type="radio" name="layout" value="split" checked aria-keyshortcuts="Alt+V">Split</label>
 </span>
 <span id="identity" class="readout" aria-live="polite" hidden></span>
+<label id="all" class="trail"><input type="checkbox"> Show all controls</label>
 <p id="report-keys" class="keys"></p>
 </header>
 <article><!--TEXT--></article>
 </section>
 <main id="model">
-  <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><!--OPTIONS--></select><label id="all" class="trail"><input type="checkbox"> Show all controls</label></header>
+  <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><!--OPTIONS--></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 <!--VIEWER-->
@@ -152,7 +155,8 @@ const identity = () => {
   $("identity").textContent = "Run: " + (runs.selectedOptions[0]?.textContent ?? "");
 };
 identity();
-$("report-tools").hidden = !hints.length && $("identity").hidden;
+// The switch "Show all controls" of a report with runs keeps the header in view.
+$("report-tools").hidden = !hints.length && $("identity").hidden && !hasRuns;
 document.addEventListener("keydown", (e) => {
   if (!e.altKey || e.ctrlKey || e.metaKey || e.target.tagName === "TEXTAREA" || e.target.isContentEditable
     || (e.target.tagName === "INPUT" && !/^(radio|checkbox|range)$/.test(e.target.type))) return;
