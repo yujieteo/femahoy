@@ -60,7 +60,8 @@ pub fn style(ctx: &egui::Context, scale: f32) {
             s.animation_time = 0.0;
             s.spacing.item_spacing = egui::vec2(ui::SPACE[1], ui::SPACE[1]);
             s.spacing.button_padding = egui::vec2(ui::SPACE[2], ui::SPACE[0]);
-            s.spacing.interact_size.y = ui::TARGET;
+            // A number field (DragValue) has the width of interact_size.x, 40 by default.
+            s.spacing.interact_size = egui::vec2(ui::TARGET, ui::TARGET);
             let v = &mut s.visuals;
             v.panel_fill = hex(c.bg);
             v.window_fill = hex(c.bg);
