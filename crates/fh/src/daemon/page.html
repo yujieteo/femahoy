@@ -105,7 +105,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #pair-b { border-left: 1px solid var(--line); }
 #comparison-note, #label-a, #label-b { margin: 0; padding: var(--space-1) var(--space-4); overflow-wrap: anywhere; }
 @media (max-width: 900px) { #chat { width: 320px; } #pair { flex-direction: column; } }
-@media (max-width: 700px) {
+/* A phone, also in landscape: the chat is above the model, and the page scrolls. */
+@media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
   body { flex-direction: column; overflow: auto; height: auto; min-height: 100%; }
   /* A chat with messages fills the screen, as in iOS Messages. The model is 1 screen below it,
      and a tap on Open or "Show the results of" scrolls to it. */
@@ -133,6 +134,15 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   #runs { flex: 1 1 0; }
   #selected-run { display: flex; min-width: 0; white-space: nowrap; }
   #selected-run > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+}
+/* A touch screen phone: the results panel of the viewer is in the page flow (--fh-flow), below
+   the model. The viewer gives the panel height in --fh-panel, so the canvas is that much
+   taller, and a swipe outside the model scrolls the page to each control. The model and its
+   header use 75% of the screen, so the top of the panel shows below the model: there a swipe
+   scrolls the page, and the person sees the contour while the model is in view. */
+@media (pointer: coarse) and (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
+  :root { --fh-flow: 1; }
+  #model:not([data-empty]), body:has(#empty) #model:not([data-empty]) { flex: none; height: calc(75svh + var(--fh-panel, 0px)); }
 }
 
 #view { position: relative; flex: 1; min-height: 0; }

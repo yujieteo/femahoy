@@ -14,6 +14,16 @@ use crate::view;
 /// font of the page.
 const DM_SANS: &[u8] = include_bytes!("../fonts/DMSans.ttf");
 
+/// The id of a flag in the egui memory: the results panel is in the page flow (a phone).
+pub const IN_FLOW: &str = "results in the page flow";
+
+/// A short panel: the panel below the model on a phone. In the page flow it is as high as its
+/// content, but the screen still shows only its top below the model.
+pub fn short(ui: &egui::Ui) -> bool {
+    let in_flow = ui.data(|d| d.get_temp::<bool>(egui::Id::new(IN_FLOW)));
+    in_flow.unwrap_or(false) || ui.clip_rect().height() < 400.0
+}
+
 pub fn hex(c: u32) -> egui::Color32 {
     egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
@@ -266,7 +276,7 @@ pub fn legend(
     // row: the smallest value, the bands (the lowest at the left), the largest value. The bands
     // are equal, so the two ends give their limits. The bar goes above its caption, so that it
     // stays in view when the caption wraps at a large text size.
-    let short = ui.clip_rect().height() < 400.0;
+    let short = short(ui);
     if !short {
         caption(ui);
     }

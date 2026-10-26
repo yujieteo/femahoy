@@ -19,16 +19,22 @@ pub struct Camera {
     pub pitch: f32,
     /// Radius of the model, used for the clip planes.
     pub radius: f32,
+    /// Half of the size of the model box on each axis, used for the fit.
+    pub half: [f32; 3],
 }
 
 impl Camera {
     /// The Isometric view of the whole bounding box, or with `top` the +Z view with x to the
     /// right. A named direction, so that the camera menu names the first view.
     pub fn fit(bounds: Option<Bounds>, top: bool) -> Self {
-        let (target, radius) = match bounds {
-            Some(b) if b.radius() > 0.0 => (b.center(), b.radius()),
-            Some(b) => (b.center(), 1.0),
-            None => ([0.0; 3], 1.0),
+        let (target, radius, half) = match bounds {
+            Some(b) if b.radius() > 0.0 => (
+                b.center(),
+                b.radius(),
+                std::array::from_fn(|k| 0.5 * (b.max[k] - b.min[k])),
+            ),
+            Some(b) => (b.center(), 1.0, [0.0; 3]),
+            None => ([0.0; 3], 1.0, [0.0; 3]),
         };
         let mut camera = Camera {
             target,
@@ -36,6 +42,7 @@ impl Camera {
             yaw: 0.0,
             pitch: 0.0,
             radius,
+            half,
         };
         camera.direction(if top { "+Z" } else { "Isometric" });
         camera
@@ -46,12 +53,33 @@ impl Camera {
         let base = Self::fit(bounds, false);
         self.target = base.target;
         self.radius = base.radius;
+        self.half = base.half;
         self.fit_distance(aspect);
     }
 
+    /// The nearest distance at which each corner of the model box is in view, plus a margin.
+    /// A box, not a sphere: a long, thin model then fills a narrow model area (a phone).
     pub fn fit_distance(&mut self, aspect: f32) {
-        let half = (FOV_Y * 0.5).min(((FOV_Y * 0.5).tan() * aspect.max(1e-3)).atan());
-        self.distance = self.radius / half.sin() * 1.1;
+        let tan_y = (FOV_Y * 0.5).tan();
+        let tan_x = tan_y * aspect.max(1e-3);
+        let (right, up) = self.right_up();
+        let back = self.eye_dir();
+        let mut distance = 0.0_f32;
+        for corner in 0..8 {
+            let d: [f32; 3] = std::array::from_fn(|k| {
+                if corner & (1 << k) == 0 {
+                    -self.half[k]
+                } else {
+                    self.half[k]
+                }
+            });
+            let depth = dot(d, back);
+            distance = distance
+                .max(depth + dot(d, right).abs() / tan_x)
+                .max(depth + dot(d, up).abs() / tan_y);
+        }
+        // Never inside the bounding sphere, so that the clip planes keep the full model.
+        self.distance = (distance * 1.1).max(self.radius * 1.1);
     }
 
     /// Select an exact axis direction, or the report isometric direction.
@@ -272,6 +300,25 @@ mod tests {
                 }
             }
         }
+    }
+
+    // The phone of the owner showed a long beam very small in a narrow model area.
+    #[test]
+    fn a_long_thin_model_fills_a_narrow_model_area() {
+        let bounds = Bounds {
+            min: [0.0, -5.0, -1.0],
+            max: [100.0, 5.0, 1.0],
+        };
+        let aspect = 0.5;
+        let mut camera = Camera::fit(Some(bounds), false);
+        camera.fit_bounds(Some(bounds), aspect);
+        let matrix = camera.view_proj(aspect);
+        let x = |p: [f32; 3]| {
+            let c = transform(&matrix, p);
+            c[0] / c[3]
+        };
+        let width = (x([100.0, 0.0, 0.0]) - x([0.0, 0.0, 0.0])).abs() / 2.0;
+        assert!(width > 0.7, "the beam uses {width} of the width");
     }
 
     #[test]
