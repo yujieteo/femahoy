@@ -60,7 +60,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 }
 #input::placeholder { color: var(--muted); }
 /* A touch screen has no key hint, so Send goes on the line of the text field, and the text
-   field is a full touch target. Stop or the "next step" note puts the row on a new line. */
+   field is a full touch target. Stop and Send are round icons, so they fit on the same line. */
 @media (hover: none) and (pointer: coarse) {
   #composer { display: flex; flex-wrap: wrap; align-items: flex-end; padding-top: 6px; }
   #input { flex: 1 1 60%; min-width: 0; min-height: var(--target); padding: 10px 0; }
@@ -136,8 +136,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <textarea id="input" rows="1" placeholder="A message for the agent" aria-label="A message for the agent"></textarea>
     <div class="row">
       <p class="keys" id="hint"><span><kbd>Ctrl</kbd> <kbd>Enter</kbd> sends</span></p>
-      <p class="keys" id="later" hidden>The agent reads your message at its next step</p>
-      <button type="button" class="primary" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop agent and commands" hidden>Stop agent and commands
+      <button type="button" class="icon" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop agent and commands" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
       </button>
       <button type="submit" class="icon primary" id="send" aria-label="Send" disabled>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -486,7 +486,7 @@ function setRunning(on, fields = {}) {
   stop.hidden = !on;
   send.disabled = !input.value.trim();
   $("hint").hidden = on;
-  $("later").hidden = !on;
+  input.placeholder = on ? "A message for the next step" : "A message for the agent";
   started = Number(fields.started_ms) || 0;
   tick();
 }
