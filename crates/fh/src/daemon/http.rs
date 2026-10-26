@@ -134,7 +134,7 @@ impl Server {
                 if active.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
                     active.fetch_sub(1, Ordering::SeqCst);
                     let busy = fail(503, "too many connections");
-                    let _ = respond(&mut stream, Err(busy));
+                    let _ = respond(&mut stream, Err(busy), false);
                     continue;
                 }
                 let (ctx, active) = (ctx.clone(), active.clone());
@@ -143,11 +143,15 @@ impl Server {
                     // timeout, or closes, gets no answer: the browser can send its next request
                     // on it and read a 400 that answers nothing.
                     if matches!(stream.peek(&mut [0]), Ok(1)) {
+                        let mut page = false;
                         let answer = read_request(&mut stream).and_then(|req| {
+                            page = req
+                                .header("accept")
+                                .is_some_and(|a| a.contains("text/html"));
                             authorize(&req, port, &ctx)?;
                             route(&ctx, &req)
                         });
-                        let _ = respond(&mut stream, answer);
+                        let _ = respond(&mut stream, answer, page);
                     }
                     active.fetch_sub(1, Ordering::SeqCst);
                 });
@@ -312,7 +316,10 @@ fn authorize(req: &Request, port: u16, ctx: &Ctx) -> Result<(), Failure> {
                 tickets.remove(ticket);
                 return Ok(());
             }
-            return Err(fail(401, "the report ticket is not valid"));
+            return Err(fail(
+                401,
+                "This report link opens 1 time only. Open the report again from the fh serve page.",
+            ));
         }
     }
     let given = match req.header("authorization") {
@@ -431,7 +438,9 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
     Ok(Reply::Message(m))
 }
 
-fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>) -> io::Result<()> {
+/// Answer a request. When `page` is true (a browser navigation, for example the reload of a
+/// report tab on a phone), a failure is a readable page at the phone width, not a message.
+fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>, page: bool) -> io::Result<()> {
     let text = "text/plain; charset=utf-8";
     let api_policy = "default-src 'none'; frame-ancestors 'none'".to_owned();
     let (status, kind, body, policy) = match answer {
@@ -447,6 +456,23 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>) -> io::Result
         Ok(Reply::Report(bytes)) => (200, "text/html; charset=utf-8", bytes,
             "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' blob: data: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; font-src data:; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'".to_owned()),
         Ok(Reply::Bytes(kind, bytes)) => (200, kind, bytes, api_policy),
+        Err((status, message)) if page => (
+            status,
+            "text/html; charset=utf-8",
+            format!(
+                "<!doctype html>\n<html lang=\"en\">\n<meta charset=\"utf-8\">\n\
+                 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
+                 <meta name=\"color-scheme\" content=\"dark light\">\n<title>femahoy</title>\n\
+                 <style>{}\nmain {{ max-width: 40rem; padding: var(--space-4); }}</style>\n\
+                 <main><h1>femahoy</h1><p>{}</p></main>\n",
+                super::report::ui_style(),
+                crate::curve::escape(&message)
+            )
+            .into_bytes(),
+            "default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:; \
+             frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                .to_owned(),
+        ),
         Err((status, message)) => {
             let mut m = Message::new();
             m.set("message", message);
