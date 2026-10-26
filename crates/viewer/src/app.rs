@@ -440,7 +440,7 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
 }
 
 /// The text `text` on a box of the colour `color`, up and to the right of the point `at`, in
-/// the view `rect`.
+/// the view `rect`, with a line width of at most half the view.
 fn tag(
     painter: &egui::Painter,
     rect: egui::Rect,
@@ -455,7 +455,9 @@ fn tag(
         egui::Color32::WHITE
     };
     let font = egui::FontId::proportional(14.0);
-    let galley = painter.layout_no_wrap(text.to_owned(), font, ink);
+    // Wrap long text at half the view width, so that on a phone a tag does not cover the model.
+    let wrap = (0.5 * rect.width()).max(180.0);
+    let galley = painter.layout(text.to_owned(), font, ink, wrap);
     let place = egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
     // Keep the text in the view.
     let inner = rect.shrink(4.0);
