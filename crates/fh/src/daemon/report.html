@@ -114,6 +114,13 @@ if (controls.has("sections")) {
       heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     });
+    // The menu shows the section at the top of the text, so a choice of any other section jumps.
+    const current = () => {
+      const top = text.getBoundingClientRect().top + 1;
+      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= top);
+    };
+    text.addEventListener("scroll", current, { passive: true });
+    current();
     hints.push("<kbd>Alt S</kbd> Section");
   }
 }

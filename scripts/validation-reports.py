@@ -12,7 +12,9 @@ cases. For each case:
    is one, writes curve files from the outputs of the runs:
    `python3 curves.py OUT INPUT=FOLDER...`, with the output folder of the run of each input.
    Each curve file (a CSV file with a `# y:` line) in the case folder, in the output of a run
-   or in OUT is a plot of the report.
+   or in OUT is a plot of the report. mesh_trend.py in the case folder, if there is one, gives
+   the mesh trend (`mesh_report()`): its panels go before the mesh table of derivation.md, and
+   its plots need no run, so a case that is not run also has them.
 3. `fh report --viewer viewer.js` writes validation/reports/CASE.html: the story of the case,
    then a table of the checks, then derivation.md. The story is story.html in the case folder:
    the conclusion of the case, with the controls that open the runs and the marks of the plots
@@ -282,14 +284,33 @@ def solve(case, tmp, env):
         if r.returncode != 0:
             raise RuntimeError(f"curves.py: {r.stderr.strip()}")
         curves += curve_files(out.glob("*.csv"))
-    return runs, curves, nofield
+    return runs, curves + mesh_curves(case, tmp), nofield
+
+
+def mesh_report(case):
+    """The mesh trend of mesh_trend.py in the case folder: the HTML panels and the curve files
+    by name. It needs no run. ("", {}) if the case has no mesh_trend.py."""
+    script = CASES / case / "mesh_trend.py"
+    return runpy.run_path(str(script))["mesh_report"]() if script.is_file() else ("", {})
+
+
+def mesh_curves(case, tmp):
+    """The curve files of the mesh trend of the case, in tmp."""
+    out = tmp / f"mesh-{case}"
+    out.mkdir(exist_ok=True)
+    for name, csv in mesh_report(case)[1].items():
+        (out / name).write_text(csv)
+    return sorted(out.glob("*.csv"))
 
 
 def story(case, runs):
-    """story.html of the case with the name of the run of each input, or None."""
+    """story.html of the case with the name of the run of each input, or None. With runs None
+    (the case is not run), the story has no `data-run`."""
     path = CASES / case / "story.html"
     if not path.is_file():
         return None
+    if runs is None:
+        return re.sub(r' data-run="[^"]*"', "", path.read_text())
     names = {name: run for run, name in runs}
 
     def run(m):
@@ -360,15 +381,12 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
         # result first.
         body = [told, *body] if result == "pass" else [*body, told]
     derivation = markdown((CASES / case / "derivation.md").read_text())
-    # A case can use its existing curve script for a mesh summary from its source table.
-    curves = CASES / case / "curves.py"
-    if curves.is_file():
-        mesh_report = runpy.run_path(str(curves)).get("mesh_report")
-        if mesh_report:
-            summary, _ = mesh_report()
-            derivation = re.sub(r'(<h2>Mesh study</h2>.*?)(<table>.*?</table>)',
-                                lambda m: m[1] + summary + '<details><summary>Full mesh table</summary>' + m[2] + '</details>',
-                                derivation, count=1, flags=re.S)
+    # The mesh trend of a case goes before the full mesh table of derivation.md.
+    summary, _ = mesh_report(case)
+    if summary:
+        derivation = re.sub(r'(<h2>Mesh study</h2>.*?)(<table>.*?</table>)',
+                            lambda m: m[1] + summary + '<details><summary>Full mesh table</summary>' + m[2] + '</details>',
+                            derivation, count=1, flags=re.S)
     # The story and the result go after the title of derivation.md.
     title, _, rest = derivation.partition("\n")
     return title + "\n" + "\n".join(body) + "\n" + rest
@@ -457,8 +475,8 @@ def main(args):
             status, rows = validate(case, tmp, env)
             page = tmp / f"{case}.text.html"
             if missing := not_installed(status):
-                page.write_text(text(case, missing, [], [], [], version))
-                r = fh("report", page, "-o", report, env=env)
+                page.write_text(text(case, missing, [], None, [], version))
+                r = fh("report", page, "-o", report, *[a for c in mesh_curves(case, tmp) for a in ("--curve", c)], env=env)
                 print(f"{case}: {missing}", flush=True)
                 if r.returncode != 0:
                     report.unlink(missing_ok=True)

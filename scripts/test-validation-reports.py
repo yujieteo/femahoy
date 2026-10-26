@@ -18,9 +18,7 @@ class ReportResults(unittest.TestCase):
         self.assertEqual(page.count('E* = 210000'), 1)
 
     def test_mesh_plot_and_table_share_only_3000_iteration_rows(self):
-        import runpy
-        mesh = runpy.run_path(str(ROOT / 'validation/cases/naca23012-flap/curves.py'))
-        page, curves = mesh['mesh_report']()
+        page, curves = reports.mesh_report('naca23012-flap')
         self.assertEqual(len(curves), 6)
         for csv in curves.values():
             rows = csv.splitlines()[-3:]
@@ -28,6 +26,14 @@ class ReportResults(unittest.TestCase):
         self.assertIn('0.12846', page)
         self.assertNotIn('0.12888', page)
         self.assertIn('No extrapolation', page)
+
+    def test_not_run_mesh_trend_has_a_file_for_each_curve_mark(self):
+        import re, tempfile
+        page = reports.text('naca23012-flap', 'not run: OpenFOAM is not installed', [], None, [], 'test')
+        with tempfile.TemporaryDirectory() as tmp:
+            files = reports.mesh_curves('naca23012-flap', Path(tmp))
+            self.assertEqual(sorted(re.findall(r'<!--curve (mesh-\S+)-->', page)), [f.name for f in files])
+            self.assertEqual(len(reports.curve_files(files)), 6)
 
     def test_zero_reference_has_absolute_difference(self):
         self.assertEqual(reports.difference(2, 0, 'mm'), '+2 mm (absolute)')
