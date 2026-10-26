@@ -420,7 +420,7 @@ impl Shown {
                     painter,
                     rect,
                     egui::Rect::from_pos(at),
-                    &format!("{}: {}", probe.label, probe.value),
+                    &format!("{}: {}", probe.label, view::format_value(probe.value)),
                     hex(MARK),
                     placed,
                 );
