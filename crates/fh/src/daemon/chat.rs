@@ -401,7 +401,11 @@ impl Chat {
             std::thread::sleep(std::time::Duration::from_millis(50));
         };
         if log.running() {
-            let why = format!("the agent ended before the end of its work (exit code {code:?})");
+            let code = match code {
+                Some(code) => format!("exit code {code}"),
+                None => "no exit code".to_string(),
+            };
+            let why = format!("the agent ended before the end of its work ({code})");
             self.push(&mut log, "error", &why);
         }
         log.rest();
