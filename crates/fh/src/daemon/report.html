@@ -17,6 +17,8 @@ body { display: flex; overflow: hidden; font-size: var(--read); }
 article { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
 article h1 { margin: 0.5rem 0 1rem; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.015em; text-wrap: balance; }
 article h2 { margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1.75rem; }
+/* A rule above the first heading of the text separates nothing. */
+article > h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 article h3 { margin: 2rem 0 0.75rem; font-size: 1.25rem; }
 article p, article li { text-wrap: pretty; }
 article table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
@@ -123,7 +125,8 @@ if (controls.has("sections")) {
       const box = text.getBoundingClientRect();
       const chosen = headings[$("sections").selectedIndex]?.getBoundingClientRect().top;
       if (text.scrollTop + text.clientHeight >= text.scrollHeight - 1 && chosen >= box.top && chosen < box.bottom) return;
-      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1);
+      // Above the first heading (the top padding of the text, or an introduction), the menu shows the first section.
+      $("sections").selectedIndex = Math.max(0, headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1));
     };
     text.addEventListener("scroll", current, { passive: true });
     current();
