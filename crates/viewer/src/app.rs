@@ -620,14 +620,15 @@ fn results_panel(
     drawn: Option<&[[f32; 3]]>,
 ) -> bool {
     let before = v.clone();
-    ui.horizontal(|ui| {
+    // One wrapped row, so that a wide short panel (a phone) keeps its height for the legend.
+    ui.horizontal_wrapped(|ui| {
         ui.heading("Results");
         ui.label(format!("Units: {}", r.units));
+        if let Some(all) = all {
+            ui.checkbox(all, "Show all controls")
+                .on_hover_text("also the fields that are not important for this run");
+        }
     });
-    if let Some(all) = all {
-        ui.checkbox(all, "Show all controls")
-            .on_hover_text("also the fields that are not important for this run");
-    }
     ui.separator();
 
     let n = r.steps.len();
