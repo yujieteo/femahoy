@@ -124,9 +124,11 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   #model[data-empty]:has(#runs[open]) #pair { display: none; }
   #model[data-empty] #run-list { max-height: none; }
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
-  /* Runs, Files and Open report stay on 1 row: the run name gets shorter, from its start. */
+  /* Runs, Files and Open report stay on 1 row: the file name gets shorter, from its end, so its
+     start and the full run ID stay readable. */
   #runs { flex: 1 1 0; }
-  #selected-run { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+  #selected-run { display: flex; min-width: 0; white-space: nowrap; }
+  #selected-run > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
 #view { position: relative; flex: 1; min-height: 0; }
@@ -284,7 +286,7 @@ function openRunAndShow(run) {
 }
 
 function select() {
-  $("selected-run").textContent = shown ? runLabel(shown) : "";
+  $("selected-run").replaceChildren(...(shown ? [el("span", "", names[shown] ? names[shown] + " ·\u00A0" : ""), shown] : []));
   renderRuns();
 }
 
