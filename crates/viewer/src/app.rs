@@ -17,9 +17,9 @@ use eframe::egui_wgpu;
 use crate::camera::{self, Camera};
 use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
-use crate::preview::{COLORS, Kind, Preview};
-use crate::results::{self, BANDS, Results};
-use crate::view::{self, Contour, Control, Geometry, Mark, Panel, View, ViewState, face_vertices};
+use crate::preview::{Kind, Preview, COLORS};
+use crate::results::{self, Results, BANDS};
+use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
 use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
@@ -368,10 +368,18 @@ impl Shown {
 
     /// The supports and loads on top of the model, with the positions of the drawn mesh. The
     /// results show them only with the supports and loads controls.
-    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+    fn overlay(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        m: &camera::Mat4,
+        placed: &mut Vec<egui::Rect>,
+    ) {
         let eye = self.camera.eye();
         match &self.body {
-            Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
+            Body::Preview(p) => {
+                loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false, placed)
+            }
             Body::Results(r, v, loads, ..) => {
                 if !self.shows(Control::Loads) {
                     return;
@@ -381,13 +389,19 @@ impl Shown {
                     (Some(g), true) => &g.positions,
                     _ => &p.mesh.positions,
                 };
-                loads_overlay(painter, rect, m, eye, p, positions, true);
+                loads_overlay(painter, rect, m, eye, p, positions, true, placed);
             }
         }
     }
 
     /// The marks of the view at the shown step.
-    fn marks(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+    fn marks(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        m: &camera::Mat4,
+        placed: &mut Vec<egui::Rect>,
+    ) {
         let Body::Results(_, v, _, _, view) = &self.body else {
             return;
         };
@@ -406,6 +420,7 @@ impl Shown {
                     at,
                     &format!("{}: {}", probe.label, probe.value),
                     hex(MARK),
+                    placed,
                 );
             }
         }
@@ -419,7 +434,7 @@ impl Shown {
                 hex(MARK),
                 egui::Stroke::new(2.0, egui::Color32::BLACK),
             );
-            tag(painter, rect, at, &mark.text, hex(MARK));
+            tag(painter, rect, at, &mark.text, hex(MARK), placed);
         }
     }
 }
@@ -440,13 +455,15 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
 }
 
 /// The text `text` on a box of the colour `color`, up and to the right of the point `at`, in
-/// the view `rect`, with a line width of at most half the view.
+/// the view `rect`, with a line width of at most half the view. The tag does not cover the
+/// earlier tags in `placed`, if the view has space for it, and is added to `placed`.
 fn tag(
     painter: &egui::Painter,
     rect: egui::Rect,
     at: egui::Pos2,
     text: &str,
     color: egui::Color32,
+    placed: &mut Vec<egui::Rect>,
 ) {
     let [r, g, b] = [color.r(), color.g(), color.b()].map(|x| f32::from(x) / 255.0);
     let ink = if 0.3 * r + 0.6 * g + 0.1 * b > 0.5 {
@@ -458,16 +475,38 @@ fn tag(
     // Wrap long text at half the view width, so that on a phone a tag does not cover the model.
     let wrap = (0.5 * rect.width()).max(180.0);
     let galley = painter.layout(text.to_owned(), font, ink, wrap);
-    let place = egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
     // Keep the text in the view.
     let inner = rect.shrink(4.0);
-    let dx = (inner.right() - place.right())
-        .min(0.0)
-        .max(inner.left() - place.left());
-    let dy = (inner.bottom() - place.bottom())
-        .min(0.0)
-        .max(inner.top() - place.top());
-    let place = place.translate(egui::vec2(dx, dy));
+    let fit = |place: egui::Rect| {
+        let dx = (inner.right() - place.right())
+            .min(0.0)
+            .max(inner.left() - place.left());
+        let dy = (inner.bottom() - place.bottom())
+            .min(0.0)
+            .max(inner.top() - place.top());
+        place.translate(egui::vec2(dx, dy))
+    };
+    let first =
+        fit(egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size()));
+    let mut place = first;
+    // Move the tag below each earlier tag that it covers.
+    for _ in 0..placed.len() {
+        let Some(other) = placed
+            .iter()
+            .find(|o| o.expand(1.0).intersects(place.expand(3.0)))
+        else {
+            break;
+        };
+        place = fit(place.translate(egui::vec2(0.0, other.bottom() + 5.0 - place.top())));
+    }
+    placed.push(place.expand(3.0));
+    if place != first {
+        // A line from the point to the moved tag.
+        painter.line_segment(
+            [at, place.expand(3.0).clamp(at)],
+            egui::Stroke::new(1.5, color),
+        );
+    }
     painter.rect_filled(place.expand(3.0), 3.0, color);
     painter.galley(place.min, galley, ink);
 }
@@ -571,6 +610,7 @@ fn loads_overlay(
     p: &Preview,
     positions: &[[f32; 3]],
     outline: bool,
+    placed: &mut Vec<egui::Rect>,
 ) {
     let screen = |x: [f32; 3]| screen(m, rect, x);
     for item in p.items.iter().filter(|_| outline) {
@@ -606,7 +646,14 @@ fn loads_overlay(
             }
         }
         let Some(at) = at else { continue };
-        tag(painter, rect, at, &item.label, rgb(COLORS[item.color]));
+        tag(
+            painter,
+            rect,
+            at,
+            &item.label,
+            rgb(COLORS[item.color]),
+            placed,
+        );
     }
 }
 
@@ -1154,10 +1201,11 @@ impl eframe::App for ViewerApp {
                 },
             ));
             let painter = ui.painter_at(rect);
+            let mut placed = Vec::new();
             if self.labels && !self.mesh_only {
-                shown.overlay(&painter, rect, &view_proj);
+                shown.overlay(&painter, rect, &view_proj, &mut placed);
             }
-            shown.marks(&painter, rect, &view_proj);
+            shown.marks(&painter, rect, &view_proj, &mut placed);
         });
     }
 }
