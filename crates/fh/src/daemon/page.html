@@ -358,13 +358,14 @@ async function loadFiles(run) {
     const {items} = await reply("/api/v1/runs/" + run + "/artifacts");
     if (version !== fileVersion) return;
     $("files").hidden = false;
+    // A tap on a file closes the list, as a tap on Open closes Runs, so the model gets its full height again.
     const list = $("file-list");
     list.replaceChildren();
     for (const item of items.filter(p => p !== "report").sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))) {
       const [path, name] = split(item);
       const b = el("button", "", path.startsWith("inputs/") ? "Input · " + name : path.slice(6));
       b.type = "button";
-      b.onclick = () => openFile(run, path);
+      b.onclick = () => { $("files").open = false; openFile(run, path); };
       list.append(b);
     }
     $("report").hidden = !items.includes("report");
@@ -372,7 +373,7 @@ async function loadFiles(run) {
     if (!items.includes("report")) {
       const request = el("button", "", "Ask for a report");
       request.type = "button";
-      request.onclick = () => draft("Write a report of " + run + ".");
+      request.onclick = () => { $("files").open = false; draft("Write a report of " + run + "."); };
       list.append(request);
     }
   } catch (e) { showError(e.message); }
