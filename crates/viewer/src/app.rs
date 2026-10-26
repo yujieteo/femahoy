@@ -775,10 +775,24 @@ fn results_panel(
             }
         }
     };
+    let shows = |c: Control| panel.controls.contains(&c);
+    let probe = |ui: &mut egui::Ui, v: &mut ViewState| {
+        if shows(Control::Probe) {
+            let same =
+                v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
+            let scale_shown = shows(Control::Scale) || shows(Control::Deformation);
+            probe_controls(ui, r, v, drawn.filter(|_| same), scale_shown);
+        } else {
+            v.probe_mode = false;
+            v.probe = None;
+        }
+    };
+    // A short panel (a phone) shows the probe above the step and deformation controls, so
+    // that a tap on the model shows its value with no scroll.
     if short {
         contour(ui, v);
+        probe(ui, v);
     }
-    let shows = |c: Control| panel.controls.contains(&c);
     if shows(Control::Steps) {
         steps_controls(ui, r, v);
     }
@@ -819,14 +833,8 @@ fn results_panel(
             });
         }
     }
-    if shows(Control::Probe) {
-        let same =
-            v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
-        let scale_shown = shows(Control::Scale) || shows(Control::Deformation);
-        probe_controls(ui, r, v, drawn.filter(|_| same), scale_shown);
-    } else {
-        v.probe_mode = false;
-        v.probe = None;
+    if !short {
+        probe(ui, v);
     }
     if short {
         ui.separator();
