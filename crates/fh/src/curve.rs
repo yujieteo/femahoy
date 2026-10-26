@@ -5,6 +5,7 @@
 //! # title: Dam break, the surge front          the title of the plot. Default: the file name
 //! # y: Z = x / a [1]                           the y quantity and its unit in [ ]. Required
 //! # log: x                                     the log axes: x, y or x y. Default: none
+//! # gaps: break                                an empty cell breaks a line. Default: no break
 //! # points measured: Martin and Moyce (1952)   the series `measured` shows as points, from this source
 //! # note: The front is the largest x.          a line of text under the plot. 0 or more
 //! T = t sqrt(2 g / a) [1],model,measured       the x quantity and its unit, then the name of each series
@@ -12,7 +13,8 @@
 //! 1.19,,1.44
 //! ```
 //!
-//! A series that is not `points` shows as a line through its values in the order of the rows.
+//! A series that is not `points` shows as a line through its values in the order of the rows. With
+//! `gaps: break`, an empty cell of a line series breaks its line, for example at an absent sample.
 
 /// One series of a curve.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +33,8 @@ pub struct Curve {
     pub y: String,
     pub log_x: bool,
     pub log_y: bool,
+    /// An empty cell breaks the line of a series (`# gaps: break`).
+    pub gaps: bool,
     pub series: Vec<Series>,
     pub notes: Vec<String>,
     /// x, then the value of each series. `None` is an empty cell.
@@ -68,6 +72,7 @@ impl Curve {
             y: String::new(),
             log_x: false,
             log_y: false,
+            gaps: false,
             series: Vec::new(),
             notes: Vec::new(),
             rows: Vec::new(),
@@ -89,6 +94,8 @@ impl Curve {
                     "title" => curve.title = value,
                     "y" => curve.y = value,
                     "note" => curve.notes.push(value),
+                    "gaps" if value == "break" => curve.gaps = true,
+                    "gaps" => return Err(at(format!("`gaps` takes break, not {value}"))),
                     "log" => {
                         for axis in value.split_whitespace() {
                             match axis {
@@ -107,7 +114,7 @@ impl Curve {
                         Some(name) => return Err(at(format!("`points {name}` needs a source"))),
                         None => {
                             return Err(at(format!(
-                                "unknown key `{key}`: use title, y, log, points NAME or note"
+                                "unknown key `{key}`: use title, y, log, gaps, points NAME or note"
                             )));
                         }
                     },
@@ -207,6 +214,9 @@ impl Curve {
         if !log.is_empty() {
             out.push_str(&format!("# log: {}\n", log.join(" ")));
         }
+        if self.gaps {
+            out.push_str("# gaps: break\n");
+        }
         for s in &self.series {
             if let Some(source) = &s.source {
                 out.push_str(&format!("# points {}: {source}\n", s.name));
@@ -301,14 +311,12 @@ impl Curve {
         for (i, s) in self.series.iter().enumerate() {
             if s.source.is_none() {
                 let mut points = Vec::new();
-                for (x, values) in self
-                    .rows
-                    .iter()
-                    .chain(std::iter::once(&(0.0, vec![None; self.series.len()])))
-                {
+                for (k, (x, values)) in self.rows.iter().enumerate() {
                     if let Some(y) = values[i] {
                         points.push(format!("{:.1},{:.1}", px(*x), py(y)));
-                    } else if !points.is_empty() {
+                    }
+                    let end = k + 1 == self.rows.len() || (self.gaps && values[i].is_none());
+                    if end && !points.is_empty() {
                         svg.push_str(&format!(
                             "<polyline style=\"stroke:var(--s{})\" points=\"{}\"/>",
                             i + 1,
@@ -486,13 +494,15 @@ mod tests {
                          # note: a <b>\nT [1],model,measured\n0.5,1.0,\n1.0,1.5,\n1.19,,1.44\n";
 
     #[test]
-    fn an_absent_sample_leaves_a_gap_in_the_plot() {
-        let curve = Curve::parse(
-            "# y: residual [1]\niteration [1],p\n1,0.1\n2,0.05\n3,\n4,0.01\n5,0.001\n",
-            "residual",
-        )
-        .unwrap();
-        assert_eq!(curve.figure().matches("<polyline").count(), 2);
+    fn only_gaps_break_makes_an_empty_cell_break_a_line() {
+        let text = "# y: residual [1]\n# points p ref: a test\niteration [1],p,Ux,p ref\n\
+                    1,0.1,0.2,\n2,,0.1,\n3,,,0.04\n4,0.01,0.05,\n5,0.001,,\n";
+        let joined = Curve::parse(text, "residual").unwrap();
+        assert_eq!(joined.figure().matches("<polyline").count(), 2);
+        let gaps = Curve::parse(&text.replace("[1]\n", "[1]\n# gaps: break\n"), "r").unwrap();
+        assert!(gaps.gaps);
+        assert_eq!(gaps.figure().matches("<polyline").count(), 4);
+        assert_eq!(Curve::parse(&gaps.to_csv(), "r").unwrap(), gaps);
     }
 
     #[test]

@@ -183,7 +183,7 @@ def traces(polygons, velocity, seeds, limit=4000):
                 reason = "closed trace"
                 break
             visits.add((cell, next_cell))
-            # Test the next direction at the shared edge. An opposing direction stops the trace.
+            # An opposing velocity in the next cell gives no forward hit, so the trace stops at "cell boundary".
             cell = next_cell
         else:
             reason = "step limit"
@@ -191,12 +191,14 @@ def traces(polygons, velocity, seeds, limit=4000):
     return output
 
 
-def csv(out, name, title, y, labels, rows, log=False, points=(), note=""):
+def csv(out, name, title, y, labels, rows, log=False, gaps=False, points=(), note=""):
     if not rows:
         return
     text = f"# title: {title}\n# y: {y}\n"
     if log:
         text += "# log: y\n"
+    if gaps:
+        text += "# gaps: break\n"
     for label in points:
         text += f"# points {label}: Abbott and Greenberg (1939), NACA Report 661, Table I\n"
     if note:
@@ -248,7 +250,7 @@ def main(out, folders):
         equations = [eq for eq in ("p", "Ux", "Uy", "Uz", "nuTilda") if any(eq in row[1] for row in residuals)]
         csv(out, f"residuals-{name}", f"Initial residuals, {label}", "initial residual [1]", equations,
             [[t, *[values.get(eq) for eq in equations]] for t, values in residuals] if equations else [],
-            log=True, note=run["residualSource"])
+            log=True, gaps=True, note=run["residualSource"])
     data["ranges"] = {"p": [min(all_p), max(all_p)], "U magnitude": [min(all_speed), max(all_speed)]}
     (out / "cfd.json").write_text(json.dumps(data, allow_nan=False, separators=(",", ":")))
     csv(out, "cp", "Pressure on the upper and lower surfaces", "-Cp [1]",

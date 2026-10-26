@@ -160,9 +160,8 @@ async function cfdControls(text, bar, open) {
     drawFlow();
   };
   const refresh = () => { update(); if (option()) open(option()); };
-  all('[data-cfd-field], [data-cfd-mesh]').forEach(e => e.addEventListener('change', refresh));
-  all('[data-cfd-station]').forEach(e => e.addEventListener('input', refresh));
-  all('[data-cfd-interval]').forEach(e => e.addEventListener('input', update));
+  all('[data-cfd-field], [data-cfd-mesh], [data-cfd-station]').forEach(e => e.addEventListener('change', refresh));
+  all('[data-cfd-station], [data-cfd-interval]').forEach(e => e.addEventListener('input', update));
   all('[data-cfd-streamlines], [data-cfd-seed]').forEach(e => e.addEventListener('change', drawFlow));
   update();
   return {
