@@ -38,17 +38,21 @@ jobs:
       # preCICE, LAMMPS and openEMS steps get about 470 MB of Ubuntu packages, so the cache keeps
       # them. apt keeps each package that it downloads in /tmp/ubuntu-debs and downloads only the
       # packages that are not there. Only a run with all solvers saves the cache, so that the cache
-      # has the packages of all solvers. To refresh the packages, change the key.
+      # has the packages of all solvers. The key has the month, so the first run with all solvers in
+      # a month saves the new package versions. That run starts from the cache of an earlier month.
+      - name: Keep the Ubuntu packages
+        id: ubuntu-debs
+        run: |
+          mkdir -p /tmp/ubuntu-debs/partial
+          echo 'Dir::Cache::Archives "/tmp/ubuntu-debs";' | sudo tee /etc/apt/apt.conf.d/90fh-debs
+          echo "month=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
       - name: Restore the Ubuntu packages
         id: ubuntu-cache
         uses: actions/cache/restore@v6
         with:
           path: /tmp/ubuntu-debs/*.deb
-          key: ubuntu-noble-debs
-      - name: Keep the Ubuntu packages
-        run: |
-          mkdir -p /tmp/ubuntu-debs/partial
-          echo 'Dir::Cache::Archives "/tmp/ubuntu-debs";' | sudo tee /etc/apt/apt.conf.d/90fh-debs
+          key: ubuntu-noble-debs-${{ steps.ubuntu-debs.outputs.month }}
+          restore-keys: ubuntu-noble-debs-
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
       # The validation cases are tested with ccx 2.23 (scripts/install.sh). The Ubuntu package is older,
@@ -215,7 +219,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: /tmp/ubuntu-debs/*.deb
-          key: ubuntu-noble-debs
+          key: ubuntu-noble-debs-${{ steps.ubuntu-debs.outputs.month }}
       # Only the browser uses the window layer of the viewer, so the wasm build checks it.
       - name: Test
         run: |
