@@ -78,6 +78,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #model > .toolbar > details > summary { font-size: var(--body); color: var(--text); }
 /* An open list takes a full header row. Else the other summaries go to its side, at its vertical centre. */
 #model > .toolbar > details[open] { flex-basis: 100%; }
+/* The search field fills the rest of its row, as an iOS search field does. */
+[data-control="run-search"] { display: flex; align-items: center; gap: var(--space-2); }
+#run-search { flex: 1; min-width: 0; }
 #run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); }
 /* The file buttons wrap on a row, so a run with many steps shows more files in the 35vh list. */
 #file-list { display: flex; flex-wrap: wrap; align-content: flex-start; }
