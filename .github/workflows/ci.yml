@@ -34,6 +34,21 @@ jobs:
           else
             scripts/ci-select.sh --all
           fi | tee -a "$GITHUB_OUTPUT"
+      # The Ubuntu mirror of the runner is sometimes slow (about 60 kB/s), and the OpenFOAM,
+      # preCICE, LAMMPS and openEMS steps get about 470 MB of Ubuntu packages, so the cache keeps
+      # them. apt keeps each package that it downloads in /tmp/ubuntu-debs and downloads only the
+      # packages that are not there. Only a run with all solvers saves the cache, so that the cache
+      # has the packages of all solvers. To refresh the packages, change the key.
+      - name: Restore the Ubuntu packages
+        id: ubuntu-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: /tmp/ubuntu-debs/*.deb
+          key: ubuntu-noble-debs
+      - name: Keep the Ubuntu packages
+        run: |
+          mkdir -p /tmp/ubuntu-debs/partial
+          echo 'Dir::Cache::Archives "/tmp/ubuntu-debs";' | sudo tee /etc/apt/apt.conf.d/90fh-debs
       # fh starts CalculiX (ccx) as the solver (README.md). Only this job installs
       # ccx. FH_REQUIRE_CCX=1 makes each test that solves through the real ccx fail if ccx is absent.
       # The validation cases are tested with ccx 2.23 (scripts/install.sh). The Ubuntu package is older,
@@ -195,6 +210,12 @@ jobs:
           (cd openEMS-Project && ./update_openEMS.sh "$HOME/openEMS" --python --disable-GUI --with-tinyxml --skip-dep-check)
           echo "FH_OPENEMS=$HOME/openEMS/venv/bin/python" >> "$GITHUB_ENV"
           "$HOME/openEMS/venv/bin/python" -c "import CSXCAD, openEMS"
+      - name: Save the Ubuntu packages
+        if: steps.select.outputs.all == '1' && steps.ubuntu-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /tmp/ubuntu-debs/*.deb
+          key: ubuntu-noble-debs
       # Only the browser uses the window layer of the viewer, so the wasm build checks it.
       - name: Test
         run: |
