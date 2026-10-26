@@ -178,7 +178,8 @@ const [log, work, input, send, stop, runs, msg] =
 // Control and Enter. Each of the 2 modifier keys sends.
 const keys = /^(Mac|iP)/.test(navigator.platform) ? ["\u2318", "Return"] : ["Ctrl", "Enter"];
 document.querySelectorAll("#hint kbd").forEach((k, i) => (k.textContent = keys[i]));
-send.title = "Send (" + keys.join("+") + ")";
+// A touch screen with no hover has no key hint (ui.css), so the Send button has no key title.
+if (!matchMedia("(hover: none) and (pointer: coarse)").matches) send.title = "Send (" + keys.join("+") + ")";
 
 // A request to the daemon: a POST when it has a body. An HTTP error gives the field
 // `message` of the answer.
