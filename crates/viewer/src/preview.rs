@@ -93,6 +93,7 @@ struct Draft {
 fn dofs(first: u8, last: u8) -> String {
     let name = |d: u8| match d {
         1..=3 => format!("U{d}"),
+        11 => "Temperature".to_owned(),
         _ => format!("DOF {d}"),
     };
     if last > first {
@@ -118,6 +119,7 @@ fn fixed_text(fixed: &BTreeMap<u8, f64>, length_unit: &str) -> String {
             ["ux", "uy", "uz"][usize::from(d) - 1].to_owned(),
             length_unit,
         ),
+        11 => ("temperature".to_owned(), ""),
         _ => (format!("dof {d}"), ""),
     };
     let zero = fixed.iter().filter(|(_, &v)| v == 0.0);
@@ -716,7 +718,7 @@ mod tests {
             "{TWO_CUBES}*STEP\n*HEAT TRANSFER, STEADY STATE\n*BOUNDARY\nFIXED, 11, 11, 100\n*END STEP\n"
         );
         let p = from_text(&text);
-        assert_eq!(p.items[0].actions, ["DOF 11 = 100"]);
-        assert_eq!(p.items[0].label, "FIXED: dof 11 = 100");
+        assert_eq!(p.items[0].actions, ["Temperature = 100"]);
+        assert_eq!(p.items[0].label, "FIXED: temperature = 100");
     }
 }
