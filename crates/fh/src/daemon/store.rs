@@ -233,7 +233,9 @@ impl Store {
         }
         for entry in fs::read_dir(&out).into_iter().flatten().flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
+            // A hidden file, such as the run marker `.fh-run`, is not a result for the person.
             if fh_viewer::results::is_plain_file_name(&name)
+                && !name.starts_with('.')
                 && entry.file_type().is_ok_and(|t| t.is_file())
             {
                 files.push(format!("files/{name}"));
@@ -298,6 +300,12 @@ impl Store {
             return Err(fail(403, "report path leaves the run"));
         }
         fs::read(path).map_err(|e| fail(500, e.to_string()))
+    }
+
+    /// The run has a retained report.
+    pub(crate) fn has_report(&self, run: &str) -> bool {
+        self.run_dir(run)
+            .is_ok_and(|dir| dir.join("report.html").is_file())
     }
 
     /// Save a self-contained report inside each run. The record contains no source path or token.

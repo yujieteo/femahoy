@@ -112,18 +112,25 @@ pub fn css() -> String {
         for (i, value) in c.series.iter().enumerate() {
             s.push_str(&format!(" --s{}: #{value:06x};", i + 1));
         }
+        // The menu chevron, in the muted colour: a data URL cannot use a CSS variable.
+        s.push_str(&format!(
+            " --chevron: url(\"data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23{:06x}' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");",
+            c.muted
+        ));
         s
     };
-    let mut css = format!(":root {{{}", colors(&LIGHT));
-    for (name, value) in [
+    let type_sizes = [
         ("small", SMALL),
         ("body", BODY),
         ("read", READ),
         ("title", TITLE),
         ("mono", MONO),
-        ("radius", RADIUS),
-        ("target", TARGET),
-    ] {
+    ];
+    let mut css = format!(":root {{{}", colors(&LIGHT));
+    for (name, value) in type_sizes
+        .into_iter()
+        .chain([("radius", RADIUS), ("target", TARGET)])
+    {
         css.push_str(&format!(" --{name}: {value}px;"));
     }
     for (i, value) in SPACE.iter().enumerate() {
@@ -133,6 +140,14 @@ pub fn css() -> String {
         " }}\n@media (prefers-color-scheme: dark) {{ :root {{{} }} }}\n",
         colors(&DARK)
     ));
+    // Dynamic Type: on iOS the root font is the text size that the person set (17px at the
+    // default size), so the type sizes grow and shrink with it. Desktop Safari also knows
+    // this font (13px), so only a touch screen uses it.
+    css.push_str("@media (pointer: coarse) { @supports (font: -apple-system-body) { html { font: -apple-system-body; } :root {");
+    for (name, value) in type_sizes {
+        css.push_str(&format!(" --{name}: calc({value}rem / 17);"));
+    }
+    css.push_str(" } } }\n");
     css.push_str(include_str!("ui.css"));
     css
 }

@@ -33,8 +33,10 @@ summary {
 summary::-webkit-details-marker { display: none; }
 summary::before { content: "\203A"; flex: none; width: 8px; transition: transform 0.15s; }
 details[open] > summary::before { transform: rotate(90deg); }
-summary:hover { background: var(--raised); color: var(--text); }
+@media (hover: hover) { summary:hover { background: var(--raised); color: var(--text); } }
 summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+/* A tool row shows a file path: when it is too long, its start changes to an ellipsis, so the file name stays. */
+summary code.tail { direction: rtl; text-align: left; }
 .meta { flex: none; }
 .failed > summary, .failed .meta, pre.fail { color: var(--error); }
 .failure { padding: var(--space-2) var(--space-3); border: 1px solid var(--error); border-radius: var(--radius); font-size: var(--small); }
@@ -56,30 +58,81 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #composer { margin: 0 var(--space-3) var(--space-3); padding: 10px 6px 6px var(--space-4); border: 1px solid var(--line); border-radius: 24px; background: var(--raised); }
 #input {
   display: block; width: 100%; max-height: 200px; padding: 2px 0 6px; border: 0; outline: 0;
-  resize: none; background: none; font: inherit; color: inherit; line-height: 1.5;
+  resize: none; background: none; color: inherit;
 }
 #input::placeholder { color: var(--muted); }
+/* A touch screen has no key hint, so Send goes on the line of the text field, and the text
+   field is a full touch target. Stop and Send are round icons, so they fit on the same line. */
+@media (hover: none) and (pointer: coarse) {
+  #composer { display: flex; flex-wrap: wrap; align-items: flex-end; padding-top: 6px; }
+  #input { flex: 1 1 60%; min-width: 0; min-height: var(--target); padding: 10px 0; }
+  #composer .row { margin-left: auto; }
+}
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .row .keys { flex: 1 1 12em; }
 #stop { margin-left: auto; }
 
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+/* Only on a phone is the chat out of view, and there the 3D view takes the drag gestures. */
+#to-chat { display: none; }
 #runs { min-width: 0; font-weight: 500; }
-#run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); }
-.run-row { display: flex; flex-wrap: wrap; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
-.run-row p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+/* Runs and Files are navigation, as is Open report: the same size and colour as a button. */
+#model > .toolbar > details > summary { font-size: var(--body); color: var(--text); }
+/* An open list takes a full header row. Else the other summaries go to its side, at its vertical centre. */
+#model > .toolbar > details[open] { flex-basis: 100%; }
+/* The search field fills the rest of its row, as an iOS search field does. */
+[data-control="run-search"] { display: flex; align-items: center; gap: var(--space-2); }
+#run-search { flex: 1; min-width: 0; }
+/* The padding keeps the focus ring inside the scroll box. The negative margin puts the rows in line with the search field. */
+#run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); margin-inline: calc(-1 * var(--space-2)); }
+/* The file buttons wrap on a row, so a run with many steps shows more files in the 35vh list. */
+#file-list { display: flex; flex-wrap: wrap; align-content: flex-start; }
+/* The buttons go at the side of the run name and path, as in an iOS list row. */
+.run-row { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
+.run-row > div { flex: 1 1 12em; min-width: 0; }
+/* With the 3 compare buttons, the buttons go on 1 row below the name. */
+.run-row:has(button + button) > div { flex-basis: 100%; }
+.run-row p { margin: 0; overflow-wrap: anywhere; }
+/* The folder of the run uses 1 line. When it is too long, its start changes to an ellipsis, so the folder name stays. */
+.run-row .run-path { direction: rtl; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A check mark shows the open run, as in an iOS list. */
+.run-row:has([aria-current]) p:first-child { font-weight: 600; }
+.run-row:has([aria-current]) p:first-child::before { content: "\2713  " / ""; color: var(--accent); }
 #pair { display: flex; flex: 1; min-height: 0; }
 #pair > section { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 #view, #view-b { position: relative; flex: 1; min-height: 0; }
 #fh-b { position: absolute; inset: 0; width: 100%; height: 100%; }
 #pair-b { border-left: 1px solid var(--line); }
-#label-a, #label-b, #count-a, #count-b { margin: 0; padding: var(--space-1) var(--space-3); overflow-wrap: anywhere; }
+#comparison-note, #label-a, #label-b { margin: 0; padding: var(--space-1) var(--space-4); overflow-wrap: anywhere; }
 @media (max-width: 900px) { #chat { width: 320px; } #pair { flex-direction: column; } }
 @media (max-width: 700px) {
   body { flex-direction: column; overflow: auto; height: auto; min-height: 100%; }
-  #chat { width: 100%; height: 45vh; min-height: 320px; border-right: 0; border-bottom: 1px solid var(--line); }
-  #model { flex: none; height: 100vh; }
+  /* A chat with messages fills the screen, as in iOS Messages. The model is 1 screen below it,
+     and a tap on Open or "Show the results of" scrolls to it. */
+  #chat { width: 100%; height: 100svh; border-right: 0; border-bottom: 1px solid var(--line); }
+  /* Before the first message the chat is only as high as its text, so the model starts higher. */
+  #chat:has(#empty) { height: auto; min-height: 0; }
+  /* With a run open, the hero only pushes the model down. The input placeholder still asks for a message. */
+  body:has(#model:not([data-empty])) #empty { display: none; }
+  /* With a run open and no message yet, the model fills the rest of the first screen, so the
+     composer and the legend at the bottom of the model are both in view. */
+  body:has(#empty) #model { flex: 1; height: auto; }
+  /* svh: in iOS Safari 100vh is the height with no toolbars, so the toolbars cover the bottom
+     of the model (the legend and the status bar). */
+  #model { flex: none; height: 100svh; }
+  /* With no model to show, the empty view only fills the rest of the screen below the chat. */
+  #model[data-empty] { flex: 1; height: auto; }
+  /* With no model and Runs open, the list is the view: it has no own scroll box and the empty
+     3D view with its "No run is open" text is not shown. */
+  #model[data-empty]:has(#runs[open]) #pair { display: none; }
+  #model[data-empty] #run-list { max-height: none; }
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
+  body:not(:has(#empty)) #to-chat { display: block; }
+  /* Runs, Files and Open report stay on 1 row: the file name gets shorter, from its end, so its
+     start and the full run ID stay readable. */
+  #runs { flex: 1 1 0; }
+  #selected-run { display: flex; min-width: 0; white-space: nowrap; }
+  #selected-run > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
 
 #view { position: relative; flex: 1; min-height: 0; }
@@ -103,8 +156,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <textarea id="input" rows="1" placeholder="A message for the agent" aria-label="A message for the agent"></textarea>
     <div class="row">
       <p class="keys" id="hint"><span><kbd>Ctrl</kbd> <kbd>Enter</kbd> sends</span></p>
-      <p class="keys" id="later" hidden>The agent reads your message at its next step</p>
-      <button type="button" class="primary" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop agent and commands" hidden>Stop agent and commands
+      <button type="button" class="icon" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop agent and commands" hidden>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
       </button>
       <button type="submit" class="icon primary" id="send" aria-label="Send" disabled>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -114,23 +167,24 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 </aside>
 <main id="model">
   <header class="toolbar">
+    <button type="button" id="to-chat" title="Go back to the chat">Chat</button>
     <details id="runs">
       <summary>Runs <span id="selected-run"></span></summary>
       <label data-control="run-search">Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
+      <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare meshes</label>
       <div id="run-list" aria-label="Runs"></div>
     </details>
     <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
     <button type="button" id="report" data-control="files" hidden>Open report</button>
-    <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare meshes</label>
     <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link views</label>
-    <button type="button" id="close-compare" hidden>Close comparison</button>
+    <button type="button" id="close-compare" class="trail" hidden>Done</button>
   </header>
-  <p id="comparison-note" class="note" hidden>Choose A and B from Runs. Undeformed meshes only. This view gives no convergence result.</p>
+  <p id="comparison-note" class="note" hidden>Undeformed meshes only. No convergence result.</p>
   <div id="pair">
-    <section><p id="label-a" hidden></p><p id="count-a" class="readout" aria-live="polite"></p>
+    <section><p id="label-a" hidden></p><p id="count-a" class="spoken" aria-live="polite"></p>
       <div id="view"><canvas id="fh" aria-label="The 3D model view" tabindex="0"></canvas><p id="msg">Loading the viewer...</p></div>
     </section>
-    <section id="pair-b" hidden><p id="label-b"></p><p id="count-b" class="readout" aria-live="polite"></p>
+    <section id="pair-b" hidden><p id="label-b"></p><p id="count-b" class="spoken" aria-live="polite"></p>
       <div id="view-b"><canvas id="fh-b" aria-label="Mesh B" tabindex="0"></canvas></div>
     </section>
   </div>
@@ -148,7 +202,8 @@ const [log, work, input, send, stop, runs, msg] =
 // Control and Enter. Each of the 2 modifier keys sends.
 const keys = /^(Mac|iP)/.test(navigator.platform) ? ["\u2318", "Return"] : ["Ctrl", "Enter"];
 document.querySelectorAll("#hint kbd").forEach((k, i) => (k.textContent = keys[i]));
-send.title = "Send (" + keys.join("+") + ")";
+// A touch screen with no hover has no key hint (ui.css), so the Send button has no key title.
+if (!matchMedia("(hover: none) and (pointer: coarse)").matches) send.title = "Send (" + keys.join("+") + ")";
 
 // A request to the daemon: a POST when it has a body. An HTTP error gives the field
 // `message` of the answer.
@@ -207,10 +262,14 @@ for (const control of document.querySelectorAll("[data-control]")) {
 }
 
 let shown = query.get("run");
+$("model").toggleAttribute("data-empty", !shown);
 
 // Show the results of a run, and keep the run in the page address for a reload.
+// The Runs list closes, so on a phone the model gets its full height.
 function openRun(run) {
   shown = run;
+  runs.open = false;
+  $("model").removeAttribute("data-empty");
   select();
   query.set("run", run);
   history.replaceState(null, "", "?" + query);
@@ -221,8 +280,20 @@ function openRun(run) {
   loadFiles(run);
 }
 
+// On a phone the model is below the chat, so a tap that shows a model scrolls it into view.
+function reveal() {
+  const model = $("model");
+  if (model.getBoundingClientRect().top > 0) model.scrollIntoView({ block: "start" });
+}
+$("to-chat").onclick = () => $("chat").scrollIntoView({ block: "start" });
+function openRunAndShow(run) {
+  openRun(run);
+  reveal();
+}
+
 function select() {
-  $("selected-run").textContent = shown ? runLabel(shown) : "";
+  $("selected-run").replaceChildren(...(shown ? [el("span", "", names[shown] ? names[shown] + " ·\u00A0" : ""), shown] : []));
+  renderRuns();
 }
 
 const names = {};
@@ -233,7 +304,6 @@ async function listRuns() {
   foundRuns = (await reply("/api/v1/runs")).items.reverse().map(split);
   for (const [run, path] of foundRuns) names[run] = path.split("/").pop() || path;
   $("compare").closest("label").hidden = foundRuns.length < 2;
-  renderRuns();
   select();
 }
 
@@ -242,36 +312,60 @@ function renderRuns() {
   const list = $("run-list");
   list.replaceChildren();
   const matched = foundRuns.filter(([run, path]) => (run + " " + path).toLowerCase().includes(search));
-  list.append(el("p", "note", matched.length + " runs"));
+  list.append(el("p", "note", matched.length + (matched.length === 1 ? " run" : " runs")));
   for (const [run, path] of matched) {
     const row = el("div", "run-row", "");
-    row.append(el("p", "", runLabel(run)), el("p", "note", path));
+    const text = el("div", "", "");
+    // The name line has the file name, so this line has only its folder. The LRMs keep the first "/" at the start and a last ")" at the end.
+    const folder = el("p", "note run-path", "\u200E" + (path.replace(/\/[^/]*$/, "") || path) + "\u200E");
+    folder.title = path;
+    text.append(el("p", "", runLabel(run)), folder);
+    row.append(text);
     const button = (label, action) => {
       const b = el("button", "", label);
       b.type = "button";
       b.setAttribute("aria-label", label + " " + runLabel(run));
       b.onclick = action;
       row.append(b);
+      return b;
     };
-    button("Open", () => { openRun(run); runs.open = false; });
+    const open = button("Open", () => openRunAndShow(run));
+    if (run === shown) open.setAttribute("aria-current", "true");
     if ($("compare").checked) {
-      button("Use as A", () => compareSide("a", run));
-      button("Use as B", () => compareSide("b", run));
+      button("Use as A", () => { runs.open = false; compareSide("a", run); reveal(); });
+      button("Use as B", () => { runs.open = false; compareSide("b", run); reveal(); });
     }
     list.append(row);
   }
 }
 $("run-search").addEventListener("input", renderRuns);
 
-async function openFile(run, path) {
+async function openFile(run, path, name) {
   // Create the tab during the gesture, before the fetch, so a browser permits it.
   const tab = window.open("about:blank", "_blank");
   if (tab) tab.opener = null;
   try {
-    const response = await call("/api/v1/runs/" + run + "/" + path);
-    const url = URL.createObjectURL(new Blob([await response.blob()], { type: "text/plain" }));
-    if (tab) tab.location.replace(url);
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const blob = await (await call("/api/v1/runs/" + run + "/" + path)).blob();
+    if (!tab) return;
+    // A plain text tab has no viewport tag, so a phone shows it 980 px wide at a third of its size.
+    // textContent puts the file in the page as text only, never as HTML.
+    const d = tab.document;
+    d.head.innerHTML = '<meta name="viewport" content="width=device-width"><meta name="color-scheme" content="light dark">';
+    d.title = name;
+    // A binary file (for example a .vtu with raw data) has no text view, so the tab gives a download link.
+    if (new Uint8Array(await blob.arrayBuffer()).includes(0)) {
+      const a = d.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = d.title;
+      a.textContent = "Download " + d.title + " (" + Math.ceil(blob.size / 1024) + " KB)";
+      a.style.cssText = "display: inline-block; margin: 16px; padding: 12px 0; font: 17px sans-serif";
+      d.body.replaceChildren(a);
+      return;
+    }
+    const pre = d.createElement("pre");
+    pre.style.cssText = "margin: 16px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere";
+    pre.textContent = await blob.text();
+    d.body.replaceChildren(pre);
   } catch (e) { tab?.close(); showError(e.message); }
 }
 async function openReport(run) {
@@ -302,16 +396,24 @@ async function loadFiles(run) {
     $("files").hidden = false;
     const list = $("file-list");
     list.replaceChildren();
-    for (const item of items.filter(p => p !== "report")) {
+    for (const item of items.filter(p => p !== "report").sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))) {
       const [path, name] = split(item);
-      const b = el("button", "", path.startsWith("inputs/") ? "Input · " + name : path.slice(6));
+      const file = name || path.slice(6);
+      const b = el("button", "", path.startsWith("inputs/") ? "Input · " + file : file);
       b.type = "button";
-      b.onclick = () => openFile(run, path);
+      // A tap on a file leaves the list open. The file opens in a new tab, and a hidden page does not tell
+      // the viewer of a new canvas size, so the 3D view would stay stretched when the person comes back.
+      b.onclick = () => openFile(run, path, file);
       list.append(b);
     }
     $("report").hidden = !items.includes("report");
     $("report").onclick = () => openReport(run);
-    if (!items.includes("report")) list.append(el("p", "note", "No report for this run"));
+    if (!items.includes("report")) {
+      const request = el("button", "", "Ask for a report");
+      request.type = "button";
+      request.onclick = () => { $("files").open = false; draft("Write a report of " + run + "."); };
+      list.append(request);
+    }
   } catch (e) { showError(e.message); }
 }
 async function compareSide(side, run) {
@@ -320,6 +422,7 @@ async function compareSide(side, run) {
   if (side === "a") {
     compareA = run;
     shown = run;
+    $("model").removeAttribute("data-empty");
     select();
     query.set("run", run);
     history.replaceState(null, "", "?" + query);
@@ -342,6 +445,7 @@ $("compare").onchange = () => {
   comparisonVersion++;
   const on = $("compare").checked;
   $("comparison-note").hidden = $("link-control").hidden = $("close-compare").hidden = $("label-a").hidden = !on;
+  $("selected-run").hidden = on;
   if (on) { compareA = null; compareB = null; $("label-a").textContent = "Choose mesh A from Runs"; }
   if (!on) {
     if (viewB) view.link(viewB, false);
@@ -349,7 +453,6 @@ $("compare").onchange = () => {
     if (shown) view?.open(shown);
   }
   renderRuns();
-  if (on) runs.open = true;
 };
 $("close-compare").onclick = () => { $("compare").checked = false; $("compare").onchange(); };
 $("linked").onchange = () => { if (viewB) view.link(viewB, $("linked").checked); };
@@ -387,8 +490,9 @@ async function startViewer() {
     await viewer.default({ module_or_path: wasm });
     view = await viewer.start($("fh"), token);
     msg.remove();
-    // The canvas takes the focus when it starts. The person writes first.
-    input.focus();
+    // The canvas takes the focus when it starts. The person writes first. Not on a touch
+    // screen: there the focus opens the iOS form bar or keyboard over the model at load.
+    if (!matchMedia("(pointer: coarse)").matches) input.focus();
     if (shown) { view.open(shown); loadFiles(shown); }
   } catch (e) {
     msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
@@ -426,7 +530,7 @@ function setRunning(on, fields = {}) {
   stop.hidden = !on;
   send.disabled = !input.value.trim();
   $("hint").hidden = on;
-  $("later").hidden = !on;
+  input.placeholder = on ? "A message for the next step" : "A message for the agent";
   started = Number(fields.started_ms) || 0;
   tick();
 }
@@ -519,6 +623,9 @@ function entry(kind, text, fresh) {
     }
     case "tool": {
       const d = command(...split(text), false);
+      const code = d.querySelector("code");
+      code.className = "tail";
+      code.textContent = "\u200E" + code.textContent + "\u200E";
       waiting.push(d);
       status("now", text);
       return d;
@@ -543,11 +650,18 @@ function entry(kind, text, fresh) {
       const b = el("button", "open", "Show the results of ");
       b.append(runName(text));
       b.type = "button";
-      b.addEventListener("click", () => openRun(text));
+      b.addEventListener("click", () => openRunAndShow(text));
       if (fresh) {
         if (!$("compare").checked) openRun(text);
         listRuns().catch((e) => showError(e.message));
       }
+      return b;
+    }
+    case "report": {
+      const b = el("button", "open", "Open the report of ");
+      b.append(runName(text));
+      b.type = "button";
+      b.addEventListener("click", () => openReport(text));
       return b;
     }
     case "show": {
@@ -557,11 +671,12 @@ function entry(kind, text, fresh) {
       const open = () => {
         if ($("compare").checked) $("close-compare").click();
         shown = null;
+        $("model").removeAttribute("data-empty");
         hideFiles();
         select();
         if (view) view.show(preview, title);
       };
-      b.addEventListener("click", open);
+      b.addEventListener("click", () => { open(); reveal(); });
       if (fresh && !$("compare").checked) open();
       return b;
     }
@@ -656,17 +771,22 @@ input.addEventListener("input", () => {
 stop.addEventListener("click", () =>
   call("/api/v1/chat/stop", "").then(() => read(), (e) => showError(e.message)));
 
-$("rerun").addEventListener("click", () => {
-  const target = shown || compareA;
-  input.value = target
-    ? "Prepare a new run from the retained input of " + target + ". Preserve the previous result. Confirm the input and result target before the solve."
-    : "Prepare a new run from the previous retained input. Preserve the previous result. Confirm the input and result target before the solve.";
+// Put a message in the composer for the person to check and send.
+function draft(text) {
+  input.value = text;
   grow();
   send.disabled = false;
   input.focus();
+}
+$("rerun").addEventListener("click", () => {
+  const target = shown || compareA;
+  draft(target
+    ? "Prepare a new run from the retained input of " + target + ". Preserve the previous result. Confirm the input and result target before the solve."
+    : "Prepare a new run from the previous retained input. Preserve the previous result. Confirm the input and result target before the solve.");
 });
 read();
-listRuns().catch((e) => showError(e.message));
+// With no run open, the model area is empty, so the page opens Runs.
+listRuns().then(() => { if (!shown && foundRuns.length) $("runs").open = true; }).catch((e) => showError(e.message));
 startViewer();
 </script>
 </body>

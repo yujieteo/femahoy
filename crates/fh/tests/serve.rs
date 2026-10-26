@@ -448,6 +448,15 @@ fn retained_artifacts_need_authorization_and_reports_cannot_escape_the_run() {
     assert_eq!(lab.get(&url, &[("Origin", "null")]).status, 403);
     assert_eq!(lab.get(&url, &[]).status, 200);
     assert_eq!(lab.get(&url, &[]).status, 401);
+    // A browser navigation gets the failure as a page. The page escapes the text of a header.
+    let evil = lab.get(&url, &[("Accept", "text/html"), ("Origin", "<script>")]);
+    assert_eq!(evil.status, 403);
+    assert!(evil.text().contains("Origin &lt;script&gt; is not"));
+    assert!(!evil.text().contains("<script>"));
+    assert!(evil
+        .header("Content-Security-Policy")
+        .unwrap()
+        .starts_with("default-src 'none';"));
     fs::remove_file(run.join("report.html")).unwrap();
     assert_eq!(lab.get(&format!("{base}/report"), &auth).status, 404);
     #[cfg(unix)]

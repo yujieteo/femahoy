@@ -11,12 +11,16 @@
    components (the toolbar, the buttons, the menu, the segmented control and the legend) come
    from the UI layer of femahoy (crates/viewer/src/ui.rs). */
 /*UI*/
-body { display: flex; overflow: hidden; font-size: var(--read); }
+/* Only the text uses the reading size. The viewer scales its panel text by the body size over
+   the body token (Dynamic Type), so a larger body size makes the panel larger than in fh serve. */
+body { display: flex; overflow: hidden; }
 #report { display: flex; flex-direction: column; min-width: 0; width: clamp(360px, 42vw, 720px); }
 #report > header { border-bottom: 1px solid var(--line); }
-article { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
+article { flex: 1; min-height: 0; overflow-y: auto; font-size: var(--read); padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
 article h1 { margin: 0.5rem 0 1rem; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.015em; text-wrap: balance; }
 article h2 { margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1.75rem; }
+/* A rule above the first heading of the text separates nothing. */
+article > h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 article h3 { margin: 2rem 0 0.75rem; font-size: 1.25rem; }
 article p, article li { text-wrap: pretty; }
 article table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
@@ -24,19 +28,27 @@ article th, article td { padding: 0.375rem 0.75rem; border-bottom: 1px solid var
 article th { border-bottom-color: var(--text); font-weight: 500; }
 article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; background: var(--code); }
 article :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--code); overflow-wrap: anywhere; }
-article button, article select, .toolbar button, .toolbar select { font-size: var(--body); }
+/* A table scrolls on a narrow screen: a name in a cell stays whole and does not break inside a word. */
+article td > code { overflow-wrap: normal; }
+/* The first column (the name of each row) stays in view while the table scrolls sideways. */
+article :is(th, td):first-child { position: sticky; left: 0; background: var(--side); }
+article button, article select { font-size: var(--body); }
 /* A report with no run has no viewer: the text fills the page. */
 body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
 body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
 body.text-mode #model { display: none; }
-#identity { overflow-wrap: anywhere; }
+#identity { overflow-wrap: anywhere; font-size: var(--small); }
 [data-mesh-trend] > section > h3 { margin-top: var(--space-4); }
 summary { min-height: var(--target); cursor: pointer; padding-block: var(--space-2); }
 @media (max-width: 800px) {
   body { flex-direction: column; }
   #report { width: 100%; flex: 1; min-height: 0; }
-  #model { flex: none !important; height: 42%; }
+  /* The text is above the model: the edge between them is at the bottom, not at the right. */
+  article { border-right: 0; border-bottom: 1px solid var(--line); }
+  #model { flex: none !important; height: 55%; }
 }
+/* A phone in landscape: at 360 px the report header uses 4 rows, half of the height. At 50% it uses 2 rows. */
+@media (min-width: 801px) and (max-height: 500px) { #report { width: 50%; } }
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
@@ -51,10 +63,12 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 /* A run in the text is a link: an inline text link needs no larger hit target. */
 [data-run]:not(button, select, option, input) { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-[data-run]:not(button, select, option, input):hover { text-decoration-color: var(--accent); }
+@media (hover: hover) { [data-run]:not(button, select, option, input):hover { text-decoration-color: var(--accent); } }
 output { margin-left: var(--space-2); }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #bar { display: contents; }
+/* With no bar controls and no list of the runs, the header of the model is empty: the model takes its height. */
+#model > header:has(> #bar:empty):has(> #runs[hidden]) { display: none; }
 #all { color: var(--muted); font-size: var(--small); }
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
@@ -70,12 +84,13 @@ output { margin-left: var(--space-2); }
 <label><input type="radio" name="layout" value="split" checked aria-keyshortcuts="Alt+V">Split</label>
 </span>
 <span id="identity" class="readout" aria-live="polite" hidden></span>
+<label id="all" class="trail"><input type="checkbox"> Show all controls</label>
 <p id="report-keys" class="keys"></p>
 </header>
 <article><!--TEXT--></article>
 </section>
 <main id="model">
-  <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><!--OPTIONS--></select><label id="all" class="trail"><input type="checkbox"> Show all controls</label></header>
+  <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><!--OPTIONS--></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 <!--VIEWER-->
@@ -123,7 +138,8 @@ if (controls.has("sections")) {
       const box = text.getBoundingClientRect();
       const chosen = headings[$("sections").selectedIndex]?.getBoundingClientRect().top;
       if (text.scrollTop + text.clientHeight >= text.scrollHeight - 1 && chosen >= box.top && chosen < box.bottom) return;
-      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1);
+      // Above the first heading (the top padding of the text, or an introduction), the menu shows the first section.
+      $("sections").selectedIndex = Math.max(0, headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1));
     };
     text.addEventListener("scroll", current, { passive: true });
     current();
@@ -149,7 +165,8 @@ const identity = () => {
   $("identity").textContent = "Run: " + (runs.selectedOptions[0]?.textContent ?? "");
 };
 identity();
-$("report-tools").hidden = !hints.length && $("identity").hidden;
+// The switch "Show all controls" of a report with runs keeps the header in view.
+$("report-tools").hidden = !hints.length && $("identity").hidden && !hasRuns;
 document.addEventListener("keydown", (e) => {
   if (!e.altKey || e.ctrlKey || e.metaKey || e.target.tagName === "TEXTAREA" || e.target.isContentEditable
     || (e.target.tagName === "INPUT" && !/^(radio|checkbox|range)$/.test(e.target.type))) return;
@@ -251,6 +268,8 @@ async function start() {
     const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
+    // The switch of the page replaces the switch of the results panel.
+    view.all($("all").querySelector("input").checked);
     const bar = $("bar");
     bar.append(...text.querySelectorAll("[data-bar]"));
     const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];

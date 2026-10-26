@@ -14,8 +14,9 @@ use crate::results::{self, Results, ScalarField, Step};
 /// flow, the displacement or the velocity magnitude, and the temperature.
 const DEFAULT_FIELDS: [&str; 6] = ["density", "MISES", "alpha.water", "Ma", "U magnitude", "NT"];
 
-/// The view protocol for a mesh pair. The app omits the contour in mesh mode.
-pub const MESH_VIEW: &str = "controls=\nscale=0";
+/// The view protocol for a mesh pair. The app omits the contour in mesh mode, and the camera
+/// toolbar stays.
+pub const MESH_VIEW: &str = "controls=fit,report-view,views,help\nscale=0";
 
 /// The fields that are not important: the error estimate and the reaction force of CalculiX, the
 /// turbulence and the solver fields of OpenFOAM, and the fields of the mesh motion and the coupling

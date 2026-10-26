@@ -93,6 +93,7 @@ struct Draft {
 fn dofs(first: u8, last: u8) -> String {
     let name = |d: u8| match d {
         1..=3 => format!("U{d}"),
+        11 => "Temperature".to_owned(),
         _ => format!("DOF {d}"),
     };
     if last > first {
@@ -118,6 +119,7 @@ fn fixed_text(fixed: &BTreeMap<u8, f64>, length_unit: &str) -> String {
             ["ux", "uy", "uz"][usize::from(d) - 1].to_owned(),
             length_unit,
         ),
+        11 => ("temperature".to_owned(), ""),
         _ => (format!("dof {d}"), ""),
     };
     let zero = fixed.iter().filter(|(_, &v)| v == 0.0);
@@ -278,10 +280,11 @@ pub fn build(model: &Model, units: &str) -> Preview {
     for (tag, b) in boundaries.chain(in_steps) {
         let (name, nodes) = nodes_of(&b.target);
         let i = draft(&mut drafts, &name, Kind::Support, false);
-        let value = if b.value == 0.0 {
-            "0".to_owned()
-        } else {
-            format!("{} {length_unit}", b.value)
+        // Only U1 to U3 are lengths. DOF 4 to 6 are rotations, DOF 11 is the temperature.
+        let value = match (b.value == 0.0, b.last_dof.max(b.first_dof) <= 3) {
+            (true, _) => "0".to_owned(),
+            (false, true) => with_unit(b.value.to_string(), length_unit),
+            (false, false) => b.value.to_string(),
         };
         let dofs = dofs(b.first_dof, b.last_dof);
         drafts[i]
@@ -707,5 +710,15 @@ mod tests {
         let (tail, head) = p.arrow(tip).unwrap();
         assert_eq!(tail, [2.0, 0.5, 0.5]);
         assert!(head[2] < 0.5 && head[0] == 2.0, "{head:?}");
+    }
+    #[test]
+    fn a_temperature_support_has_no_length_unit() {
+        // DOF 11 is the temperature, so the label must not show the length unit mm.
+        let text = format!(
+            "{TWO_CUBES}*STEP\n*HEAT TRANSFER, STEADY STATE\n*BOUNDARY\nFIXED, 11, 11, 100\n*END STEP\n"
+        );
+        let p = from_text(&text);
+        assert_eq!(p.items[0].actions, ["Temperature = 100"]);
+        assert_eq!(p.items[0].label, "FIXED: temperature = 100");
     }
 }
