@@ -35,6 +35,8 @@ summary::before { content: "\203A"; flex: none; width: 8px; transition: transfor
 details[open] > summary::before { transform: rotate(90deg); }
 @media (hover: hover) { summary:hover { background: var(--raised); color: var(--text); } }
 summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+/* A tool row shows a file path: when it is too long, its start changes to an ellipsis, so the file name stays. */
+summary code.tail { direction: rtl; text-align: left; }
 .meta { flex: none; }
 .failed > summary, .failed .meta, pre.fail { color: var(--error); }
 .failure { padding: var(--space-2) var(--space-3); border: 1px solid var(--error); border-radius: var(--radius); font-size: var(--small); }
@@ -585,6 +587,9 @@ function entry(kind, text, fresh) {
     }
     case "tool": {
       const d = command(...split(text), false);
+      const code = d.querySelector("code");
+      code.className = "tail";
+      code.textContent = "\u200E" + code.textContent;
       waiting.push(d);
       status("now", text);
       return d;
