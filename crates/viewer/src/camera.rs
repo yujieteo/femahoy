@@ -44,6 +44,48 @@ impl Camera {
         }
     }
 
+    /// Fit the bounds at the model area aspect ratio, with the current direction.
+    pub fn fit_bounds(&mut self, bounds: Option<Bounds>, aspect: f32) {
+        let base = Self::fit(bounds, false);
+        self.target = base.target;
+        self.radius = base.radius;
+        self.fit_distance(aspect);
+    }
+
+    pub fn fit_distance(&mut self, aspect: f32) {
+        let half = (FOV_Y * 0.5).min(((FOV_Y * 0.5).tan() * aspect.max(1e-3)).atan());
+        self.distance = self.radius / half.sin() * 1.1;
+    }
+
+    /// Select an exact axis direction, or the report isometric direction.
+    pub fn direction(&mut self, name: &str) {
+        use std::f32::consts::{FRAC_PI_2, PI};
+        (self.yaw, self.pitch) = match name {
+            "+X" => (0.0, 0.0),
+            "-X" => (PI, 0.0),
+            "+Y" => (FRAC_PI_2, 0.0),
+            "-Y" => (-FRAC_PI_2, 0.0),
+            "+Z" => (-FRAC_PI_2, FRAC_PI_2),
+            "-Z" => (-FRAC_PI_2, -FRAC_PI_2),
+            "Isometric" => (
+                -std::f32::consts::FRAC_PI_4,
+                (1.0_f32 / 3.0_f32.sqrt()).asin(),
+            ),
+            _ => return,
+        };
+    }
+
+    pub fn direction_name(&self) -> &'static str {
+        for name in ["+X", "-X", "+Y", "-Y", "+Z", "-Z", "Isometric"] {
+            let mut other = *self;
+            other.direction(name);
+            if self.yaw == other.yaw && self.pitch == other.pitch {
+                return name;
+            }
+        }
+        "Custom"
+    }
+
     /// Rotate by a mouse drag in pixels.
     pub fn orbit(&mut self, dx: f32, dy: f32) {
         self.yaw -= dx * 0.01;
@@ -81,7 +123,8 @@ impl Camera {
 
     fn right_up(&self) -> ([f32; 3], [f32; 3]) {
         let forward = neg(self.eye_dir());
-        let right = normalize(cross(forward, [0.0, 0.0, 1.0]));
+        // The yaw defines the right vector even at an exact pole.
+        let right = [-self.yaw.sin(), self.yaw.cos(), 0.0];
         let up = cross(right, forward);
         (right, up)
     }
@@ -90,8 +133,7 @@ impl Camera {
     pub fn view_proj(&self, aspect: f32) -> Mat4 {
         let eye = self.eye();
         let f = normalize(sub(self.target, eye));
-        let s = normalize(cross(f, [0.0, 0.0, 1.0]));
-        let u = cross(s, f);
+        let (s, u) = self.right_up();
         let view: Mat4 = [
             [s[0], u[0], -f[0], 0.0],
             [s[1], u[1], -f[1], 0.0],
@@ -147,4 +189,78 @@ fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
 fn normalize(a: [f32; 3]) -> [f32; 3] {
     let n = dot(a, a).sqrt().max(1e-12);
     [a[0] / n, a[1] / n, a[2] / n]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn axis_views_have_a_stable_basis_at_each_pole() {
+        for (name, expected) in [
+            ("+X", [1.0, 0.0, 0.0]),
+            ("-X", [-1.0, 0.0, 0.0]),
+            ("+Y", [0.0, 1.0, 0.0]),
+            ("-Y", [0.0, -1.0, 0.0]),
+            ("+Z", [0.0, 0.0, 1.0]),
+            ("-Z", [0.0, 0.0, -1.0]),
+        ] {
+            let mut c = Camera::fit(None, false);
+            c.direction(name);
+            let first = c;
+            c.direction(name);
+            assert_eq!(c, first);
+            assert_eq!(c.direction_name(), name);
+            for (actual, expected) in c.eye_dir().into_iter().zip(expected) {
+                assert!((actual - expected).abs() < 1e-6);
+            }
+            let (right, up) = c.right_up();
+            assert!((dot(right, right) - 1.0).abs() < 1e-6);
+            assert!((dot(up, up) - 1.0).abs() < 1e-6);
+            assert!(dot(right, up).abs() < 1e-6);
+            let before = c.target;
+            c.pan(10.0, 10.0, 500.0);
+            assert_ne!(c.target, before);
+            assert!(c.view_proj(0.5).iter().flatten().all(|v| v.is_finite()));
+        }
+    }
+
+    // This protects the visible bounds, including narrow model areas beside a results panel.
+    #[test]
+    fn fit_contains_the_bounds_in_a_narrow_model_area() {
+        for bounds in [
+            Bounds {
+                min: [0.0; 3],
+                max: [100.0, 10.0, 10.0],
+            },
+            Bounds {
+                min: [-10.0, -10.0, 0.0],
+                max: [10.0, 10.0, 0.0],
+            },
+            Bounds {
+                min: [2.0; 3],
+                max: [2.0; 3],
+            },
+        ] {
+            for aspect in [0.5, 1.0, 2.0] {
+                let mut camera = Camera::fit(Some(bounds), false);
+                camera.fit_bounds(Some(bounds), aspect);
+                let matrix = camera.view_proj(aspect);
+                for corner in 0..8 {
+                    let p = std::array::from_fn(|k| {
+                        if corner & (1 << k) == 0 {
+                            bounds.min[k]
+                        } else {
+                            bounds.max[k]
+                        }
+                    });
+                    let c = transform(&matrix, p);
+                    assert!(
+                        c[0].abs() <= c[3] && c[1].abs() <= c[3],
+                        "bounds outside aspect {aspect}: {c:?}"
+                    );
+                }
+            }
+        }
+    }
 }

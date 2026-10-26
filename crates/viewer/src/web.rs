@@ -168,6 +168,8 @@ impl Viewer {
 #[wasm_bindgen]
 pub async fn start(canvas: web_sys::HtmlCanvasElement, token: String) -> Result<Viewer, JsValue> {
     let slot: RequestSlot = Arc::new(Mutex::new(Request::default()));
+    let control_canvas = canvas.clone();
+    let canvas_id = canvas.id();
     let ctx: Rc<RefCell<Option<egui::Context>>> = Rc::default();
     let options = eframe::WebOptions {
         depth_buffer: crate::gpu::DEPTH_BITS,
@@ -180,11 +182,12 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement, token: String) -> Result<
             options,
             Box::new(move |cc| {
                 *app_ctx.borrow_mut() = Some(cc.egui_ctx.clone());
-                Ok(Box::new(ViewerApp::new(cc, app_slot)))
+                Ok(Box::new(ViewerApp::new(cc, app_slot, canvas_id)))
             }),
         )
         .await?;
     let ctx = ctx.take().ok_or("the viewer did not start")?;
+    crate::controls::install(&control_canvas, slot.clone(), ctx.clone())?;
     Ok(Viewer {
         token,
         slot,

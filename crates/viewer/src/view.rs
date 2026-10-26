@@ -32,7 +32,7 @@ const SECONDARY_FIELDS: [&str; 12] = [
     "Force",
 ];
 
-/// A group of controls of the results panel. The contour field list shows when the view gives
+/// A group of controls of the results panel or the camera toolbar. The contour field list shows when the view gives
 /// more than 1 field, or no field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
@@ -42,22 +42,39 @@ pub enum Control {
     Deformation,
     /// The supports and loads of the input, on the model.
     Loads,
+    /// The HTML camera toolbar of the shared UI layer.
+    Fit,
+    ReportView,
+    Views,
+    Help,
 }
 
 impl Control {
-    pub const ALL: [Control; 3] = [Control::Steps, Control::Deformation, Control::Loads];
+    pub const ALL: &[Control] = &[
+        Control::Steps,
+        Control::Deformation,
+        Control::Loads,
+        Control::Fit,
+        Control::ReportView,
+        Control::Views,
+        Control::Help,
+    ];
 
-    /// The name in a view: `steps`, `deformation` or `loads`.
+    /// The name of a control in the view of a report.
     pub fn name(self) -> &'static str {
         match self {
             Control::Steps => "steps",
             Control::Deformation => "deformation",
             Control::Loads => "loads",
+            Control::Fit => "fit",
+            Control::ReportView => "report-view",
+            Control::Views => "views",
+            Control::Help => "help",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Control> {
-        Self::ALL.into_iter().find(|c| c.name() == name)
+        Self::ALL.iter().copied().find(|c| c.name() == name)
     }
 }
 
@@ -224,7 +241,10 @@ impl Panel {
 /// keeps.
 fn groups(can: [bool; 3], keep: impl Fn(&Control) -> bool) -> Vec<Control> {
     Control::ALL
-        .into_iter()
+        .iter()
+        .copied()
+        // Camera controls belong to the HTML toolbar, not the results panel.
+        .filter(|c| matches!(c, Control::Steps | Control::Deformation | Control::Loads))
         .zip(can)
         .filter(|(c, on)| *on && keep(c))
         .map(|(c, _)| c)
