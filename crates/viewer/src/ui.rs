@@ -112,6 +112,11 @@ pub fn css() -> String {
         for (i, value) in c.series.iter().enumerate() {
             s.push_str(&format!(" --s{}: #{value:06x};", i + 1));
         }
+        // The menu chevron, in the muted colour: a data URL cannot use a CSS variable.
+        s.push_str(&format!(
+            " --chevron: url(\"data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23{:06x}' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");",
+            c.muted
+        ));
         s
     };
     let type_sizes = [

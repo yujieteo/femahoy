@@ -186,7 +186,7 @@ pub fn menu(id: &str, text: impl Into<egui::WidgetText>) -> egui::ComboBox {
     egui::ComboBox::from_id_salt(id)
         .selected_text(text)
         .icon(|ui, rect, _, _| {
-            // The path 'm4 6 4 4 4-4' in a 16 x 16 box, as in ui.css.
+            // The path 'm4 6 4 4 4-4' in a 16 x 16 box, as --chevron in ui.rs.
             let p = |x: f32, y: f32| rect.min + rect.size() * egui::vec2(x, y) / 16.0;
             let stroke = egui::Stroke::new(1.6 * rect.width() / 16.0, hex(colors(ui).muted));
             ui.painter()
