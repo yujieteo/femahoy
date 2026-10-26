@@ -11,7 +11,7 @@ const TOOLBAR: &str = r#"
 <div class="toolbar" role="group" aria-label="Camera controls">
   <button type="button" data-camera="fit" aria-keyshortcuts="F" title="Fit the full model. Keep the camera direction.">Fit <kbd>F</kbd></button>
   <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Restore the view of the report">Report view <kbd>Home</kbd></button>
-  <label data-camera="views">Views <select id="fh-direction" aria-label="Camera direction">
+  <label data-camera="views"><span>Views</span> <select id="fh-direction" aria-label="Camera direction">
     <option disabled>Custom</option><option>+X</option><option>-X</option><option>+Y</option><option>-Y</option><option>+Z</option><option>-Z</option><option>Isometric</option>
   </select></label>
   <button type="button" data-camera="help" id="fh-help-button" aria-controls="fh-camera-help" aria-expanded="false" aria-keyshortcuts="?">Help <kbd>?</kbd></button>

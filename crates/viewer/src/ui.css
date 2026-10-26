@@ -78,6 +78,12 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
   .keys:has(kbd):not([data-camera-help] > .keys), button kbd, [data-pointer="mouse"] { display: none; }
   [data-pointer="touch"] { display: inline; }
 }
+/* A phone has 390 pt or less: the camera toolbar keeps 1 row. The menu has its own aria-label, so
+   its visible "Views" word can go, and the gaps get smaller. */
+@media (max-width: 430px) {
+  .toolbar:has(> [data-camera]) { column-gap: var(--space-2); }
+  [data-camera="views"] > span { display: none; }
+}
 /* iOS Safari zooms the page when a text field or a menu under 16px gets the focus. This floor
    wins over the font size of a view (!important), because the zoom does not stop below 16px. */
 @media (pointer: coarse) { textarea, select, input[type="search"] { font-size: 16px !important; } }
