@@ -456,8 +456,8 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
     })
 }
 
-/// The text `text` on a box of the colour `color`, up and to the right of the point `at`, in
-/// the view `rect`, with a line width of at most half the view. The tag does not cover the
+/// The text `text` on a box of the colour `color`, next to the point `at` on the side away from
+/// the view centre, in the view `rect`, with a line width of at most half the view. The tag does not cover the
 /// earlier tags in `placed`, if the view has space for it, and is added to `placed`.
 fn tag(
     painter: &egui::Painter,
@@ -488,8 +488,15 @@ fn tag(
             .max(inner.top() - place.top());
         place.translate(egui::vec2(dx, dy))
     };
-    let first =
-        fit(egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size()));
+    // The camera looks at the view centre, so a tag on the far side of the point from the
+    // centre does not cover the model.
+    let (left, up) = (at.x < rect.center().x, at.y < rect.center().y);
+    let anchor = egui::Align2([
+        [egui::Align::Min, egui::Align::Max][usize::from(left)],
+        [egui::Align::Min, egui::Align::Max][usize::from(up)],
+    ]);
+    let gap = egui::vec2(if left { -6.0 } else { 6.0 }, if up { -6.0 } else { 6.0 });
+    let first = fit(anchor.anchor_size(at + gap, galley.size()));
     let mut place = first;
     // Move the tag below each earlier tag that it covers.
     for _ in 0..placed.len() {
