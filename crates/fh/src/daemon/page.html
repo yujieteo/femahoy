@@ -394,7 +394,6 @@ async function loadFiles(run) {
     const {items} = await reply("/api/v1/runs/" + run + "/artifacts");
     if (version !== fileVersion) return;
     $("files").hidden = false;
-    // A tap on a file closes the list, as a tap on Open closes Runs, so the model gets its full height again.
     const list = $("file-list");
     list.replaceChildren();
     for (const item of items.filter(p => p !== "report").sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))) {
@@ -402,7 +401,9 @@ async function loadFiles(run) {
       const file = name || path.slice(6);
       const b = el("button", "", path.startsWith("inputs/") ? "Input · " + file : file);
       b.type = "button";
-      b.onclick = () => { $("files").open = false; openFile(run, path, file); };
+      // A tap on a file leaves the list open. The file opens in a new tab, and a hidden page does not tell
+      // the viewer of a new canvas size, so the 3D view would stay stretched when the person comes back.
+      b.onclick = () => openFile(run, path, file);
       list.append(b);
     }
     $("report").hidden = !items.includes("report");
