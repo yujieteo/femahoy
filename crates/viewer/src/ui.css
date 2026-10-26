@@ -86,6 +86,11 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
   .toolbar:has(> [data-camera]) { column-gap: var(--space-2); }
   [data-camera="views"] > span { display: none; }
 }
+/* A phone in landscape has about 390 pt of height, and 2 toolbar rows are above the model. Less
+   space above and below each row gives the model more height. The targets stay --target high. */
+@media (max-height: 500px) {
+  .toolbar { min-height: calc(var(--target) + 2 * var(--space-1)); padding-block: var(--space-1); }
+}
 /* iOS Safari zooms the page when a text field or a menu under 16px gets the focus. This floor
    wins over the font size of a view (!important), because the zoom does not stop below 16px. */
 @media (pointer: coarse) { textarea, select, input[type="search"] { font-size: max(16px, var(--body)) !important; } }
