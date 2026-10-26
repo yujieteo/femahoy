@@ -15,6 +15,7 @@
 //!
 //! A series that is not `points` shows as a line through its values in the order of the rows. With
 //! `gaps: break`, an empty cell of a line series breaks its line, for example at an absent sample.
+//! A sample with a break on each side shows as a small point.
 
 /// One series of a curve.
 #[derive(Debug, Clone, PartialEq)]
@@ -316,7 +317,14 @@ impl Curve {
                         points.push(format!("{:.1},{:.1}", px(*x), py(y)));
                     }
                     let end = k + 1 == self.rows.len() || (self.gaps && values[i].is_none());
-                    if end && !points.is_empty() {
+                    if end && self.gaps && points.len() == 1 {
+                        let (cx, cy) = points[0].split_once(',').unwrap_or_default();
+                        svg.push_str(&format!(
+                            "<circle style=\"fill:var(--s{})\" cx=\"{cx}\" cy=\"{cy}\" r=\"2.5\"/>",
+                            i + 1
+                        ));
+                        points.clear();
+                    } else if end && !points.is_empty() {
                         svg.push_str(&format!(
                             "<polyline style=\"stroke:var(--s{})\" points=\"{}\"/>",
                             i + 1,
@@ -501,8 +509,21 @@ mod tests {
         assert_eq!(joined.figure().matches("<polyline").count(), 2);
         let gaps = Curve::parse(&text.replace("[1]\n", "[1]\n# gaps: break\n"), "r").unwrap();
         assert!(gaps.gaps);
-        assert_eq!(gaps.figure().matches("<polyline").count(), 4);
+        assert_eq!(gaps.figure().matches("<polyline").count(), 2);
+        assert_eq!(gaps.figure().matches("r=\"2.5\"").count(), 2);
         assert_eq!(Curve::parse(&gaps.to_csv(), "r").unwrap(), gaps);
+    }
+
+    #[test]
+    fn an_isolated_sample_with_gaps_break_shows_as_a_point() {
+        let text =
+            "# y: residual [1]\n# gaps: break\niteration [1],p\n1,0.1\n2,\n3,0.05\n4,\n5,0.01\n";
+        let figure = Curve::parse(text, "residual").unwrap().figure();
+        assert_eq!(figure.matches("<polyline").count(), 0);
+        assert_eq!(
+            figure.matches("<circle style=\"fill:var(--s1)\"").count(),
+            3
+        );
     }
 
     #[test]
