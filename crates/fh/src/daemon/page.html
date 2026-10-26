@@ -228,6 +228,13 @@ function openRun(run) {
   loadFiles(run);
 }
 
+// On a phone the model is below the chat, so a tap that opens a run scrolls the model into view.
+function openRunAndShow(run) {
+  openRun(run);
+  const model = $("model");
+  if (model.getBoundingClientRect().top > 0) model.scrollIntoView({ block: "start" });
+}
+
 function select() {
   $("selected-run").textContent = shown ? runLabel(shown) : "";
 }
@@ -260,7 +267,7 @@ function renderRuns() {
       b.onclick = action;
       row.append(b);
     };
-    button("Open", () => { openRun(run); runs.open = false; });
+    button("Open", () => { runs.open = false; openRunAndShow(run); });
     if ($("compare").checked) {
       button("Use as A", () => compareSide("a", run));
       button("Use as B", () => compareSide("b", run));
@@ -550,7 +557,7 @@ function entry(kind, text, fresh) {
       const b = el("button", "open", "Show the results of ");
       b.append(runName(text));
       b.type = "button";
-      b.addEventListener("click", () => openRun(text));
+      b.addEventListener("click", () => openRunAndShow(text));
       if (fresh) {
         if (!$("compare").checked) openRun(text);
         listRuns().catch((e) => showError(e.message));
