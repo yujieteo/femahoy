@@ -152,7 +152,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
     <button type="button" id="report" data-control="files" hidden>Open report</button>
     <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link views</label>
-    <button type="button" id="close-compare" hidden>Close comparison</button>
+    <button type="button" id="close-compare" class="trail" hidden>Done</button>
   </header>
   <p id="comparison-note" class="note" hidden>Undeformed meshes only. No convergence result.</p>
   <div id="pair">
@@ -391,6 +391,7 @@ $("compare").onchange = () => {
   comparisonVersion++;
   const on = $("compare").checked;
   $("comparison-note").hidden = $("link-control").hidden = $("close-compare").hidden = $("label-a").hidden = !on;
+  $("selected-run").hidden = on;
   if (on) { compareA = null; compareB = null; $("label-a").textContent = "Choose mesh A from Runs"; }
   if (!on) {
     if (viewB) view.link(viewB, false);
