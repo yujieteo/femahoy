@@ -28,7 +28,7 @@ button, select {
 }
 button:hover, select:hover { background-color: var(--raised); }
 button:disabled { opacity: 0.4; cursor: default; }
-button:disabled:hover { background: var(--bg); }
+button:disabled:not(.primary):hover { background: var(--bg); }
 button.primary { border-color: var(--button); background: var(--button); color: var(--on-button); }
 button.icon { display: inline-grid; place-items: center; width: var(--target); padding: 0; border-radius: 50%; }
 button.icon svg { width: 16px; height: 16px; }
