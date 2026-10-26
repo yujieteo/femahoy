@@ -72,6 +72,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #runs { min-width: 0; font-weight: 500; }
+/* Runs and Files are navigation, as is Open report: the same size and colour as a button. */
+#model > .toolbar > details > summary { font-size: var(--body); color: var(--text); }
 /* An open list takes a full header row. Else the other summaries go to its side, at its vertical centre. */
 #model > .toolbar > details[open] { flex-basis: 100%; }
 #run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); }
@@ -113,6 +115,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   /* With no model to show, the empty view only fills the rest of the screen below the chat. */
   #model[data-empty] { flex: 1; height: auto; }
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
+  /* Runs, Files and Open report stay on 1 row: the run name gets shorter, from its start. */
+  #runs { flex: 1 1 0; }
+  #selected-run { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
 }
 
 #view { position: relative; flex: 1; min-height: 0; }
