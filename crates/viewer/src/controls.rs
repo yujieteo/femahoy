@@ -10,7 +10,7 @@ use crate::{app::RequestSlot, view::Control};
 const TOOLBAR: &str = r#"
 <div class="toolbar" role="group" aria-label="Camera controls">
   <button type="button" data-camera="fit" aria-keyshortcuts="F" title="Fit the full model. Keep the camera direction.">Fit <kbd>F</kbd></button>
-  <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Restore the view of the report">Report view <kbd>Home</kbd></button>
+  <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Go back to the first view of the model">Reset view <kbd>Home</kbd></button>
   <label data-camera="views"><span>Views</span> <select id="fh-direction" aria-label="Camera direction">
     <option disabled>Custom</option><option>+X</option><option>-X</option><option>+Y</option><option>-Y</option><option>+Z</option><option>-Z</option><option>Isometric</option>
   </select></label>
@@ -18,11 +18,11 @@ const TOOLBAR: &str = r#"
 </div>
 <div class="toolbar" id="fh-camera-help" data-camera-help hidden><p class="keys">
   <span data-pointer="mouse"><kbd>Drag</kbd> Orbit</span><span data-pointer="mouse"><kbd>Right or Shift drag</kbd> Pan</span>
-  <span data-pointer="mouse"><kbd>Scroll</kbd> Zoom</span><span data-pointer="mouse"><kbd>Double click</kbd> Report view</span>
-  <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Report view</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
+  <span data-pointer="mouse"><kbd>Scroll</kbd> Zoom</span><span data-pointer="mouse"><kbd>Double click</kbd> Reset view</span>
+  <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Reset view</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
   <span data-pointer="mouse">Shortcuts act when the model has focus.</span>
   <span data-pointer="touch"><kbd>Drag</kbd> Orbit</span><span data-pointer="touch"><kbd>Two-finger drag</kbd> Pan</span>
-  <span data-pointer="touch"><kbd>Pinch</kbd> Zoom</span><span data-pointer="touch"><kbd>Double tap</kbd> Report view</span>
+  <span data-pointer="touch"><kbd>Pinch</kbd> Zoom</span><span data-pointer="touch"><kbd>Double tap</kbd> Reset view</span>
 </p></div>"#;
 
 fn listen(
