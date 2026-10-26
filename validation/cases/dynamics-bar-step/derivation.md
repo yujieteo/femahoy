@@ -23,7 +23,7 @@ The check is the mean u1 of the face `END` at the end of the step.
 
 ## Mesh study
 
-Each mesh comes from the command of "Files" with another `--size`. The model is the same as in `job.inp`.
+Each mesh is a former C3D10 mesh of `fh mesh` with another `--size`. The model is the same as in `job.inp`.
 ccx uses its stable increment, thus a finer mesh also has a smaller time increment.
 
 | Size (mm) | Elements | Increment (s) | Time | u1 (mm) | Difference |
@@ -51,8 +51,8 @@ The peak of the 1D theory has a sharp corner at t = 2L/c. The 3D bar has lateral
 
 Before the corner, the chat run agrees with the 1D theory: at t = 50 µs it gives 0.012309 mm against 0.012315 mm (-0.05 %).
 
-The chat used `*DYNAMIC, DIRECT` (implicit). For this mesh an implicit increment takes about 0.2 s, so 77 increments take 16 s.
-`*DYNAMIC, EXPLICIT` takes 6 s. ccx uses its stable increment, 4.64e-8 s, in place of the 1e-7 s of the input.
+The chat used `*DYNAMIC, DIRECT` (implicit). For the former 5 mm mesh, an implicit increment took about 0.2 s, so 77 increments took 16 s.
+`*DYNAMIC, EXPLICIT` took 6 s. ccx used its stable increment, 4.64e-8 s, in place of the 1e-7 s of the input.
 
 ## Chat run
 
