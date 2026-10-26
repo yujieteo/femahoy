@@ -939,11 +939,15 @@ fn probe_controls(
             field.name,
             v.step + 1
         ));
-        let location = match field.location {
-            results::Location::Point => "At node index",
-            results::Location::Cell => "Per element index",
-        };
-        readout(ui, location, &(p.index + 1).to_string());
+        // The index field above already shows the index in probe mode, so a phone gets the
+        // Value row 1 row higher.
+        if !v.probe_mode {
+            let location = match field.location {
+                results::Location::Point => "At node index",
+                results::Location::Cell => "Per element index",
+            };
+            readout(ui, location, &(p.index + 1).to_string());
+        }
         readout(
             ui,
             "Value",
