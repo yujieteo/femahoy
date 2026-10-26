@@ -306,7 +306,7 @@ function renderRuns() {
   const list = $("run-list");
   list.replaceChildren();
   const matched = foundRuns.filter(([run, path]) => (run + " " + path).toLowerCase().includes(search));
-  list.append(el("p", "note", matched.length + " runs"));
+  list.append(el("p", "note", matched.length + (matched.length === 1 ? " run" : " runs")));
   for (const [run, path] of matched) {
     const row = el("div", "run-row", "");
     const text = el("div", "", "");
