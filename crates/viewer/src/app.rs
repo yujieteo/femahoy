@@ -973,7 +973,9 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     // No "Step" heading and no count row: the menu text starts with "Step N of n", so the
     // controls keep their phone rows. No file name in the closed menu, so that the row fits
     // a phone. The list names the files.
-    ui.horizontal(|ui| {
+    // One wrapped row, so that Play goes on the step row when it fits (a phone shows it with
+    // no scroll), and the rail goes on the next row when the row has no space for it.
+    ui.horizontal_wrapped(|ui| {
         let back = ui.add_enabled_ui(v.step > 0, |ui| widgets::button(ui, "<", "previous step"));
         if back.inner.clicked() {
             v.step -= 1;
@@ -993,21 +995,27 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
         if next.inner.clicked() {
             v.step += 1;
         }
-    });
-    if n > 1 {
-        ui.horizontal(|ui| {
-            let text = if v.playing.is_some() { "Pause" } else { "Play" };
-            if widgets::button(ui, text, "show each step in turn").clicked() {
+        if n > 1 {
+            // A symbol, not a word, so that the button goes on the step row of a phone.
+            let (text, hint) = match v.playing {
+                Some(_) => ("\u{23f8}", "pause"),
+                None => ("\u{23f5}", "play: show each step in turn"),
+            };
+            if widgets::button(ui, text, hint).clicked() {
                 v.playing = match v.playing {
                     Some(_) => None,
                     None => Some(ui.input(|i| i.time)),
                 };
             }
             // The rail fills the row, so that each step is a long drag on a phone.
-            ui.spacing_mut().slider_width = ui.available_width();
+            // The space left on this row: available_width() is the full row in a wrapped ui.
+            if ui.available_size_before_wrap().x < 3.0 * crate::ui::TARGET {
+                ui.end_row();
+            }
+            ui.spacing_mut().slider_width = ui.available_size_before_wrap().x;
             ui.add(egui::Slider::new(&mut v.step, 0..=n - 1).show_value(false));
-        });
-    }
+        }
+    });
     ui.separator();
 }
 
