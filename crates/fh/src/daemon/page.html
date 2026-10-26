@@ -104,6 +104,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   #chat:has(#empty) { height: auto; min-height: 0; }
   /* With a run open, the hero only pushes the model down. The input placeholder still asks for a message. */
   body:has(#model:not([data-empty])) #empty { display: none; }
+  /* With a run open and no message yet, the model fills the rest of the first screen, so the
+     composer and the legend at the bottom of the model are both in view. */
+  body:has(#empty) #model { flex: 1; height: auto; }
   /* svh: in iOS Safari 100vh is the height with no toolbars, so the toolbars cover the bottom
      of the model (the legend and the status bar). */
   #model { flex: none; height: 100svh; }
