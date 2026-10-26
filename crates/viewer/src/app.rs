@@ -1127,7 +1127,11 @@ impl eframe::App for ViewerApp {
                 .map(|(_, text)| text.clone())
                 .unwrap_or_else(|| self.status_text());
         }
-        egui::Panel::bottom("status").show(ui, |ui| {
+        // The panels start 16 px from the view edge, the same as the page toolbar
+        // (--space-4). The egui default is 8 px.
+        let frame =
+            egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::symmetric(16, 2));
+        egui::Panel::bottom("status").frame(frame).show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
             // 1 row only: at a large text size on a phone, 2 rows take the space of the
             // Results panel. The full text shows on hover and goes to the screen reader.
@@ -1149,7 +1153,7 @@ impl eframe::App for ViewerApp {
             } else {
                 egui::Panel::right("results").min_size(RIGHT)
             };
-            let response = panel.resizable(false).show(ui, |ui| {
+            let response = panel.frame(frame).resizable(false).show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let all = (!self.page_switch).then_some(&mut self.all);
                     if shown.panel(ui, &mut self.labels, all) {
