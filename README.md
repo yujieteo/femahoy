@@ -33,6 +33,10 @@ Do these 4 steps on macOS (Apple Silicon) or Linux (x86-64 or ARM64).
 
    On macOS, `fh serve` opens the page in your browser. On Linux, open the address that it prints. At start, `fh serve` checks that Claude Code starts and has a login. If not, the chat tells you what to do.
 
+   The address is the same at each start: `http://127.0.0.1:8790/?token=TOKEN`. Set `FH_PORT` to use a different port. If the port is in use, `fh serve` stops with an error. The token is in the file `token` of the state folder. Keep the address private, because each person with the address can use the page. To make a new token, remove the file `token` and start `fh serve` again.
+
+   To open the page on a phone, forward a local port of the phone to `127.0.0.1:8790` on the computer through SSH, for example with a local port forward in Termius. On a computer, use `ssh -L 8790:127.0.0.1:8790 HOST`. Then open the same address on the phone. The page accepts only the host `127.0.0.1:8790`, so the local port must also be 8790.
+
 4. Ask for an analysis in the chat. For example: "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face".
 
    The agent writes a CAD script for the part, meshes it with gmsh, writes the solver input and solves it. It solves at least 2 meshes to find the mesh error. The chat shows each command of the agent, and the viewer beside the chat shows the model and the results. At the end, the agent writes 1 HTML report with the results, a hand check and the viewer.
@@ -96,6 +100,7 @@ A solver variable has priority over its line in `solvers.env`. With neither, `fh
 - `FH_OPENEMS`: the Python with openEMS of `fh run` and `fh validate`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
+- `FH_PORT`: the port of `fh serve` on 127.0.0.1. The default is 8790.
 - `FH_NO_OPEN`: with a value that is not empty and not `0`, `fh serve` does not open the browser.
 
 ## Documents

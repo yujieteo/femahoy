@@ -171,8 +171,9 @@ pub(crate) struct Store {
 }
 
 impl Store {
-    /// Make sure that the state folder has a `runs` folder. A daemon changes no file of the
-    /// folder, so another daemon can use it at the same time.
+    /// Make sure that the state folder has a `runs` folder. A daemon writes only the file
+    /// `token` of the folder, once at the first start, so another daemon can use it at the same
+    /// time.
     pub(crate) fn open(state_dir: &Path) -> Result<Store, String> {
         let err = |e| format!("state folder: {e}");
         fs::create_dir_all(state_dir.join(RUNS_DIR)).map_err(err)?;

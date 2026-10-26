@@ -466,3 +466,41 @@ fn retained_artifacts_need_authorization_and_reports_cannot_escape_the_run() {
         assert_eq!(lab.get("/api/v1/runs/run-000002/report", &auth).status, 403);
     }
 }
+
+/// The token is in the state folder with owner-only permissions, and a new start reads it, so
+/// the address of the page stays the same. A token file that other users can read stops the start.
+#[test]
+fn the_token_stays_the_same_at_each_start() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let lab = Lab::new("token");
+    let file = lab.state().join("token");
+    let mode = fs::metadata(&file).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600, "mode {mode:o}");
+    assert_eq!(fs::read_to_string(&file).unwrap(), lab.daemon.token());
+
+    let again = Daemon::start_with_options(&lab.state(), Options::default()).unwrap();
+    assert_eq!(again.token(), lab.daemon.token());
+
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+    let err = Daemon::start_with_options(&lab.state(), Options::default())
+        .err()
+        .expect("a token that other users can read stops the start");
+    assert!(err.contains("chmod 600"), "{err}");
+}
+
+/// A port in use stops the start with a message that names the port and `FH_PORT`. The daemon
+/// does not use another port.
+#[test]
+fn a_port_in_use_stops_the_start() {
+    let lab = Lab::new("port");
+    let options = Options {
+        port: lab.daemon.port(),
+        ..Options::default()
+    };
+    let err = Daemon::start_with_options(&lab.state(), options)
+        .err()
+        .expect("a second daemon on the same port does not start");
+    assert!(err.contains(&lab.daemon.port().to_string()), "{err}");
+    assert!(err.contains("FH_PORT"), "{err}");
+}
