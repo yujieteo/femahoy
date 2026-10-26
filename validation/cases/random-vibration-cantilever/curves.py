@@ -68,7 +68,7 @@ def main(out, folders):
         "# y: PSD of the acceleration [g^2/Hz]\n"
         "# log: x y\n"
         "# points model: this run, the steady state step in ccx/job.dat\n"
-        "# note: The model is the mean over the 57 nodes of the tip face, at the 301 frequencies of the "
+        "# note: The model is the mean over the 37 nodes of the tip face, at the 301 frequencies of the "
         "steady state step. The model shows as points, because it lies on the line of the beam theory. "
         "The beam theory is the modal sum of 40 modes in derivation.md. "
         "The RMS of the check is the square root of the area under the curve.\n"

@@ -101,7 +101,7 @@ Reason: a wrong unit gives wrong results without any warning. There is no defaul
 
 `C3D10` (tet10) is the element that `fh mesh` writes. With `--shell` it writes `S6` (the 6-node shell triangle) for a part drawn as a mid-surface. The chat can write another element type in its CalculiX input, for example `S8R`, and the page shows each element type that CalculiX writes to the result file.
 
-Reason: tetrahedra mesh any shape, and quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case, plain hex8 (`C3D8`) gave 0.35 to 2.07 times the beam deflection. One element type keeps `fh mesh` and the cases small. `S6`, not `S8R`, is the shell element: on the roof case `S6` gives -301.5 mm on the 1250 mm mesh (reference -302.4 mm), but gmsh gives no reliable all-quad mesh of a curved surface (mixed meshes, or an element with 2 nodes at one point).
+Reason: tetrahedra mesh any shape, and quadratic elements do not have the bending errors of plain hex8. In the old `cantilever` case, plain hex8 (`C3D8`) gave 0.35 to 2.07 times the beam deflection. One element type keeps `fh mesh` and the cases small. `S6`, not `S8R`, is the shell element of `fh mesh --shell`: on the roof case `S6` gives -301.5 mm on the 1250 mm mesh (reference -302.4 mm), but gmsh gives no reliable all-quad mesh of a general curved surface (mixed meshes, or an element with 2 nodes at one point). A mapped `S8R` mesh works for a surface patch with 4 edges: the roof case uses a transfinite gmsh mesh of 1825 nodes and gives -301.9 mm. `S6` from `fh mesh --shell` stays for other curved surfaces, and the roof case also checks it.
 
 ---
 
