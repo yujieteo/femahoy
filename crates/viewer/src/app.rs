@@ -56,7 +56,7 @@ pub type RequestSlot = Arc<Mutex<Request>>;
 /// The results of a run with their view state, their panel and their view, or a model before
 /// the solve.
 enum Body {
-    Results(Box<Results>, ViewState, Loads, Panel, View),
+    Results(Box<Results>, Box<ViewState>, Loads, Panel, View),
     Preview(Box<Preview>),
 }
 
@@ -114,7 +114,11 @@ impl ViewerApp {
         let mut frame = None;
         let body = match content {
             Content::Results(r, preview, view) => {
-                let state = ViewState::open(&r, &view, &panel(&r, &view, &preview, false));
+                let state = Box::new(ViewState::open(
+                    &r,
+                    &view,
+                    &panel(&r, &view, &preview, false),
+                ));
                 let panel = panel(&r, &view, &preview, self.all);
                 let same_mesh = (r.meshes.iter())
                     .map(|m| preview.as_ref().is_ok_and(|p| p.matches(m)))
