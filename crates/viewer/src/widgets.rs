@@ -217,23 +217,33 @@ pub fn legend(
     } else {
         &field.name
     };
-    match quantity {
-        Some("velocity") => {
-            ui.strong("Speed (m/s)");
+    let caption = |ui: &mut egui::Ui| {
+        match quantity {
+            Some("velocity") => {
+                ui.strong("Speed (m/s)");
+            }
+            Some("kinematic-pressure") => {
+                ui.strong("p/rho (m²/s²)");
+            }
+            _ => {
+                ui.strong(format!("{name} ({unit})"));
+            }
         }
-        Some("kinematic-pressure") => {
-            ui.strong("p/rho (m²/s²)");
+        ui.weak(match field.location {
+            Location::Point => "At the nodes",
+            Location::Cell => "Per element",
+        });
+        if fixed_range {
+            ui.weak("Fixed range from report");
         }
-        _ => {
-            ui.strong(format!("{name} ({unit})"));
-        }
-    }
-    ui.weak(match field.location {
-        Location::Point => "At the nodes",
-        Location::Cell => "Per element",
-    });
-    if fixed_range {
-        ui.weak("Fixed range from report");
+    };
+    // A short panel (the panel below the model on a phone) shows all bands as one bar on one
+    // row: the smallest value, the bands (the lowest at the left), the largest value. The bands
+    // are equal, so the two ends give their limits. The bar goes above its caption, so that it
+    // stays in view when the caption wraps at a large text size.
+    let short = ui.clip_rect().height() < 400.0;
+    if !short {
+        caption(ui);
     }
     let band = |ui: &mut egui::Ui, band: usize, text: String| {
         text_row(ui, |ui| {
@@ -247,6 +257,9 @@ pub fn legend(
             BANDS / 2,
             format!("constant {}", view::format_value(lo)),
         );
+        if short {
+            caption(ui);
+        }
         return;
     }
     let (min, max) = if fixed_range {
@@ -254,10 +267,7 @@ pub fn legend(
     } else {
         ("Min", "Max")
     };
-    // A short panel (the panel below the model on a phone) shows all bands as one bar on one
-    // row: the smallest value, the bands (the lowest at the left), the largest value. The bands
-    // are equal, so the two ends give their limits.
-    if ui.clip_rect().height() < 400.0 {
+    if short {
         text_row(ui, |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.weak(max);
@@ -276,6 +286,7 @@ pub fn legend(
                 });
             });
         });
+        caption(ui);
         return;
     }
     let limits = results::band_limits(lo, hi);

@@ -667,20 +667,28 @@ fn results_panel(
     r: &Results,
     v: &mut ViewState,
     panel: &Panel,
-    all: Option<&mut bool>,
+    mut all: Option<&mut bool>,
     drawn: Option<&[[f32; 3]]>,
 ) -> bool {
     let before = v.clone();
     // One wrapped row, so that a wide short panel (a phone) keeps its height for the legend.
-    ui.horizontal_wrapped(|ui| {
-        ui.heading("Results");
-        ui.label(format!("Units: {}", r.units));
-        if let Some(all) = all {
-            widgets::checkbox(ui, all, "Show all controls")
-                .on_hover_text("also the fields that are not important for this run");
-        }
-    });
-    ui.separator();
+    let mut header = |ui: &mut egui::Ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.heading("Results");
+            ui.label(format!("Units: {}", r.units));
+            if let Some(all) = all.as_deref_mut() {
+                widgets::checkbox(ui, all, "Show all controls")
+                    .on_hover_text("also the fields that are not important for this run");
+            }
+        });
+    };
+    // A short panel (the panel below the model on a phone) shows the header last, so that
+    // the colour scale and the probe stay in view at a large text size.
+    let short = ui.clip_rect().height() < 400.0;
+    if !short {
+        header(ui);
+        ui.separator();
+    }
 
     let n = r.steps.len();
     // Before the controls, so that they show the step of the shape.
@@ -778,6 +786,10 @@ fn results_panel(
     } else {
         v.probe_mode = false;
         v.probe = None;
+    }
+    if short {
+        ui.separator();
+        header(ui);
     }
     *v != before
 }
