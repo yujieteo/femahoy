@@ -260,6 +260,45 @@ A curve shows Show values when no `data-controls` is around its mark.
 Use `<section data-controls="">` around a curve mark to hide it, and `data-controls="values"` to show it. Show all controls restores it.
 Reason: heat-fin and frequency curves require exact values from each series, without values from rounded plot coordinates.
 
+### Optional CFD controls
+
+Use these controls only when the analysis needs them.
+Put them inside a `section data-cfd`.
+The controls use the shared menu, segmented control, switch, value readout, and shortcut row.
+Each control wrapper uses `data-cfd-control="NAME"` for its name from the table.
+No `data-controls` shows every applicable control. An explicit `data-controls` shows exactly the named controls.
+An empty value hides the controls. "Show all controls" temporarily shows every applicable control.
+The names below join `steps`, `deformation`, and `loads` in that attribute.
+Reason: each view must use the same rule for control visibility.
+Reason: the flap report hid useful velocity data and did not connect its plots to the selected run.
+
+`fh report --cfd DATA.json` embeds the source data for these controls.
+The flap case writes this file through `curves.py`.
+The file contains final field limits, ordered upper and lower Cp samples, coefficients, histories, and cell velocity traces.
+No control fabricates absent data. Old reports retain their original controls and contour limits.
+Reason: absent data must not produce a false result.
+
+| Name in `data-controls` | HTML attribute | Use |
+|---|---|---|
+| `cfd-field` | Radio input `data-cfd-field`, value `p` or `U magnitude` | Choose pressure or speed in 1 action. Put the labels in a shared `segmented` component. |
+| `cfd-mesh` | Checkbox `data-cfd-mesh` | Show mesh edges over a CFD contour. Omit `checked` for a clear field. |
+| `cfd-flap` | Select `data-cfd-flap` | Connect the field, lift, moment, Cp, history, and flow to one solved angle. The first select supplies each option through `data-run` and `data-angle`. |
+| `cfd-load` | Container `data-cfd-load="lift"` or `"moment"`, with a curve and an output | Show the selected coefficient and reference on separate scales. |
+| `cfd-chord-station` | Range input `data-cfd-station`, inside `data-cfd-cp` | Show separate upper and lower −Cp values and the same station on the airfoil. The readout identifies interpolation. Use a labelled output. |
+| `cfd-force-interval` | Range input `data-cfd-interval`, inside `data-cfd-history` | Show the iteration interval and the force range. Keep mesh convergence separate. |
+| `cfd-streamlines` | Checkbox `data-cfd-streamlines`, with a `data-cfd-flow` figure | Show steady planar cell velocity traces from upstream seeds. A trace stops at a boundary or finite limit. |
+| `cfd-flap-seed` | Checkbox `data-cfd-seed` | Add the source trace from a seed near the flap. |
+
+A history container can contain `data-cfd-angle="ANGLE"` sections with static CSV plots and a `data-cfd-history-absent` paragraph.
+Use `<!--cfd-curve NAME.csv-->` for these plots to keep full SVG samples in a small report.
+Each residual plot uses initial residuals on a log axis. Absent samples form gaps.
+A streamline figure states its source.
+Without sufficient source data, it shows an explicit absent-data message.
+
+The view also accepts `data-range="LOW,HIGH"`, `data-mesh="false"`, and `data-quantity="velocity"` or `"kinematic-pressure"`.
+The range and quantity apply only to the first named field. The report source must justify them.
+Reason: one field name alone does not establish its physical unit.
+
 ## Curves and fits
 
 A curve is a CSV file of x-y values. `fh report ... --curve FILE` draws it as a plot at its mark in your text (see "The story of a report"), and `--curve` needs no `--run`. Write a curve for each result that is a line, not a field: a mesh study, a history over the time or the iterations, a response over the frequency.
@@ -278,6 +317,7 @@ T = t sqrt(2 g / a) [1],model,measured
 - The header line is the x quantity, then the name of each series (at most 8). Give each quantity its unit in `[ ]`, and `[1]` when it has no unit. An empty cell has no value.
 - `points NAME: SOURCE` shows the series NAME as points, with its source under the plot. Use it for the reference values. The other series are lines.
 - `log` makes the x axis, the y axis or both (`x y`) logarithmic. `title` and `note` are optional.
+- `gaps: break` makes an empty cell break the line of its series. Use it for absent samples, for example an absent residual. A sample between 2 empty cells shows as a point. Without it, a line joins the values of its series across empty cells.
 - Write the file with an `fh-python` script from the tables of the solver. A case can also write it, for example `system/front.awk` of the validation case `dam-break-vof`.
 
 `fh fit MODEL CURVE.csv [--series NAME] [-o FIT.csv]` fits a model to 1 series by least squares. It prints the parameters with their units, R^2, the largest residual and the range of the points. Use the parameters only in that range. `-o` writes the curve with the fit as a new series: show it with `--curve FIT.csv`.

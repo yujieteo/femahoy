@@ -697,7 +697,22 @@ fn results_panel(
                 format!("Step {} has no field {name}.", v.step + 1),
             );
         }
-        Contour::On { field, lo, hi } => legend(ui, &r.units, field, lo, hi),
+        Contour::On { field, lo, hi } => {
+            let quantity = if v.field == v.configured_field {
+                v.quantity.as_deref()
+            } else {
+                None
+            };
+            legend(
+                ui,
+                &r.units,
+                field,
+                lo,
+                hi,
+                quantity,
+                v.field == v.configured_field && v.range.is_some(),
+            );
+        }
     }
     *v != before
 }
@@ -1089,6 +1104,10 @@ impl eframe::App for ViewerApp {
                 contour,
                 ghost,
                 palette,
+                mesh: match &shown.body {
+                    Body::Results(_, v, ..) => v.mesh,
+                    Body::Preview(_) => true,
+                },
             };
             ui.painter().add(egui_wgpu::Callback::new_paint_callback(
                 rect,

@@ -151,18 +151,39 @@ pub fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
 
 /// The legend of a contour: the field name and its unit, where the values are, the colour
 /// bands with their limits (the highest band at the top), and the smallest and largest value.
-pub fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64, hi: f64) {
+pub fn legend(
+    ui: &mut egui::Ui,
+    units: &str,
+    field: &results::ScalarField,
+    lo: f64,
+    hi: f64,
+    quantity: Option<&str>,
+    fixed_range: bool,
+) {
     let unit = view::unit_text(units, field.quantity);
     let name = if field.name == "NT" {
         "Temperature · NT"
     } else {
         &field.name
     };
-    ui.strong(format!("{name} ({unit})"));
+    match quantity {
+        Some("velocity") => {
+            ui.strong("Speed (m/s)");
+        }
+        Some("kinematic-pressure") => {
+            ui.strong("p/rho (m²/s²)");
+        }
+        _ => {
+            ui.strong(format!("{name} ({unit})"));
+        }
+    }
     ui.weak(match field.location {
         Location::Point => "At the nodes",
         Location::Cell => "Per element",
     });
+    if fixed_range {
+        ui.weak("Fixed range from report");
+    }
     let band = |ui: &mut egui::Ui, band: usize, text: String| {
         text_row(ui, |ui| {
             swatch(ui, BAND_COLORS[band]);
@@ -182,6 +203,14 @@ pub fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: 
     for i in (0..BANDS).rev() {
         band(ui, i, format!("{} to {}", texts[i], texts[i + 1]));
     }
-    readout(ui, "Min", &view::format_value(lo));
-    readout(ui, "Max", &view::format_value(hi));
+    readout(
+        ui,
+        if fixed_range { "Range min" } else { "Min" },
+        &view::format_value(lo),
+    );
+    readout(
+        ui,
+        if fixed_range { "Range max" } else { "Max" },
+        &view::format_value(hi),
+    );
 }

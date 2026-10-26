@@ -392,3 +392,63 @@ fn a_report_retains_a_copy_beside_each_run() {
     fs::remove_file(lab.out()).unwrap();
     assert_eq!(fs::read(retained).unwrap(), expected);
 }
+
+#[test]
+fn cfd_data_cannot_close_its_data_element() {
+    let lab = Lab::new("report-cfd-data");
+    let data = lab.dir.join("cfd.json");
+    fs::write(&data, r#"{"source":"</script><script>bad()</script>"}"#).unwrap();
+    let result = lab.report(&["--run", "run-000001", "--cfd", p(&data)]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert!(html.contains("id=\"cfd-data\""));
+    assert!(!html.contains("<script>bad()"));
+}
+
+#[test]
+fn flap_report_data_preserves_surfaces_residuals_and_fluid_boundaries() {
+    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../validation/cases/naca23012-flap/test_curves.py");
+    let result = Command::new("python3").arg(script).output().unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+}
+
+#[test]
+fn cfd_history_figures_keep_full_samples_in_a_compact_report() {
+    let lab = Lab::new("report-cfd-figure");
+    fs::write(
+        lab.dir.join("text.html"),
+        "<section data-cfd><!--cfd-curve history.csv--></section>",
+    )
+    .unwrap();
+    let curve = lab.dir.join("history.csv");
+    fs::write(&curve, "# y: Cl [1]\niteration [1],Cl\n1,0.1\n2,0.2\n").unwrap();
+    let result = lab.report(&["--curve", p(&curve)]);
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let html = fs::read_to_string(lab.out()).unwrap();
+    assert!(!html.contains("<!--cfd-curve history.csv-->"));
+    let marker = "data-cfd-figure=\"";
+    let encoded = html
+        .split_once(marker)
+        .unwrap()
+        .1
+        .split_once('"')
+        .unwrap()
+        .0;
+    let wrapped = format!("<script data-path=\"/figure\">{encoded}</script>");
+    let figure = String::from_utf8(file(&wrapped, "/figure").unwrap()).unwrap();
+    assert!(figure.contains("<polyline"));
+    assert!(figure.contains("iteration [1]"));
+}

@@ -50,13 +50,14 @@ use crate::curve::escape;
 use crate::fit::read_curve;
 
 const USAGE: &str =
-    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... \
+    "usage: fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... [--cfd DATA.json] \
      [--viewer FILE.js] [--one-step]\n\
      A report with no run and no curve is the text only. The plot of a curve goes in place of \
      the mark <!--curve NAME--> of the text, where the path of the curve ends with NAME, else \
-     after the text. --viewer loads the viewer from the script FILE.js beside the report, \
-     which sets window.fhViewer, instead of a copy in the report. Each data-run of the text \
-     must name a --run, each name of its data-fields a field of the run, and each step number \
+     after the text. A mark <!--cfd-curve NAME--> holds the same plot compressed. --cfd embeds \
+     the JSON source data of the CFD controls of the text. --viewer loads the viewer from the \
+     script FILE.js beside the report, which sets window.fhViewer, instead of a copy in the \
+     report. Each data-run of the text must name a --run, each name of its data-fields a field of the run, and each step number \
      of the element a step of the run: its data-step, the step of each mark of its data-marks, \
      and the min, max and value of a slider (input type=\"range\"). --one-step keeps only the \
      steps of each run that the text opens, for a smaller file: each step number of an \
@@ -71,11 +72,13 @@ struct Options {
     curves: Vec<PathBuf>,
     viewer: Option<String>,
     one_step: bool,
+    cfd: Option<PathBuf>,
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
     let (mut text, mut out, mut runs, mut curves) = (None, None, Vec::<String>::new(), Vec::new());
     let (mut viewer, mut one_step) = (None, false);
+    let mut cfd = None;
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let mut value = |what: &str| {
@@ -85,6 +88,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         };
         match arg.as_str() {
             "-o" => out = Some(PathBuf::from(value("a file")?)),
+            "--cfd" => cfd = Some(PathBuf::from(value("a CFD data file")?)),
             "--curve" => curves.push(PathBuf::from(value("a curve file")?)),
             "--viewer" => viewer = Some(value("a script file")?),
             "--one-step" => one_step = true,
@@ -107,6 +111,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             curves,
             viewer,
             one_step,
+            cfd,
         }),
         _ => Err(USAGE.into()),
     }
@@ -184,6 +189,18 @@ fn place_curves(mut text: String, paths: &[PathBuf]) -> Result<String, String> {
     let mut after = String::new();
     for path in paths {
         let figure = read_curve(path)?.figure();
+        let compact = text.match_indices("<!--cfd-curve ").find_map(|(at, _)| {
+            let end = at + text[at..].find("-->")? + 3;
+            let name = text[at + 14..end - 3].trim();
+            (!name.is_empty() && path.ends_with(name)).then_some(at..end)
+        });
+        if let Some(range) = compact {
+            let mut encoded = String::from("<div data-cfd-figure=\"");
+            base64(&mut encoded, &compress_to_vec(figure.as_bytes(), 9));
+            encoded.push_str("\"></div>");
+            text.replace_range(range, &encoded);
+            continue;
+        }
         let mark = text.match_indices("<!--curve ").find_map(|(at, _)| {
             let end = at + text[at..].find("-->")? + 3;
             let name = text[at + 10..end - 3].trim();
@@ -439,6 +456,19 @@ fn build(o: &Options) -> Result<String, String> {
     let page = TEMPLATE
         .replace("NONCE", &nonce)
         .replace("/*UI*/", &ui_style())
+        .replace("/*CFD*/", include_str!("cfd.js"))
+        .replace(
+            "<!--CFD-DATA-->",
+            &match &o.cfd {
+                Some(path) => {
+                    let mut data = String::from("<script type=\"text/plain\" id=\"cfd-data\">");
+                    base64(&mut data, &compress_to_vec(&read(path)?, 9));
+                    data.push_str("</script>");
+                    data
+                }
+                None => String::new(),
+            },
+        )
         .replace("<!--VIEWER-->", &shared);
     let (head, tail) = page
         .split_once("<!--DATA-->")

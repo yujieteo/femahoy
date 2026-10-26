@@ -197,7 +197,11 @@ fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
                     ),
                 );
             }
-            let q = quantity(&field.name);
+            let q = if location == Location::Cell && field.name == "U" {
+                Quantity::Other
+            } else {
+                quantity(&field.name)
+            };
             if c == 3 {
                 out.push(ScalarField {
                     name: format!("{} magnitude", field.name),
@@ -561,6 +565,19 @@ mod tests {
         ] {
             assert!(names.contains(&want), "{want} in {names:?}");
         }
+    }
+
+    #[test]
+    fn cell_velocity_is_not_structural_displacement() {
+        let mut grid = Grid::default();
+        grid.cells.push(vec![0]);
+        grid.cell_data.push(Field {
+            name: "U".into(),
+            components: 3,
+            values: vec![1.0, 2.0, 0.0],
+        });
+        let fields = fields_of(&grid, "fluid.vtu").unwrap();
+        assert_ne!(fields[0].quantity, Quantity::Displacement);
     }
 
     /// Each displacement and each contour value matches the arrays of the VTU file of the

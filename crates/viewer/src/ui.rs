@@ -8,6 +8,19 @@
 //! are the light colours turned over. `series` are the series of the plots, in a fixed order
 //! that keeps adjacent series apart for colour-blind readers.
 
+/// Named report controls of the shared UI layer. They use the existing HTML components.
+/// `data-controls` includes these names beside the names of the model controls.
+pub const REPORT_CONTROLS: &[&str] = &[
+    "cfd-field",
+    "cfd-mesh",
+    "cfd-flap",
+    "cfd-load",
+    "cfd-chord-station",
+    "cfd-force-interval",
+    "cfd-streamlines",
+    "cfd-flap-seed",
+];
+
 /// The colours of 1 appearance, as `0xRRGGBB`.
 pub struct Colors {
     pub bg: u32,

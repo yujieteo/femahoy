@@ -2,12 +2,13 @@
 
     python3 curves.py OUT d-10=FOLDER d0=FOLDER d10=FOLDER
 
-FOLDER is the output folder of the run of each input. The script writes OUT/cp.csv, the
-pressure coefficient on the airfoil, and OUT/flap.csv, the lift and the moment against the flap
-angle with the values of Table I of Abbott and Greenberg (1939). Only the Python standard
-library.
+FOLDER is the output folder of the run of each input. The script writes Cp, lift, moment, force history, and initial residual CSV files.
+OUT/cfd.json holds the source data for the optional report controls. The reference values
+come from Table I of Abbott and Greenberg (1939). Only the Python standard library.
 """
 
+import json
+import math
 import re
 import sys
 import tomllib
@@ -28,11 +29,12 @@ def foam_list(path):
     return text[start : text.index("\n)", start)].strip().split("\n")
 
 
-def wall_cp(foam):
-    """(x, -Cp) at the centre of each wall face, around the airfoil from the trailing edge. The
-    faces of the wall go around the airfoil in a loop. The model has |U| = 1 and the kinematic
-    pressure 0 in the far field, thus Cp = 2 p. p on the wall is the value of the cell
-    (zeroGradient)."""
+def last_time(foam):
+    return max((d for d in foam.iterdir() if re.fullmatch(r"\d+", d.name)), key=lambda d: int(d.name))
+
+
+def wall_surfaces(foam):
+    """Split the ordered wall at the leading edge. Geometry identifies each surface."""
     mesh = foam / "constant/polyMesh"
     boundary = (mesh / "boundary").read_text()
     wall = re.search(r"\bwall\s*\{[^}]*?nFaces\s+(\d+);\s*startFace\s+(\d+);", boundary)
@@ -40,51 +42,226 @@ def wall_cp(foam):
     points = [tuple(map(float, p.strip("()").split())) for p in foam_list(mesh / "points")]
     faces = [list(map(int, f[f.index("(") + 1 : -1].split())) for f in foam_list(mesh / "faces")[start : start + count]]
     owner = [int(o) for o in foam_list(mesh / "owner")[start : start + count]]
-    last = max((d for d in foam.iterdir() if re.fullmatch(r"\d+", d.name)), key=lambda d: int(d.name))
-    p = [float(v) for v in foam_list(last / "p")]
-    loop = [(sum(points[i][0] for i in face) / len(face), -2 * p[cell]) for face, cell in zip(faces, owner)]
+    p = [float(v) for v in foam_list(last_time(foam) / "p")]
+    loop = [(sum(points[i][0] for i in face) / len(face),
+             sum(points[i][1] for i in face) / len(face), -2 * p[cell]) for face, cell in zip(faces, owner)]
+    return split_wall(loop)
+
+
+def split_wall(loop):
+    """Keep the ordered loop and both surface values at each chord station."""
     edge = max(range(len(loop)), key=lambda i: loop[i][0])
-    return loop[edge:] + loop[:edge]
+    loop = loop[edge:] + loop[:edge]
+    nose = min(range(len(loop)), key=lambda i: loop[i][0])
+    branches = [loop[:nose + 1], loop[nose:] + loop[:1]]
+    # The wall order supplies the branches. Mean y of the main element supplies their names.
+    def height(branch):
+        main = [p[1] for p in branch if 0.2 < p[0] < 0.6]
+        if not main:
+            raise ValueError("wall geometry has no main-element surface")
+        return sum(main) / len(main)
+    branches.sort(key=height, reverse=True)
+    return {name: [[x, cp] for x, y, cp in branch] for name, branch in zip(("upper", "lower"), branches)}, [[x, y] for x, y, cp in loop]
 
 
-def coefficients(foam):
-    """Cl and CmPitch of the last iteration."""
-    lines = (foam / "postProcessing/forceCoeffs/0/coefficient.dat").read_text().splitlines()
-    names = lines[[i for i, line in enumerate(lines) if line.startswith("#")][-1]][1:].split()
-    values = lines[-1].split()
-    return float(values[names.index("Cl")]), float(values[names.index("CmPitch")])
+def force_history(foam):
+    """Keep full precision and the last record at each repeated iteration."""
+    path = foam / "postProcessing/forceCoeffs/0/coefficient.dat"
+    if not path.is_file():
+        return []
+    names, rows = [], {}
+    for line in path.read_text().splitlines():
+        cells = line.lstrip("# ").split()
+        if line.startswith("#"):
+            if "Cl" in cells and "CmPitch" in cells:
+                names = cells
+            continue
+        if not names or not cells:
+            continue
+        try:
+            t, cl, cm = float(cells[0]), float(cells[names.index("Cl")]), float(cells[names.index("CmPitch")])
+            if all(math.isfinite(v) for v in (t, cl, cm)):
+                rows[t] = [t, cl, cm]
+        except (ValueError, IndexError):
+            continue
+    return [rows[t] for t in sorted(rows)]
+
+
+def residual_history(text):
+    """Initial residuals only. A repeated Time block replaces that block, including gaps."""
+    rows, current = {}, None
+    number = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?"
+    for line in text.splitlines():
+        time = re.fullmatch(r"Time = (" + number + ")", line.strip())
+        if time:
+            current = float(time[1])
+            rows[current] = {}
+            continue
+        if current is None:
+            continue
+        match = re.search(r"Solving for (p|Ux|Uy|Uz|nuTilda), Initial residual = (" + number + r"),", line)
+        if match:
+            value = float(match[2])
+            if math.isfinite(value) and value > 0:
+                rows[current].setdefault(match[1], value)
+    return [[t, rows[t]] for t in sorted(rows)]
+
+
+def cross(a, b):
+    return a[0] * b[1] - a[1] * b[0]
+
+
+def fluid_polygons(foam):
+    """Project the extruded cells. Shared vertex edges preserve solid and outer boundaries."""
+    mesh = foam / "constant/polyMesh"
+    points = [tuple(map(float, p.strip("()").split())) for p in foam_list(mesh / "points")]
+    faces = [list(map(int, f[f.index("(") + 1 : -1].split())) for f in foam_list(mesh / "faces")]
+    owner = [int(o) for o in foam_list(mesh / "owner")]
+    neighbour = [int(o) for o in foam_list(mesh / "neighbour")]
+    vertices = [set() for _ in range(max(owner + neighbour) + 1)]
+    for i, face in enumerate(faces):
+        vertices[owner[i]].update(points[p][:2] for p in face)
+        if i < len(neighbour):
+            vertices[neighbour[i]].update(points[p][:2] for p in face)
+    polygons = []
+    for cell in vertices:
+        x = sum(p[0] for p in cell) / len(cell)
+        y = sum(p[1] for p in cell) / len(cell)
+        polygons.append(sorted(cell, key=lambda p: math.atan2(p[1] - y, p[0] - x)))
+    return polygons
+
+
+def traces(polygons, velocity, seeds, limit=4000):
+    """Trace the piecewise constant cell velocity without any step across a boundary."""
+    edges, adjacent = {}, {}
+    for i, poly in enumerate(polygons):
+        for a, b in zip(poly, poly[1:] + poly[:1]):
+            key = tuple(sorted((a, b)))
+            if key in edges:
+                j = edges[key]
+                adjacent[i, key], adjacent[j, key] = j, i
+            else:
+                edges[key] = i
+    def inside(poly, p):
+        return all(cross((b[0]-a[0], b[1]-a[1]), (p[0]-a[0], p[1]-a[1])) >= -1e-12
+                   for a, b in zip(poly, poly[1:] + poly[:1]))
+    output = []
+    for seed in seeds:
+        cell = next((i for i, poly in enumerate(polygons) if inside(poly, seed)), None)
+        path, reason, visits = [list(seed)], "outside mesh", set()
+        for _ in range(limit):
+            if cell is None:
+                break
+            u = velocity[cell][:2]
+            speed = math.hypot(*u)
+            if speed < 1e-10:
+                reason = "near zero speed"
+                break
+            d = (u[0]/speed, u[1]/speed)
+            p = path[-1]
+            hits = []
+            poly = polygons[cell]
+            for a, b in zip(poly, poly[1:] + poly[:1]):
+                edge = (b[0]-a[0], b[1]-a[1])
+                den = cross(d, edge)
+                if abs(den) < 1e-14:
+                    continue
+                ap = (a[0]-p[0], a[1]-p[1])
+                t, q = cross(ap, edge)/den, cross(ap, d)/den
+                if t > 1e-10 and -1e-10 <= q <= 1+1e-10:
+                    hits.append((t, tuple(sorted((a,b)))))
+            if not hits:
+                reason = "cell boundary"
+                break
+            t, key = min(hits)
+            path.append([p[0]+t*d[0], p[1]+t*d[1]])
+            next_cell = adjacent.get((cell, key))
+            if next_cell is None:
+                reason = "wall or outer boundary"
+                break
+            if (cell, next_cell) in visits:
+                reason = "closed trace"
+                break
+            visits.add((cell, next_cell))
+            # An opposing velocity in the next cell gives no forward hit, so the trace stops at "cell boundary".
+            cell = next_cell
+        else:
+            reason = "step limit"
+        output.append({"points": path, "stop": reason})
+    return output
+
+
+def csv(out, name, title, y, labels, rows, log=False, gaps=False, points=(), note=""):
+    if not rows:
+        return
+    text = f"# title: {title}\n# y: {y}\n"
+    if log:
+        text += "# log: y\n"
+    if gaps:
+        text += "# gaps: break\n"
+    for label in points:
+        text += f"# points {label}: Abbott and Greenberg (1939), NACA Report 661, Table I\n"
+    if note:
+        text += f"# note: {note}\n"
+    text += ("x / c [1]" if name == "cp" else "flap angle [degrees]" if name in ("lift", "moment") else "iteration [1]")
+    text += "," + ",".join(labels) + "\n"
+    text += "\n".join(",".join("" if v is None else str(v) for v in row) for row in rows) + "\n"
+    (out / (name + ".csv")).write_text(text)
 
 
 def main(out, folders):
     out = Path(out)
     runs = dict(f.split("=", 1) for f in folders)
-    rows = []
-    for k, (name, *_) in enumerate(FLAPS):
-        cells = [""] * len(FLAPS)
-        for x, cp in wall_cp(Path(runs[name]) / "foam"):
-            cells[k] = f"{cp:.4f}"
-            rows.append(f"{x:.5f}," + ",".join(cells))
-    (out / "cp.csv").write_text(
-        "# title: The pressure on the airfoil at the angle of attack 0 degrees (simpleFoam, mesh level 2)\n"
-        "# y: -Cp [1]\n"
-        "# note: The plot shows -Cp, thus the suction on the upper surface is at the top. "
-        "Each line goes around the airfoil from the trailing edge.\n"
-        "x / c [1]," + ",".join(f[2] for f in FLAPS) + "\n" + "\n".join(rows) + "\n"
-    )
-    # Table I of the source: cl at the angle of attack 0 degrees and cm about the a.c.
     test = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
-    rows = []
-    for name, angle, _, cl_test, cm_test in FLAPS:
-        cl, cm = coefficients(Path(runs[name]) / "foam")
-        rows.append(f"{angle},{cl:.4f},{test[cl_test]['value']},{cm:.4f},{test[cm_test]['value']}")
-    (out / "flap.csv").write_text(
-        "# title: Lift and moment against the flap angle, at the angle of attack 0 degrees\n"
-        "# y: cl and cm about the a.c. [1]\n"
-        "# points cl test: Abbott and Greenberg (1939), NACA Report 661, Table I\n"
-        "# points cm test: Abbott and Greenberg (1939), NACA Report 661, Table I\n"
-        "# note: A positive flap angle is down. A positive cm is nose up.\n"
-        "flap angle [degrees],cl,cl test,cm,cm test\n" + "\n".join(rows) + "\n"
-    )
+    data = {"version": 1, "runs": {}, "ranges": {},
+            "cpSeries": [{"angle": f[1], "surface": surface} for f in FLAPS for surface in ("upper", "lower")]}
+    cp_rows, load_rows = [], []
+    all_p, all_speed = [], []
+    for k, (name, angle, label, cl_test, cm_test) in enumerate(FLAPS):
+        foam = Path(runs[name]) / "foam"
+        surfaces, wall = wall_surfaces(foam)
+        history = force_history(foam)
+        residuals = residual_history((foam / "log.simpleFoam").read_text()) if (foam / "log.simpleFoam").is_file() else []
+        last = last_time(foam)
+        pressure = [float(v) for v in foam_list(last / "p")]
+        velocity = [tuple(map(float, v.strip("()").split())) for v in foam_list(last / "U")]
+        all_p.extend(pressure)
+        all_speed.extend(math.sqrt(sum(x*x for x in v)) for v in velocity)
+        polygons = fluid_polygons(foam)
+        seeds = [(-0.1, y) for y in (-0.18, -0.1, -0.04, 0.04, 0.1, 0.18)]
+        run = {"angle": angle, "coefficients": history[-1][1:] if history else None, "cp": surfaces, "wall": wall, "history": history, "residuals": residuals,
+               "reference": [test[cl_test]["value"], test[cm_test]["value"]],
+               "flow": traces(polygons, velocity, seeds),
+               "flapFlow": traces(polygons, velocity, [(0.82, 0.09)]),
+               "source": "foam/postProcessing/forceCoeffs/0/coefficient.dat",
+               "residualSource": "foam/log.simpleFoam (initial residuals)",
+               "flowSource": f"foam/{last.name}/U and constant/polyMesh (cell velocity)"}
+        data["runs"][str(angle)] = run
+        if history:
+            load_rows.append([angle, history[-1][1], run["reference"][0], history[-1][2], run["reference"][1]])
+        for j, surface in enumerate(("upper", "lower")):
+            for x, cp in surfaces[surface]:
+                row = [None] * 6
+                row[2*k+j] = cp
+                cp_rows.append([x, *row])
+        for field, index, title in (("cl", 1, "Lift"), ("cm", 2, "Moment")):
+            csv(out, f"history-{name}-{field}", f"{title} history, {label}", f"{field} [1]", [field],
+                [[row[0], row[index]] for row in history], note=run["source"])
+        equations = [eq for eq in ("p", "Ux", "Uy", "Uz", "nuTilda") if any(eq in row[1] for row in residuals)]
+        csv(out, f"residuals-{name}", f"Initial residuals, {label}", "initial residual [1]", equations,
+            [[t, *[values.get(eq) for eq in equations]] for t, values in residuals] if equations else [],
+            log=True, gaps=True, note=run["residualSource"])
+    data["ranges"] = {"p": [min(all_p), max(all_p)], "U magnitude": [min(all_speed), max(all_speed)]}
+    (out / "cfd.json").write_text(json.dumps(data, allow_nan=False, separators=(",", ":")))
+    csv(out, "cp", "Pressure on the upper and lower surfaces", "-Cp [1]",
+        [f"{f[2]} {surface}" for f in FLAPS for surface in ("upper", "lower")], cp_rows,
+        note="Solid: upper surface. Dashed: lower surface. Hinge: x / c = 0.8. Cp = 2p for this case.")
+    csv(out, "lift", "Lift against the flap angle", "Cl [1]", ["model Cl", "reference Cl"],
+        [[r[0], r[1], r[2]] for r in load_rows], points=["reference Cl"],
+        note="Only the 3 marked angles have solved results. Positive flap angle is down.")
+    csv(out, "moment", "Moment against the flap angle", "Cm [1]", ["model Cm", "reference Cm"],
+        [[r[0], r[3], r[4]] for r in load_rows], points=["reference Cm"],
+        note="Moment center: (0.238, 0.07, 0). Positive Cm is nose up.")
 
 
 if __name__ == "__main__":

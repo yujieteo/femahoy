@@ -106,6 +106,12 @@ pub struct View {
     pub frame: Option<Bounds>,
     /// The marks on the model.
     pub marks: Vec<Mark>,
+    /// Optional fixed contour limits for the first field of this view.
+    pub range: Option<[f64; 2]>,
+    /// Optional mesh visibility. Old views retain their mesh edges.
+    pub mesh: Option<bool>,
+    /// A quantity supplied by the report source for its first field.
+    pub quantity: Option<String>,
 }
 
 /// A mark of the agent on the model: a dot at a point with a text beside it.
@@ -169,6 +175,7 @@ impl View {
                 "fields" => view.fields = list(value).map(str::to_owned).collect(),
                 "controls" => {
                     let controls = list(value)
+                        .filter(|n| !crate::ui::REPORT_CONTROLS.contains(n))
                         .map(|n| Control::from_name(n).ok_or_else(|| format!("no control {n:?}")))
                         .collect::<Result<_, _>>()?;
                     view.controls = Some(controls);
@@ -193,6 +200,30 @@ impl View {
                         _ => return Err(format!("box {value:?} is not 6 numbers")),
                     }
                 }
+                "range" => {
+                    let v = value
+                        .split(',')
+                        .map(|x| x.trim().parse::<f64>())
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| "range needs 2 finite limits in ascending order")?;
+                    match v[..] {
+                        [lo, hi] if lo.is_finite() && hi.is_finite() && lo < hi => {
+                            view.range = Some([lo, hi])
+                        }
+                        _ => return Err("range needs 2 finite limits in ascending order".into()),
+                    }
+                }
+                "mesh" => {
+                    view.mesh = Some(match value {
+                        "true" => true,
+                        "false" => false,
+                        _ => return Err("mesh needs true or false".into()),
+                    })
+                }
+                "quantity" => match value {
+                    "velocity" | "kinematic-pressure" => view.quantity = Some(value.into()),
+                    _ => return Err("quantity needs velocity or kinematic-pressure".into()),
+                },
                 "marks" => {
                     let parts = value.split(';').map(str::trim).filter(|p| !p.is_empty());
                     view.marks = parts.map(Mark::parse).collect::<Result<_, _>>()?;
@@ -333,6 +364,11 @@ pub struct ViewState {
     pub ranges: Vec<(String, results::Location, f64, f64)>,
     pub probe_mode: bool,
     pub probe: Option<crate::probe::Probe>,
+    pub mesh: bool,
+    pub range: Option<[f64; 2]>,
+    pub quantity: Option<String>,
+    /// The field to which the optional limits and quantity apply.
+    pub configured_field: Option<String>,
 }
 
 /// What the contour shows for the selected step.
@@ -386,6 +422,10 @@ impl ViewState {
             ranges: results::all_ranges(results),
             probe_mode: false,
             probe: None,
+            mesh: view.mesh.unwrap_or(true),
+            range: view.range,
+            quantity: view.quantity.clone(),
+            configured_field: view.fields.first().cloned(),
         }
     }
 
@@ -412,14 +452,15 @@ impl ViewState {
         };
         match self.current(results).field(name) {
             Some(field) => {
-                let (lo, hi) = if self.all_steps {
-                    self.ranges
+                let (lo, hi) = match self.range {
+                    Some([lo, hi]) if self.field == self.configured_field => (lo, hi),
+                    _ if self.all_steps => self
+                        .ranges
                         .iter()
                         .find(|(n, l, _, _)| n == &field.name && *l == field.location)
                         .map(|(_, _, lo, hi)| (*lo, *hi))
-                        .unwrap_or_else(|| results::contour_range(field))
-                } else {
-                    results::contour_range(field)
+                        .unwrap_or_else(|| results::contour_range(field)),
+                    _ => results::contour_range(field),
                 };
                 Contour::On { field, lo, hi }
             }
@@ -530,6 +571,40 @@ mod tests {
     fn state(r: &Results) -> ViewState {
         let view = View::default();
         ViewState::open(r, &view, &Panel::of(r, None, false))
+    }
+
+    #[test]
+    fn report_controls_keep_the_exact_model_control_set() {
+        let report_names = crate::ui::REPORT_CONTROLS.join(",");
+        let view = View::parse(&format!("controls={report_names},loads")).unwrap();
+        assert_eq!(view.controls, Some(vec![Control::Loads]));
+        assert_eq!(View::parse("controls=").unwrap().controls, Some(vec![]));
+        assert_eq!(View::parse("").unwrap().controls, None);
+        assert!(View::parse("controls=cfd-unknown").is_err());
+    }
+
+    #[test]
+    fn three_runs_keep_the_requested_contour_limits() {
+        let mut r = fixture();
+        let view = View::parse("fields=MISES\nrange=0,1000000\nmesh=false").unwrap();
+        for factor in [0.5, 1.0, 2.0] {
+            for step in &mut r.steps {
+                for f in &mut step.fields {
+                    for value in &mut f.values {
+                        *value *= factor;
+                    }
+                }
+            }
+            let state = ViewState::open(&r, &view, &Panel::of(&r, Some(&view), false));
+            assert!(!state.mesh);
+            match state.contour(&r) {
+                Contour::On { lo, hi, .. } => assert_eq!((lo, hi), (0.0, 1000000.0)),
+                _ => panic!("missing contour"),
+            }
+        }
+        assert!(View::parse("range=1,0").is_err());
+        assert!(View::parse("range=0,NaN").is_err());
+        assert!(View::parse("range=0,1,bad").is_err());
     }
 
     #[test]
