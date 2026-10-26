@@ -86,7 +86,7 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
 }
 /* iOS Safari zooms the page when a text field or a menu under 16px gets the focus. This floor
    wins over the font size of a view (!important), because the zoom does not stop below 16px. */
-@media (pointer: coarse) { textarea, select, input[type="search"] { font-size: 16px !important; } }
+@media (pointer: coarse) { textarea, select, input[type="search"] { font-size: max(16px, var(--body)) !important; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

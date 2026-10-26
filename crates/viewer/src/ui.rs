@@ -114,16 +114,18 @@ pub fn css() -> String {
         }
         s
     };
-    let mut css = format!(":root {{{}", colors(&LIGHT));
-    for (name, value) in [
+    let type_sizes = [
         ("small", SMALL),
         ("body", BODY),
         ("read", READ),
         ("title", TITLE),
         ("mono", MONO),
-        ("radius", RADIUS),
-        ("target", TARGET),
-    ] {
+    ];
+    let mut css = format!(":root {{{}", colors(&LIGHT));
+    for (name, value) in type_sizes
+        .into_iter()
+        .chain([("radius", RADIUS), ("target", TARGET)])
+    {
         css.push_str(&format!(" --{name}: {value}px;"));
     }
     for (i, value) in SPACE.iter().enumerate() {
@@ -133,6 +135,14 @@ pub fn css() -> String {
         " }}\n@media (prefers-color-scheme: dark) {{ :root {{{} }} }}\n",
         colors(&DARK)
     ));
+    // Dynamic Type: on iOS the root font is the text size that the person set (17px at the
+    // default size), so the type sizes grow and shrink with it. Desktop Safari also knows
+    // this font (13px), so only a touch screen uses it.
+    css.push_str("@media (pointer: coarse) { @supports (font: -apple-system-body) { html { font: -apple-system-body; } :root {");
+    for (name, value) in type_sizes {
+        css.push_str(&format!(" --{name}: calc({value}rem / 17);"));
+    }
+    css.push_str(" } } }\n");
     css.push_str(include_str!("ui.css"));
     css
 }
