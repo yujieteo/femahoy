@@ -17,9 +17,9 @@ use eframe::egui_wgpu;
 use crate::camera::{self, Camera};
 use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
-use crate::preview::{Kind, Preview, COLORS};
-use crate::results::{self, Results, BANDS};
-use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
+use crate::preview::{COLORS, Kind, Preview};
+use crate::results::{self, BANDS, Results};
+use crate::view::{self, Contour, Control, Geometry, Mark, Panel, View, ViewState, face_vertices};
 use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
@@ -646,9 +646,10 @@ fn results_panel(
     }
 
     // The label and its menu on one row, so that a short panel (a phone) keeps a row for the legend.
-    ui.horizontal(|ui| {
-        let label = ui.strong("Contour");
-        if !panel.fields.is_empty() {
+    // With no menu (a report), the label goes too: the legend title names the field.
+    if !panel.fields.is_empty() {
+        ui.horizontal(|ui| {
+            let label = ui.strong("Contour");
             egui::ComboBox::from_id_salt("field")
                 .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
                 .show_ui(ui, |ui| {
@@ -659,8 +660,8 @@ fn results_panel(
                 })
                 .response
                 .labelled_by(label.id);
-        }
-    });
+        });
+    }
     // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
     match v.contour(r) {
         Contour::Off => {}
