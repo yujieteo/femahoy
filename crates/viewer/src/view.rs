@@ -216,11 +216,11 @@ impl Panel {
     /// view (each field of the run when the view names none). A view with 1 field gives no
     /// choice, thus no list. `loads` is true when the input of the run has a support or a load.
     ///
-    /// With no view (`None`), the important controls: the steps when 2 or more steps change in
-    /// time (a first step with only constant fields is the start of a steady solve), the
-    /// deformation when the nodes of a structure have a displacement, the supports and loads
-    /// when the input has them, and each field that is not 1 component of a field and not in
-    /// `SECONDARY_FIELDS`.
+    /// With no view (`None`), the important controls: the steps and the range when 2 or more
+    /// steps change in time (a first step with only constant fields is the start of a steady
+    /// solve), the deformation and the scale when the nodes of a structure have a displacement,
+    /// the supports and loads when the input has them, the probe when a step has a field, and
+    /// each field that is not 1 component of a field and not in `SECONDARY_FIELDS`.
     pub fn of(results: &Results, view: Option<&View>, loads: bool) -> Panel {
         let steps = &results.steps;
         let Some(view) = view else {
@@ -228,10 +228,11 @@ impl Panel {
                 steps.len() - usize::from(steps.first().is_some_and(start_of_steady_solve));
             let structure = !results.multibody && !topology(results);
             let can = |control| match control {
-                Control::Steps => changing > 1,
-                Control::Deformation => displaced(results) && structure,
+                Control::Steps | Control::Range => changing > 1,
+                Control::Deformation | Control::Scale => displaced(results) && structure,
                 Control::Loads => loads,
-                _ => false,
+                Control::Probe => steps.iter().any(|s| !s.fields.is_empty()),
+                Control::Fit | Control::ReportView | Control::Views | Control::Help => false,
             };
             return Panel {
                 controls: groups(can, |_| true),
@@ -595,7 +596,10 @@ mod tests {
         for s in &mut r.steps {
             s.displacement.fill([0.0; 3]);
         }
-        assert_eq!(Panel::of(&r, None, false).controls, [Control::Steps]);
+        assert_eq!(
+            Panel::of(&r, None, false).controls,
+            [Control::Steps, Control::Range, Control::Probe]
+        );
         let view = View::parse("controls=deformation,loads").unwrap();
         assert_eq!(Panel::of(&r, Some(&view), true).controls, [Control::Loads]);
     }
@@ -655,7 +659,10 @@ mod tests {
         assert!(!important.fields.contains(&"RF magnitude".into()));
         assert!(!important.fields.contains(&"U3".into()), "a component");
         r.multibody = true;
-        assert_eq!(Panel::of(&r, None, false).controls, [Control::Steps]);
+        assert_eq!(
+            Panel::of(&r, None, false).controls,
+            [Control::Steps, Control::Range, Control::Probe]
+        );
         r.multibody = false;
         for s in &mut r.steps[..1] {
             s.displacement.fill([0.0; 3]);
@@ -666,7 +673,7 @@ mod tests {
         let steady = Panel::of(&r, None, false).controls;
         assert_eq!(
             steady,
-            [Control::Deformation],
+            [Control::Deformation, Control::Probe, Control::Scale],
             "the start of a steady solve"
         );
     }

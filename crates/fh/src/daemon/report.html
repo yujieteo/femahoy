@@ -97,7 +97,8 @@ window.fetch = async (request) => {
 function curveControls(all = false) {
   document.querySelectorAll('.curve [data-control="values"]').forEach((control) => {
     const policy = control.closest('[data-curve-controls]')?.dataset.curveControls;
-    control.hidden = !all && !(policy ?? '').split(',').map(s => s.trim()).includes('values');
+    control.hidden = !all && policy !== undefined && !policy.split(',').map(s => s.trim()).includes('values');
+    control.querySelector('input').dispatchEvent(new Event('input'));
   });
 }
 for (const figure of document.querySelectorAll('.curve')) {
@@ -118,7 +119,7 @@ for (const figure of document.querySelectorAll('.curve')) {
       cursor.setAttribute('x1', row.dataset.x); cursor.setAttribute('x2', row.dataset.x);
       slider.setAttribute('aria-valuetext', [...row.cells].map((cell, i) => `${control.querySelectorAll('th')[i].textContent}: ${cell.textContent}`).join(', '));
     }
-    cursor.toggleAttribute('hidden', body.hidden || !row);
+    cursor.toggleAttribute('hidden', control.hidden || body.hidden || !row);
   };
   slider.addEventListener('input', () => select(slider.value));
   button.addEventListener('click', () => { body.hidden = !body.hidden; button.setAttribute('aria-expanded', String(!body.hidden)); select(slider.value); });
@@ -132,7 +133,6 @@ for (const figure of document.querySelectorAll('.curve')) {
     select(nearest);
     slider.focus();
   });
-  select(0);
 }
 curveControls();
 $('all').addEventListener('change', (event) => curveControls(event.target.checked));
@@ -140,7 +140,7 @@ $('all').addEventListener('change', (event) => curveControls(event.target.checke
 async function start() {
   if (!runs.options.length) {
     const all = $("all");
-    if (document.querySelector('.curve [data-control="values"]')) text.prepend(all);
+    if (document.querySelector('.curve [data-control="values"][hidden]')) text.prepend(all);
     $("model").remove();
     return;
   }

@@ -442,6 +442,11 @@ pub const CONSTANT_SPREAD: f64 = 1e-9;
 /// of noise.
 pub fn contour_range(field: &ScalarField) -> (f64, f64) {
     let (lo, hi) = range(field);
+    collapse(lo, hi)
+}
+
+/// `(lo, hi)`, or one value (the middle) when the spread is round-off.
+fn collapse(lo: f64, hi: f64) -> (f64, f64) {
     if hi - lo <= CONSTANT_SPREAD * lo.abs().max(hi.abs()) {
         let mid = 0.5 * (lo + hi);
         (mid, mid)
@@ -748,6 +753,9 @@ pub fn all_ranges(results: &Results) -> Vec<(String, Location, f64, f64)> {
         } else {
             ranges.push((field.name.clone(), field.location, lo, hi));
         }
+    }
+    for (_, _, lo, hi) in &mut ranges {
+        (*lo, *hi) = collapse(*lo, *hi);
     }
     ranges
 }

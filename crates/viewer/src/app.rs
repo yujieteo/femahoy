@@ -315,11 +315,12 @@ impl Shown {
     /// The panel of the body. A run with no view has the switch `all`. Returns true when the
     /// view state changed.
     fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
+        let drawn = self.geometry.as_deref().map(|g| &g.positions[..]);
         match &mut self.body {
             Body::Results(r, v, loads, panel, view) => {
                 let before = *all;
                 let switch = (*view == View::default()).then_some(&mut *all);
-                let changed = results_panel(ui, r, v, panel, switch);
+                let changed = results_panel(ui, r, v, panel, switch, drawn);
                 if *all != before {
                     *panel = self::panel(r, view, &loads.preview, *all);
                 }
@@ -579,13 +580,15 @@ fn loads_overlay(
 }
 
 /// The results panel: the switch `all` when it is given, and the controls and the fields of
-/// `panel`. Returns true when the view state changed.
+/// `panel`. `drawn` has the positions of the drawn mesh of `v`. Returns true when the view
+/// state changed.
 fn results_panel(
     ui: &mut egui::Ui,
     r: &Results,
     v: &mut ViewState,
     panel: &Panel,
     all: Option<&mut bool>,
+    drawn: Option<&[[f32; 3]]>,
 ) -> bool {
     let before = v.clone();
     ui.heading("Results");
@@ -640,14 +643,18 @@ fn results_panel(
         if let Some(i) = segmented(ui, &items) {
             v.all_steps = i == 1;
         }
+        if matches!(v.contour(r), Contour::On { .. }) {
+            ui.weak(if v.all_steps {
+                "Range: all steps"
+            } else {
+                "Range: current step"
+            });
+        }
     }
-    ui.weak(if v.all_steps {
-        "Range: all steps"
-    } else {
-        "Range: current step"
-    });
     if shows(Control::Probe) {
-        probe_controls(ui, r, v);
+        let same =
+            v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
+        probe_controls(ui, r, v, drawn.filter(|_| same));
     } else {
         v.probe_mode = false;
         v.probe = None;
@@ -684,13 +691,23 @@ fn scale_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     }
 }
 
-fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
+/// The probe controls. `drawn` has the positions of the drawn mesh, or is `None` when the
+/// drawn mesh is not yet the mesh of `v`.
+fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, drawn: Option<&[[f32; 3]]>) {
     ui.checkbox(&mut v.probe_mode, "Probe surface");
     widgets::keys(ui, &[("Click", "probe"), ("Esc", "clear")]);
     let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
         return;
     };
     let mesh = r.mesh(v.current(r));
+    let positions = |v: &ViewState| match drawn {
+        Some(p) => std::borrow::Cow::Borrowed(p),
+        None => std::borrow::Cow::Owned(results::deformed_positions(
+            mesh,
+            v.current(r),
+            if v.deformed { v.scale } else { 0.0 },
+        )),
+    };
     let mut chosen = None;
     ui.horizontal(|ui| {
         if widgets::button(ui, "Min", "locate the actual minimum item").clicked() {
@@ -705,16 +722,7 @@ fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
         }
     });
     if let Some(max) = chosen {
-        v.probe = crate::probe::extreme(
-            mesh,
-            &results::deformed_positions(
-                mesh,
-                v.current(r),
-                if v.deformed { v.scale } else { 0.0 },
-            ),
-            field,
-            max,
-        );
+        v.probe = crate::probe::extreme(mesh, &positions(v), field, max);
     }
     if v.probe_mode && !field.values.is_empty() {
         let mut index = v.probe.as_ref().map_or(1, |p| p.index + 1);
@@ -733,16 +741,7 @@ fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                 .labelled_by(label.id)
                 .changed()
             {
-                v.probe = crate::probe::at_index(
-                    mesh,
-                    &results::deformed_positions(
-                        mesh,
-                        v.current(r),
-                        if v.deformed { v.scale } else { 0.0 },
-                    ),
-                    field,
-                    index - 1,
-                );
+                v.probe = crate::probe::at_index(mesh, &positions(v), field, index - 1);
             }
         });
     }
@@ -974,18 +973,15 @@ impl eframe::App for ViewerApp {
                 .camera
                 .view_proj(rect.width() / rect.height().max(1.0));
             if response.clicked() && !response.double_clicked() {
-                if let (Some(pointer), Body::Results(r, v, ..)) =
-                    (response.interact_pointer_pos(), &mut shown.body)
-                {
+                if let (Some(pointer), Body::Results(r, v, ..), Some(g)) = (
+                    response.interact_pointer_pos(),
+                    &mut shown.body,
+                    &shown.geometry,
+                ) {
                     if v.probe_mode {
                         if let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n))
                         {
                             let mesh = r.mesh(v.current(r));
-                            let positions = results::deformed_positions(
-                                mesh,
-                                v.current(r),
-                                if v.deformed { v.scale } else { 0.0 },
-                            );
                             let ndc = [
                                 2.0 * (pointer.x - rect.left()) / rect.width() - 1.0,
                                 1.0 - 2.0 * (pointer.y - rect.top()) / rect.height(),
@@ -993,7 +989,12 @@ impl eframe::App for ViewerApp {
                             let (origin, direction) =
                                 shown.camera.ray(rect.width() / rect.height().max(1.0), ndc);
                             v.probe = crate::probe::pick(
-                                mesh, &positions, field, origin, direction, &view_proj,
+                                mesh,
+                                &g.positions,
+                                field,
+                                origin,
+                                direction,
+                                &view_proj,
                             );
                         }
                     }
