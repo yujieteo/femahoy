@@ -730,6 +730,54 @@ fn results_panel(
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs_f64(wait));
     }
+    // The field menu and its colour scale. A short panel (a phone) shows them first, above the
+    // deformation controls, so that the colour scale and the probe stay in view.
+    let contour = |ui: &mut egui::Ui, v: &mut ViewState| {
+        // The label and its menu on one row, so that a short panel (a phone) keeps a row for the legend.
+        // With no menu (a report), the label goes too: the legend title names the field.
+        if !panel.fields.is_empty() {
+            ui.horizontal(|ui| {
+                ui.strong("Contour");
+                egui::ComboBox::from_id_salt("field")
+                    .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut v.field, None, "None");
+                        for name in &panel.fields {
+                            ui.selectable_value(&mut v.field, Some(name.clone()), name);
+                        }
+                    });
+            });
+        }
+        // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
+        match v.contour(r) {
+            Contour::Off => {}
+            Contour::Missing(name) => {
+                ui.colored_label(
+                    ui.visuals().error_fg_color,
+                    format!("Step {} has no field {name}.", v.step + 1),
+                );
+            }
+            Contour::On { field, lo, hi } => {
+                let quantity = if v.field == v.configured_field {
+                    v.quantity.as_deref()
+                } else {
+                    None
+                };
+                legend(
+                    ui,
+                    &r.units,
+                    field,
+                    lo,
+                    hi,
+                    quantity,
+                    v.field == v.configured_field && v.range.is_some(),
+                );
+            }
+        }
+    };
+    if short {
+        contour(ui, v);
+    }
     let shows = |c: Control| panel.controls.contains(&c);
     if shows(Control::Steps) {
         steps_controls(ui, r, v);
@@ -737,47 +785,8 @@ fn results_panel(
     if shows(Control::Deformation) {
         deformation_controls(ui, r, v);
     }
-
-    // The label and its menu on one row, so that a short panel (a phone) keeps a row for the legend.
-    // With no menu (a report), the label goes too: the legend title names the field.
-    if !panel.fields.is_empty() {
-        ui.horizontal(|ui| {
-            ui.strong("Contour");
-            egui::ComboBox::from_id_salt("field")
-                .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut v.field, None, "None");
-                    for name in &panel.fields {
-                        ui.selectable_value(&mut v.field, Some(name.clone()), name);
-                    }
-                });
-        });
-    }
-    // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
-    match v.contour(r) {
-        Contour::Off => {}
-        Contour::Missing(name) => {
-            ui.colored_label(
-                ui.visuals().error_fg_color,
-                format!("Step {} has no field {name}.", v.step + 1),
-            );
-        }
-        Contour::On { field, lo, hi } => {
-            let quantity = if v.field == v.configured_field {
-                v.quantity.as_deref()
-            } else {
-                None
-            };
-            legend(
-                ui,
-                &r.units,
-                field,
-                lo,
-                hi,
-                quantity,
-                v.field == v.configured_field && v.range.is_some(),
-            );
-        }
+    if !short {
+        contour(ui, v);
     }
     if v.step != before.step
         || v.field != before.field
