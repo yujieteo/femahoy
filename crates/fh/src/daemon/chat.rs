@@ -81,9 +81,10 @@ struct Log {
     started_ms: u64,
     /// The session of the agent, so that a new agent continues it.
     session: Option<String>,
-    /// The previews that the chat shows, and the runs that it opens.
+    /// The previews that the chat shows, and the runs and the reports that it opens.
     previews: HashSet<String>,
     runs: HashSet<String>,
+    reports: HashSet<String>,
 }
 
 impl Log {
@@ -162,13 +163,23 @@ fn escape(text: &str) -> String {
 }
 
 impl Chat {
-    /// The runs that have results and the previews that the state folder holds already do not
-    /// get an entry.
+    /// The runs that have results, their reports and the previews that the state folder holds
+    /// already do not get an entry.
     pub(crate) fn new(store: Arc<Store>, state_dir: PathBuf, token: String) -> Arc<Chat> {
-        let old = store.runs().unwrap_or_default();
+        let old: HashSet<String> = store
+            .runs()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(run, _)| run)
+            .collect();
         let shown = store.previews();
         let log = Log {
-            runs: old.into_iter().map(|(run, _)| run).collect(),
+            reports: old
+                .iter()
+                .filter(|run| store.has_report(run))
+                .cloned()
+                .collect(),
+            runs: old,
             previews: shown.into_iter().map(|(preview, _)| preview).collect(),
             ..Log::default()
         };
@@ -314,8 +325,8 @@ impl Chat {
         }
     }
 
-    /// Add an entry for each new preview, `show <preview> <title>`, and for each run that has
-    /// new results, `open <run>`.
+    /// Add an entry for each new preview, `show <preview> <title>`, for each run that has
+    /// new results, `open <run>`, and for each run that has a new report, `report <run>`.
     fn report(&self) {
         let previews = self.store.previews();
         let runs = self.store.runs().unwrap_or_default();
@@ -328,6 +339,9 @@ impl Chat {
         for (run, _) in runs {
             if log.runs.insert(run.clone()) {
                 self.push(&mut log, "open", &run);
+            }
+            if self.store.has_report(&run) && log.reports.insert(run.clone()) {
+                self.push(&mut log, "report", &run);
             }
         }
     }

@@ -604,6 +604,13 @@ function entry(kind, text, fresh) {
       }
       return b;
     }
+    case "report": {
+      const b = el("button", "open", "Open the report of ");
+      b.append(runName(text));
+      b.type = "button";
+      b.addEventListener("click", () => openReport(text));
+      return b;
+    }
     case "show": {
       const [preview, title] = split(text);
       const b = el("button", "open", "Show the supports and loads of " + title);
