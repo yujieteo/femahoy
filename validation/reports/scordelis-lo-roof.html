@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-c15c0b2bc4a8bb6dd20c5557e28d4094' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-4c1a1538288f9458579e012be26a0a3a' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -39,8 +39,8 @@ canvas[aria-label]:focus-visible { outline: 2px solid var(--accent); outline-off
 
 /* Button and menu (select). .primary is the main action of a view. .icon is a round button
    with an icon and an aria-label. */
-button, select {
-  min-height: var(--target); max-width: 100%; padding: 0 var(--space-3);
+button, select, input[type="search"] {
+  min-height: var(--target); min-width: var(--target); max-width: 100%; padding: 0 var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
@@ -89,8 +89,12 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
+[hidden] { display: none !important; }
+
 body { display: flex; overflow: hidden; font-size: var(--read); }
-article { flex: none; width: clamp(360px, 42vw, 720px); overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
+#report { display: flex; flex-direction: column; min-width: 0; width: clamp(360px, 42vw, 720px); }
+#report > header { border-bottom: 1px solid var(--line); }
+article { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
 article h1 { margin: 0.5rem 0 1rem; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.015em; text-wrap: balance; }
 article h2 { margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1.75rem; }
 article h3 { margin: 2rem 0 0.75rem; font-size: 1.25rem; }
@@ -102,7 +106,17 @@ article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; backg
 article :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--code); overflow-wrap: anywhere; }
 article button, article select, .toolbar button, .toolbar select { font-size: var(--body); }
 /* A report with no run has no viewer: the text fills the page. */
-body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem, calc(50% - 22rem)); }
+body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
+body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
+body.text-mode #model { display: none; }
+#identity { overflow-wrap: anywhere; }
+[data-mesh-trend] > section > h3 { margin-top: var(--space-4); }
+summary { min-height: var(--target); cursor: pointer; padding-block: var(--space-2); }
+@media (max-width: 800px) {
+  body { flex-direction: column; }
+  #report { width: 100%; flex: 1; min-height: 0; }
+  #model { flex: none !important; height: 42%; }
+}
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
@@ -111,6 +125,7 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve .grid { stroke: var(--line); }
 .curve .frame { fill: none; stroke: var(--muted); }
 .curve polyline { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.curve .sample-cursor { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 3; }
 .curve circle { stroke: var(--side); stroke-width: 2; }
 .curve .legend { font-size: 0.875rem; }
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
@@ -127,19 +142,29 @@ output { margin-left: var(--space-2); }
 </style>
 </head>
 <body>
+<section id="report" aria-label="Report">
+<header id="report-tools" class="toolbar" aria-label="Report controls" hidden>
+<label id="section-control" hidden>Section <select id="sections" aria-label="Report section" aria-keyshortcuts="Alt+S"></select></label>
+<span id="layout-control" class="segmented" role="group" aria-label="Report layout" hidden>
+<label><input type="radio" name="layout" value="text" aria-keyshortcuts="Alt+T">Text</label>
+<label><input type="radio" name="layout" value="split" checked aria-keyshortcuts="Alt+V">Split</label>
+</span>
+<span id="identity" class="readout" aria-live="polite" hidden></span>
+<p id="report-keys" class="keys"></p>
+</header>
 <article><h1>Scordelis-Lo roof with S8R shells: derivation</h1>
 <h2>Conclusion</h2>
 <p>The S8R shell model gives the deflection of the middle of the free edge within 0.16 % of the published value. The model gives uz = -301.92 mm at TIP, and MacNeal and Harder (1985) give -302.4 mm. The difference is 0.48 mm, 16 % of the tolerance of 1 %.</p>
-<figure class="curve"><figcaption>The deflection of the middle of the free edge against the mesh</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The deflection of the middle of the free edge against the mesh"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="238.2" y1="12" x2="238.2" y2="308.0"/><line x1="457.8" y1="12" x2="457.8" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">10</text><text x="238.2" y="324.0" text-anchor="middle">20</text><text x="457.8" y="324.0" text-anchor="middle">50</text><text x="624.0" y="324.0" text-anchor="middle">100</text><text x="66.0" y="312.0" text-anchor="end">-302.4</text><text x="66.0" y="252.8" text-anchor="end">-302.3</text><text x="66.0" y="193.6" text-anchor="end">-302.2</text><text x="66.0" y="134.4" text-anchor="end">-302.1</text><text x="66.0" y="75.2" text-anchor="end">-302</text><text x="66.0" y="16.0" text-anchor="end">-301.9</text><text class="label" x="348.0" y="354" text-anchor="middle">elements along each side N [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">uz at TIP [mm]</text><polyline style="stroke:var(--s1)" points="184.7,45.7 281.9,25.6 350.8,24.4"/><circle style="fill:var(--s2)" cx="184.7" cy="308.0" r="4"><title>MacNeal and Harder: 16, -302.4</title></circle><circle style="fill:var(--s2)" cx="281.9" cy="308.0" r="4"><title>MacNeal and Harder: 24, -302.4</title></circle><circle style="fill:var(--s2)" cx="350.8" cy="308.0" r="4"><title>MacNeal and Harder: 32, -302.4</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="point" style="background:var(--s2)"></i>MacNeal and Harder</li></ul><p>MacNeal and Harder: MacNeal and Harder (1985), the Scordelis-Lo roof, 0.3024 in the units of the paper</p><p>S8R shells. The value at N = 24, the mesh of the case, comes from this run. The other meshes come from the table of derivation.md, &quot;Mesh convergence&quot;.</p></figure>
+<figure class="curve"><figcaption>The deflection of the middle of the free edge against the mesh</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The deflection of the middle of the free edge against the mesh"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="238.2" y1="12" x2="238.2" y2="308.0"/><line x1="457.8" y1="12" x2="457.8" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">10</text><text x="238.2" y="324.0" text-anchor="middle">20</text><text x="457.8" y="324.0" text-anchor="middle">50</text><text x="624.0" y="324.0" text-anchor="middle">100</text><text x="66.0" y="312.0" text-anchor="end">-302.4</text><text x="66.0" y="252.8" text-anchor="end">-302.3</text><text x="66.0" y="193.6" text-anchor="end">-302.2</text><text x="66.0" y="134.4" text-anchor="end">-302.1</text><text x="66.0" y="75.2" text-anchor="end">-302</text><text x="66.0" y="16.0" text-anchor="end">-301.9</text><text class="label" x="348.0" y="354" text-anchor="middle">elements along each side N [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">uz at TIP [mm]</text><polyline style="stroke:var(--s1)" points="184.7,45.7 281.9,25.6 350.8,24.4"/><circle style="fill:var(--s2)" cx="184.7" cy="308.0" r="4"><title>MacNeal and Harder: 16, -302.4</title></circle><circle style="fill:var(--s2)" cx="281.9" cy="308.0" r="4"><title>MacNeal and Harder: 24, -302.4</title></circle><circle style="fill:var(--s2)" cx="350.8" cy="308.0" r="4"><title>MacNeal and Harder: 32, -302.4</title></circle><line class="sample-cursor" x1="72" x2="72" y1="12" y2="308" hidden="hidden"/></svg><div data-control="values" hidden><button type="button" aria-label="Show values for The deflection of the middle of the free edge against the mesh" aria-expanded="false">Show values</button><div hidden><label>Sample <input type="range" name="sample" aria-label="Sample of The deflection of the middle of the free edge against the mesh" min="0" max="2" value="0" step="1"></label><output class="readout" aria-live="polite"></output><p class="keys"><kbd>←</kbd><kbd>→</kbd> select a source sample</p><table><caption>Original values. — means no sample.</caption><thead><tr><th scope="col">elements along each side N [1]</th><th scope="col">model (uz at TIP [mm])</th><th scope="col">MacNeal and Harder (uz at TIP [mm])</th></tr></thead><tbody><tr data-x="184.6742304260705"><td>16</td><td>-301.957</td><td>-302.4</td></tr><tr data-x="281.8766054248065"><td>24</td><td>-301.923</td><td>-302.4</td></tr><tr data-x="350.84278803258815"><td>32</td><td>-301.921</td><td>-302.4</td></tr></tbody></table></div></div><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="point" style="background:var(--s2)"></i>MacNeal and Harder</li></ul><p>MacNeal and Harder: MacNeal and Harder (1985), the Scordelis-Lo roof, 0.3024 in the units of the paper</p><p>S8R shells. The value at N = 24, the mesh of the case, comes from this run. The other meshes come from the table of derivation.md, &quot;Mesh convergence&quot;.</p></figure>
 
 <p>The run also solves a second roof, the former S6 mesh of <code>fh mesh --shell</code>, 40000 mm away in y. It gives uz = -301.54 mm at TIP_S6, 0.3 % from the published value. This checks the S6 shell path (see "S6 check of the shell path").</p>
 <p>The mapped mesh is converged. The 16 x 16 mesh gives -0.15 %, and the 32 x 32 mesh gives -0.16 % (see "Mesh convergence"). The case mesh of 24 x 24 is 0.001 % from the 32 x 32 mesh.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.01 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
-<table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>tip_deflection_z</code></td><td style="text-align:right">-301.923</td><td style="text-align:right">-302.4</td><td style="text-align:right">3.024</td><td style="text-align:right">2.548</td></tr><tr><td><code>tip_deflection_z_s6</code></td><td style="text-align:right">-301.535</td><td style="text-align:right">-302.4</td><td style="text-align:right">3.024</td><td style="text-align:right">2.159</td></tr></tbody></table>
+<table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>tip_deflection_z</code></td><td>Not specified</td><td style="text-align:right">-301.923</td><td style="text-align:right">-302.4</td><td style="text-align:right">+0.4765 (+0.157573 %)</td><td style="text-align:right">3.024</td><td style="text-align:right">2.548</td></tr><tr><td><code>tip_deflection_z_s6</code></td><td>Not specified</td><td style="text-align:right">-301.535</td><td style="text-align:right">-302.4</td><td style="text-align:right">+0.8649 (+0.286012 %)</td><td style="text-align:right">3.024</td><td style="text-align:right">2.159</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-26, femahoy 1222af8-dirty.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-26, femahoy 1326e05.</p>
 <p>This case checks the mapped <code>S8R</code> shell, the <code>S6</code> shell of <code>fh mesh --shell</code>, <code>*SHELL SECTION</code> and <code>ccx</code>.
 The roof is a cylinder shell with a published deflection.</p>
 <h2>Source</h2>
@@ -193,12 +218,13 @@ The reference in <code>check.toml</code> is -302.4 mm. The case differs from the
 <p>The tolerance stays at 1 percent for both checks. The published value has 4 digits.
 The mapped mesh study gives a smaller error than the former S6 study.
 The S6 check keeps its former tolerance: its mesh error is 0.3 percent, and the margin is for a change of mesh or solver version.</p></article>
+</section>
 <main id="model">
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden></select><label id="all" class="trail"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="c15c0b2bc4a8bb6dd20c5557e28d4094">
+<script type="module" nonce="4c1a1538288f9458579e012be26a0a3a">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -219,6 +245,79 @@ The S6 check keeps its former tolerance: its mesh error is 0.3 percent, and the 
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
+// No marker means every report control. A marker shows only the controls that it names.
+const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "sections,layout,identity").split(","));
+const hasRuns = runs.options.length > 0;
+const hints = [];
+if (controls.has("sections")) {
+  const headings = [...text.querySelectorAll("h2")];
+  if (headings.length) {
+    $("section-control").hidden = false;
+    headings.forEach((h, i) => $("sections").add(new Option(h.textContent, i)));
+    $("sections").addEventListener("change", () => {
+      const heading = headings[$("sections").value];
+      text.scrollTop += heading.getBoundingClientRect().top - text.getBoundingClientRect().top;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    });
+    // The menu shows the section at the top of the text, so a choice of any other section jumps.
+    // At the end of the text, a chosen section in view stays: a short last section cannot reach the top.
+    const current = () => {
+      const box = text.getBoundingClientRect();
+      const chosen = headings[$("sections").selectedIndex]?.getBoundingClientRect().top;
+      if (text.scrollTop + text.clientHeight >= text.scrollHeight - 1 && chosen >= box.top && chosen < box.bottom) return;
+      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1);
+    };
+    text.addEventListener("scroll", current, { passive: true });
+    current();
+    hints.push("<kbd>Alt S</kbd> Section");
+  }
+}
+if (controls.has("layout") && hasRuns) {
+  $("layout-control").hidden = false;
+  $("layout-control").addEventListener("change", (e) => {
+    // The text reflows to the new width, so keep the first element that starts in view at its offset.
+    const top = () => text.getBoundingClientRect().top;
+    const anchor = [...text.querySelectorAll("*")].find((e) => e.getClientRects().length && e.getBoundingClientRect().top >= top() - 1);
+    const offset = anchor?.getBoundingClientRect().top - top();
+    document.body.classList.toggle("text-mode", e.target.value === "text");
+    if (anchor) text.scrollTop += anchor.getBoundingClientRect().top - top() - offset;
+    window.dispatchEvent(new Event("resize"));
+  });
+  hints.push("<kbd>Alt T</kbd> Text", "<kbd>Alt V</kbd> Split");
+}
+$("report-keys").innerHTML = hints.join(" · ");
+const identity = () => {
+  $("identity").hidden = !controls.has("identity") || !hasRuns;
+  $("identity").textContent = "Run: " + (runs.selectedOptions[0]?.textContent ?? "");
+};
+identity();
+$("report-tools").hidden = !hints.length && $("identity").hidden;
+document.addEventListener("keydown", (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.target.tagName === "TEXTAREA" || e.target.isContentEditable
+    || (e.target.tagName === "INPUT" && !/^(radio|checkbox|range)$/.test(e.target.type))) return;
+  const key = e.code?.startsWith("Key") ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
+  if (key === "s" && !$("section-control").hidden) { e.preventDefault(); $("sections").focus(); }
+  if ((key === "t" || key === "v") && !$("layout-control").hidden) {
+    e.preventDefault();
+    $("layout-control").querySelector(`[value="${key === "t" ? "text" : "split"}"]`).click();
+  }
+}, { capture: true });
+// Each trend contains plots from the curve renderer and tables from the same source rows.
+for (const trend of text.querySelectorAll("[data-mesh-trend]")) {
+  const panels = [...trend.children].filter((e) => e.tagName === "SECTION");
+  const select = document.createElement("select");
+  const label = document.createElement("label");
+  label.textContent = "Mesh result ";
+  select.setAttribute("aria-label", "Mesh metric and analysis condition");
+  select.name = "mesh-result";
+  panels.forEach((p, i) => select.add(new Option(p.querySelector("h3").textContent, i)));
+  const show = () => panels.forEach((p, i) => p.hidden = i !== Number(select.value));
+  select.addEventListener("change", show);
+  label.append(select);
+  trend.prepend(label);
+  show();
+}
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -235,8 +334,54 @@ window.fetch = async (request) => {
   return new Response(new Blob([decode(base64)]).stream().pipeThrough(new DecompressionStream("deflate-raw")));
 };
 
+// The values control uses the source rows, never rounded SVG coordinates.
+function curveControls(all = false) {
+  document.querySelectorAll('.curve [data-control="values"]').forEach((control) => {
+    const policy = control.closest('[data-controls]')?.dataset.controls;
+    control.hidden = !all && policy !== undefined && !policy.split(',').map(s => s.trim()).includes('values');
+    control.querySelector('input').dispatchEvent(new Event('input'));
+  });
+}
+for (const figure of document.querySelectorAll('.curve')) {
+  const control = figure.querySelector('[data-control="values"]');
+  if (!control) continue;
+  const button = control.querySelector('button');
+  const body = button.nextElementSibling;
+  const slider = control.querySelector('input');
+  const rows = [...control.querySelectorAll('tbody tr')];
+  const svg = figure.querySelector('svg');
+  const cursor = svg.querySelector('.sample-cursor');
+  const select = (index) => {
+    slider.value = index;
+    rows.forEach((row, i) => { row.hidden = i !== Number(slider.value); });
+    const row = rows[Number(slider.value)];
+    control.querySelector('output').value = row ? `${Number(slider.value) + 1} of ${rows.length}` : 'No samples';
+    if (row) {
+      cursor.setAttribute('x1', row.dataset.x); cursor.setAttribute('x2', row.dataset.x);
+      slider.setAttribute('aria-valuetext', [...row.cells].map((cell, i) => `${control.querySelectorAll('th')[i].textContent}: ${cell.textContent}`).join(', '));
+    }
+    cursor.toggleAttribute('hidden', control.hidden || body.hidden || !row);
+  };
+  slider.addEventListener('input', () => select(slider.value));
+  button.addEventListener('click', () => { body.hidden = !body.hidden; button.setAttribute('aria-expanded', String(!body.hidden)); select(slider.value); });
+  svg.addEventListener('pointerdown', (event) => {
+    if (control.hidden || !rows.length) return;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    let nearest = 0;
+    rows.forEach((row, i) => { if (Math.abs(Number(row.dataset.x) - point.x) < Math.abs(Number(rows[nearest].dataset.x) - point.x)) nearest = i; });
+    body.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    select(nearest);
+    slider.focus();
+  });
+}
+curveControls();
+$('all').addEventListener('change', (event) => curveControls(event.target.checked));
+
 async function start() {
   if (!runs.options.length) {
+    const all = $("all");
+    if (document.querySelector('.curve [data-control="values"][hidden]')) text.prepend(all);
     $("model").remove();
     return;
   }
@@ -264,6 +409,7 @@ async function start() {
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
+      identity();
       const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
       if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
