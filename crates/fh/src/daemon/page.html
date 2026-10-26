@@ -79,11 +79,13 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #file-list { display: flex; flex-wrap: wrap; align-content: flex-start; }
 #file-list .note { flex-basis: 100%; }
 /* The buttons go at the side of the run name and path, as in an iOS list row. */
-.run-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
+.run-row { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
 .run-row > div { flex: 1 1 12em; min-width: 0; }
 /* With the 3 compare buttons, the buttons go on 1 row below the name. */
 .run-row:has(button + button) > div { flex-basis: 100%; }
 .run-row p { margin: 0; overflow-wrap: anywhere; }
+/* The folder of the run uses 1 line. When it is too long, its start changes to an ellipsis, so the folder name stays. */
+.run-row .run-path { direction: rtl; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A check mark shows the open run, as in an iOS list. */
 .run-row:has([aria-current]) p:first-child { font-weight: 600; }
 .run-row:has([aria-current]) p:first-child::before { content: "\2713  " / ""; color: var(--accent); }
@@ -285,7 +287,10 @@ function renderRuns() {
   for (const [run, path] of matched) {
     const row = el("div", "run-row", "");
     const text = el("div", "", "");
-    text.append(el("p", "", runLabel(run)), el("p", "note", path));
+    // The name line has the file name, so this line has only its folder. The LRM keeps the first "/" at the start.
+    const folder = el("p", "note run-path", "\u200E" + (path.replace(/\/[^/]*$/, "") || path));
+    folder.title = path;
+    text.append(el("p", "", runLabel(run)), folder);
     row.append(text);
     const button = (label, action) => {
       const b = el("button", "", label);
