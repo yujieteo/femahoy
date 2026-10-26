@@ -17,9 +17,9 @@ use eframe::egui_wgpu;
 use crate::camera::{self, Camera};
 use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
-use crate::preview::{Kind, Preview, COLORS};
-use crate::results::{self, Results, BANDS};
-use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
+use crate::preview::{COLORS, Kind, Preview};
+use crate::results::{self, BANDS, Results};
+use crate::view::{self, Contour, Control, Geometry, Mark, Panel, View, ViewState, face_vertices};
 use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
@@ -375,12 +375,12 @@ impl Shown {
         painter: &egui::Painter,
         rect: egui::Rect,
         m: &camera::Mat4,
-        placed: &mut Vec<egui::Rect>,
+        tags: &mut Tags,
     ) {
         let eye = self.camera.eye();
         match &self.body {
             Body::Preview(p) => {
-                loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false, placed)
+                loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false, tags)
             }
             Body::Results(r, v, loads, ..) => {
                 if !self.shows(Control::Loads) {
@@ -391,19 +391,13 @@ impl Shown {
                     (Some(g), true) => &g.positions,
                     _ => &p.mesh.positions,
                 };
-                loads_overlay(painter, rect, m, eye, p, positions, true, placed);
+                loads_overlay(painter, rect, m, eye, p, positions, true, tags);
             }
         }
     }
 
     /// The marks of the view at the shown step.
-    fn marks(
-        &self,
-        painter: &egui::Painter,
-        rect: egui::Rect,
-        m: &camera::Mat4,
-        placed: &mut Vec<egui::Rect>,
-    ) {
+    fn marks(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, tags: &mut Tags) {
         let Body::Results(_, v, _, _, view) = &self.body else {
             return;
         };
@@ -422,7 +416,7 @@ impl Shown {
                     egui::Rect::from_pos(at),
                     &format!("{}: {}", probe.label, view::format_value(probe.value)),
                     hex(MARK),
-                    placed,
+                    tags,
                 );
             }
         }
@@ -442,7 +436,7 @@ impl Shown {
                 egui::Rect::from_pos(at),
                 &mark.text,
                 hex(MARK),
-                placed,
+                tags,
             );
         }
     }
@@ -463,17 +457,24 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
     })
 }
 
+/// The tags in a view: the boxes of the tags placed so far, and the screen points of the
+/// drawn model, which a tag does not cover if it can.
+struct Tags {
+    placed: Vec<egui::Rect>,
+    model: Vec<egui::Pos2>,
+}
+
 /// The text `text` on a box of the colour `color`, next to the screen box `around` (a point or
 /// the faces of a set) on the side away from the view centre, in the view `rect`, with a line
-/// width of at most half the view. The tag does not cover the earlier tags in `placed`, if the
-/// view has space for it, and is added to `placed`.
+/// width of at most half the view. The tag does not cover the earlier tags in `tags`, if the
+/// view has space for it, and is added to `tags`.
 fn tag(
     painter: &egui::Painter,
     rect: egui::Rect,
     around: egui::Rect,
     text: &str,
     color: egui::Color32,
-    placed: &mut Vec<egui::Rect>,
+    tags: &mut Tags,
 ) {
     // The ink with the higher WCAG contrast: black above a relative luminance of 0.179.
     let c = egui::Rgba::from(color);
@@ -498,25 +499,40 @@ fn tag(
         place.translate(egui::vec2(dx, dy))
     };
     // The camera looks at the view centre, so a tag on the far side of the point from the
-    // centre does not cover the model.
+    // centre usually does not cover the model. Of the 4 sides, the tag takes the first one that
+    // covers the fewest points of the drawn model `model`.
     let at = around.center();
-    let (left, up) = (at.x < rect.center().x, at.y < rect.center().y);
-    let anchor = egui::Align2([
-        [egui::Align::Min, egui::Align::Max][usize::from(left)],
-        [egui::Align::Min, egui::Align::Max][usize::from(up)],
-    ]);
-    // Above or below the box, so that the tag does not cover the faces of a set.
-    let y = if up {
-        around.top() - 6.0
-    } else {
-        around.bottom() + 6.0
+    let away = (at.x < rect.center().x, at.y < rect.center().y);
+    let side = |(left, up): (bool, bool)| {
+        let anchor = egui::Align2([
+            [egui::Align::Min, egui::Align::Max][usize::from(left)],
+            [egui::Align::Min, egui::Align::Max][usize::from(up)],
+        ]);
+        // Above or below the box, so that the tag does not cover the faces of a set.
+        let y = if up {
+            around.top() - 6.0
+        } else {
+            around.bottom() + 6.0
+        };
+        let x = if left { at.x - 6.0 } else { at.x + 6.0 };
+        fit(anchor.anchor_size(egui::pos2(x, y), galley.size()))
     };
-    let x = if left { at.x - 6.0 } else { at.x + 6.0 };
-    let first = fit(anchor.anchor_size(egui::pos2(x, y), galley.size()));
+    let covered = |place: egui::Rect| tags.model.iter().filter(|p| place.contains(**p)).count();
+    let first = [
+        away,
+        (away.0, !away.1),
+        (!away.0, away.1),
+        (!away.0, !away.1),
+    ]
+    .map(side)
+    .into_iter()
+    .min_by_key(|place| covered(*place))
+    .expect("4 sides");
     let mut place = first;
     // Move the tag below each earlier tag that it covers.
-    for _ in 0..placed.len() {
-        let Some(other) = placed
+    for _ in 0..tags.placed.len() {
+        let Some(other) = tags
+            .placed
             .iter()
             .find(|o| o.expand(1.0).intersects(place.expand(3.0)))
         else {
@@ -524,7 +540,7 @@ fn tag(
         };
         place = fit(place.translate(egui::vec2(0.0, other.bottom() + 5.0 - place.top())));
     }
-    placed.push(place.expand(3.0));
+    tags.placed.push(place.expand(3.0));
     if place != first {
         // A line from the point to the moved tag.
         painter.line_segment(
@@ -635,7 +651,7 @@ fn loads_overlay(
     p: &Preview,
     positions: &[[f32; 3]],
     outline: bool,
-    placed: &mut Vec<egui::Rect>,
+    tags: &mut Tags,
 ) {
     let screen = |x: [f32; 3]| screen(m, rect, x);
     for item in p.items.iter().filter(|_| outline) {
@@ -688,7 +704,7 @@ fn loads_overlay(
             around,
             &item.label,
             rgb(COLORS[item.color]),
-            placed,
+            tags,
         );
     }
 }
@@ -1269,11 +1285,17 @@ impl eframe::App for ViewerApp {
                 },
             ));
             let painter = ui.painter_at(rect);
-            let mut placed = Vec::new();
+            let mut tags = Tags {
+                placed: Vec::new(),
+                model: shown.geometry.as_deref().map_or(Vec::new(), |g| {
+                    let at = |x: &[f32; 3]| screen(&view_proj, rect, *x);
+                    g.positions.iter().filter_map(at).collect()
+                }),
+            };
             if self.labels && !self.mesh_only {
-                shown.overlay(&painter, rect, &view_proj, &mut placed);
+                shown.overlay(&painter, rect, &view_proj, &mut tags);
             }
-            shown.marks(&painter, rect, &view_proj, &mut placed);
+            shown.marks(&painter, rect, &view_proj, &mut tags);
         });
     }
 }
