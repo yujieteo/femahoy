@@ -53,7 +53,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 - Owns the agent process. It reads the preview and run folders that `fh run` writes, and serves them to the page. It does not start `ccx`.
 - Binds to 127.0.0.1 only.
-- Makes a random token at start, as Jupyter does. Every HTTP request must carry the token.
+- Listens on port 8790, or on the port in `FH_PORT`. It makes a random token at the first start, as Jupyter does, and keeps it in the state folder with owner-only permissions. Thus a port forward and a bookmark stay correct. Every HTTP request must carry the token.
 - Rejects any request whose `Origin` is not the daemon's own page.
 - Serves the page and the wasm viewer itself. On macOS it then opens the user's browser at that page. On other systems it only prints the address.
 - The browser never holds an API key.

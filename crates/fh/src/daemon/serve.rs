@@ -1,7 +1,9 @@
-//! `fh serve`: run the daemon until a stop signal. The daemon listens on 127.0.0.1 only, and
-//! no option changes the address. It makes a random token at each start and prints it in the
-//! address of the page. Each request must carry the token, and a request from a page of
-//! another `Origin` fails (`http` module).
+//! `fh serve`: run the daemon until a stop signal. The daemon listens on 127.0.0.1 only, at
+//! port 8790 or `$FH_PORT`. When the port is in use, `fh serve` stops with an error and does not
+//! use another port. Reason: a port forward and a bookmark to the page must stay correct.
+//! The token comes from the state folder (`stored_token`), so the printed address of the page
+//! stays the same at each start. Each request must carry the token, and a request from a page
+//! of another `Origin` fails (`http` module).
 //! The page is the wasm viewer, from `$FH_VIEWER` or the `viewer` folder beside `fh`.
 //! At start, `fh serve` checks that the agent starts and that Claude Code has a login. When it
 //! does not, the chat of the page tells the person what to do. On macOS, `fh serve` then opens the
@@ -18,6 +20,8 @@ use super::chat::{agent_problem, agent_program};
 use super::{Daemon, Options};
 
 const USAGE: &str = "usage: fh serve";
+/// The port of `fh serve` when `FH_PORT` is not set.
+const DEFAULT_PORT: u16 = 8790;
 
 /// Run `fh serve` with the arguments after `serve`, until SIGINT, SIGTERM or SIGHUP.
 pub fn serve(args: &[String]) -> Result<ExitCode, String> {
@@ -26,15 +30,28 @@ pub fn serve(args: &[String]) -> Result<ExitCode, String> {
     }
     let state_dir =
         default_state_dir().ok_or_else(|| format!("no home folder, so set FH_STATE\n{USAGE}"))?;
+    let port = port()?;
     stop::install();
-    Ok(serve_until(&state_dir, &stop::STOP, !no_open()))
+    Ok(serve_until(&state_dir, port, &stop::STOP, !no_open()))
 }
 
-/// Run the daemon on `state_dir` until `stop` is true. With `open`, it opens the page in the
+/// `$FH_PORT`, else `DEFAULT_PORT`.
+fn port() -> Result<u16, String> {
+    match std::env::var("FH_PORT") {
+        Ok(v) if !v.is_empty() => match v.parse::<u16>() {
+            Ok(port) if port > 0 => Ok(port),
+            _ => Err(format!("FH_PORT={v} is not a port from 1 to 65535")),
+        },
+        _ => Ok(DEFAULT_PORT),
+    }
+}
+
+/// Run the daemon on `state_dir` at `port` until `stop` is true. With `open`, it opens the page in the
 /// browser. A daemon that cannot start prints the cause and gives exit code 1.
-fn serve_until(state_dir: &Path, stop: &AtomicBool, open: bool) -> ExitCode {
+fn serve_until(state_dir: &Path, port: u16, stop: &AtomicBool, open: bool) -> ExitCode {
     let options = Options {
         viewer: viewer_dir(),
+        port,
     };
     let viewer = options.viewer.clone();
     let daemon = match Daemon::start_with_options(state_dir, options) {

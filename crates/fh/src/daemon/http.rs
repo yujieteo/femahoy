@@ -105,13 +105,15 @@ pub(crate) struct Server {
 
 impl Server {
     /// `viewer` is the folder with the wasm viewer files, or `None` when it is not built.
+    /// `port` 0 is any free port.
     pub(crate) fn start(
         store: Arc<Store>,
         chat: Arc<Chat>,
         token: String,
         viewer: Option<PathBuf>,
+        port: u16,
     ) -> io::Result<Server> {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, port))?;
         let port = listener.local_addr()?.port();
         let ctx = Arc::new(Ctx {
             store,
