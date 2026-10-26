@@ -629,7 +629,14 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
         p.title
     ));
     ui.label(format!("Units: {}", p.units));
-    widgets::checkbox(ui, labels, "Show the labels and the arrows");
+    // A model with only supports, or with zero loads, has no arrow to name.
+    let arrows = p.items.iter().any(|item| p.arrow(item).is_some());
+    let text = if arrows {
+        "Show the labels and the arrows"
+    } else {
+        "Show the labels"
+    };
+    widgets::checkbox(ui, labels, text);
     if p.items.is_empty() {
         let error = ui.visuals().error_fg_color;
         ui.colored_label(error, "The input has no support and no load.");
@@ -649,8 +656,10 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
             ui.colored_label(error, "No surface face has all of its nodes in this set.");
         }
     }
-    ui.separator();
-    ui.weak("Each arrow shows the direction of the total force of a load.");
+    if arrows {
+        ui.separator();
+        ui.weak("Each arrow shows the direction of the total force of a load.");
+    }
 }
 
 /// The supports and loads on top of the model: with `outline`, the outline of the faces of
