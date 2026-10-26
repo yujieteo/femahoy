@@ -19,7 +19,7 @@ hyperelastic-tube	pass		4381564	1326e05
 laminate-pagano	pass		638376	1326e05
 naca0012-ladson	pass		9347089	69e0c94
 naca23012-flap	pass		9803835	69e0c94
-optics-mie-cylinder	not run	Meep is not installed on the machine that made this report. Install Meep (README.md) and set FH_MEEP to its Python.	158287	1326e05
+optics-mie-cylinder	pass		878772	69e0c94
 plasticity-sphere	pass		149491	1326e05
 random-vibration-cantilever	pass		965648	1326e05
 scordelis-lo-roof	pass		147769	1326e05
