@@ -44,6 +44,7 @@ import html
 import json
 import os
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -295,17 +296,31 @@ def story(case, runs):
     return re.sub(r'data-run="([^"]*)"', run, path.read_text())
 
 
+# A story opts into a hand check with an explicit check name and unit. Never infer units.
+HAND_CHECK = re.compile(r'<!--hand-check ([^ ]+) ([^>]+)-->(.*?)<!--/hand-check-->', re.S)
+
+
+def difference(computed, reference, unit):
+    delta = computed - reference
+    absolute = f"{delta:+.6g} {unit}"
+    return absolute + (f" ({100 * delta / abs(reference):+.6g} %)" if reference else " (absolute)")
+
+
 def text(case, status, rows, runs, nofield, version, one_step=False):
     checks = tomllib.loads((CASES / case / "check.toml").read_text())
     rel, abs_ = checks.get("rel_tol", 0), checks.get("abs_tol", 0)
     result = status.split(":", 1)[0]
     rule = (f"A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, "
             f"with rel_tol = {rel} and abs_tol = {abs_} (<code>check.toml</code>).")
-    columns = ["Check", "Computed", "Reference", "Tolerance", "Margin"]
+    told = story(case, runs)
+    hand_checks = {m[1]: (m[2], m[3]) for m in HAND_CHECK.finditer(told or "")}
+    if told:
+        told = HAND_CHECK.sub("", told)
+    columns = ["Check", "Unit", "Computed", "Reference", "Difference", "Tolerance", "Margin"]
     if result == "not run":
         notice, _, hint = status.partition(". ")
         lead = f"<strong>Not run{esc(notice[len(result):])}.</strong> {esc(hint)} {rule}"
-        columns = ["Check", "Reference", "Tolerance"]
+        columns = ["Check", "Unit", "Reference", "Tolerance"]
         rows = [[k, v["value"], rel * abs(v["value"]) + abs_] for k, v in checks.items() if isinstance(v, dict)]
     else:
         lead = f"<strong>{esc(result.capitalize())}.</strong> {rule} <code>fh validate</code> gives the computed values."
@@ -314,14 +329,17 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
         body.append(f"<pre><code>{esc(status)}</code></pre>")
     if rows:
         head = "".join(f'<th style="text-align:{"left" if h == "Check" else "right"}">{h}</th>' for h in columns)
-        trs = "".join(
-            f"<tr><td><code>{esc(r[0])}</code></td>"
-            + "".join(f'<td style="text-align:right">{v:.6g}</td>' for v in r[1:])
-            + "</tr>"
-            for r in rows
-        )
-        body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{trs}</tbody></table>")
-    told = story(case, runs)
+        trs = []
+        for row in rows:
+            unit, formula = hand_checks.get(row[0], ("Not specified", ""))
+            values = [f"{v:.6g}" for v in row[1:]]
+            if result != "not run":
+                values.insert(2, difference(row[1], row[2], unit))
+            trs.append(f"<tr><td><code>{esc(row[0])}</code></td><td>{esc(unit)}</td>"
+                       + "".join(f'<td style="text-align:right">{esc(v)}</td>' for v in values) + "</tr>")
+        body.append(f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(trs)}</tbody></table>")
+        for name, (unit, formula) in hand_checks.items():
+            body.append(f'<section aria-label="Hand check {esc(name)}"><h3>Hand check: {esc(name)} [{esc(unit)}]</h3>{formula}</section>')
     last = " Only the steps that the text opens of each run are in this report, to keep the file small." if one_step else ""
     if runs and not told:
         links = ", ".join(f'<a data-run="{run}">{esc(name)}</a>' for run, name in runs)
@@ -338,9 +356,18 @@ def text(case, status, rows, runs, nofield, version, one_step=False):
         # result first.
         body = [told, *body] if result == "pass" else [*body, told]
     derivation = markdown((CASES / case / "derivation.md").read_text())
+    # A case can use its existing curve script for a mesh summary from its source table.
+    curves = CASES / case / "curves.py"
+    if curves.is_file():
+        mesh_report = runpy.run_path(str(curves)).get("mesh_report")
+        if mesh_report:
+            summary, _ = mesh_report()
+            derivation = re.sub(r'(<h2>Mesh study</h2>.*?)(<table>.*?</table>)',
+                                lambda m: m[1] + summary + '<details><summary>Full mesh table</summary>' + m[2] + '</details>',
+                                derivation, count=1, flags=re.S)
     # The story and the result go after the title of derivation.md.
     title, _, rest = derivation.partition("\n")
-    return title + "\n" + "\n".join(body) + "\n" + rest
+    return '<div data-report-controls="sections,layout,identity"></div>\n' + title + "\n" + "\n".join(body) + "\n" + rest
 
 
 def deflate(data):

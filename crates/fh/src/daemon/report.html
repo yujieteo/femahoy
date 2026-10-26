@@ -12,7 +12,9 @@
    from the UI layer of femahoy (crates/viewer/src/ui.rs). */
 /*UI*/
 body { display: flex; overflow: hidden; font-size: var(--read); }
-article { flex: none; width: clamp(360px, 42vw, 720px); overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
+#report { display: flex; flex-direction: column; min-width: 0; width: clamp(360px, 42vw, 720px); }
+#report > header { border-bottom: 1px solid var(--line); }
+article { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
 article h1 { margin: 0.5rem 0 1rem; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.015em; text-wrap: balance; }
 article h2 { margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1.75rem; }
 article h3 { margin: 2rem 0 0.75rem; font-size: 1.25rem; }
@@ -24,7 +26,17 @@ article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; backg
 article :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--code); overflow-wrap: anywhere; }
 article button, article select, .toolbar button, .toolbar select { font-size: var(--body); }
 /* A report with no run has no viewer: the text fills the page. */
-body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem, calc(50% - 22rem)); }
+body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
+body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
+body.text-mode #model { display: none; }
+#identity { overflow-wrap: anywhere; }
+[data-mesh-trend] > section > h3 { margin-top: var(--space-4); }
+summary { min-height: var(--target); cursor: pointer; padding-block: var(--space-2); }
+@media (max-width: 800px) {
+  body { flex-direction: column; }
+  #report { width: 100%; flex: 1; min-height: 0; }
+  #model { flex: none !important; height: 42%; }
+}
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
@@ -49,7 +61,18 @@ output { margin-left: var(--space-2); }
 </style>
 </head>
 <body>
+<section id="report" aria-label="Report">
+<header id="report-tools" class="toolbar" aria-label="Report controls" hidden>
+<label id="section-control" hidden>Section <select id="sections" aria-label="Report section" aria-keyshortcuts="Alt+S"></select></label>
+<span id="layout-control" class="segmented" role="group" aria-label="Report layout" hidden>
+<label><input type="radio" name="layout" value="text" aria-keyshortcuts="Alt+T">Text</label>
+<label><input type="radio" name="layout" value="split" checked aria-keyshortcuts="Alt+V">Split</label>
+</span>
+<span id="identity" class="readout" aria-live="polite" hidden></span>
+<p id="report-keys" class="keys"></p>
+</header>
 <article><!--TEXT--></article>
+</section>
 <main id="model">
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><!--OPTIONS--></select><label id="all" class="trail"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
@@ -76,6 +99,65 @@ output { margin-left: var(--space-2); }
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
+// Authors opt into named controls. No marker means no report toolbar.
+const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "").split(","));
+const hasRuns = runs.options.length > 0;
+const hints = [];
+if (controls.has("sections")) {
+  const headings = [...text.querySelectorAll("h2")];
+  if (headings.length) {
+    $("section-control").hidden = false;
+    headings.forEach((h, i) => $("sections").add(new Option(h.textContent, i)));
+    $("sections").addEventListener("change", () => {
+      const heading = headings[$("sections").value];
+      text.scrollTop += heading.getBoundingClientRect().top - text.getBoundingClientRect().top;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    });
+    hints.push("<kbd>Alt S</kbd> Section");
+  }
+}
+if (controls.has("layout") && hasRuns) {
+  $("layout-control").hidden = false;
+  $("layout-control").addEventListener("change", (e) => {
+    const top = text.scrollTop;
+    document.body.classList.toggle("text-mode", e.target.value === "text");
+    text.scrollTop = top;
+    window.dispatchEvent(new Event("resize"));
+  });
+  hints.push("<kbd>Alt T</kbd> Text", "<kbd>Alt V</kbd> Split");
+}
+$("report-keys").innerHTML = hints.join(" · ");
+const identity = () => {
+  $("identity").hidden = !controls.has("identity") || !hasRuns;
+  $("identity").textContent = "Run: " + (runs.selectedOptions[0]?.textContent ?? "");
+};
+identity();
+$("report-tools").hidden = !hints.length && $("identity").hidden;
+document.addEventListener("keydown", (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
+  const key = e.code?.startsWith("Key") ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
+  if (key === "s" && !$("section-control").hidden) { e.preventDefault(); $("sections").focus(); }
+  if ((key === "t" || key === "v") && !$("layout-control").hidden) {
+    e.preventDefault();
+    $("layout-control").querySelector(`[value="${key === "t" ? "text" : "split"}"]`).click();
+  }
+}, { capture: true });
+// Each trend contains plots from the curve renderer and tables from the same source rows.
+for (const trend of text.querySelectorAll("[data-mesh-trend]")) {
+  const panels = [...trend.children].filter((e) => e.tagName === "SECTION");
+  const select = document.createElement("select");
+  const label = document.createElement("label");
+  label.textContent = "Mesh result ";
+  select.setAttribute("aria-label", "Mesh metric and analysis condition");
+  select.name = "mesh-result";
+  panels.forEach((p, i) => select.add(new Option(p.querySelector("h3").textContent, i)));
+  const show = () => panels.forEach((p, i) => p.hidden = i !== Number(select.value));
+  select.addEventListener("change", show);
+  label.append(select);
+  trend.prepend(label);
+  show();
+}
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -121,6 +203,7 @@ async function start() {
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
+      identity();
       const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
       if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
