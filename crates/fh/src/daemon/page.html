@@ -413,8 +413,9 @@ async function startViewer() {
     await viewer.default({ module_or_path: wasm });
     view = await viewer.start($("fh"), token);
     msg.remove();
-    // The canvas takes the focus when it starts. The person writes first.
-    input.focus();
+    // The canvas takes the focus when it starts. The person writes first. Not on a touch
+    // screen: there the focus opens the iOS form bar or keyboard over the model at load.
+    if (!matchMedia("(pointer: coarse)").matches) input.focus();
     if (shown) { view.open(shown); loadFiles(shown); }
   } catch (e) {
     msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
