@@ -73,6 +73,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #stop { margin-left: auto; }
 
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+/* Only on a phone is the chat out of view, and there the 3D view takes the drag gestures. */
+#to-chat { display: none; }
 #runs { min-width: 0; font-weight: 500; }
 /* Runs and Files are navigation, as is Open report: the same size and colour as a button. */
 #model > .toolbar > details > summary { font-size: var(--body); color: var(--text); }
@@ -125,6 +127,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   #model[data-empty]:has(#runs[open]) #pair { display: none; }
   #model[data-empty] #run-list { max-height: none; }
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
+  body:not(:has(#empty)) #to-chat { display: block; }
   /* Runs, Files and Open report stay on 1 row: the file name gets shorter, from its end, so its
      start and the full run ID stay readable. */
   #runs { flex: 1 1 0; }
@@ -164,6 +167,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 </aside>
 <main id="model">
   <header class="toolbar">
+    <button type="button" id="to-chat" title="Go back to the chat">Chat</button>
     <details id="runs">
       <summary>Runs <span id="selected-run"></span></summary>
       <label data-control="run-search">Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
@@ -281,6 +285,7 @@ function reveal() {
   const model = $("model");
   if (model.getBoundingClientRect().top > 0) model.scrollIntoView({ block: "start" });
 }
+$("to-chat").onclick = () => $("chat").scrollIntoView({ block: "start" });
 function openRunAndShow(run) {
   openRun(run);
   reveal();
