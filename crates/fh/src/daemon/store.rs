@@ -302,13 +302,13 @@ impl Store {
         fs::read(path).map_err(|e| fail(500, e.to_string()))
     }
 
-    /// Save a self-contained report inside each run. The record contains no source path or token.
     /// The run has a retained report.
     pub(crate) fn has_report(&self, run: &str) -> bool {
         self.run_dir(run)
             .is_ok_and(|dir| dir.join("report.html").is_file())
     }
 
+    /// Save a self-contained report inside each run. The record contains no source path or token.
     pub(crate) fn register_report(&self, runs: &[String], html: &[u8]) -> Result<(), String> {
         for run in runs {
             let dir = self.run_dir(run).map_err(|(_, e)| e)?;

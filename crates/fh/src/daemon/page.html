@@ -316,8 +316,8 @@ function renderRuns() {
   for (const [run, path] of matched) {
     const row = el("div", "run-row", "");
     const text = el("div", "", "");
-    // The name line has the file name, so this line has only its folder. The LRM keeps the first "/" at the start.
-    const folder = el("p", "note run-path", "\u200E" + (path.replace(/\/[^/]*$/, "") || path));
+    // The name line has the file name, so this line has only its folder. The LRMs keep the first "/" at the start and a last ")" at the end.
+    const folder = el("p", "note run-path", "\u200E" + (path.replace(/\/[^/]*$/, "") || path) + "\u200E");
     folder.title = path;
     text.append(el("p", "", runLabel(run)), folder);
     row.append(text);
@@ -625,7 +625,7 @@ function entry(kind, text, fresh) {
       const d = command(...split(text), false);
       const code = d.querySelector("code");
       code.className = "tail";
-      code.textContent = "\u200E" + code.textContent;
+      code.textContent = "\u200E" + code.textContent + "\u200E";
       waiting.push(d);
       status("now", text);
       return d;

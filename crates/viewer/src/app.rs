@@ -379,7 +379,7 @@ impl Shown {
         painter: &egui::Painter,
         rect: egui::Rect,
         m: &camera::Mat4,
-        tags: &mut Tags,
+        tags: &mut Tags<'_>,
     ) {
         let eye = self.camera.eye();
         match &self.body {
@@ -401,7 +401,13 @@ impl Shown {
     }
 
     /// The marks of the view at the shown step.
-    fn marks(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, tags: &mut Tags) {
+    fn marks(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        m: &camera::Mat4,
+        tags: &mut Tags<'_>,
+    ) {
         let Body::Results(_, v, _, _, view) = &self.body else {
             return;
         };
@@ -418,7 +424,7 @@ impl Shown {
                     painter,
                     rect,
                     egui::Rect::from_pos(at),
-                    &format!("{}: {}", probe.label, view::format_value(probe.value)),
+                    &format!("{}: {}", probe.label, probe.value),
                     hex(MARK),
                     tags,
                 );
@@ -462,10 +468,23 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
 }
 
 /// The tags in a view: the boxes of the tags placed so far, and the screen points of the
-/// drawn model, which a tag does not cover if it can.
-struct Tags {
+/// drawn model `positions` with `view_proj` in `rect`, which a tag does not cover if it can.
+/// The screen points are found at the first tag only.
+struct Tags<'a> {
     placed: Vec<egui::Rect>,
-    model: Vec<egui::Pos2>,
+    view_proj: &'a camera::Mat4,
+    rect: egui::Rect,
+    positions: &'a [[f32; 3]],
+    model: std::cell::OnceCell<Vec<egui::Pos2>>,
+}
+
+impl Tags<'_> {
+    fn model(&self) -> &[egui::Pos2] {
+        self.model.get_or_init(|| {
+            let at = |x: &[f32; 3]| screen(self.view_proj, self.rect, *x);
+            self.positions.iter().filter_map(at).collect()
+        })
+    }
 }
 
 /// The text `text` on a box of the colour `color`, next to the screen box `around` (a point or
@@ -478,7 +497,7 @@ fn tag(
     around: egui::Rect,
     text: &str,
     color: egui::Color32,
-    tags: &mut Tags,
+    tags: &mut Tags<'_>,
 ) {
     // The ink with the higher WCAG contrast: black above a relative luminance of 0.179.
     let c = egui::Rgba::from(color);
@@ -523,7 +542,7 @@ fn tag(
     };
     let covered = |place: egui::Rect| {
         let near = |o: &&egui::Rect| o.expand(1.0).intersects(place.expand(3.0));
-        let points = tags.model.iter().filter(|p| place.contains(**p)).count();
+        let points = tags.model().iter().filter(|p| place.contains(**p)).count();
         (tags.placed.iter().filter(near).count(), points)
     };
     let first = [
@@ -674,7 +693,7 @@ fn loads_overlay(
     p: &Preview,
     positions: &[[f32; 3]],
     outline: bool,
-    tags: &mut Tags,
+    tags: &mut Tags<'_>,
 ) {
     let screen = |x: [f32; 3]| screen(m, rect, x);
     for item in p.items.iter().filter(|_| outline) {
@@ -966,9 +985,9 @@ fn probe_controls(
         if let Some(at) = p.at {
             ui.label(format!(
                 "Model coordinates: {}, {}, {} ({})",
-                view::format_value(at[0].into()),
-                view::format_value(at[1].into()),
-                view::format_value(at[2].into()),
+                at[0],
+                at[1],
+                at[2],
                 view::unit_text(&r.units, results::Quantity::Displacement)
             ));
             ui.weak("Surface marker may be hidden by another face.");
@@ -983,10 +1002,7 @@ fn probe_controls(
 
 /// The deformation scale that the 3D view draws, as the legend shows it.
 fn deformation_text(v: &ViewState) -> String {
-    format!(
-        "×{}",
-        view::format_value(if v.deformed { v.scale } else { 0.0 })
-    )
+    format!("×{}", if v.deformed { v.scale } else { 0.0 })
 }
 
 /// The step selector, the play button and the step slider.
@@ -1350,10 +1366,10 @@ impl eframe::App for ViewerApp {
             let painter = ui.painter_at(rect);
             let mut tags = Tags {
                 placed: Vec::new(),
-                model: shown.geometry.as_deref().map_or(Vec::new(), |g| {
-                    let at = |x: &[f32; 3]| screen(&view_proj, rect, *x);
-                    g.positions.iter().filter_map(at).collect()
-                }),
+                view_proj: &view_proj,
+                rect,
+                positions: shown.geometry.as_deref().map_or(&[], |g| &g.positions),
+                model: std::cell::OnceCell::new(),
             };
             if self.labels && !self.mesh_only {
                 shown.overlay(&painter, rect, &view_proj, &mut tags);
