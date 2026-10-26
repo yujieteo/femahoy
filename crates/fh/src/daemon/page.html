@@ -33,7 +33,7 @@ summary {
 summary::-webkit-details-marker { display: none; }
 summary::before { content: "\203A"; flex: none; width: 8px; transition: transform 0.15s; }
 details[open] > summary::before { transform: rotate(90deg); }
-summary:hover { background: var(--raised); color: var(--text); }
+@media (hover: hover) { summary:hover { background: var(--raised); color: var(--text); } }
 summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 .meta { flex: none; }
 .failed > summary, .failed .meta, pre.fail { color: var(--error); }

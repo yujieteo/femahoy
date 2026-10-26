@@ -53,7 +53,7 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 /* A run in the text is a link: an inline text link needs no larger hit target. */
 [data-run]:not(button, select, option, input) { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-[data-run]:not(button, select, option, input):hover { text-decoration-color: var(--accent); }
+@media (hover: hover) { [data-run]:not(button, select, option, input):hover { text-decoration-color: var(--accent); } }
 output { margin-left: var(--space-2); }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #bar { display: contents; }

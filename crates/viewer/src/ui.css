@@ -9,7 +9,6 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.15; }
 textarea { font: inherit; }
 code, pre, kbd { font: var(--mono)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-a:hover { text-decoration-color: var(--accent); }
 canvas[aria-label]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
@@ -28,9 +27,12 @@ button, select, input[type="search"] {
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-button:hover, select:hover { background-color: var(--raised); }
 button:disabled { opacity: 0.4; cursor: default; }
-button:disabled:not(.primary):hover { background: var(--bg); }
+/* A hover state only where a pointer can hover: on iOS a tap leaves :hover on until the next tap. */
+@media (hover: hover) {
+  a:hover { text-decoration-color: var(--accent); }
+  button:where(:enabled):hover, select:hover { background-color: var(--raised); }
+}
 button.primary { border-color: var(--button); background: var(--button); color: var(--on-button); }
 button.icon { display: inline-grid; place-items: center; width: var(--target); padding: 0; border-radius: 50%; }
 button.icon svg { width: 16px; height: 16px; }
