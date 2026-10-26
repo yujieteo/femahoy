@@ -694,8 +694,8 @@ fn scale_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 /// The probe controls. `drawn` has the positions of the drawn mesh, or is `None` when the
 /// drawn mesh is not yet the mesh of `v`.
 fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, drawn: Option<&[[f32; 3]]>) {
-    ui.checkbox(&mut v.probe_mode, "Probe surface");
-    widgets::keys(ui, &[("Click", "probe"), ("Esc", "clear")]);
+    ui.checkbox(&mut v.probe_mode, "Probe surface")
+        .on_hover_text("click the model to probe, Escape clears");
     let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
         return;
     };
