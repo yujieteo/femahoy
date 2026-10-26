@@ -54,9 +54,10 @@ const USAGE: &str =
      [--viewer FILE.js] [--one-step]\n\
      A report with no run and no curve is the text only. The plot of a curve goes in place of \
      the mark <!--curve NAME--> of the text, where the path of the curve ends with NAME, else \
-     after the text. --viewer loads the viewer from the script FILE.js beside the report, \
-     which sets window.fhViewer, instead of a copy in the report. Each data-run of the text \
-     must name a --run, each name of its data-fields a field of the run, and each step number \
+     after the text. A mark <!--cfd-curve NAME--> holds the same plot compressed. --cfd embeds \
+     the JSON source data of the CFD controls of the text. --viewer loads the viewer from the \
+     script FILE.js beside the report, which sets window.fhViewer, instead of a copy in the \
+     report. Each data-run of the text must name a --run, each name of its data-fields a field of the run, and each step number \
      of the element a step of the run: its data-step, the step of each mark of its data-marks, \
      and the min, max and value of a slider (input type=\"range\"). --one-step keeps only the \
      steps of each run that the text opens, for a smaller file: each step number of an \
