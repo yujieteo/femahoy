@@ -500,7 +500,7 @@ fn tag(
     };
     // The camera looks at the view centre, so a tag on the far side of the point from the
     // centre usually does not cover the model. Of the 4 sides, the tag takes the first one that
-    // covers the fewest points of the drawn model `model`.
+    // covers the fewest earlier tags, then the fewest points of the drawn model `model`.
     let at = around.center();
     let away = (at.x < rect.center().x, at.y < rect.center().y);
     let side = |(left, up): (bool, bool)| {
@@ -517,7 +517,11 @@ fn tag(
         let x = if left { at.x - 6.0 } else { at.x + 6.0 };
         fit(anchor.anchor_size(egui::pos2(x, y), galley.size()))
     };
-    let covered = |place: egui::Rect| tags.model.iter().filter(|p| place.contains(**p)).count();
+    let covered = |place: egui::Rect| {
+        let near = |o: &&egui::Rect| o.expand(1.0).intersects(place.expand(3.0));
+        let points = tags.model.iter().filter(|p| place.contains(**p)).count();
+        (tags.placed.iter().filter(near).count(), points)
+    };
     let first = [
         away,
         (away.0, !away.1),
