@@ -904,11 +904,8 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     let n = r.steps.len();
     ui.strong("Step");
     ui.horizontal(|ui| {
-        if ui
-            .add_enabled(v.step > 0, egui::Button::new("<"))
-            .on_hover_text("previous step")
-            .clicked()
-        {
+        let back = ui.add_enabled_ui(v.step > 0, |ui| widgets::button(ui, "<", "previous step"));
+        if back.inner.clicked() {
             v.step -= 1;
         }
         egui::ComboBox::from_id_salt("step")
@@ -918,22 +915,15 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                     ui.selectable_value(&mut v.step, i, view::step_label(i, s));
                 }
             });
-        if ui
-            .add_enabled(v.step + 1 < n, egui::Button::new(">"))
-            .on_hover_text("next step")
-            .clicked()
-        {
+        let next = ui.add_enabled_ui(v.step + 1 < n, |ui| widgets::button(ui, ">", "next step"));
+        if next.inner.clicked() {
             v.step += 1;
         }
     });
     if n > 1 {
         ui.horizontal(|ui| {
             let text = if v.playing.is_some() { "Pause" } else { "Play" };
-            if ui
-                .button(text)
-                .on_hover_text("show each step in turn")
-                .clicked()
-            {
+            if widgets::button(ui, text, "show each step in turn").clicked() {
                 v.playing = match v.playing {
                     Some(_) => None,
                     None => Some(ui.input(|i| i.time)),
