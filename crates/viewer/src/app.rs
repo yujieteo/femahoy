@@ -536,7 +536,8 @@ fn tag(
     .min_by_key(|place| covered(*place))
     .expect("4 sides");
     let mut place = first;
-    // Move the tag below each earlier tag that it covers.
+    // Move the tag below each earlier tag that it covers, or above it when the view bottom
+    // pushes the tag back onto it (a short view on a phone).
     for _ in 0..tags.placed.len() {
         let Some(other) = tags
             .placed
@@ -545,7 +546,12 @@ fn tag(
         else {
             break;
         };
-        place = fit(place.translate(egui::vec2(0.0, other.bottom() + 5.0 - place.top())));
+        let below = fit(place.translate(egui::vec2(0.0, other.bottom() + 5.0 - place.top())));
+        place = if other.expand(1.0).intersects(below.expand(3.0)) {
+            fit(place.translate(egui::vec2(0.0, other.top() - 5.0 - place.bottom())))
+        } else {
+            below
+        };
     }
     tags.placed.push(place.expand(3.0));
     if place != first {
