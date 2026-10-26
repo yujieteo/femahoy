@@ -19,12 +19,12 @@ hyperelastic-tube	pass		4381564	1326e05
 laminate-pagano	pass		638376	1326e05
 naca0012-ladson	pass		9347089	69e0c94
 naca23012-flap	pass		9803835	69e0c94
-optics-mie-cylinder	pass		878772	69e0c94
+optics-mie-cylinder	pass		899251	1326e05
 plasticity-sphere	pass		149491	1326e05
 random-vibration-cantilever	pass		965648	1326e05
 scordelis-lo-roof	pass		147769	1326e05
 shape-hole-biaxial	pass		929391	1326e05
-slider-crank	pass		222689	69e0c94
+slider-crank	pass		391379	1326e05
 submodel-kirsch-hole	pass		343109	1326e05
 taylor-bar-impact	pass		4280082	1326e05
 team7-eddy-current	pass		5883531	1326e05
