@@ -95,7 +95,7 @@ impl Curve {
                                 "x" => curve.log_x = true,
                                 "y" => curve.log_y = true,
                                 _ => {
-                                    return Err(at(format!("`log` takes x, y or x y, not {axis}")))
+                                    return Err(at(format!("`log` takes x, y or x y, not {axis}")));
                                 }
                             }
                         }
@@ -108,7 +108,7 @@ impl Curve {
                         None => {
                             return Err(at(format!(
                                 "unknown key `{key}`: use title, y, log, points NAME or note"
-                            )))
+                            )));
                         }
                     },
                 }
@@ -328,7 +328,28 @@ impl Curve {
                 }
             }
         }
-        svg.push_str("</svg>");
+        svg.push_str(&format!("<line class=\"sample-cursor\" x1=\"{LEFT}\" x2=\"{LEFT}\" y1=\"{TOP}\" y2=\"{}\" hidden=\"hidden\"/></svg>", TOP + HEIGHT));
+        // Original values form the public sample interface, independent of SVG rounding.
+        svg.push_str(&format!("<div data-control=\"values\" hidden><button type=\"button\" aria-label=\"Show values for {title}\" aria-expanded=\"false\">Show values</button><div hidden><label>Sample <input type=\"range\" name=\"sample\" aria-label=\"Sample of {title}\" min=\"0\" max=\"{}\" value=\"0\" step=\"1\"></label><output class=\"readout\" aria-live=\"polite\"></output><p class=\"keys\"><kbd>←</kbd><kbd>→</kbd> select a source sample</p><table><caption>Original values. — means no sample.</caption><thead><tr><th scope=\"col\">{}</th>", self.rows.len().saturating_sub(1), escape(&self.x)));
+        for series in &self.series {
+            svg.push_str(&format!(
+                "<th scope=\"col\">{} ({})</th>",
+                escape(&series.name),
+                escape(&self.y)
+            ));
+        }
+        svg.push_str("</tr></thead><tbody>");
+        for (x, values) in &self.rows {
+            svg.push_str(&format!("<tr data-x=\"{}\"><td>{x}</td>", px(*x)));
+            for value in values {
+                svg.push_str(&format!(
+                    "<td>{}</td>",
+                    value.map(|v| v.to_string()).unwrap_or_else(|| "—".into())
+                ));
+            }
+            svg.push_str("</tr>");
+        }
+        svg.push_str("</tbody></table></div></div>");
         // 1 series needs no legend: the title names it.
         if self.series.len() > 1 {
             svg.push_str("<ul class=\"legend\">");
@@ -520,6 +541,17 @@ mod tests {
         assert!(svg.contains("<p>measured: Martin and Moyce (1952)</p>"));
         assert!(svg.contains("<p>a &lt;b&gt;</p>"));
         assert!(!svg.contains("<b>"));
+    }
+
+    // The table is the public, exact sample contract of a curve figure.
+    #[test]
+    fn exact_samples_keep_source_precision_and_gaps() {
+        let mut curve = Curve::parse(FRONT, "front").unwrap();
+        curve.rows = vec![(1.2345678901234567, vec![Some(9.876543210123456), None])];
+        let html = curve.figure();
+        assert!(html.contains("<td>1.2345678901234567</td>"), "{html}");
+        assert!(html.contains("<td>9.876543210123456</td>"));
+        assert!(html.contains("<td>—</td>"));
     }
 
     #[test]

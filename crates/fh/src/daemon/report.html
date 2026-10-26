@@ -33,6 +33,7 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve .grid { stroke: var(--line); }
 .curve .frame { fill: none; stroke: var(--muted); }
 .curve polyline { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.curve .sample-cursor { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 3; }
 .curve circle { stroke: var(--side); stroke-width: 2; }
 .curve .legend { font-size: 0.875rem; }
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
@@ -92,8 +93,54 @@ window.fetch = async (request) => {
   return new Response(new Blob([decode(base64)]).stream().pipeThrough(new DecompressionStream("deflate-raw")));
 };
 
+// The values control uses the source rows, never rounded SVG coordinates.
+function curveControls(all = false) {
+  document.querySelectorAll('.curve [data-control="values"]').forEach((control) => {
+    const policy = control.closest('[data-curve-controls]')?.dataset.curveControls;
+    control.hidden = !all && !(policy ?? '').split(',').map(s => s.trim()).includes('values');
+  });
+}
+for (const figure of document.querySelectorAll('.curve')) {
+  const control = figure.querySelector('[data-control="values"]');
+  if (!control) continue;
+  const button = control.querySelector('button');
+  const body = button.nextElementSibling;
+  const slider = control.querySelector('input');
+  const rows = [...control.querySelectorAll('tbody tr')];
+  const svg = figure.querySelector('svg');
+  const cursor = svg.querySelector('.sample-cursor');
+  const select = (index) => {
+    slider.value = index;
+    rows.forEach((row, i) => { row.hidden = i !== Number(slider.value); });
+    const row = rows[Number(slider.value)];
+    control.querySelector('output').value = row ? `${Number(slider.value) + 1} of ${rows.length}` : 'No samples';
+    if (row) {
+      cursor.setAttribute('x1', row.dataset.x); cursor.setAttribute('x2', row.dataset.x);
+      slider.setAttribute('aria-valuetext', [...row.cells].map((cell, i) => `${control.querySelectorAll('th')[i].textContent}: ${cell.textContent}`).join(', '));
+    }
+    cursor.toggleAttribute('hidden', body.hidden || !row);
+  };
+  slider.addEventListener('input', () => select(slider.value));
+  button.addEventListener('click', () => { body.hidden = !body.hidden; button.setAttribute('aria-expanded', String(!body.hidden)); select(slider.value); });
+  svg.addEventListener('pointerdown', (event) => {
+    if (control.hidden || !rows.length) return;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    let nearest = 0;
+    rows.forEach((row, i) => { if (Math.abs(Number(row.dataset.x) - point.x) < Math.abs(Number(rows[nearest].dataset.x) - point.x)) nearest = i; });
+    body.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    select(nearest);
+    slider.focus();
+  });
+  select(0);
+}
+curveControls();
+$('all').addEventListener('change', (event) => curveControls(event.target.checked));
+
 async function start() {
   if (!runs.options.length) {
+    const all = $("all");
+    if (document.querySelector('.curve [data-control="values"]')) text.prepend(all);
     $("model").remove();
     return;
   }

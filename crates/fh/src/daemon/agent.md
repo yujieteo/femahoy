@@ -223,7 +223,7 @@ A report has no fixed form. It shows the conclusion of its results so that the p
 | Attribute | The view | Default |
 |---|---|---|
 | `data-fields="p,U magnitude"` | The fields of the contour list. The first shows first. With 1 field, the viewer shows its legend and no list. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`. | All the fields |
-| `data-controls="steps,deformation,loads,fit,report-view,views,help"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `fit` fits the full model and keeps its direction. `report-view` restores the report camera. `views` offers exact ±X, ±Y, ±Z and Isometric views. `help` expands the mouse actions and shortcuts. Use `fit` for a long model. Use `views` for an end face. Use `report-view` for a marked region. Use `help` for camera changes. The camera toolbar shows only the named controls. `data-controls=""` shows none. | Each control that can change the view of the run |
+| `data-controls="steps,deformation,loads,range,probe,scale,fit,report-view,views,help"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `range` compares one colour range across steps. `probe` reads an actual surface node or element and locates Min and Max. `scale` shows the deformation factor with 1× and Auto. `fit` fits the full model and keeps its direction. `report-view` restores the report camera. `views` offers exact ±X, ±Y, ±Z and Isometric views. `help` expands the mouse actions and shortcuts. Use `fit` for a long model. Use `views` for an end face. Use `report-view` for a marked region. Use `help` for camera changes. The camera toolbar shows only the named controls. `data-controls=""` shows none. | Each control that can change the view of the run |
 | `data-step="N"` | The step that shows first, from 1. | The last step |
 | `data-scale="X"` | The deformation scale. `1` is the true shape, `0` the undeformed shape. | `0` for a topology run, `1` for a multibody run, else the automatic scale when the deformation controls show, else `1` |
 | `data-box="X0,Y0,Z0,X1,Y1,Z1"` | The box that the view shows first, in the units of the model. A flat box with no motion in z shows from the top: put Z0 and Z1 on the top face of the model, for example z = 1 for a 2D OpenFOAM mesh from z = 0 to 1. | The whole model |
@@ -244,6 +244,14 @@ A slider of the time of a run with 3 steps, with the front of the water marked a
 ```
 <label data-bar>Time <input type="range" min="1" max="3" value="3" data-run="run-000006" data-fields="alpha.water" data-controls="" data-labels="0 s|0.1 s|0.2 s" data-marks="1:0.11,0,1 front;2:0.25,0,1 front;3:0.4,0,1 front"></label>
 ```
+
+Use `range` for comparisons across steps, `probe` for local values and extremes, and `scale` for a scaled shape.
+Reason: the column, heat-fin and crack runs exposed ambiguous colours, local values and deformation factors.
+
+A curve has the named `values` control. It gives a sample cursor and a table of original values, with gaps.
+Use `<section data-curve-controls="values">` around a curve mark to offer Show values.
+Use `<section data-curve-controls="">` to hide it. Show all controls restores it.
+Reason: heat-fin and frequency curves require exact values from each series, without values from rounded plot coordinates.
 
 ## Curves and fits
 

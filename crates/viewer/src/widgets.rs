@@ -108,7 +108,10 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, bool, &str)]) -> Option<usiz
                         let none = egui::Color32::TRANSPARENT;
                         (egui::RichText::new(text), none, egui::Stroke::NONE)
                     };
-                    let button = egui::Button::new(text).fill(fill).stroke(stroke);
+                    let button = egui::Button::new(text)
+                        .fill(fill)
+                        .stroke(stroke)
+                        .min_size(egui::vec2(ui::TARGET, ui::TARGET));
                     if ui.add(button).on_hover_text(hint).clicked() {
                         clicked = Some(i);
                     }
@@ -116,6 +119,12 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, bool, &str)]) -> Option<usiz
             });
         });
     clicked
+}
+
+/// A standard button with the shared hit target.
+pub fn button(ui: &mut egui::Ui, text: &str, hint: &str) -> egui::Response {
+    ui.add(egui::Button::new(text).min_size(egui::vec2(ui::TARGET, ui::TARGET)))
+        .on_hover_text(hint)
 }
 
 /// A row of text with no control: it has the height of its text, not of a hit target.
@@ -144,7 +153,12 @@ pub fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
 /// bands with their limits (the highest band at the top), and the smallest and largest value.
 pub fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64, hi: f64) {
     let unit = view::unit_text(units, field.quantity);
-    ui.strong(format!("{} ({unit})", field.name));
+    let name = if field.name == "NT" {
+        "Temperature · NT"
+    } else {
+        &field.name
+    };
+    ui.strong(format!("{name} ({unit})"));
     ui.weak(match field.location {
         Location::Point => "At the nodes",
         Location::Cell => "Per element",

@@ -183,6 +183,7 @@ impl ViewerApp {
         if let Some(shown) = self.shown.as_mut() {
             if let Body::Results(r, v, ..) = &mut shown.body {
                 v.step = step.min(r.steps.len().saturating_sub(1));
+                v.probe = None;
                 v.playing = None;
                 shown.refresh();
             }
@@ -361,6 +362,23 @@ impl Shown {
             return;
         };
         let shown = |mark: &&Mark| mark.step.is_none_or(|s| s == v.step);
+        if let Some(probe) = &v.probe {
+            if let Some(at) = probe.drawn_at.and_then(|p| screen(m, rect, p)) {
+                painter.circle(
+                    at,
+                    6.0,
+                    hex(MARK),
+                    egui::Stroke::new(2.0, painter.ctx().global_style().visuals.text_color()),
+                );
+                tag(
+                    painter,
+                    rect,
+                    at,
+                    &format!("{}: {}", probe.label, probe.value),
+                    hex(MARK),
+                );
+            }
+        }
         for mark in view.marks.iter().filter(shown) {
             let Some(at) = screen(m, rect, mark.at) else {
                 continue;
@@ -603,6 +621,37 @@ fn results_panel(
                 }
             });
     }
+    if v.step != before.step
+        || v.field != before.field
+        || v.scale != before.scale
+        || v.deformed != before.deformed
+    {
+        v.probe = None;
+    }
+    if shows(Control::Scale) {
+        scale_controls(ui, r, v);
+    }
+    if shows(Control::Range) {
+        ui.label("Colour range");
+        let items = [
+            ("Current step", !v.all_steps, "limits of this step"),
+            ("All steps", v.all_steps, "one range across this run"),
+        ];
+        if let Some(i) = segmented(ui, &items) {
+            v.all_steps = i == 1;
+        }
+    }
+    ui.weak(if v.all_steps {
+        "Range: all steps"
+    } else {
+        "Range: current step"
+    });
+    if shows(Control::Probe) {
+        probe_controls(ui, r, v);
+    } else {
+        v.probe_mode = false;
+        v.probe = None;
+    }
     match v.contour(r) {
         Contour::Off => {}
         Contour::Missing(name) => {
@@ -614,6 +663,124 @@ fn results_panel(
         Contour::On { field, lo, hi } => legend(ui, &r.units, field, lo, hi),
     }
     *v != before
+}
+
+/// Compact scale readout and the existing scale actions.
+fn scale_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
+    readout(
+        ui,
+        "Deformation",
+        &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
+    );
+    let auto = results::auto_scale(r);
+    let items = [
+        ("1×", v.deformed && v.scale == 1.0, "true scale"),
+        ("Auto", v.deformed && v.scale == auto, "automatic scale"),
+    ];
+    if let Some(i) = segmented(ui, &items) {
+        v.deformed = true;
+        v.scale = if i == 0 { 1.0 } else { auto };
+        v.probe = None;
+    }
+}
+
+fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
+    ui.checkbox(&mut v.probe_mode, "Probe surface");
+    widgets::keys(ui, &[("Click", "probe"), ("Esc", "clear")]);
+    let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
+        return;
+    };
+    let mesh = r.mesh(v.current(r));
+    let mut chosen = None;
+    ui.horizontal(|ui| {
+        if widgets::button(ui, "Min", "locate the actual minimum item").clicked() {
+            chosen = Some(false);
+        }
+        if widgets::button(ui, "Max", "locate the actual maximum item").clicked() {
+            chosen = Some(true);
+        }
+        if widgets::button(ui, "Clear", "clear probe (Escape)").clicked() {
+            chosen = None;
+            v.probe = None;
+        }
+    });
+    if let Some(max) = chosen {
+        v.probe = crate::probe::extreme(
+            mesh,
+            &results::deformed_positions(
+                mesh,
+                v.current(r),
+                if v.deformed { v.scale } else { 0.0 },
+            ),
+            field,
+            max,
+        );
+    }
+    if v.probe_mode && !field.values.is_empty() {
+        let mut index = v.probe.as_ref().map_or(1, |p| p.index + 1);
+        ui.horizontal(|ui| {
+            let text = match field.location {
+                results::Location::Point => "Node index",
+                results::Location::Cell => "Element index",
+            };
+            let label = ui.label(text);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut index)
+                        .range(1..=field.values.len())
+                        .speed(1),
+                )
+                .labelled_by(label.id)
+                .changed()
+            {
+                v.probe = crate::probe::at_index(
+                    mesh,
+                    &results::deformed_positions(
+                        mesh,
+                        v.current(r),
+                        if v.deformed { v.scale } else { 0.0 },
+                    ),
+                    field,
+                    index - 1,
+                );
+            }
+        });
+    }
+    if let Some(p) = &v.probe {
+        ui.strong(format!(
+            "{} · {} · Step {}",
+            p.label,
+            field.name,
+            v.step + 1
+        ));
+        let location = match field.location {
+            results::Location::Point => "At node index",
+            results::Location::Cell => "Per element index",
+        };
+        readout(ui, location, &(p.index + 1).to_string());
+        readout(
+            ui,
+            "Value",
+            &format!("{} {}", p.value, view::unit_text(&r.units, field.quantity)),
+        );
+        if let Some(at) = p.at {
+            ui.label(format!(
+                "Model coordinates: {}, {}, {} ({})",
+                at[0],
+                at[1],
+                at[2],
+                view::unit_text(&r.units, results::Quantity::Displacement)
+            ));
+            ui.weak("Surface marker may be hidden by another face.");
+        } else {
+            ui.label(format!("{} is hidden: no surface marker.", p.label));
+        }
+        readout(
+            ui,
+            "Deformation",
+            &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
+        );
+    }
 }
 
 /// The step selector, the play button and the step slider.
@@ -704,6 +871,15 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.take_request();
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if let Some(Shown {
+                body: Body::Results(_, v, ..),
+                ..
+            }) = self.shown.as_mut()
+            {
+                v.probe = None;
+            }
+        }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
             ui.weak(self.status_text());
@@ -797,6 +973,32 @@ impl eframe::App for ViewerApp {
             let view_proj = shown
                 .camera
                 .view_proj(rect.width() / rect.height().max(1.0));
+            if response.clicked() && !response.double_clicked() {
+                if let (Some(pointer), Body::Results(r, v, ..)) =
+                    (response.interact_pointer_pos(), &mut shown.body)
+                {
+                    if v.probe_mode {
+                        if let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n))
+                        {
+                            let mesh = r.mesh(v.current(r));
+                            let positions = results::deformed_positions(
+                                mesh,
+                                v.current(r),
+                                if v.deformed { v.scale } else { 0.0 },
+                            );
+                            let ndc = [
+                                2.0 * (pointer.x - rect.left()) / rect.width() - 1.0,
+                                1.0 - 2.0 * (pointer.y - rect.top()) / rect.height(),
+                            ];
+                            let (origin, direction) =
+                                shown.camera.ray(rect.width() / rect.height().max(1.0), ndc);
+                            v.probe = crate::probe::pick(
+                                mesh, &positions, field, origin, direction, &view_proj,
+                            );
+                        }
+                    }
+                }
+            }
             let params = FrameParams {
                 view_proj,
                 eye: shown.camera.eye(),

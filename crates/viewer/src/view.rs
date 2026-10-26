@@ -47,6 +47,9 @@ pub enum Control {
     ReportView,
     Views,
     Help,
+    Range,
+    Probe,
+    Scale,
 }
 
 impl Control {
@@ -58,6 +61,9 @@ impl Control {
         Control::ReportView,
         Control::Views,
         Control::Help,
+        Control::Range,
+        Control::Probe,
+        Control::Scale,
     ];
 
     /// The name of a control in the view of a report.
@@ -70,6 +76,9 @@ impl Control {
             Control::ReportView => "report-view",
             Control::Views => "views",
             Control::Help => "help",
+            Control::Range => "range",
+            Control::Probe => "probe",
+            Control::Scale => "scale",
         }
     }
 
@@ -218,13 +227,25 @@ impl Panel {
             let changing =
                 steps.len() - usize::from(steps.first().is_some_and(start_of_steady_solve));
             let structure = !results.multibody && !topology(results);
-            let can = [changing > 1, displaced(results) && structure, loads];
+            let can = |control| match control {
+                Control::Steps => changing > 1,
+                Control::Deformation => displaced(results) && structure,
+                Control::Loads => loads,
+                _ => false,
+            };
             return Panel {
                 controls: groups(can, |_| true),
                 fields: important_fields(results),
             };
         };
-        let can = [steps.len() > 1, displaced(results), loads];
+        let can = |control| match control {
+            Control::Steps | Control::Range => steps.len() > 1,
+            Control::Deformation | Control::Scale => displaced(results),
+            Control::Loads => loads,
+            Control::Probe => steps.iter().any(|s| !s.fields.is_empty()),
+            // Camera controls belong to the HTML toolbar, not the results panel.
+            Control::Fit | Control::ReportView | Control::Views | Control::Help => false,
+        };
         let controls = groups(can, |c| {
             view.controls.as_ref().is_none_or(|v| v.contains(c))
         });
@@ -237,17 +258,12 @@ impl Panel {
     }
 }
 
-/// The groups of controls of `Control::ALL` that `can` (in the same sequence) gives and `keep`
-/// keeps.
-fn groups(can: [bool; 3], keep: impl Fn(&Control) -> bool) -> Vec<Control> {
+/// The controls that both predicates select.
+fn groups(can: impl Fn(Control) -> bool, keep: impl Fn(&Control) -> bool) -> Vec<Control> {
     Control::ALL
         .iter()
         .copied()
-        // Camera controls belong to the HTML toolbar, not the results panel.
-        .filter(|c| matches!(c, Control::Steps | Control::Deformation | Control::Loads))
-        .zip(can)
-        .filter(|(c, on)| *on && keep(c))
-        .map(|(c, _)| c)
+        .filter(|c| can(*c) && keep(c))
         .collect()
 }
 
@@ -331,6 +347,11 @@ pub struct ViewState {
     pub field: Option<String>,
     /// While the steps play: the time (in seconds) when the current step started to show.
     pub playing: Option<f64>,
+    pub all_steps: bool,
+    /// Cached once for this run, with point and cell fields kept separate.
+    pub ranges: Vec<(String, results::Location, f64, f64)>,
+    pub probe_mode: bool,
+    pub probe: Option<crate::probe::Probe>,
 }
 
 /// What the contour shows for the selected step.
@@ -380,6 +401,10 @@ impl ViewState {
             ghost: true,
             field,
             playing: None,
+            all_steps: false,
+            ranges: results::all_ranges(results),
+            probe_mode: false,
+            probe: None,
         }
     }
 
@@ -406,7 +431,15 @@ impl ViewState {
         };
         match self.current(results).field(name) {
             Some(field) => {
-                let (lo, hi) = results::contour_range(field);
+                let (lo, hi) = if self.all_steps {
+                    self.ranges
+                        .iter()
+                        .find(|(n, l, _, _)| n == &field.name && *l == field.location)
+                        .map(|(_, _, lo, hi)| (*lo, *hi))
+                        .unwrap_or_else(|| results::contour_range(field))
+                } else {
+                    results::contour_range(field)
+                };
                 Contour::On { field, lo, hi }
             }
             None => Contour::Missing(name),
@@ -606,7 +639,16 @@ mod tests {
         rf.name = "RF magnitude".into();
         r.steps[1].fields.push(rf);
         let all = Panel::of(&r, Some(&View::default()), false);
-        assert_eq!(all.controls, [Control::Steps, Control::Deformation]);
+        assert_eq!(
+            all.controls,
+            [
+                Control::Steps,
+                Control::Deformation,
+                Control::Range,
+                Control::Probe,
+                Control::Scale
+            ]
+        );
         assert_eq!(all.fields, field_names(&r));
         let important = Panel::of(&r, None, false);
         assert!(important.fields.contains(&"MISES".into()));
@@ -690,6 +732,28 @@ mod tests {
         // The geometry uses the selected step: the moved positions are x + scale * U.
         let want = results::deformed_positions(&r.meshes[0], &r.steps[0], v.scale);
         assert_eq!(first.positions, want);
+    }
+
+    #[test]
+    fn all_steps_keeps_the_same_limits_without_a_camera_or_scale_change() {
+        let r = fixture();
+        let mut v = state(&r);
+        v.field = Some("U3".into());
+        let scale = v.scale;
+        v.all_steps = true;
+        let limits = |v: &ViewState| match v.contour(&r) {
+            Contour::On { lo, hi, .. } => (lo, hi),
+            _ => panic!("field"),
+        };
+        let want = limits(&v);
+        v.step = 0;
+        assert_eq!(limits(&v), want);
+        assert_eq!(v.scale, scale);
+        v.all_steps = false;
+        assert_ne!(limits(&v), want);
+        v.all_steps = true;
+        v.field = Some("absent".into());
+        assert!(matches!(v.contour(&r), Contour::Missing("absent")));
     }
 
     #[test]
