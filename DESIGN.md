@@ -30,7 +30,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 | Interface | Purpose |
 |---|---|
-| Chat | Main interface, in a panel on the left of the page. One conversation with the agent. Every agent action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the agent at its next step, and `Stop` ends the work at once. A status shows the current action of the agent and the time. |
+| Chat | Main interface, in a panel on the left of the page. One conversation with the agent. Every agent action shows as the command or the tool that it used. The text box is always available: a message during the work reaches the agent at its next step, and `Stop agent and commands` ends the work at once. A status shows the current action of the agent and the time. |
 | 3D viewport | In the center of the page. Mesh with element outlines, deformed shape with a scale factor, contour plot of one field, step selector that selects and plays each output time. The panel shows each control that applies to the analysis and its important fields, and hides the other fields behind 1 switch, "Show all controls". In a report, the agent chooses the controls and the view. |
 
 ---

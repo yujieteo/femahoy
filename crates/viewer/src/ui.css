@@ -22,7 +22,7 @@ canvas[aria-label]:focus-visible { outline: 2px solid var(--accent); outline-off
 
 /* Button and menu (select). .primary is the main action of a view. .icon is a round button
    with an icon and an aria-label. */
-button, select {
+button, select, input[type="search"] {
   min-height: var(--target); min-width: var(--target); max-width: 100%; padding: 0 var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
   color: inherit; font: inherit; text-align: left; cursor: pointer;

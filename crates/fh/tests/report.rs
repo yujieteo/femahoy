@@ -379,3 +379,16 @@ fn a_report_with_a_shared_viewer_holds_no_viewer() {
         "policy"
     );
 }
+
+/// A successful report retains its bytes beside the run, independent of the output path.
+#[test]
+fn a_report_retains_a_copy_beside_each_run() {
+    let lab = Lab::new("report-artifact");
+    let out = lab.report(&["--run", "run-000001"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let retained = lab.dir.join("state/runs/run-000001/report.html");
+    let expected = fs::read(lab.out()).unwrap();
+    assert_eq!(fs::read(&retained).unwrap(), expected);
+    fs::remove_file(lab.out()).unwrap();
+    assert_eq!(fs::read(retained).unwrap(), expected);
+}

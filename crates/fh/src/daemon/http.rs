@@ -9,6 +9,10 @@
 //!    needs only the token. Only `GET /`, the page of the daemon, can also
 //!    take the token as `?token=<token>`, because a browser that opens a link sends no header.
 //!
+//! A report can use a single-use `ticket` from its token-protected `report-ticket` route.
+//! The ticket permits one report navigation for 60 seconds. It grants no other access.
+//! Reason: report scripts must not receive the daemon token.
+//!
 //! The daemon sends no CORS header, so a page of another origin cannot read an answer.
 //! Each answer has `Referrer-Policy: no-referrer`, so the page never sends its address with
 //! the token to another site.
@@ -22,6 +26,10 @@
 //! | `GET /api/v1/runs` | | one item `<run> <input>` for each run that has results |
 //! | `GET /api/v1/runs/<r>/input` | | the text of the copy of the input that the run solves, with its `*INCLUDE` files (bytes). No bytes for an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep or openEMS case |
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
+//! | `GET /api/v1/runs/<r>/artifacts` | | retained input and result files, and the registered report |
+//! | `GET /api/v1/runs/<r>/inputs/<index>` | | one retained input file, also in a case subfolder |
+//! | `POST /api/v1/runs/<r>/report-ticket` | | a single-use report ticket |
+//! | `GET /api/v1/runs/<r>/report` | | the registered report in an opaque sandbox |
 //! | `GET /api/v1/previews/<id>` | | the text of the copy of the input of the preview, with its `*INCLUDE` files (bytes) |
 //! | `GET /api/v1/chat?since=N` | | `state` (`running` or `idle`), `next`, and while the agent works `started_ms`; one item `<seq> <kind> <text>` for each entry after `N` (`chat` module) |
 //! | `POST /api/v1/chat` | the text of the message | `state`: the message goes to the agent, also while it works |
@@ -36,13 +44,14 @@
 //!
 //! A failed request gets the HTTP status and the field `message`.
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::chat::Chat;
 use super::message::{bad, fail, Failure, Message};
@@ -75,6 +84,7 @@ enum Reply {
     Message(Message),
     /// The page, and the nonce of its script.
     Page(String),
+    Report(Vec<u8>),
     /// File bytes and their content type.
     Bytes(&'static str, Vec<u8>),
 }
@@ -84,6 +94,7 @@ struct Ctx {
     chat: Arc<Chat>,
     viewer: Option<PathBuf>,
     token: String,
+    report_tickets: Mutex<HashMap<String, (String, Instant)>>,
 }
 
 pub(crate) struct Server {
@@ -107,6 +118,7 @@ impl Server {
             chat,
             viewer,
             token,
+            report_tickets: Mutex::new(HashMap::new()),
         });
         let stop = Arc::new(AtomicBool::new(false));
         let active = Arc::new(AtomicUsize::new(0));
@@ -132,7 +144,7 @@ impl Server {
                     // on it and read a 400 that answers nothing.
                     if matches!(stream.peek(&mut [0]), Ok(1)) {
                         let answer = read_request(&mut stream).and_then(|req| {
-                            authorize(&req, port, &ctx.token)?;
+                            authorize(&req, port, &ctx)?;
                             route(&ctx, &req)
                         });
                         let _ = respond(&mut stream, answer);
@@ -279,7 +291,7 @@ fn same_token(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.bytes().zip(b.bytes()).fold(0, |d, (x, y)| d | (x ^ y)) == 0
 }
 
-fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Failure> {
+fn authorize(req: &Request, port: u16, ctx: &Ctx) -> Result<(), Failure> {
     let own = format!("127.0.0.1:{port}");
     if req.header("host") != Some(own.as_str()) {
         return Err(fail(403, format!("the Host must be {own}")));
@@ -287,6 +299,20 @@ fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Failure> {
     if let Some(origin) = req.header("origin") {
         if origin != format!("http://{own}") {
             return Err(fail(403, format!("Origin {origin} is not the daemon page")));
+        }
+    }
+    // A ticket permits one navigation to one report. The report never receives the daemon token.
+    if req.method == "GET" {
+        if let Some(ticket) = req.query_value("ticket") {
+            let mut tickets = ctx.report_tickets.lock().unwrap_or_else(|e| e.into_inner());
+            if tickets
+                .get(ticket)
+                .is_some_and(|(path, until)| path == &req.path && *until > Instant::now())
+            {
+                tickets.remove(ticket);
+                return Ok(());
+            }
+            return Err(fail(401, "the report ticket is not valid"));
         }
     }
     let given = match req.header("authorization") {
@@ -297,7 +323,7 @@ fn authorize(req: &Request, port: u16, token: &str) -> Result<(), Failure> {
     let Some(given) = given else {
         return Err(fail(401, "send Authorization: Bearer <token>"));
     };
-    if !same_token(given, token) {
+    if !same_token(given, &ctx.token) {
         return Err(fail(401, "the token is not correct"));
     }
     Ok(())
@@ -350,6 +376,38 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
                 .map(|(run, input)| format!("{run} {input}"))
                 .collect();
         }
+        ("GET", ["", "api", "v1", "runs", r, "artifacts"]) => {
+            m.items = store.files(r)?;
+        }
+        ("POST", ["", "api", "v1", "runs", r, "report-ticket"]) => {
+            if !store.files(r)?.iter().any(|f| f == "report") {
+                return Err(fail(404, "No report for this run"));
+            }
+            let ticket = super::random_hex(32).map_err(|e| fail(500, e))?;
+            let now = Instant::now();
+            let mut tickets = ctx.report_tickets.lock().unwrap_or_else(|e| e.into_inner());
+            tickets.retain(|_, (_, until)| *until > now);
+            if tickets.len() >= MAX_CONNECTIONS {
+                return Err(fail(503, "too many report requests"));
+            }
+            tickets.insert(
+                ticket.clone(),
+                (
+                    format!("/api/v1/runs/{r}/report"),
+                    now + Duration::from_secs(60),
+                ),
+            );
+            m.set("ticket", ticket);
+        }
+        ("GET", ["", "api", "v1", "runs", r, "report"]) => {
+            return Ok(Reply::Report(store.report_file(r)?));
+        }
+        ("GET", ["", "api", "v1", "runs", r, "inputs", index]) => {
+            return Ok(Reply::Bytes(
+                "application/octet-stream",
+                store.retained_input(r, index)?,
+            ));
+        }
         ("GET", ["", "api", "v1", "runs", r, "input"]) => {
             return Ok(Reply::Bytes(
                 "application/octet-stream",
@@ -386,6 +444,8 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>) -> io::Result
                 .into_bytes(),
             page_policy(&nonce),
         ),
+        Ok(Reply::Report(bytes)) => (200, "text/html; charset=utf-8", bytes,
+            "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline' blob: data: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; font-src data:; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'".to_owned()),
         Ok(Reply::Bytes(kind, bytes)) => (200, kind, bytes, api_policy),
         Err((status, message)) => {
             let mut m = Message::new();

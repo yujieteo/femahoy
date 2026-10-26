@@ -56,8 +56,9 @@ const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,\
 /// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
 /// 2 minutes by default, and a solve of a large model can take hours.
 const BASH_TIMEOUT_MS: &str = "86400000";
-/// The most entries that the daemon keeps. An older entry goes first.
-const MAX_ENTRIES: usize = 4000;
+/// The most entries that the daemon keeps: about 4000 commands and results, each with its
+/// `identity` and `time` entries. An older entry goes first.
+const MAX_ENTRIES: usize = 12000;
 /// The most characters of one tool result in an entry.
 const MAX_RESULT: usize = 4000;
 
@@ -101,6 +102,20 @@ impl Log {
     /// The agent works: it has a message that it did not read, or a turn with no end.
     fn running(&self) -> bool {
         self.reading && (self.turn || self.sent > self.taken)
+    }
+
+    /// Add an entry. Over the limit, the oldest entry goes with its `identity` and `time`
+    /// entries, so that no command loses its identity.
+    fn append(&mut self, entry: String) {
+        self.next += 1;
+        self.entries.push_back((self.next, entry));
+        while self.entries.len() > MAX_ENTRIES {
+            while let Some((_, e)) = self.entries.pop_front() {
+                if !e.starts_with("identity ") && !e.starts_with("time ") {
+                    break;
+                }
+            }
+        }
     }
 
     /// The agent works no more.
@@ -176,12 +191,13 @@ impl Chat {
     }
 
     fn push(&self, log: &mut Log, kind: &str, text: &str) {
-        let text = escape(&text.replace(&self.token, "<token>"));
-        log.next += 1;
-        log.entries.push_back((log.next, format!("{kind} {text}")));
-        if log.entries.len() > MAX_ENTRIES {
-            log.entries.pop_front();
+        if matches!(kind, "cmd" | "tool" | "out" | "fail" | "end" | "error")
+            || (kind == "note" && text == "stopped the agent")
+        {
+            self.push(log, "time", &now_ms().to_string());
         }
+        let text = escape(&text.replace(&self.token, "<token>"));
+        log.append(format!("{kind} {text}"));
     }
 
     /// The state of the chat and the entries after `since`, as the items `<seq> <kind>
@@ -387,6 +403,10 @@ impl Chat {
 /// | `assistant` | `say` for a text, `cmd` for a `Bash` command, `tool` for another tool |
 /// | `user` | `out` for a tool result, `fail` for a tool error |
 /// | `result` | `end`: the outcome, the wall time, the turns and the cost |
+///
+/// `identity` gives the tool ID before a command or result when the event supplies it.
+/// `time` gives the Unix time in milliseconds before a command, result, error, end, or stop.
+/// Legacy consumers can omit these metadata entries. The command and result entries stay unchanged.
 fn entries(event: &Json) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut add = |kind: &str, text: String| out.push((kind.to_owned(), text));
@@ -407,19 +427,24 @@ fn entries(event: &Json) -> Vec<(String, String)> {
             for block in event.list(&["message", "content"]) {
                 match block.text(&["type"]).unwrap_or("") {
                     "text" => add("say", block.text(&["text"]).unwrap_or("").to_owned()),
-                    "tool_use" => match block.text(&["name"]).unwrap_or("?") {
-                        "Bash" => add(
-                            "cmd",
-                            block.text(&["input", "command"]).unwrap_or("").to_owned(),
-                        ),
-                        name => {
-                            let input = ["file_path", "pattern", "path"]
-                                .iter()
-                                .find_map(|k| block.text(&["input", k]))
-                                .unwrap_or("");
-                            add("tool", format!("{name} {input}").trim_end().to_owned())
+                    "tool_use" => {
+                        if let Some(id) = block.text(&["id"]) {
+                            add("identity", id.to_owned());
                         }
-                    },
+                        match block.text(&["name"]).unwrap_or("?") {
+                            "Bash" => add(
+                                "cmd",
+                                block.text(&["input", "command"]).unwrap_or("").to_owned(),
+                            ),
+                            name => {
+                                let input = ["file_path", "pattern", "path"]
+                                    .iter()
+                                    .find_map(|k| block.text(&["input", k]))
+                                    .unwrap_or("");
+                                add("tool", format!("{name} {input}").trim_end().to_owned())
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -443,6 +468,9 @@ fn entries(event: &Json) -> Vec<(String, String)> {
                     text = format!("{cut}\n... (the result is longer)");
                 }
                 let error = block.flag(&["is_error"]) == Some(true);
+                if let Some(id) = block.text(&["tool_use_id"]) {
+                    add("identity", id.to_owned());
+                }
                 add(if error { "fail" } else { "out" }, text);
             }
         }
@@ -540,7 +568,7 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
 
 #[cfg(test)]
 mod tests {
-    use super::agent_problem;
+    use super::*;
 
     #[test]
     fn a_missing_agent_tells_how_to_install_claude_code() {
@@ -559,5 +587,40 @@ mod tests {
             "{problem}"
         );
         assert_eq!(agent_problem("true"), None);
+    }
+
+    #[test]
+    fn a_trim_keeps_the_identity_and_time_of_each_command() {
+        let mut log = Log::default();
+        log.append("note start".into());
+        for i in 0..MAX_ENTRIES {
+            log.append(format!("identity {i}"));
+            log.append("time 1".into());
+            log.append(format!("cmd {i}"));
+        }
+        assert!(log.entries.len() <= MAX_ENTRIES);
+        assert!(log.entries.len() >= MAX_ENTRIES - 2);
+        let entries: Vec<&str> = log.entries.iter().map(|(_, e)| e.as_str()).collect();
+        assert!(entries[0].starts_with("identity "), "{}", entries[0]);
+        for (i, e) in entries.iter().enumerate() {
+            if let Some(n) = e.strip_prefix("cmd ") {
+                assert_eq!(entries[i - 2], format!("identity {n}"));
+            }
+        }
+    }
+
+    #[test]
+    fn tool_identity_survives_the_event_stream() {
+        let event = Json::parse(r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"Bash","input":{"command":"first"}},{"type":"tool_use","id":"b","name":"Bash","input":{"command":"second"}}]}}"#).unwrap();
+        let commands = entries(&event);
+        assert_eq!(commands.len(), 4);
+        assert_eq!(commands[0].0, "identity");
+        assert_eq!(commands[0].1, "a");
+        assert_eq!(commands[1], ("cmd".into(), "first".into()));
+        assert_eq!(commands[2].1, "b");
+        let event = Json::parse(r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"second result"}]}}"#).unwrap();
+        let result = entries(&event);
+        assert_eq!(result[0].1, "b");
+        assert_eq!(result[1], ("out".into(), "second result".into()));
     }
 }

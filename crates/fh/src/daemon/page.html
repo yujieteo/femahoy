@@ -9,6 +9,7 @@
 /* The layout of the page of fh serve. The tokens and the components (the toolbar, the buttons,
    the menu and the help row) come from the UI layer of femahoy (crates/viewer/src/ui.rs). */
 /*UI*/
+[data-omit="true"] { display: none !important; }
 body { display: flex; overflow: hidden; }
 
 #chat {
@@ -58,11 +59,29 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   resize: none; background: none; font: inherit; color: inherit; line-height: 1.5;
 }
 #input::placeholder { color: var(--muted); }
-.row { display: flex; align-items: center; gap: var(--space-2); }
-.row .keys { flex: 1; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.row .keys { flex: 1 1 12em; }
+#stop { margin-left: auto; }
 
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #runs { min-width: 0; font-weight: 500; }
+#run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); }
+.run-row { display: flex; flex-wrap: wrap; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
+.run-row p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+#pair { display: flex; flex: 1; min-height: 0; }
+#pair > section { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+#view, #view-b { position: relative; flex: 1; min-height: 0; }
+#fh-b { position: absolute; inset: 0; width: 100%; height: 100%; }
+#pair-b { border-left: 1px solid var(--line); }
+#label-a, #label-b, #count-a, #count-b { margin: 0; padding: var(--space-1) var(--space-3); overflow-wrap: anywhere; }
+@media (max-width: 900px) { #chat { width: 320px; } #pair { flex-direction: column; } }
+@media (max-width: 700px) {
+  body { flex-direction: column; overflow: auto; height: auto; min-height: 100%; }
+  #chat { width: 100%; height: 45vh; min-height: 320px; border-right: 0; border-bottom: 1px solid var(--line); }
+  #model { flex: none; height: 100vh; }
+  #pair-b { border-left: 0; border-top: 1px solid var(--line); }
+}
+
 #view { position: relative; flex: 1; min-height: 0; }
 #fh { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: 0; }
 #msg { position: absolute; top: 40%; left: 0; right: 0; margin: 0; padding: 0 var(--space-4); text-align: center; color: var(--muted); }
@@ -79,13 +98,13 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <p id="now" hidden><b>Now</b><code></code></p>
   </div>
   <p id="error" hidden></p>
+  <button type="button" id="rerun" data-control="prepare-rerun" hidden>Prepare rerun</button>
   <form id="composer">
     <textarea id="input" rows="1" placeholder="A message for the agent" aria-label="A message for the agent"></textarea>
     <div class="row">
       <p class="keys" id="hint"><span><kbd>Ctrl</kbd> <kbd>Enter</kbd> sends</span></p>
       <p class="keys" id="later" hidden>The agent reads your message at its next step</p>
-      <button type="button" class="icon primary" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop" hidden>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg>
+      <button type="button" class="primary" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop agent and commands" hidden>Stop agent and commands
       </button>
       <button type="submit" class="icon primary" id="send" aria-label="Send" disabled>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -95,9 +114,26 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 </aside>
 <main id="model">
   <header class="toolbar">
-    <select id="runs" aria-label="The run in the model view"><option value="">Open a run</option></select>
+    <details id="runs">
+      <summary>Runs <span id="selected-run"></span></summary>
+      <label data-control="run-search">Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
+      <div id="run-list" aria-label="Runs"></div>
+    </details>
+    <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
+    <button type="button" id="report" data-control="files" hidden>Open report</button>
+    <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare meshes</label>
+    <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link views</label>
+    <button type="button" id="close-compare" hidden>Close comparison</button>
   </header>
-  <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
+  <p id="comparison-note" class="note" hidden>Choose A and B from Runs. Undeformed meshes only. This view gives no convergence result.</p>
+  <div id="pair">
+    <section><p id="label-a" hidden></p><p id="count-a" class="readout" aria-live="polite"></p>
+      <div id="view"><canvas id="fh" aria-label="The 3D model view" tabindex="0"></canvas><p id="msg">Loading the viewer...</p></div>
+    </section>
+    <section id="pair-b" hidden><p id="label-b"></p><p id="count-b" class="readout" aria-live="polite"></p>
+      <div id="view-b"><canvas id="fh-b" aria-label="Mesh B" tabindex="0"></canvas></div>
+    </section>
+  </div>
 </main>
 <script type="module" nonce="NONCE">
 // The page of fh serve: the chat with the agent, the list of the runs and
@@ -155,44 +191,173 @@ function el(tag, cls, text) {
 
 // The model view.
 let view = null;
+let viewerModule = null;
+let viewB = null;
+let startB = null;
+let compareA = null;
+let compareB = null;
+let comparisonVersion = 0;
+// Each named optional control can be omitted by the author of a page address.
+// The remaining controls keep their usual conditional visibility.
+if (query.has("controls")) document.body.dataset.controls = query.get("controls");
+const declaredControls = document.body.getAttribute("data-controls");
+const controls = declaredControls === null ? null : new Set(declaredControls.split(",").map(s => s.trim()));
+for (const control of document.querySelectorAll("[data-control]")) {
+  if (controls && !controls.has(control.dataset.control)) control.dataset.omit = "true";
+}
+
 let shown = query.get("run");
 
 // Show the results of a run, and keep the run in the page address for a reload.
 function openRun(run) {
   shown = run;
   select();
-  history.replaceState(null, "", "?" + new URLSearchParams({ token, run }));
-  if (view) view.open(run);
+  query.set("run", run);
+  history.replaceState(null, "", "?" + query);
+  if (view) {
+    if ($("compare").checked) { compareSide("a", run); }
+    else view.open(run);
+  }
+  loadFiles(run);
 }
 
 function select() {
-  runs.value = shown || "";
-  if (runs.selectedIndex < 0) runs.value = "";
+  $("selected-run").textContent = shown ? runLabel(shown) : "";
 }
 
-// The name of each run: the folder of its input file.
 const names = {};
+let foundRuns = [];
 let listing = null;
 
-// The runs that have results, newest first, in the list at the top of the model view.
 async function listRuns() {
-  const found = [];
-  for (const item of (await reply("/api/v1/runs")).items.reverse()) {
-    const [run, input] = split(item);
-    names[run] = input.split("/").slice(-2, -1)[0] || input;
-    found.push([run, input]);
-  }
-  const first = new Option(found.length ? "Open a run" : "No run has results", "");
-  first.disabled = true;
-  runs.replaceChildren(first);
-  for (const [run, input] of found) {
-    const o = new Option(runLabel(run), run);
-    o.title = input;
-    runs.add(o);
-  }
+  foundRuns = (await reply("/api/v1/runs")).items.reverse().map(split);
+  for (const [run, path] of foundRuns) names[run] = path.split("/").pop() || path;
+  $("compare").closest("label").hidden = foundRuns.length < 2;
+  renderRuns();
   select();
 }
-runs.addEventListener("change", () => runs.value && openRun(runs.value));
+
+function renderRuns() {
+  const search = $("run-search").value.toLowerCase();
+  const list = $("run-list");
+  list.replaceChildren();
+  const matched = foundRuns.filter(([run, path]) => (run + " " + path).toLowerCase().includes(search));
+  list.append(el("p", "note", matched.length + " runs"));
+  for (const [run, path] of matched) {
+    const row = el("div", "run-row", "");
+    row.append(el("p", "", runLabel(run)), el("p", "note", path));
+    const button = (label, action) => {
+      const b = el("button", "", label);
+      b.type = "button";
+      b.setAttribute("aria-label", label + " " + runLabel(run));
+      b.onclick = action;
+      row.append(b);
+    };
+    button("Open", () => { openRun(run); runs.open = false; });
+    if ($("compare").checked) {
+      button("Use as A", () => compareSide("a", run));
+      button("Use as B", () => compareSide("b", run));
+    }
+    list.append(row);
+  }
+}
+$("run-search").addEventListener("input", renderRuns);
+
+async function openFile(run, path) {
+  // Create the tab during the gesture, before the fetch, so a browser permits it.
+  const tab = window.open("about:blank", "_blank");
+  if (tab) tab.opener = null;
+  try {
+    const response = await call("/api/v1/runs/" + run + "/" + path);
+    const url = URL.createObjectURL(new Blob([await response.blob()], { type: "text/plain" }));
+    if (tab) tab.location.replace(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (e) { tab?.close(); showError(e.message); }
+}
+async function openReport(run) {
+  const tab = window.open("about:blank", "_blank");
+  if (tab) tab.opener = null;
+  try {
+    const {fields} = await reply("/api/v1/runs/" + run + "/report-ticket", "");
+    if (tab) tab.location.replace("/api/v1/runs/" + run + "/report?" + new URLSearchParams({ticket:fields.ticket}));
+  } catch (e) { tab?.close(); showError(e.message); }
+}
+let fileVersion = 0;
+let filesRun = null;
+// Hide the files and the report of the last run, and ignore each artifact list that is on its way.
+function hideFiles() {
+  fileVersion++;
+  filesRun = null;
+  $("report").hidden = true;
+  $("files").hidden = true;
+}
+async function loadFiles(run) {
+  if (!$("files")) return;
+  if (run !== filesRun) hideFiles();
+  filesRun = run;
+  const version = ++fileVersion;
+  try {
+    const {items} = await reply("/api/v1/runs/" + run + "/artifacts");
+    if (version !== fileVersion) return;
+    $("files").hidden = false;
+    const list = $("file-list");
+    list.replaceChildren();
+    for (const item of items.filter(p => p !== "report")) {
+      const [path, name] = split(item);
+      const b = el("button", "", path.startsWith("inputs/") ? "Input · " + name : path.slice(6));
+      b.type = "button";
+      b.onclick = () => openFile(run, path);
+      list.append(b);
+    }
+    $("report").hidden = !items.includes("report");
+    $("report").onclick = () => openReport(run);
+    if (!items.includes("report")) list.append(el("p", "note", "No report for this run"));
+  } catch (e) { showError(e.message); }
+}
+async function compareSide(side, run) {
+  const version = comparisonVersion;
+  if (!$("compare").checked || !view) return;
+  if (side === "a") {
+    compareA = run;
+    shown = run;
+    select();
+    query.set("run", run);
+    history.replaceState(null, "", "?" + query);
+    loadFiles(run);
+    $("label-a").textContent = "A · " + runLabel(run);
+    view.mesh(run);
+  } else {
+    if (!compareA) { showError("Choose mesh A first."); return; }
+    compareB = run;
+    $("pair-b").hidden = false;
+    $("label-b").textContent = "B · " + runLabel(run);
+    startB ||= viewerModule.start($("fh-b"), token).then(v => (viewB = v));
+    try { await startB; } catch (e) { $("count-b").textContent = "B failed: " + e.message; return; }
+    if (version !== comparisonVersion || !$("compare").checked || compareB !== run) return;
+    viewB.mesh(run);
+  }
+  if (viewB) view.link(viewB, $("linked").checked);
+}
+$("compare").onchange = () => {
+  comparisonVersion++;
+  const on = $("compare").checked;
+  $("comparison-note").hidden = $("link-control").hidden = $("close-compare").hidden = $("label-a").hidden = !on;
+  if (on) { compareA = null; compareB = null; $("label-a").textContent = "Choose mesh A from Runs"; }
+  if (!on) {
+    if (viewB) view.link(viewB, false);
+    $("pair-b").hidden = true;
+    if (shown) view?.open(shown);
+  }
+  renderRuns();
+  if (on) runs.open = true;
+};
+$("close-compare").onclick = () => { $("compare").checked = false; $("compare").onchange(); };
+$("linked").onchange = () => { if (viewB) view.link(viewB, $("linked").checked); };
+setInterval(() => {
+  const update = (id, text) => { if ($(id).textContent !== text) $(id).textContent = text; };
+  if (view) update("count-a", ($("compare").checked ? "A: " : "") + view.status());
+  if (viewB && $("compare").checked) update("count-b", "B: " + viewB.status());
+}, 1000);
 
 // Read the list again, 1 time at once. Then each run on the page shows its name.
 function relist() {
@@ -217,14 +382,14 @@ function runName(run) {
 async function startViewer() {
   try {
     const js = await (await call("/viewer/fh_viewer.js")).text();
-    const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
+    const viewer = viewerModule = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
     const wasm = await (await call("/viewer/fh_viewer_bg.wasm")).arrayBuffer();
     await viewer.default({ module_or_path: wasm });
     view = await viewer.start($("fh"), token);
     msg.remove();
     // The canvas takes the focus when it starts. The person writes first.
     input.focus();
-    if (shown) view.open(shown);
+    if (shown) { view.open(shown); loadFiles(shown); }
   } catch (e) {
     msg.textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }
@@ -241,6 +406,8 @@ let again = false;
 let timer = 0;
 // The commands and the tools with no result yet, the oldest first.
 let waiting = [];
+let identity = null;
+let eventTime = 0;
 // The time when the agent started to work.
 let started = 0;
 
@@ -287,7 +454,8 @@ function failure(title, text) {
   return d;
 }
 
-function rest() {
+function rest(state = "Failed") {
+  for (const d of waiting) finishAction(d, state, eventTime || Date.now());
   waiting = [];
   status("now", "");
 }
@@ -302,10 +470,32 @@ function action(verb, subject, full) {
   return d;
 }
 
+// A command, a tool or a result, with its state and its elapsed time.
+function command(verb, subject, full) {
+  const d = action(verb, subject, full);
+  d.dataset.started = eventTime || Date.now();
+  d.dataset.toolId = identity?.[0] || "";
+  identity = null;
+  d.querySelector(".meta").dataset.control = "command-state";
+  if (controls && !controls.has("command-state")) d.querySelector(".meta").dataset.omit = "true";
+  d.dataset.state = "Active";
+  updateAction(d);
+  return d;
+}
+
+function updateAction(d) {
+  const seconds = Math.max(0, Math.floor(((Number(d.dataset.ended) || Date.now()) - Number(d.dataset.started)) / 1000));
+  d.querySelector(".meta").textContent = d.dataset.state + " · " + seconds + " s";
+}
+function finishAction(d, state, time) {
+  d.dataset.state = state;
+  d.dataset.ended = time;
+  updateAction(d);
+}
+setInterval(() => waiting.forEach(updateAction), 1000);
 function result(d, kind, text) {
-  const lines = text ? text.split("\n").length : 0;
-  d.querySelector(".meta").textContent =
-    kind === "fail" ? "failed" : lines ? lines + (lines === 1 ? " line" : " lines") : "no output";
+  finishAction(d, kind === "fail" ? "Failed" : "Done", eventTime || Date.now());
+  identity = null;
   d.classList.toggle("failed", kind === "fail");
   d.open ||= kind === "fail";
   if (text) d.append(el("pre", kind, text));
@@ -313,28 +503,34 @@ function result(d, kind, text) {
 
 function entry(kind, text, fresh) {
   switch (kind) {
+    case "time": eventTime = Number(text); return;
+    case "identity": identity = split(text); return;
+
     case "you":
+      $("rerun").hidden = true;
       return el("div", "you", text);
     case "say":
       return el("p", "say", text);
     case "cmd": {
-      const d = action("$", text, text.length > 48 || text.includes("\n"));
+      const d = command("$", text, text.length > 48 || text.includes("\n"));
       waiting.push(d);
       status("now", "$ " + text.split("\n")[0]);
       return d;
     }
     case "tool": {
-      const d = action(...split(text), false);
+      const d = command(...split(text), false);
       waiting.push(d);
       status("now", text);
       return d;
     }
     case "out":
     case "fail": {
-      const d = waiting.shift();
+      const index = identity ? waiting.findIndex(d => d.dataset.toolId === identity[0]) : waiting.findIndex(d => !d.dataset.toolId);
+      const d = index < 0 ? null : waiting.splice(index, 1)[0];
+      if (shown && fresh) loadFiles(shown);
       if (d) return result(d, kind, text);
       if (kind === "fail") return failure("Error", text);
-      const alone = action("Result", text.split("\n")[0], false);
+      const alone = command("Result", text.split("\n")[0], false);
       result(alone, kind, text);
       return alone;
     }
@@ -349,7 +545,7 @@ function entry(kind, text, fresh) {
       b.type = "button";
       b.addEventListener("click", () => openRun(text));
       if (fresh) {
-        openRun(text);
+        if (!$("compare").checked) openRun(text);
         listRuns().catch((e) => showError(e.message));
       }
       return b;
@@ -359,19 +555,25 @@ function entry(kind, text, fresh) {
       const b = el("button", "open", "Show the supports and loads of " + title);
       b.type = "button";
       const open = () => {
+        if ($("compare").checked) $("close-compare").click();
         shown = null;
+        hideFiles();
         select();
         if (view) view.show(preview, title);
       };
       b.addEventListener("click", open);
-      if (fresh) open();
+      if (fresh && !$("compare").checked) open();
       return b;
     }
     case "end":
-      rest();
+      $("rerun").hidden = true;
+      rest("Done");
       return el("p", "end", text);
     default: {
-      if (text === "stopped the agent") rest();
+      if (text === "stopped the agent") {
+        rest("Stopped");
+        $("rerun").hidden = false;
+      }
       if (!text.includes("\n")) return el("p", "note", text);
       const d = action("Note", text.split("\n")[0], false);
       d.append(el("pre", "", text));
@@ -454,6 +656,15 @@ input.addEventListener("input", () => {
 stop.addEventListener("click", () =>
   call("/api/v1/chat/stop", "").then(() => read(), (e) => showError(e.message)));
 
+$("rerun").addEventListener("click", () => {
+  const target = shown || compareA;
+  input.value = target
+    ? "Prepare a new run from the retained input of " + target + ". Preserve the previous result. Confirm the input and result target before the solve."
+    : "Prepare a new run from the previous retained input. Preserve the previous result. Confirm the input and result target before the solve.";
+  grow();
+  send.disabled = false;
+  input.focus();
+});
 read();
 listRuns().catch((e) => showError(e.message));
 startViewer();

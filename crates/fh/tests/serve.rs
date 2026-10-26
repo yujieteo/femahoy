@@ -395,3 +395,74 @@ fn a_connection_that_sends_nothing_gets_no_answer() {
     let head = String::from_utf8_lossy(&bytes);
     assert!(head.starts_with("HTTP/1.1 400 "), "{head}");
 }
+
+/// Artifacts stay inside the retained run and the report has an opaque sandbox origin.
+#[test]
+fn retained_artifacts_need_authorization_and_reports_cannot_escape_the_run() {
+    let lab = Lab::new("artifacts");
+    let run = lab.state().join("runs/run-000001");
+    fs::create_dir_all(run.join("out")).unwrap();
+    fs::create_dir_all(run.join("in/system")).unwrap();
+    fs::write(run.join("in/system/controlDict"), "retained case input").unwrap();
+    fs::write(run.join("out/step-1.vtu"), b"mesh").unwrap();
+    fs::write(run.join("report.html"), b"<h1>Retained report</h1>").unwrap();
+    let bearer = lab.bearer();
+    let auth = [("Authorization", bearer.as_str())];
+    let base = "/api/v1/runs/run-000001";
+    let list = lab.get(&format!("{base}/artifacts"), &auth);
+    assert_eq!(list.status, 200);
+    let items: Vec<_> = list.text().lines().map(str::to_owned).collect();
+    assert_eq!(
+        items,
+        [
+            "",
+            "files/step-1.vtu",
+            "inputs/0 system/controlDict",
+            "report"
+        ]
+    );
+    assert_eq!(
+        lab.get(&format!("{base}/inputs/0"), &auth).text(),
+        "retained case input"
+    );
+    assert_eq!(lab.get(&format!("{base}/inputs/1"), &auth).status, 404);
+    assert_eq!(lab.get(&format!("{base}/report"), &[]).status, 401);
+    let report = lab.get(&format!("{base}/report"), &auth);
+    assert_eq!(report.text(), "<h1>Retained report</h1>");
+    let policy = report.header("Content-Security-Policy").unwrap();
+    assert!(policy.starts_with("sandbox allow-scripts;"));
+    assert!(!policy.contains("allow-same-origin"));
+    assert!(policy.contains("connect-src 'none'"));
+    let token_url = format!("{base}/report?token={}", lab.daemon.token());
+    assert_eq!(lab.get(&token_url, &[]).status, 401);
+    let issued = lab.send("POST", &format!("{base}/report-ticket"), &auth);
+    assert_eq!(issued.status, 200);
+    let body = issued.text();
+    let ticket = body
+        .lines()
+        .find_map(|l| l.strip_prefix("ticket="))
+        .unwrap();
+    assert!(!body.contains(lab.daemon.token()));
+    let url = format!("{base}/report?ticket={ticket}");
+    assert_eq!(lab.get(&format!("/?ticket={ticket}"), &[]).status, 401);
+    assert_eq!(lab.get(&url, &[("Origin", "null")]).status, 403);
+    assert_eq!(lab.get(&url, &[]).status, 200);
+    assert_eq!(lab.get(&url, &[]).status, 401);
+    fs::remove_file(run.join("report.html")).unwrap();
+    assert_eq!(lab.get(&format!("{base}/report"), &auth).status, 404);
+    #[cfg(unix)]
+    {
+        let outside = lab.dir.join("outside.html");
+        fs::write(&outside, "private").unwrap();
+        std::os::unix::fs::symlink(&outside, run.join("report.html")).unwrap();
+        std::os::unix::fs::symlink(&outside, run.join("out/secret.vtu")).unwrap();
+        assert_eq!(
+            lab.get(&format!("{base}/files/secret.vtu"), &auth).status,
+            403
+        );
+        assert_eq!(lab.get(&format!("{base}/report"), &auth).status, 403);
+        fs::write(lab.dir.join("report.html"), "private outside run").unwrap();
+        std::os::unix::fs::symlink(&lab.dir, lab.state().join("runs/run-000002")).unwrap();
+        assert_eq!(lab.get("/api/v1/runs/run-000002/report", &auth).status, 403);
+    }
+}

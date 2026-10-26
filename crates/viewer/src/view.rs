@@ -14,6 +14,9 @@ use crate::results::{self, Results, ScalarField, Step};
 /// flow, the displacement or the velocity magnitude, and the temperature.
 const DEFAULT_FIELDS: [&str; 6] = ["density", "MISES", "alpha.water", "Ma", "U magnitude", "NT"];
 
+/// The view protocol for a mesh pair. The app omits the contour in mesh mode.
+pub const MESH_VIEW: &str = "controls=\nscale=0";
+
 /// The fields that are not important: the error estimate and the reaction force of CalculiX, the
 /// turbulence and the solver fields of OpenFOAM, and the fields of the mesh motion and the coupling
 /// force of a preCICE fluid. A name is a field or the field of a magnitude (`RF magnitude`).
@@ -540,6 +543,16 @@ mod tests {
             unit_text("unspecified", results::Quantity::Stress),
             "unit unspecified"
         );
+    }
+
+    #[test]
+    fn a_mesh_pair_opens_with_no_deformation_controls_or_deformation() {
+        let results = fixture();
+        let view = View::parse(MESH_VIEW).unwrap();
+        let panel = Panel::of(&results, Some(&view), false);
+        let state = ViewState::open(&results, &view, &panel);
+        assert!(panel.controls.is_empty());
+        assert!(!state.deformed);
     }
 
     #[test]
