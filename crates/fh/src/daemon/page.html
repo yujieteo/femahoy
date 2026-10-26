@@ -283,14 +283,18 @@ async function openReport(run) {
 }
 let fileVersion = 0;
 let filesRun = null;
+// Hide the files and the report of the last run, and ignore each artifact list that is on its way.
+function hideFiles() {
+  fileVersion++;
+  filesRun = null;
+  $("report").hidden = true;
+  $("files").hidden = true;
+}
 async function loadFiles(run) {
   if (!$("files")) return;
+  if (run !== filesRun) hideFiles();
+  filesRun = run;
   const version = ++fileVersion;
-  if (run !== filesRun) {
-    filesRun = run;
-    $("report").hidden = true;
-    $("files").hidden = true;
-  }
   try {
     const {items} = await reply("/api/v1/runs/" + run + "/artifacts");
     if (version !== fileVersion) return;
@@ -552,6 +556,7 @@ function entry(kind, text, fresh) {
       const open = () => {
         if ($("compare").checked) $("close-compare").click();
         shown = null;
+        hideFiles();
         select();
         if (view) view.show(preview, title);
       };
