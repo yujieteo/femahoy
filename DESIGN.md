@@ -167,7 +167,16 @@ Reason of the selection: a change to 1 solver does not change the results of the
 
 ---
 
-## 8. Font
+## 8. UI and font
+
+Each view uses 1 UI layer: the page of `fh serve`, a report and the model view. `crates/viewer/src/ui.rs` holds the only design tokens: the colours of the light and the dark appearance, the type sizes, the spacing, the corner radius and the hit target. It gives them to the page and to a report as CSS, with the components of `ui.css`. The model view gets the same tokens and components in egui (`widgets.rs`). The components are the toolbar and its buttons, the segmented control, the menu (`select`), the legend, the value readout and the keyboard-shortcut help row.
+
+- A new view uses these tokens and components. It adds no colour, size or control style of its own. A new component goes into the layer, in CSS and in egui.
+- A legend names the field and its unit. When the source does not define the unit, it says "unit unspecified".
+- The layer follows the Apple Human Interface Guidelines: a control that the person clicks is at least 44 points high, each HTML control has a keyboard path and a label for VoiceOver, a shortcut shows its keys, both appearances work, no animation runs with reduced motion, and no state shows by colour only. The egui controls of the model view take the keyboard focus, but egui gives no labels to VoiceOver on the web: the canvas has only its own label.
+- The views share the look of the controls, not the set of the controls. The author of a view shows only the controls that its analysis needs: the agent picks the controls of each report from its conclusion (`data-controls`, and the controls of the bar), and the text says what each control shows. "Show all controls" shows the others.
+
+Reason: 5 reviews of the views found the same controls drawn in different styles, a legend with no unit, and controls that the analysis did not use. The owner asked that each future view keeps 1 look.
 
 The fonts are under the SIL Open Font License 1.1, each with its licence: DM Sans in `crates/viewer/fonts`, and Source Serif 4 and DM Sans in `crates/fh/src/daemon/fonts`.
 

@@ -2,9 +2,10 @@
 //!
 //! Built so far: the model view of the page of `fh serve`. The page itself, with the chat,
 //! is HTML (`crates/fh/src/daemon/page.html`). `mesh`, `camera`, `results` and `view` are
-//! plain functions with no GPU types. `gpu` and `app` are the thin window layer. `web` is
-//! the browser entry point. Only the browser uses `gpu`, `app` and `web`, so only the wasm build
-//! compiles them.
+//! plain functions with no GPU types. `ui` has the design tokens of each view of femahoy, and
+//! `widgets` has the components of that UI layer in egui. `gpu` and `app` are the thin window
+//! layer. `web` is the browser entry point. Only the browser uses `gpu`, `app`, `widgets` and
+//! `web`, so only the wasm build compiles them.
 
 #[cfg(target_arch = "wasm32")]
 mod app;
@@ -14,9 +15,12 @@ mod gpu;
 pub mod mesh;
 pub mod preview;
 pub mod results;
+pub mod ui;
 pub mod view;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg(target_arch = "wasm32")]
+mod widgets;
 
 #[cfg(target_arch = "wasm32")]
 pub use app::{Content, Request, RequestSlot, ViewerApp};

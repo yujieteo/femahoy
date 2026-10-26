@@ -382,7 +382,7 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>) -> io::Result
             200,
             "text/html; charset=utf-8",
             PAGE.replace("NONCE", &nonce)
-                .replace("/*FONTS*/", &super::report::font_faces())
+                .replace("/*UI*/", &super::report::ui_style())
                 .into_bytes(),
             page_policy(&nonce),
         ),
@@ -419,12 +419,13 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>) -> io::Result
 }
 
 /// The content security policy of the page: its own script (by nonce), the viewer module
-/// (a blob), wasm, inline styles (the page and egui), fonts as `data:` URLs, and fetches to its
+/// (a blob), wasm, inline styles (the page and egui), fonts and images (the arrow of a menu) as
+/// `data:` URLs, and fetches to its
 /// own origin.
 fn page_policy(nonce: &str) -> String {
     format!(
         "default-src 'none'; script-src 'nonce-{nonce}' blob: 'wasm-unsafe-eval'; \
-         style-src 'unsafe-inline'; font-src data:; connect-src 'self'; \
+         style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'self'; \
          frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
     )
 }
