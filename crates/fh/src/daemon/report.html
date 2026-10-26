@@ -41,6 +41,8 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
 @media (max-width: 800px) {
   body { flex-direction: column; }
   #report { width: 100%; flex: 1; min-height: 0; }
+  /* The text is above the model: the edge between them is at the bottom, not at the right. */
+  article { border-right: 0; border-bottom: 1px solid var(--line); }
   #model { flex: none !important; height: 55%; }
 }
 .curve { margin: 2rem 0; }
