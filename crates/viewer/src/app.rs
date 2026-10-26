@@ -475,8 +475,9 @@ fn tag(
     color: egui::Color32,
     placed: &mut Vec<egui::Rect>,
 ) {
-    let [r, g, b] = [color.r(), color.g(), color.b()].map(|x| f32::from(x) / 255.0);
-    let ink = if 0.3 * r + 0.6 * g + 0.1 * b > 0.5 {
+    // The ink with the higher WCAG contrast: black above a relative luminance of 0.179.
+    let c = egui::Rgba::from(color);
+    let ink = if 0.2126 * c.r() + 0.7152 * c.g() + 0.0722 * c.b() > 0.179 {
         egui::Color32::BLACK
     } else {
         egui::Color32::WHITE
