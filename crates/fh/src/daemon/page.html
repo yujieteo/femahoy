@@ -330,21 +330,31 @@ function renderRuns() {
 }
 $("run-search").addEventListener("input", renderRuns);
 
-async function openFile(run, path) {
+async function openFile(run, path, name) {
   // Create the tab during the gesture, before the fetch, so a browser permits it.
   const tab = window.open("about:blank", "_blank");
   if (tab) tab.opener = null;
   try {
-    const text = await (await call("/api/v1/runs/" + run + "/" + path)).text();
+    const blob = await (await call("/api/v1/runs/" + run + "/" + path)).blob();
     if (!tab) return;
     // A plain text tab has no viewport tag, so a phone shows it 980 px wide at a third of its size.
     // textContent puts the file in the page as text only, never as HTML.
     const d = tab.document;
     d.head.innerHTML = '<meta name="viewport" content="width=device-width"><meta name="color-scheme" content="light dark">';
-    d.title = path.split("/").pop();
+    d.title = name;
+    // A binary file (for example a .vtu with raw data) has no text view, so the tab gives a download link.
+    if (new Uint8Array(await blob.arrayBuffer()).includes(0)) {
+      const a = d.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = d.title;
+      a.textContent = "Download " + d.title + " (" + Math.ceil(blob.size / 1024) + " KB)";
+      a.style.cssText = "display: inline-block; margin: 16px; padding: 12px 0; font: 17px sans-serif";
+      d.body.replaceChildren(a);
+      return;
+    }
     const pre = d.createElement("pre");
     pre.style.cssText = "margin: 16px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere";
-    pre.textContent = text;
+    pre.textContent = await blob.text();
     d.body.replaceChildren(pre);
   } catch (e) { tab?.close(); showError(e.message); }
 }
@@ -379,9 +389,10 @@ async function loadFiles(run) {
     list.replaceChildren();
     for (const item of items.filter(p => p !== "report").sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))) {
       const [path, name] = split(item);
-      const b = el("button", "", path.startsWith("inputs/") ? "Input · " + name : path.slice(6));
+      const file = name || path.slice(6);
+      const b = el("button", "", path.startsWith("inputs/") ? "Input · " + file : file);
       b.type = "button";
-      b.onclick = () => { $("files").open = false; openFile(run, path); };
+      b.onclick = () => { $("files").open = false; openFile(run, path, file); };
       list.append(b);
     }
     $("report").hidden = !items.includes("report");
