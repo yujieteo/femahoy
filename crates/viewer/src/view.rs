@@ -3,8 +3,8 @@
 //!
 //! A report gives the view of a run ([`View`]) that the agent writes for the story of the
 //! report: the fields, the controls, the step, the scale, the box that the camera shows and the
-//! marks on the model. A run with no view shows its important controls and hides the others
-//! behind 1 switch, "Show all controls".
+//! marks on the model. A run with no view shows each control that applies and its important
+//! fields, and hides the other fields behind 1 switch, "Show all controls".
 
 use crate::mesh::{Bounds, RenderMesh};
 use crate::results::{self, Results, ScalarField, Step};
@@ -216,29 +216,10 @@ impl Panel {
     /// view (each field of the run when the view names none). A view with 1 field gives no
     /// choice, thus no list. `loads` is true when the input of the run has a support or a load.
     ///
-    /// With no view (`None`), the important controls: the steps and the range when 2 or more
-    /// steps change in time (a first step with only constant fields is the start of a steady
-    /// solve), the deformation and the scale when the nodes of a structure have a displacement,
-    /// the supports and loads when the input has them, the probe when a step has a field, and
+    /// With no view (`None`), each group of controls that can change the view of the run, and
     /// each field that is not 1 component of a field and not in `SECONDARY_FIELDS`.
     pub fn of(results: &Results, view: Option<&View>, loads: bool) -> Panel {
         let steps = &results.steps;
-        let Some(view) = view else {
-            let changing =
-                steps.len() - usize::from(steps.first().is_some_and(start_of_steady_solve));
-            let structure = !results.multibody && !topology(results);
-            let can = |control| match control {
-                Control::Steps | Control::Range => changing > 1,
-                Control::Deformation | Control::Scale => displaced(results) && structure,
-                Control::Loads => loads,
-                Control::Probe => steps.iter().any(|s| !s.fields.is_empty()),
-                Control::Fit | Control::ReportView | Control::Views | Control::Help => false,
-            };
-            return Panel {
-                controls: groups(can, |_| true),
-                fields: important_fields(results),
-            };
-        };
         let can = |control| match control {
             Control::Steps | Control::Range => steps.len() > 1,
             Control::Deformation | Control::Scale => displaced(results),
@@ -246,6 +227,12 @@ impl Panel {
             Control::Probe => steps.iter().any(|s| !s.fields.is_empty()),
             // Camera controls belong to the HTML toolbar, not the results panel.
             Control::Fit | Control::ReportView | Control::Views | Control::Help => false,
+        };
+        let Some(view) = view else {
+            return Panel {
+                controls: groups(can, |_| true),
+                fields: important_fields(results),
+            };
         };
         let controls = groups(can, |c| {
             view.controls.as_ref().is_none_or(|v| v.contains(c))
@@ -266,16 +253,6 @@ fn groups(can: impl Fn(Control) -> bool, keep: impl Fn(&Control) -> bool) -> Vec
         .copied()
         .filter(|c| can(*c) && keep(c))
         .collect()
-}
-
-/// True when a step has no displacement and only constant fields, as the time 0 of a steady
-/// OpenFOAM solve.
-fn start_of_steady_solve(step: &Step) -> bool {
-    step.max_displacement() == 0.0
-        && step.fields.iter().all(|f| {
-            let (lo, hi) = results::contour_range(f);
-            hi <= lo
-        })
 }
 
 /// The fields of a run that are not 1 component of a field and not in `SECONDARY_FIELDS`, or
@@ -634,10 +611,10 @@ mod tests {
         assert!(!v.deformed, "the undeformed design");
     }
 
-    /// With no view, the panel shows the important controls and fields. "Show all controls" (an
-    /// empty view) shows each control and each field of the run.
+    /// With no view, the panel shows each control that applies and the important fields. "Show
+    /// all controls" (an empty view) also shows each field of the run.
     #[test]
-    fn a_run_with_no_view_shows_its_important_controls() {
+    fn a_run_with_no_view_shows_each_control_and_its_important_fields() {
         let mut r = fixture();
         let mut rf = r.steps[1].field("MISES").unwrap().clone();
         rf.name = "RF magnitude".into();
@@ -658,24 +635,9 @@ mod tests {
         assert!(important.fields.contains(&"MISES".into()));
         assert!(!important.fields.contains(&"RF magnitude".into()));
         assert!(!important.fields.contains(&"U3".into()), "a component");
+        assert_eq!(important.controls, all.controls);
         r.multibody = true;
-        assert_eq!(
-            Panel::of(&r, None, false).controls,
-            [Control::Steps, Control::Range, Control::Probe]
-        );
-        r.multibody = false;
-        for s in &mut r.steps[..1] {
-            s.displacement.fill([0.0; 3]);
-            for f in &mut s.fields {
-                f.values.fill(1.0);
-            }
-        }
-        let steady = Panel::of(&r, None, false).controls;
-        assert_eq!(
-            steady,
-            [Control::Deformation, Control::Probe, Control::Scale],
-            "the start of a steady solve"
-        );
+        assert_eq!(Panel::of(&r, None, false).controls, all.controls);
     }
 
     /// The view of the agent gives the fields, the controls, the first step, the scale, the

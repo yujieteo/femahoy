@@ -5,8 +5,8 @@
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
 //! The results panel shows the controls of the view of the run (see [`view::Panel`]), and the
-//! viewport shows the marks of the view. A run with no view shows its important controls and the
-//! switch "Show all controls". A report can ask for all the controls of the run, and for a step
+//! viewport shows the marks of the view. A run with no view shows each control that applies, its
+//! important fields and the switch "Show all controls". A report can ask for all the controls of the run, and for a step
 //! of the open run (see [`Request`]).
 
 use std::sync::{Arc, Mutex};
@@ -441,7 +441,7 @@ fn tag(
     painter.galley(place.min, galley, ink);
 }
 
-/// The panel of the results `r` with the view `view` (the important controls when it is empty),
+/// The panel of the results `r` with the view `view` (the important fields when it is empty),
 /// or with each control of the run when `all` is true. `preview` has the supports and loads of
 /// the input.
 fn panel(r: &Results, view: &View, preview: &Result<Box<Preview>, String>, all: bool) -> Panel {
@@ -595,7 +595,7 @@ fn results_panel(
     ui.label(format!("Units: {}", r.units));
     if let Some(all) = all {
         ui.checkbox(all, "Show all controls")
-            .on_hover_text("also the controls that are not important for this run");
+            .on_hover_text("also the fields that are not important for this run");
     }
     ui.separator();
 

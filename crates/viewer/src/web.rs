@@ -102,7 +102,7 @@ pub struct Viewer {
 #[wasm_bindgen]
 impl Viewer {
     /// Show the results of a run in place of the current content, with the view of a report.
-    /// With no view, the panel shows the important controls of the run.
+    /// With no view, the panel shows each control that applies and the important fields of the run.
     pub fn open(&self, run: String, view: Option<String>) {
         let token = self.token.clone();
         self.load("Loading the results...", async move {
