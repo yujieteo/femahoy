@@ -183,7 +183,11 @@ impl Store {
     fn run_dir(&self, run: &str) -> Result<PathBuf, Failure> {
         let dir = self.dir.join(RUNS_DIR).join(run);
         if valid_run(run) && dir.is_dir() {
-            Ok(dir)
+            let canonical = dir.canonicalize().map_err(|e| fail(500, e.to_string()))?;
+            if canonical.parent() != Some(self.dir.join(RUNS_DIR).as_path()) {
+                return Err(fail(403, "run path leaves the retained runs"));
+            }
+            Ok(canonical)
         } else {
             Err(fail(404, format!("no run {run}")))
         }
@@ -207,6 +211,103 @@ impl Store {
                 (run, input.unwrap_or_default())
             })
             .collect())
+    }
+
+    /// List only retained files of this run. Never accept a workspace path from the page.
+    pub(crate) fn files(&self, run: &str) -> Result<Vec<String>, Failure> {
+        let dir = self.run_dir(run)?;
+        let mut files = Vec::new();
+        for (index, path) in self.input_files(run)?.iter().enumerate() {
+            let name = path
+                .strip_prefix(dir.join(IN_DIR))
+                .unwrap_or(path)
+                .display()
+                .to_string()
+                .replace(char::is_control, " ");
+            files.push(format!("inputs/{index} {name}"));
+        }
+        let out = dir.join(OUT_DIR);
+        if out.is_symlink() {
+            return Err(fail(403, "result path leaves the run"));
+        }
+        for entry in fs::read_dir(&out).into_iter().flatten().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if fh_viewer::results::is_plain_file_name(&name)
+                && entry.file_type().is_ok_and(|t| t.is_file())
+            {
+                files.push(format!("files/{name}"));
+            }
+        }
+        if dir.join("report.html").is_file() {
+            files.push("report".to_owned());
+        }
+        files.sort();
+        Ok(files)
+    }
+
+    /// Enumerate retained input files, with no symbolic link or workspace path.
+    fn input_files(&self, run: &str) -> Result<Vec<PathBuf>, Failure> {
+        fn visit(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let kind = entry.file_type()?;
+                if kind.is_dir() {
+                    visit(&entry.path(), files)?;
+                } else if kind.is_file() {
+                    files.push(entry.path());
+                }
+            }
+            Ok(())
+        }
+        let root = self.run_dir(run)?.join(IN_DIR);
+        if root.is_symlink() {
+            return Err(fail(403, "input path leaves the run"));
+        }
+        let mut files = Vec::new();
+        if root.is_dir() {
+            visit(&root, &mut files).map_err(|e| fail(500, e.to_string()))?;
+        }
+        files.sort();
+        Ok(files)
+    }
+
+    pub(crate) fn retained_input(&self, run: &str, index: &str) -> Result<Vec<u8>, Failure> {
+        let index: usize = index
+            .parse()
+            .map_err(|_| bad("input file index is not a number"))?;
+        let files = self.input_files(run)?;
+        let path = files
+            .get(index)
+            .ok_or_else(|| fail(404, "no such retained input file"))?;
+        let canonical = path.canonicalize().map_err(|e| fail(404, e.to_string()))?;
+        if !canonical.starts_with(self.run_dir(run)?.join(IN_DIR)) {
+            return Err(fail(403, "input path leaves the run"));
+        }
+        fs::read(canonical).map_err(|e| fail(500, e.to_string()))
+    }
+
+    pub(crate) fn report_file(&self, run: &str) -> Result<Vec<u8>, Failure> {
+        let dir = self.run_dir(run)?;
+        let path = dir
+            .join("report.html")
+            .canonicalize()
+            .map_err(|_| fail(404, "No report for this run"))?;
+        let root = dir.canonicalize().map_err(|_| fail(404, "no run"))?;
+        if !path.starts_with(root) {
+            return Err(fail(403, "report path leaves the run"));
+        }
+        fs::read(path).map_err(|e| fail(500, e.to_string()))
+    }
+
+    /// Save a self-contained report inside each run. The record contains no source path or token.
+    pub(crate) fn register_report(&self, runs: &[String], html: &[u8]) -> Result<(), String> {
+        for run in runs {
+            let dir = self.run_dir(run).map_err(|(_, e)| e)?;
+            let temporary = dir.join(format!(".report-{}", super::random_hex(8)?));
+            fs::write(&temporary, html).map_err(|e| e.to_string())?;
+            fs::rename(&temporary, dir.join("report.html")).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// The previews, in the order of their numbers: the number and the title.
@@ -265,7 +366,17 @@ impl Store {
         if !plain {
             return Err(bad(format!("{name:?} is not a plain file name")));
         }
-        let path = self.run_dir(run)?.join(OUT_DIR).join(name);
+        let root = self.run_dir(run)?.join(OUT_DIR);
+        if root.is_symlink() {
+            return Err(fail(403, "result path leaves the run"));
+        }
+        let path = root.join(name).canonicalize().map_err(|e| match e.kind() {
+            ErrorKind::NotFound => fail(404, format!("run {run} has no file {name}")),
+            _ => fail(500, format!("{name}: {e}")),
+        })?;
+        if !path.starts_with(root) {
+            return Err(fail(403, "result path leaves the run"));
+        }
         fs::read(&path).map_err(|e| match e.kind() {
             ErrorKind::NotFound => fail(404, format!("run {run} has no file {name}")),
             _ => fail(500, format!("{name}: {e}")),

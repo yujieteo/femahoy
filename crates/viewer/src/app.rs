@@ -38,6 +38,13 @@ pub enum Content {
     Failed(String),
 }
 
+/// The cameras share a pose. A gesture asks both canvases for a frame.
+pub struct LinkedCamera {
+    pub camera: Option<Camera>,
+    pub contexts: [egui::Context; 2],
+}
+pub type CameraLink = Arc<Mutex<LinkedCamera>>;
+
 /// What the page asks the viewer to show. The app takes each part in its next frame.
 #[derive(Default)]
 pub struct Request {
@@ -48,6 +55,9 @@ pub struct Request {
     /// Show all the controls of a run, also the controls that its view does not show.
     pub all: Option<bool>,
     pub camera: Option<String>,
+    pub mesh: Option<bool>,
+    pub camera_link: Option<Option<CameraLink>>,
+    pub status: String,
 }
 
 /// A request that the page fills, then asks for a repaint.
@@ -93,6 +103,8 @@ pub struct ViewerApp {
     /// Show all the controls of a run, also the controls that its view does not show.
     all: bool,
     camera_action: Option<String>,
+    mesh_only: bool,
+    camera_link: Option<CameraLink>,
 }
 
 impl ViewerApp {
@@ -107,6 +119,8 @@ impl ViewerApp {
             labels: true,
             all: false,
             camera_action: None,
+            mesh_only: false,
+            camera_link: None,
         }
     }
 
@@ -148,6 +162,7 @@ impl ViewerApp {
             initial_fit: true,
         };
         shown.home = match frame {
+            _ if self.mesh_only => Camera::fit(shown.mesh().bounds, false),
             Some((b, top)) => Camera::fit(Some(b), top),
             None => Camera::fit(shown.view_bounds(), false),
         };
@@ -164,6 +179,12 @@ impl ViewerApp {
         let Ok(mut request) = slot.lock() else {
             return;
         };
+        if let Some(mesh) = request.mesh.take() {
+            self.mesh_only = mesh;
+        }
+        if let Some(link) = request.camera_link.take() {
+            self.camera_link = link;
+        }
         if let Some(content) = request.content.take() {
             self.set_content(content);
         }
@@ -878,11 +899,33 @@ impl eframe::App for ViewerApp {
                 v.probe = None;
             }
         }
+        if self.mesh_only {
+            if let Some(Shown {
+                body: Body::Results(_, state, ..),
+                ..
+            }) = self.shown.as_mut()
+            {
+                if state.deformed || state.field.is_some() {
+                    state.deformed = false;
+                    state.field = None;
+                    if let Some(shown) = self.shown.as_mut() {
+                        shown.refresh();
+                    }
+                }
+            }
+        }
+        if let Ok(mut request) = self.slot.lock() {
+            request.status = self
+                .message
+                .as_ref()
+                .map(|(_, text)| text.clone())
+                .unwrap_or_else(|| self.status_text());
+        }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
             ui.weak(self.status_text());
         });
-        if let Some(shown) = self.shown.as_mut() {
+        if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
             egui::Panel::right("results")
                 .resizable(false)
                 .min_size(260.0)
@@ -932,7 +975,27 @@ impl eframe::App for ViewerApp {
                 shown.camera = shown.home;
                 shown.named = shown.camera;
                 shown.initial_fit = false;
+                if self.mesh_only {
+                    if let Some(link) = &self.camera_link {
+                        if let Ok(mut camera) = link.lock() {
+                            camera.camera = None;
+                        }
+                    }
+                }
             }
+            if let Some(link) = &self.camera_link {
+                if let Ok(mut camera) = link.lock() {
+                    if let Some(camera) = camera.camera {
+                        shown.camera = camera;
+                    } else {
+                        camera.camera = Some(shown.camera);
+                        for ctx in &camera.contexts {
+                            ctx.request_repaint();
+                        }
+                    }
+                }
+            }
+            let before = shown.camera;
             if let Some(action) = self.camera_action.take() {
                 ui.ctx().request_repaint();
                 match action.as_str() {
@@ -966,6 +1029,26 @@ impl eframe::App for ViewerApp {
                 shown.camera = shown.home;
                 shown.camera.fit_distance(aspect);
                 shown.named = shown.camera;
+                if self.mesh_only {
+                    if let Some(link) = &self.camera_link {
+                        if let Ok(mut camera) = link.lock() {
+                            camera.camera = None;
+                            for ctx in &camera.contexts {
+                                ctx.request_repaint();
+                            }
+                        }
+                    }
+                }
+            }
+            if shown.camera != before {
+                if let Some(link) = &self.camera_link {
+                    if let Ok(mut camera) = link.lock() {
+                        camera.camera = Some(shown.camera);
+                        for ctx in &camera.contexts {
+                            ctx.request_repaint();
+                        }
+                    }
+                }
             }
             let (contour, palette, ghost) = shown.frame();
             let view_proj = shown
@@ -1015,7 +1098,7 @@ impl eframe::App for ViewerApp {
                 },
             ));
             let painter = ui.painter_at(rect);
-            if self.labels {
+            if self.labels && !self.mesh_only {
                 shown.overlay(&painter, rect, &view_proj);
             }
             shown.marks(&painter, rect, &view_proj);

@@ -104,10 +104,40 @@ impl Viewer {
     /// Show the results of a run in place of the current content, with the view of a report.
     /// With no view, the panel shows each control that applies and the important fields of the run.
     pub fn open(&self, run: String, view: Option<String>) {
+        self.ask(|r| r.mesh = Some(false));
         let token = self.token.clone();
         self.load("Loading the results...", async move {
             load_run(&token, &run, view.as_deref().unwrap_or("")).await
         });
+    }
+
+    /// Open only the undeformed mesh, with no contour or independent scale.
+    pub fn mesh(&self, run: String) {
+        self.ask(|r| r.mesh = Some(true));
+        let token = self.token.clone();
+        self.load("Loading the mesh...", async move {
+            load_run(&token, &run, view::MESH_VIEW).await
+        });
+    }
+
+    /// Link the absolute camera pose and zoom of this pair. Loads remain independent.
+    pub fn link(&self, other: &Viewer, on: bool) {
+        let shared = on.then(|| {
+            Arc::new(Mutex::new(crate::app::LinkedCamera {
+                camera: None,
+                contexts: [self.ctx.clone(), other.ctx.clone()],
+            }))
+        });
+        self.ask(|r| r.camera_link = Some(shared.clone()));
+        other.ask(|r| r.camera_link = Some(shared));
+    }
+
+    /// Accessible load state and mesh counts for the page beside the canvas.
+    pub fn status(&self) -> String {
+        self.slot
+            .lock()
+            .map(|r| r.status.clone())
+            .unwrap_or_default()
     }
 
     /// Show the model of a preview with its supports and loads, before the solve.

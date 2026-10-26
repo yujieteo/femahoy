@@ -499,6 +499,22 @@ pub fn report(args: &[String]) -> Result<ExitCode, String> {
     let o = parse(args)?;
     let written = build(&o).and_then(|html| {
         fs::write(&o.out, &html).map_err(|e| format!("{}: {e}", o.out.display()))?;
+        if !o.runs.is_empty() {
+            let state = default_state_dir().ok_or("no state folder")?;
+            let mut retained = html.clone();
+            if let Some(viewer) = &o.viewer {
+                let path = o.out.parent().unwrap_or(Path::new(".")).join(viewer);
+                if let Ok(bytes) = fs::read(path) {
+                    let mut data = "data:text/javascript;base64,".to_owned();
+                    base64(&mut data, &bytes);
+                    retained = retained.replace(
+                        &format!("src=\"{}\"", escape(viewer)),
+                        &format!("src=\"{data}\""),
+                    );
+                }
+            }
+            Store::open(&state)?.register_report(&o.runs, retained.as_bytes())?;
+        }
         Ok(html.len())
     });
     Ok(match written {

@@ -176,6 +176,11 @@ impl Chat {
     }
 
     fn push(&self, log: &mut Log, kind: &str, text: &str) {
+        if matches!(kind, "cmd" | "tool" | "out" | "fail" | "end" | "error")
+            || (kind == "note" && text == "stopped the agent")
+        {
+            self.push(log, "time", &now_ms().to_string());
+        }
         let text = escape(&text.replace(&self.token, "<token>"));
         log.next += 1;
         log.entries.push_back((log.next, format!("{kind} {text}")));
@@ -387,6 +392,10 @@ impl Chat {
 /// | `assistant` | `say` for a text, `cmd` for a `Bash` command, `tool` for another tool |
 /// | `user` | `out` for a tool result, `fail` for a tool error |
 /// | `result` | `end`: the outcome, the wall time, the turns and the cost |
+///
+/// `identity` gives the tool ID before a command or result when the event supplies it.
+/// `time` gives the Unix time in milliseconds before a command, result, error, end, or stop.
+/// Legacy consumers can omit these metadata entries. The command and result entries stay unchanged.
 fn entries(event: &Json) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut add = |kind: &str, text: String| out.push((kind.to_owned(), text));
@@ -407,19 +416,24 @@ fn entries(event: &Json) -> Vec<(String, String)> {
             for block in event.list(&["message", "content"]) {
                 match block.text(&["type"]).unwrap_or("") {
                     "text" => add("say", block.text(&["text"]).unwrap_or("").to_owned()),
-                    "tool_use" => match block.text(&["name"]).unwrap_or("?") {
-                        "Bash" => add(
-                            "cmd",
-                            block.text(&["input", "command"]).unwrap_or("").to_owned(),
-                        ),
-                        name => {
-                            let input = ["file_path", "pattern", "path"]
-                                .iter()
-                                .find_map(|k| block.text(&["input", k]))
-                                .unwrap_or("");
-                            add("tool", format!("{name} {input}").trim_end().to_owned())
+                    "tool_use" => {
+                        if let Some(id) = block.text(&["id"]) {
+                            add("identity", id.to_owned());
                         }
-                    },
+                        match block.text(&["name"]).unwrap_or("?") {
+                            "Bash" => add(
+                                "cmd",
+                                block.text(&["input", "command"]).unwrap_or("").to_owned(),
+                            ),
+                            name => {
+                                let input = ["file_path", "pattern", "path"]
+                                    .iter()
+                                    .find_map(|k| block.text(&["input", k]))
+                                    .unwrap_or("");
+                                add("tool", format!("{name} {input}").trim_end().to_owned())
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -443,6 +457,9 @@ fn entries(event: &Json) -> Vec<(String, String)> {
                     text = format!("{cut}\n... (the result is longer)");
                 }
                 let error = block.flag(&["is_error"]) == Some(true);
+                if let Some(id) = block.text(&["tool_use_id"]) {
+                    add("identity", id.to_owned());
+                }
                 add(if error { "fail" } else { "out" }, text);
             }
         }
@@ -540,7 +557,7 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
 
 #[cfg(test)]
 mod tests {
-    use super::agent_problem;
+    use super::*;
 
     #[test]
     fn a_missing_agent_tells_how_to_install_claude_code() {
@@ -559,5 +576,20 @@ mod tests {
             "{problem}"
         );
         assert_eq!(agent_problem("true"), None);
+    }
+
+    #[test]
+    fn tool_identity_survives_the_event_stream() {
+        let event = Json::parse(r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a","name":"Bash","input":{"command":"first"}},{"type":"tool_use","id":"b","name":"Bash","input":{"command":"second"}}]}}"#).unwrap();
+        let commands = entries(&event);
+        assert_eq!(commands.len(), 4);
+        assert_eq!(commands[0].0, "identity");
+        assert_eq!(commands[0].1, "a");
+        assert_eq!(commands[1], ("cmd".into(), "first".into()));
+        assert_eq!(commands[2].1, "b");
+        let event = Json::parse(r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"second result"}]}}"#).unwrap();
+        let result = entries(&event);
+        assert_eq!(result[0].1, "b");
+        assert_eq!(result[1], ("out".into(), "second result".into()));
     }
 }
