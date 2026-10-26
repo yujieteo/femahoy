@@ -50,7 +50,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #work code, #work span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 #busy::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.2; } }
-#clock { margin-left: auto; }
+#clock { margin-left: auto; font-variant-numeric: tabular-nums; }
 #error { margin: 0 var(--space-4) var(--space-2); font-size: var(--small); color: var(--error); overflow-wrap: anywhere; }
 #composer { margin: 0 var(--space-3) var(--space-3); padding: 10px 6px 6px var(--space-4); border: 1px solid var(--line); border-radius: 24px; background: var(--raised); }
 #input {
@@ -75,7 +75,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <p id="empty"><strong>Ask the agent for a model</strong>For example: build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face.</p>
   </div>
   <div id="work" hidden>
-    <p id="busy">The agent works<output id="clock"></output></p>
+    <p id="busy">The agent works<span id="clock"></span></p>
     <p id="now" hidden><b>Now</b><code></code></p>
   </div>
   <p id="error" hidden></p>

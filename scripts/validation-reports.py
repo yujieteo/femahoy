@@ -395,9 +395,8 @@ def write_index(outcomes):
 </tbody>
 </table>
 """)
-        r = fh("report", text, "-o", OUT / "index.html", env=os.environ)
-        if r.returncode:
-            raise RuntimeError(f"fh report index.html: {r.stderr.strip()}")
+        r = fh("report", text, "-o", OUT / "index.html", env=dict(os.environ, FH_STATE=str(Path(tmp) / "state")))
+        return r.stderr.strip() if r.returncode else None
 
 
 def main(args):
@@ -470,7 +469,9 @@ def main(args):
         shutil.rmtree(tmp, ignore_errors=True)
         outcomes = {c: [local(f) for f in o] for c, o in outcomes.items()}
         write_outcomes(outcomes)
-        write_index(outcomes)
+        error = write_index(outcomes)
+    if error:
+        sys.exit(f"validation-reports: fh report index.html: {error}")
 
 
 if __name__ == "__main__":
