@@ -1101,11 +1101,14 @@ impl eframe::App for ViewerApp {
         });
         if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
             // On a narrow view (a phone) the results go below the model, so that the model
-            // keeps the full width.
-            let panel = if ui.available_width() < 600.0 {
-                egui::Panel::bottom("results").exact_size(ui.available_height() * 0.4)
+            // keeps the full width. A short, wide view (a phone in landscape) keeps them on
+            // the right when the model area then stays at least as wide as it is high.
+            const RIGHT: f32 = 260.0;
+            let size = ui.available_size();
+            let panel = if size.x < 600.0 && size.x - RIGHT < size.y {
+                egui::Panel::bottom("results").exact_size(size.y * 0.4)
             } else {
-                egui::Panel::right("results").min_size(260.0)
+                egui::Panel::right("results").min_size(RIGHT)
             };
             panel.resizable(false).show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
