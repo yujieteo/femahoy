@@ -929,6 +929,8 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                     None => Some(ui.input(|i| i.time)),
                 };
             }
+            // The rail fills the row, so that each step is a long drag on a phone.
+            ui.spacing_mut().slider_width = ui.available_width();
             ui.add(egui::Slider::new(&mut v.step, 0..=n - 1).show_value(false));
         });
     }
