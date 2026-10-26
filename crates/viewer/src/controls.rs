@@ -42,6 +42,9 @@ fn toggle_help(toolbar: &Element) {
     ) else {
         return;
     };
+    if button.unchecked_ref::<HtmlElement>().hidden() {
+        return;
+    }
     let open = button.get_attribute("aria-expanded").as_deref() != Some("true");
     let _ = button.set_attribute("aria-expanded", if open { "true" } else { "false" });
     if open {

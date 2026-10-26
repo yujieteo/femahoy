@@ -74,6 +74,8 @@ struct Shown {
     version: u64,
     camera: Camera,
     home: Camera,
+    /// The camera after the last view action. Orbit, pan or zoom away from it shows Custom.
+    named: Camera,
     initial_fit: bool,
     /// The index of the mesh on the GPU.
     uploaded: Option<usize>,
@@ -137,6 +139,7 @@ impl ViewerApp {
             version: 0,
             camera: Camera::fit(None, false),
             home: Camera::fit(None, false),
+            named: Camera::fit(None, false),
             uploaded: None,
             initial_fit: true,
         };
@@ -145,6 +148,7 @@ impl ViewerApp {
             None => Camera::fit(shown.view_bounds(), false),
         };
         shown.camera = shown.home;
+        shown.named = shown.home;
         self.message = None;
         shown.refresh();
         self.shown = Some(shown);
@@ -719,15 +723,15 @@ impl eframe::App for ViewerApp {
         self.upload();
         if let Some(shown) = &self.shown {
             let controls = match &shown.body {
-                Body::Results(_, _, _, _, view) => view.controls.as_deref().unwrap_or(&[]),
+                Body::Results(_, _, _, _, view) => view.controls.as_deref().unwrap_or(Control::ALL),
                 Body::Preview(_) => Control::ALL,
             };
-            crate::controls::update(
-                &self.canvas_id,
-                controls,
-                self.all,
-                shown.camera.direction_name(),
-            );
+            let direction = if shown.camera == shown.named {
+                shown.camera.direction_name()
+            } else {
+                "Custom"
+            };
+            crate::controls::update(&self.canvas_id, controls, self.all, direction);
         }
         egui::CentralPanel::default().show(ui, |ui| {
             if let Some((error, text)) = &self.message {
@@ -752,6 +756,7 @@ impl eframe::App for ViewerApp {
             if shown.initial_fit {
                 shown.home.fit_distance(aspect);
                 shown.camera = shown.home;
+                shown.named = shown.camera;
                 shown.initial_fit = false;
             }
             if let Some(action) = self.camera_action.take() {
@@ -767,6 +772,7 @@ impl eframe::App for ViewerApp {
                         shown.camera.fit_bounds(shown.fit_bounds(), aspect);
                     }
                 }
+                shown.named = shown.camera;
             }
             let delta = response.drag_delta();
             let pan = response.dragged_by(egui::PointerButton::Secondary)
@@ -785,6 +791,7 @@ impl eframe::App for ViewerApp {
             if response.double_clicked() {
                 shown.camera = shown.home;
                 shown.camera.fit_distance(aspect);
+                shown.named = shown.camera;
             }
             let (contour, palette, ghost) = shown.frame();
             let view_proj = shown
