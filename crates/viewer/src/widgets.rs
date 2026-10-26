@@ -87,6 +87,56 @@ pub fn style(ctx: &egui::Context) {
     }
 }
 
+/// The size of the box of a checkbox, the same as in `ui.css`.
+const BOX: f32 = 18.0;
+
+/// A checkbox with the look of the page checkbox (`ui.css`): an 18 pt square with a border in
+/// the muted colour, which has more than 3:1 contrast (WCAG 1.4.11), and the accent fill when it
+/// is on. The egui default has the faint border of a button and the radius makes it a circle.
+pub fn checkbox(ui: &mut egui::Ui, on: &mut bool, text: &str) -> egui::Response {
+    let c = colors(ui);
+    let (fill, line) = if *on {
+        (c.accent, c.accent)
+    } else {
+        (c.bg, c.muted)
+    };
+    // egui fits the label in the space that is left on the row and breaks it in a word. In a
+    // wrapped row, a checkbox that does not fit goes to the next row in 1 piece.
+    let width = egui::WidgetText::from(text)
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        )
+        .size()
+        .x
+        + BOX
+        + ui.spacing().icon_spacing;
+    if ui.layout().main_wrap && width > ui.available_size_before_wrap().x {
+        ui.end_row();
+    }
+    ui.scope(|ui| {
+        let s = ui.style_mut();
+        s.spacing.icon_width = BOX;
+        s.spacing.icon_width_inner = 10.0;
+        let w = &mut s.visuals.widgets;
+        for w in [
+            &mut w.noninteractive,
+            &mut w.inactive,
+            &mut w.hovered,
+            &mut w.active,
+        ] {
+            w.bg_fill = hex(fill);
+            w.bg_stroke = egui::Stroke::new(1.5, hex(line));
+            w.fg_stroke = egui::Stroke::new(2.0, hex(c.on_button));
+            w.corner_radius = egui::CornerRadius::same(4);
+        }
+        ui.checkbox(on, text)
+    })
+    .inner
+}
+
 /// A segmented control: 1 segment for each item `(text, chosen)`. The chosen segment has the
 /// background, a border and a heavier text. Returns the index of the clicked segment.
 pub fn segmented(ui: &mut egui::Ui, items: &[(&str, bool, &str)]) -> Option<usize> {

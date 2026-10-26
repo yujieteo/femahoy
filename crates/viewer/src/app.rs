@@ -514,7 +514,7 @@ fn loads_panel(ui: &mut egui::Ui, loads: &Loads, same_mesh: bool, labels: &mut b
             return;
         }
     };
-    ui.checkbox(labels, "Show them on the model");
+    widgets::checkbox(ui, labels, "Show them on the model");
     for item in &p.items {
         text_row(ui, |ui| {
             swatch(ui, COLORS[item.color]);
@@ -534,7 +534,7 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
         p.title
     ));
     ui.label(format!("Units: {}", p.units));
-    ui.checkbox(labels, "Show the labels and the arrows");
+    widgets::checkbox(ui, labels, "Show the labels and the arrows");
     if p.items.is_empty() {
         let error = ui.visuals().error_fg_color;
         ui.colored_label(error, "The input has no support and no load.");
@@ -625,7 +625,7 @@ fn results_panel(
         ui.heading("Results");
         ui.label(format!("Units: {}", r.units));
         if let Some(all) = all {
-            ui.checkbox(all, "Show all controls")
+            widgets::checkbox(ui, all, "Show all controls")
                 .on_hover_text("also the fields that are not important for this run");
         }
     });
@@ -744,7 +744,7 @@ fn probe_controls(
     let mut chosen = None;
     // One wrapped row, so that a wide short panel (a phone) shows the buttons with no scroll.
     ui.horizontal_wrapped(|ui| {
-        ui.checkbox(&mut v.probe_mode, "Probe surface")
+        widgets::checkbox(ui, &mut v.probe_mode, "Probe surface")
             .on_hover_text("click the model to probe, Escape clears");
         if field.is_none() {
             return;
@@ -885,7 +885,7 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 /// The deformed shape, its scale and the undeformed outline.
 fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     ui.strong("Deformed shape");
-    ui.checkbox(&mut v.deformed, "Show the deformed shape");
+    widgets::checkbox(ui, &mut v.deformed, "Show the deformed shape");
     ui.add_enabled_ui(v.deformed, |ui| {
         ui.horizontal(|ui| {
             ui.label("Scale");
@@ -911,7 +911,7 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                 None => {}
             }
         });
-        ui.checkbox(&mut v.ghost, "Undeformed outline");
+        widgets::checkbox(ui, &mut v.ghost, "Undeformed outline");
     });
     let step = v.current(r);
     let unit = view::unit_text(&r.units, results::Quantity::Displacement);
