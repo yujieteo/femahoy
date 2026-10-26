@@ -71,6 +71,8 @@ pub fn style(ctx: &egui::Context, scale: f32) {
             v.selection.stroke.color = hex(c.text);
             v.widgets.noninteractive.bg_stroke.color = hex(c.line);
             v.override_text_color = Some(hex(c.text));
+            // The egui weak text (60% of the text colour) has 4.3:1 on the light page.
+            v.weak_text_color = Some(hex(c.muted));
             for (w, fill) in [
                 (&mut v.widgets.inactive, c.bg),
                 (&mut v.widgets.hovered, c.raised),
