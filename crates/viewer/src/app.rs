@@ -810,11 +810,7 @@ fn results_panel(
         v.probe = None;
     }
     if shows(Control::Scale) {
-        readout(
-            ui,
-            "Deformation",
-            &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
-        );
+        readout(ui, "Deformation", &deformation_text(v));
     }
     if shows(Control::Range) {
         ui.label("Colour range");
@@ -928,9 +924,9 @@ fn probe_controls(
         if let Some(at) = p.at {
             ui.label(format!(
                 "Model coordinates: {}, {}, {} ({})",
-                at[0],
-                at[1],
-                at[2],
+                view::format_value(at[0].into()),
+                view::format_value(at[1].into()),
+                view::format_value(at[2].into()),
                 view::unit_text(&r.units, results::Quantity::Displacement)
             ));
             ui.weak("Surface marker may be hidden by another face.");
@@ -938,13 +934,17 @@ fn probe_controls(
             ui.label(format!("{} is hidden: no surface marker.", p.label));
         }
         if !scale_shown {
-            readout(
-                ui,
-                "Deformation",
-                &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
-            );
+            readout(ui, "Deformation", &deformation_text(v));
         }
     }
+}
+
+/// The deformation scale that the 3D view draws, as the legend shows it.
+fn deformation_text(v: &ViewState) -> String {
+    format!(
+        "×{}",
+        view::format_value(if v.deformed { v.scale } else { 0.0 })
+    )
 }
 
 /// The step selector, the play button and the step slider.
