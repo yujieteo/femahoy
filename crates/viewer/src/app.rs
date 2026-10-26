@@ -708,7 +708,7 @@ fn results_panel(
     // With no menu (a report), the label goes too: the legend title names the field.
     if !panel.fields.is_empty() {
         ui.horizontal(|ui| {
-            let label = ui.strong("Contour");
+            ui.strong("Contour");
             egui::ComboBox::from_id_salt("field")
                 .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
                 .show_ui(ui, |ui| {
@@ -716,9 +716,7 @@ fn results_panel(
                     for name in &panel.fields {
                         ui.selectable_value(&mut v.field, Some(name.clone()), name);
                     }
-                })
-                .response
-                .labelled_by(label.id);
+                });
         });
     }
     // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
@@ -846,14 +844,13 @@ fn probe_controls(
                 results::Location::Point => "Node index",
                 results::Location::Cell => "Element index",
             };
-            let label = ui.label(text);
+            ui.label(text);
             if ui
                 .add(
                     egui::DragValue::new(&mut index)
                         .range(1..=field.values.len())
                         .speed(1),
                 )
-                .labelled_by(label.id)
                 .changed()
             {
                 v.probe = crate::probe::at_index(mesh, &positions(v), field, index - 1);
