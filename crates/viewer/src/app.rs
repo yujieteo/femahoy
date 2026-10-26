@@ -740,22 +740,15 @@ fn probe_controls(
     drawn: Option<&[[f32; 3]]>,
     scale_shown: bool,
 ) {
-    ui.checkbox(&mut v.probe_mode, "Probe surface")
-        .on_hover_text("click the model to probe, Escape clears");
-    let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
-        return;
-    };
-    let mesh = r.mesh(v.current(r));
-    let positions = |v: &ViewState| match drawn {
-        Some(p) => std::borrow::Cow::Borrowed(p),
-        None => std::borrow::Cow::Owned(results::deformed_positions(
-            mesh,
-            v.current(r),
-            if v.deformed { v.scale } else { 0.0 },
-        )),
-    };
+    let field = v.field.as_deref().and_then(|n| v.current(r).field(n));
     let mut chosen = None;
-    ui.horizontal(|ui| {
+    // One wrapped row, so that a wide short panel (a phone) shows the buttons with no scroll.
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut v.probe_mode, "Probe surface")
+            .on_hover_text("click the model to probe, Escape clears");
+        if field.is_none() {
+            return;
+        }
         if widgets::button(ui, "Min", "locate the actual minimum item").clicked() {
             chosen = Some(false);
         }
@@ -767,6 +760,18 @@ fn probe_controls(
             v.probe = None;
         }
     });
+    let Some(field) = field else {
+        return;
+    };
+    let mesh = r.mesh(v.current(r));
+    let positions = |v: &ViewState| match drawn {
+        Some(p) => std::borrow::Cow::Borrowed(p),
+        None => std::borrow::Cow::Owned(results::deformed_positions(
+            mesh,
+            v.current(r),
+            if v.deformed { v.scale } else { 0.0 },
+        )),
+    };
     if let Some(max) = chosen {
         v.probe = crate::probe::extreme(mesh, &positions(v), field, max);
     }
