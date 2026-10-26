@@ -22,26 +22,23 @@ pub struct Camera {
 }
 
 impl Camera {
-    /// An isometric-like view of the whole bounding box, or with `top` a view from the top with
-    /// x to the right.
+    /// The Isometric view of the whole bounding box, or with `top` the +Z view with x to the
+    /// right. A named direction, so that the camera menu names the first view.
     pub fn fit(bounds: Option<Bounds>, top: bool) -> Self {
         let (target, radius) = match bounds {
             Some(b) if b.radius() > 0.0 => (b.center(), b.radius()),
             Some(b) => (b.center(), 1.0),
             None => ([0.0; 3], 1.0),
         };
-        let (yaw, pitch) = if top {
-            (-std::f32::consts::FRAC_PI_2, MAX_PITCH)
-        } else {
-            (-0.8, 0.5)
-        };
-        Camera {
+        let mut camera = Camera {
             target,
             distance: radius / (FOV_Y * 0.5).sin() * 1.1,
-            yaw,
-            pitch,
+            yaw: 0.0,
+            pitch: 0.0,
             radius,
-        }
+        };
+        camera.direction(if top { "+Z" } else { "Isometric" });
+        camera
     }
 
     /// Fit the bounds at the model area aspect ratio, with the current direction.
