@@ -76,11 +76,15 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #model > .toolbar > details[open] { flex-basis: 100%; }
 #file-list { justify-items: start; }
 #run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); }
-.run-row { display: flex; flex-wrap: wrap; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
-.run-row p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+/* The buttons go at the side of the run name and path, as in an iOS list row. */
+.run-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
+.run-row > div { flex: 1 1 12em; min-width: 0; }
+/* With the 3 compare buttons, the buttons go on 1 row below the name. */
+.run-row:has(button + button) > div { flex-basis: 100%; }
+.run-row p { margin: 0; overflow-wrap: anywhere; }
 /* A check mark shows the open run, as in an iOS list. */
-.run-row:has([aria-current]) > p:first-child { font-weight: 600; }
-.run-row:has([aria-current]) > p:first-child::before { content: "\2713  " / ""; color: var(--accent); }
+.run-row:has([aria-current]) p:first-child { font-weight: 600; }
+.run-row:has([aria-current]) p:first-child::before { content: "\2713  " / ""; color: var(--accent); }
 #pair { display: flex; flex: 1; min-height: 0; }
 #pair > section { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 #view, #view-b { position: relative; flex: 1; min-height: 0; }
@@ -278,7 +282,9 @@ function renderRuns() {
   list.append(el("p", "note", matched.length + " runs"));
   for (const [run, path] of matched) {
     const row = el("div", "run-row", "");
-    row.append(el("p", "", runLabel(run)), el("p", "note", path));
+    const text = el("div", "", "");
+    text.append(el("p", "", runLabel(run)), el("p", "note", path));
+    row.append(text);
     const button = (label, action) => {
       const b = el("button", "", label);
       b.type = "button";
