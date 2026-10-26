@@ -78,6 +78,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); }
 .run-row { display: flex; flex-wrap: wrap; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
 .run-row p { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+/* A check mark shows the open run, as in an iOS list. */
+.run-row:has([aria-current]) > p:first-child { font-weight: 600; }
+.run-row:has([aria-current]) > p:first-child::before { content: "\2713  " / ""; color: var(--accent); }
 #pair { display: flex; flex: 1; min-height: 0; }
 #pair > section { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 #view, #view-b { position: relative; flex: 1; min-height: 0; }
@@ -253,6 +256,7 @@ function openRunAndShow(run) {
 
 function select() {
   $("selected-run").textContent = shown ? runLabel(shown) : "";
+  renderRuns();
 }
 
 const names = {};
@@ -263,7 +267,6 @@ async function listRuns() {
   foundRuns = (await reply("/api/v1/runs")).items.reverse().map(split);
   for (const [run, path] of foundRuns) names[run] = path.split("/").pop() || path;
   $("compare").closest("label").hidden = foundRuns.length < 2;
-  renderRuns();
   select();
 }
 
@@ -282,8 +285,10 @@ function renderRuns() {
       b.setAttribute("aria-label", label + " " + runLabel(run));
       b.onclick = action;
       row.append(b);
+      return b;
     };
-    button("Open", () => { runs.open = false; openRunAndShow(run); });
+    const open = button("Open", () => { runs.open = false; openRunAndShow(run); });
+    if (run === shown) open.setAttribute("aria-current", "true");
     if ($("compare").checked) {
       button("Use as A", () => compareSide("a", run));
       button("Use as B", () => compareSide("b", run));
