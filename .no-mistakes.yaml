@@ -1,6 +1,6 @@
-# The no-mistakes test step runs this command. It runs only the tests that need no solver, because
-# CI (.github/workflows/ci.yml) runs the solver tests and the validation suite. The solver paths do
-# not exist, so each test that solves skips and passes.
+# The no-mistakes test step runs this command. It runs only the tests that need no solver, as CI
+# (.github/workflows/ci.yml) does. The validation cases run by hand (fh validate). The solver paths
+# do not exist, so each test that solves skips and passes.
 # The wasm build checks the window layer of the viewer, as CI does.
 commands:
   test: cargo build -p fh-viewer --lib --target wasm32-unknown-unknown && FH_CCX=/nonexistent/ccx FH_OPENFOAM=/nonexistent/openfoam FH_GETDP=/nonexistent/getdp FH_PYCHRONO=/nonexistent/python FH_LAMMPS=/nonexistent/lmp FH_MEEP=/nonexistent/python FH_OPENEMS=/nonexistent/python cargo test --workspace
