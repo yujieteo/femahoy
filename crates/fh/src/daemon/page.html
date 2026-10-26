@@ -759,7 +759,8 @@ $("rerun").addEventListener("click", () => {
     : "Prepare a new run from the previous retained input. Preserve the previous result. Confirm the input and result target before the solve.");
 });
 read();
-listRuns().catch((e) => showError(e.message));
+// With no run open, the model area is empty, so the page opens Runs.
+listRuns().then(() => { if (!shown && foundRuns.length) $("runs").open = true; }).catch((e) => showError(e.message));
 startViewer();
 </script>
 </body>
