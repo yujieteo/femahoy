@@ -236,10 +236,11 @@ curveControls();
 $('all').addEventListener('change', (event) => curveControls(event.target.checked));
 
 async function start() {
+  let open = () => false;
+  const cfd = await cfdControls(text, $("bar"), (e) => open(e));
   if (!runs.options.length) {
     const all = $("all");
     if (document.querySelector('.curve [data-control="values"][hidden]')) text.prepend(all);
-    await cfdControls(text, $("bar"), () => false);
     $("model").remove();
     return;
   }
@@ -262,9 +263,8 @@ async function start() {
     };
     views().filter(slider).forEach(label);
     let current = null;
-    const cfd = await cfdControls(text, bar, (e) => open(e));
     // Open the run of the element `e`, with its view. False when the report has no such run.
-    const open = (e) => {
+    open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
       identity();
