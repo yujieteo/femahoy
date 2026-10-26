@@ -345,7 +345,7 @@ async function loadFiles(run) {
     $("files").hidden = false;
     const list = $("file-list");
     list.replaceChildren();
-    for (const item of items.filter(p => p !== "report")) {
+    for (const item of items.filter(p => p !== "report").sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))) {
       const [path, name] = split(item);
       const b = el("button", "", path.startsWith("inputs/") ? "Input · " + name : path.slice(6));
       b.type = "button";
