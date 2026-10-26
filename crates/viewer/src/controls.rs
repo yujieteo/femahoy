@@ -17,10 +17,12 @@ const TOOLBAR: &str = r#"
   <button type="button" data-camera="help" id="fh-help-button" aria-controls="fh-camera-help" aria-expanded="false" aria-keyshortcuts="?">Help <kbd>?</kbd></button>
 </div>
 <div class="toolbar" id="fh-camera-help" data-camera-help hidden><p class="keys">
-  <span><kbd>Drag</kbd> Orbit</span><span><kbd>Right or Shift drag</kbd> Pan</span>
-  <span><kbd>Scroll</kbd> Zoom</span><span><kbd>Double click</kbd> Report view</span>
-  <span><kbd>F</kbd> Fit</span><span><kbd>Home</kbd> Report view</span><span><kbd>?</kbd> Help</span>
-  <span>Shortcuts act when the model has focus.</span>
+  <span data-pointer="mouse"><kbd>Drag</kbd> Orbit</span><span data-pointer="mouse"><kbd>Right or Shift drag</kbd> Pan</span>
+  <span data-pointer="mouse"><kbd>Scroll</kbd> Zoom</span><span data-pointer="mouse"><kbd>Double click</kbd> Report view</span>
+  <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Report view</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
+  <span data-pointer="mouse">Shortcuts act when the model has focus.</span>
+  <span data-pointer="touch"><kbd>Drag</kbd> Orbit</span><span data-pointer="touch"><kbd>Two-finger drag</kbd> Pan</span>
+  <span data-pointer="touch"><kbd>Pinch</kbd> Zoom</span><span data-pointer="touch"><kbd>Double tap</kbd> Report view</span>
 </p></div>"#;
 
 fn listen(

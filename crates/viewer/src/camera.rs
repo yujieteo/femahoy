@@ -101,11 +101,11 @@ impl Camera {
         }
     }
 
-    /// Zoom with scroll points. Positive scroll moves closer.
-    pub fn zoom(&mut self, scroll: f32) {
+    /// Zoom with scroll points and a pinch factor. Positive scroll or a factor above 1 moves closer.
+    pub fn zoom(&mut self, scroll: f32, pinch: f32) {
         let lo = self.radius * 0.01;
         let hi = self.radius * 100.0;
-        self.distance = (self.distance * (-scroll * 0.002).exp()).clamp(lo, hi);
+        self.distance = (self.distance * (-scroll * 0.002).exp() / pinch).clamp(lo, hi);
     }
 
     fn eye_dir(&self) -> [f32; 3] {

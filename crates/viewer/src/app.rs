@@ -1034,18 +1034,26 @@ impl eframe::App for ViewerApp {
                 shown.named = shown.camera;
             }
             let delta = response.drag_delta();
+            // Two fingers pan and pinch. The first finger also drives the pointer, so it must not orbit.
+            let touch = ui
+                .input(|i| i.multi_touch())
+                .filter(|t| rect.contains(t.start_pos));
             let pan = response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)
                 || (response.dragged_by(egui::PointerButton::Primary)
                     && ui.input(|i| i.modifiers.shift));
-            if pan {
+            if let Some(t) = touch {
+                shown
+                    .camera
+                    .pan(t.translation_delta.x, t.translation_delta.y, rect.height());
+            } else if pan {
                 shown.camera.pan(delta.x, delta.y, rect.height());
             } else if response.dragged_by(egui::PointerButton::Primary) {
                 shown.camera.orbit(delta.x, delta.y);
             }
-            if response.hovered() {
-                let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-                shown.camera.zoom(scroll);
+            if response.hovered() || touch.is_some() {
+                let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+                shown.camera.zoom(scroll, pinch);
             }
             if response.double_clicked() {
                 shown.camera = shown.home;
