@@ -214,6 +214,9 @@ jobs:
           (cd openEMS-Project && ./update_openEMS.sh "$HOME/openEMS" --python --disable-GUI --with-tinyxml --skip-dep-check)
           echo "FH_OPENEMS=$HOME/openEMS/venv/bin/python" >> "$GITHUB_ENV"
           "$HOME/openEMS/venv/bin/python" -c "import CSXCAD, openEMS"
+      - name: Remove the old Ubuntu packages
+        if: steps.select.outputs.all == '1' && steps.ubuntu-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get autoclean
       - name: Save the Ubuntu packages
         if: steps.select.outputs.all == '1' && steps.ubuntu-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
