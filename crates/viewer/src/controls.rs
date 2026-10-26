@@ -187,6 +187,17 @@ pub fn update(canvas_id: &str, controls: &[Control], all: bool, direction: &str)
     }
 }
 
+/// The page text size over the body token. It is 1 on a desktop and at the iOS default text
+/// size, and more at a larger Dynamic Type size, because the page CSS follows that size.
+pub fn text_scale() -> f32 {
+    let size = web_sys::window().and_then(|window| {
+        let body = window.document()?.body()?;
+        let size = window.get_computed_style(&body).ok()??.get_property_value("font-size").ok()?;
+        size.strip_suffix("px")?.parse::<f32>().ok()
+    });
+    size.map_or(1.0, |px| px / crate::ui::BODY)
+}
+
 /// Give the canvas 1 backing pixel for each device pixel. eframe reads the size from
 /// `devicePixelContentBoxSize`, which Chrome gives in CSS pixels under device emulation.
 /// Then egui draws at 3x into a 1x canvas and the model is off the canvas. True on a change.

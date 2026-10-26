@@ -33,8 +33,9 @@ fn colors(ui: &egui::Ui) -> &'static Colors {
 
 /// The look of the page in the light and the dark appearance: the DM Sans font, and the
 /// colours, type sizes, spacing, radius and hit target of the tokens. No widget moves: egui
-/// has no reduced motion setting of the browser, so it has no animation.
-pub fn style(ctx: &egui::Context) {
+/// has no reduced motion setting of the browser, so it has no animation. The type sizes are
+/// times `scale`, so that the panel text follows the iOS Dynamic Type size of the page text.
+pub fn style(ctx: &egui::Context, scale: f32) {
     let mut fonts = egui::FontDefinitions::default();
     let sans = egui::FontData::from_static(DM_SANS);
     fonts.font_data.insert("DM Sans".into(), Arc::new(sans));
@@ -49,11 +50,11 @@ pub fn style(ctx: &egui::Context) {
         ctx.style_mut_of(theme, |s| {
             use egui::{FontId, TextStyle};
             s.text_styles = [
-                (TextStyle::Small, FontId::proportional(ui::SMALL)),
-                (TextStyle::Body, FontId::proportional(ui::BODY)),
-                (TextStyle::Button, FontId::proportional(ui::BODY)),
-                (TextStyle::Heading, FontId::proportional(ui::TITLE)),
-                (TextStyle::Monospace, FontId::monospace(ui::MONO)),
+                (TextStyle::Small, FontId::proportional(scale * ui::SMALL)),
+                (TextStyle::Body, FontId::proportional(scale * ui::BODY)),
+                (TextStyle::Button, FontId::proportional(scale * ui::BODY)),
+                (TextStyle::Heading, FontId::proportional(scale * ui::TITLE)),
+                (TextStyle::Monospace, FontId::monospace(scale * ui::MONO)),
             ]
             .into();
             s.animation_time = 0.0;

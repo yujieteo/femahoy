@@ -107,13 +107,15 @@ pub struct ViewerApp {
     camera_action: Option<String>,
     mesh_only: bool,
     camera_link: Option<CameraLink>,
+    /// The scale of the panel text at the last style. A new Dynamic Type size changes it.
+    text_scale: f32,
 }
 
 impl ViewerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, slot: RequestSlot, canvas_id: String) -> Self {
-        widgets::style(&cc.egui_ctx);
         Self {
             canvas_id,
+            text_scale: 0.0,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
@@ -973,6 +975,12 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if crate::controls::fit_backing_store(&self.canvas_id) {
+            ui.ctx().request_repaint();
+        }
+        let scale = crate::controls::text_scale();
+        if scale != self.text_scale {
+            self.text_scale = scale;
+            widgets::style(ui.ctx(), scale);
             ui.ctx().request_repaint();
         }
         self.take_request();
