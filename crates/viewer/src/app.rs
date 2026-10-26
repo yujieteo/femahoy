@@ -38,9 +38,10 @@ pub enum Content {
     Failed(String),
 }
 
-/// The cameras share a pose. A gesture asks both canvases for a frame.
+/// The cameras share a pose and its named view. A gesture asks both canvases for a frame.
 pub struct LinkedCamera {
-    pub camera: Option<Camera>,
+    /// The camera and the camera after the last view action, so that both Views menus agree.
+    pub camera: Option<(Camera, Camera)>,
     pub contexts: [egui::Context; 2],
 }
 pub type CameraLink = Arc<Mutex<LinkedCamera>>;
@@ -1221,10 +1222,11 @@ impl eframe::App for ViewerApp {
             }
             if let Some(link) = &self.camera_link {
                 if let Ok(mut camera) = link.lock() {
-                    if let Some(camera) = camera.camera {
+                    if let Some((camera, named)) = camera.camera {
                         shown.camera = camera;
+                        shown.named = named;
                     } else {
-                        camera.camera = Some(shown.camera);
+                        camera.camera = Some((shown.camera, shown.named));
                         for ctx in &camera.contexts {
                             ctx.request_repaint();
                         }
@@ -1287,7 +1289,7 @@ impl eframe::App for ViewerApp {
             if shown.camera != before {
                 if let Some(link) = &self.camera_link {
                     if let Ok(mut camera) = link.lock() {
-                        camera.camera = Some(shown.camera);
+                        camera.camera = Some((shown.camera, shown.named));
                         for ctx in &camera.contexts {
                             ctx.request_repaint();
                         }
