@@ -425,6 +425,15 @@ pub fn field_names(results: &Results) -> Vec<String> {
     names
 }
 
+/// The unit of the quantity `q` in the unit system `units`, for a legend or a readout. A unit
+/// that the source does not define is "unit unspecified": the text never guesses a unit.
+pub fn unit_text(units: &str, q: results::Quantity) -> String {
+    match results::unit(units, q) {
+        "" => "unit unspecified".into(),
+        unit => unit.into(),
+    }
+}
+
 /// A value with 4 significant digits.
 pub fn format_value(v: f64) -> String {
     format_sig(v, 4)
@@ -487,6 +496,19 @@ mod tests {
     fn state(r: &Results) -> ViewState {
         let view = View::default();
         ViewState::open(r, &view, &Panel::of(r, None, false))
+    }
+
+    #[test]
+    fn a_unit_that_the_source_does_not_define_shows_as_unspecified() {
+        assert_eq!(unit_text("SI-mm", results::Quantity::Stress), "MPa");
+        assert_eq!(
+            unit_text("SI-mm", results::Quantity::Other),
+            "unit unspecified"
+        );
+        assert_eq!(
+            unit_text("unspecified", results::Quantity::Stress),
+            "unit unspecified"
+        );
     }
 
     #[test]

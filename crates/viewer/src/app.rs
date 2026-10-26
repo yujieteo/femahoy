@@ -18,12 +18,9 @@ use crate::camera::{self, Camera};
 use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
 use crate::preview::{Kind, Preview, COLORS};
-use crate::results::{self, Location, Results, BANDS, BAND_COLORS};
+use crate::results::{self, Results, BANDS};
 use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
-
-/// The font of the controls: DM Sans (SIL Open Font License 1.1, `fonts/OFL.txt`), the sans
-/// font of the page.
-const DM_SANS: &[u8] = include_bytes!("../fonts/DMSans.ttf");
+use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
 const NO_RUN: &str = "No run is open. Select a run at the top, or ask the agent for a model.";
@@ -94,7 +91,7 @@ pub struct ViewerApp {
 
 impl ViewerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, slot: RequestSlot) -> Self {
-        style(&cc.egui_ctx);
+        widgets::style(&cc.egui_ctx);
         Self {
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
@@ -343,16 +340,16 @@ impl Shown {
             painter.circle(
                 at,
                 5.0,
-                rgb(MARK),
+                hex(MARK),
                 egui::Stroke::new(2.0, egui::Color32::BLACK),
             );
-            tag(painter, rect, at, &mark.text, MARK);
+            tag(painter, rect, at, &mark.text, hex(MARK));
         }
     }
 }
 
-/// The colour of a mark: the accent colour of the page.
-const MARK: [f32; 3] = [0.769, 0.380, 0.247];
+/// The colour of a mark: the accent colour of the light appearance of the page.
+const MARK: u32 = crate::ui::LIGHT.accent;
 
 /// The place of the point `x` on the view `rect` with the matrix `m`, or `None` behind the eye.
 fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2> {
@@ -368,8 +365,14 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
 
 /// The text `text` on a box of the colour `color`, up and to the right of the point `at`, in
 /// the view `rect`.
-fn tag(painter: &egui::Painter, rect: egui::Rect, at: egui::Pos2, text: &str, color: [f32; 3]) {
-    let [r, g, b] = color;
+fn tag(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    at: egui::Pos2,
+    text: &str,
+    color: egui::Color32,
+) {
+    let [r, g, b] = [color.r(), color.g(), color.b()].map(|x| f32::from(x) / 255.0);
     let ink = if 0.3 * r + 0.6 * g + 0.1 * b > 0.5 {
         egui::Color32::BLACK
     } else {
@@ -387,7 +390,7 @@ fn tag(painter: &egui::Painter, rect: egui::Rect, at: egui::Pos2, text: &str, co
         .min(0.0)
         .max(inner.top() - place.top());
     let place = place.translate(egui::vec2(dx, dy));
-    painter.rect_filled(place.expand(3.0), 3.0, rgb(color));
+    painter.rect_filled(place.expand(3.0), 3.0, color);
     painter.galley(place.min, galley, ink);
 }
 
@@ -437,7 +440,7 @@ fn loads_panel(ui: &mut egui::Ui, loads: &Loads, same_mesh: bool, labels: &mut b
     };
     ui.checkbox(labels, "Show them on the model");
     for item in &p.items {
-        ui.horizontal(|ui| {
+        text_row(ui, |ui| {
             swatch(ui, COLORS[item.color]);
             ui.label(&item.label);
         });
@@ -462,7 +465,7 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
     }
     for item in &p.items {
         ui.separator();
-        ui.horizontal(|ui| {
+        text_row(ui, |ui| {
             swatch(ui, COLORS[item.color]);
             ui.strong(&item.label);
             ui.weak(kind_text(item.kind));
@@ -525,18 +528,8 @@ fn loads_overlay(
             }
         }
         let Some(at) = at else { continue };
-        tag(painter, rect, at, &item.label, COLORS[item.color]);
+        tag(painter, rect, at, &item.label, rgb(COLORS[item.color]));
     }
-}
-
-fn rgb(c: [f32; 3]) -> egui::Color32 {
-    let c = c.map(|x| (x * 255.0).round() as u8);
-    egui::Color32::from_rgb(c[0], c[1], c[2])
-}
-
-fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 14.0), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, rgb(color));
 }
 
 /// The results panel: the switch `all` when it is given, and the controls and the fields of
@@ -656,125 +649,45 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                     .speed(speed)
                     .custom_formatter(|x, _| view::format_value(x)),
             );
-            if ui.button("Auto").clicked() {
-                v.scale = results::auto_scale(r);
-            }
-            if ui.button("1x").on_hover_text("true scale").clicked() {
-                v.scale = 1.0;
+            let auto = results::auto_scale(r);
+            let items = [
+                (
+                    "Auto",
+                    v.scale == auto,
+                    "a scale that shows the deformation",
+                ),
+                ("1\u{d7}", v.scale == 1.0, "true scale"),
+            ];
+            match segmented(ui, &items) {
+                Some(0) => v.scale = auto,
+                Some(_) => v.scale = 1.0,
+                None => {}
             }
         });
         ui.checkbox(&mut v.ghost, "Undeformed outline");
     });
     let step = v.current(r);
-    let unit = results::unit(&r.units, results::Quantity::Displacement);
-    ui.label(format!(
-        "Largest displacement: {} {unit}",
-        view::format_value(step.max_displacement())
-    ));
+    let unit = view::unit_text(&r.units, results::Quantity::Displacement);
+    let largest = view::format_value(step.max_displacement());
+    readout(ui, "Largest displacement", &format!("{largest} {unit}"));
     ui.separator();
-}
-
-/// The colour bands with their limits, the highest band at the top.
-fn legend(ui: &mut egui::Ui, units: &str, field: &results::ScalarField, lo: f64, hi: f64) {
-    let unit = results::unit(units, field.quantity);
-    let unit_text = if unit.is_empty() {
-        String::new()
-    } else {
-        format!(" ({unit})")
-    };
-    let at = match field.location {
-        Location::Point => "at the nodes",
-        Location::Cell => "per element",
-    };
-    ui.label(format!("{}{unit_text}, {at}", field.name));
-    let swatch = |ui: &mut egui::Ui, band: usize, text: String| {
-        ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 14.0), egui::Sense::hover());
-            let c = BAND_COLORS[band].map(|x| (x * 255.0).round() as u8);
-            ui.painter()
-                .rect_filled(rect, 0.0, egui::Color32::from_rgb(c[0], c[1], c[2]));
-            ui.monospace(text);
-        });
-    };
-    if hi <= lo {
-        swatch(
-            ui,
-            BANDS / 2,
-            format!("constant {}", view::format_value(lo)),
-        );
-        return;
-    }
-    let limits = results::band_limits(lo, hi);
-    let texts = view::format_limits(&limits);
-    for i in (0..BANDS).rev() {
-        let text = format!("{} to {}", texts[i], texts[i + 1]);
-        swatch(ui, i, text);
-    }
-    ui.label(format!(
-        "Min {}, max {}",
-        view::format_value(lo),
-        view::format_value(hi)
-    ));
-}
-
-/// The look of the page (`crates/fh/src/daemon/page.html`): the DM Sans font, and the colours
-/// `--bg`, `--raised`, `--line` and `--text` of the page in the dark and the light theme.
-fn style(ctx: &egui::Context) {
-    let mut fonts = egui::FontDefinitions::default();
-    let sans = egui::FontData::from_static(DM_SANS);
-    fonts.font_data.insert("DM Sans".into(), Arc::new(sans));
-    if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        family.insert(0, "DM Sans".into());
-    }
-    ctx.set_fonts(fonts);
-    let hex = |c: u32| egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
-    for (theme, bg, raised, line, text) in [
-        (egui::Theme::Dark, 0x1c1b18, 0x2e2c27, 0x3a3730, 0xece8df),
-        (egui::Theme::Light, 0xf4f1ea, 0xe6e0d3, 0xd8d2c4, 0x1c1b18),
-    ] {
-        let [bg, raised, line, text] = [bg, raised, line, text].map(hex);
-        ctx.style_mut_of(theme, |s| {
-            use egui::{FontId, TextStyle};
-            s.text_styles = [
-                (TextStyle::Small, FontId::proportional(12.0)),
-                (TextStyle::Body, FontId::proportional(14.0)),
-                (TextStyle::Button, FontId::proportional(14.0)),
-                (TextStyle::Heading, FontId::proportional(18.0)),
-                (TextStyle::Monospace, FontId::monospace(12.5)),
-            ]
-            .into();
-            s.spacing.item_spacing = egui::vec2(8.0, 6.0);
-            s.spacing.button_padding = egui::vec2(8.0, 4.0);
-            s.spacing.interact_size.y = 26.0;
-            let v = &mut s.visuals;
-            v.panel_fill = bg;
-            v.window_fill = bg;
-            v.widgets.noninteractive.bg_stroke.color = line;
-            v.widgets.inactive.bg_fill = raised;
-            v.widgets.inactive.weak_bg_fill = raised;
-            v.override_text_color = Some(text);
-            for w in [
-                &mut v.widgets.inactive,
-                &mut v.widgets.hovered,
-                &mut v.widgets.active,
-                &mut v.widgets.open,
-            ] {
-                w.corner_radius = egui::CornerRadius::same(8);
-            }
-        });
-    }
 }
 
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.take_request();
         egui::Panel::bottom("status").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.weak(self.status_text());
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.weak("drag: orbit | right or shift drag: pan | scroll: zoom | double click: reset");
-                });
-            });
+            ui.spacing_mut().interact_size.y = 0.0;
+            ui.weak(self.status_text());
+            widgets::keys(
+                ui,
+                &[
+                    ("Drag", "orbit"),
+                    ("Right or Shift drag", "pan"),
+                    ("Scroll", "zoom"),
+                    ("Double click", "reset"),
+                ],
+            );
         });
         if let Some(shown) = self.shown.as_mut() {
             egui::Panel::right("results")

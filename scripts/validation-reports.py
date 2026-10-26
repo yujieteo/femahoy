@@ -56,7 +56,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CASES = ROOT / "validation/cases"
 OUT = ROOT / "validation/reports"
-FONTS = ROOT / "crates/fh/src/daemon/fonts"
 FH = Path(os.environ.get("FH_BIN") or ROOT / "target/release/fh")
 VIEWER = Path(os.environ.get("FH_VIEWER") or ROOT / "target/release/viewer")
 VIEWER_FILES = ["fh_viewer.js", "fh_viewer_bg.wasm"]
@@ -374,68 +373,30 @@ def write_outcomes(outcomes):
     (OUT / "outcomes.tsv").write_text("\n".join(lines) + "\n")
 
 
-INDEX_STYLE = """
-:root { --bg: #f4f1ea; --text: #1c1b18; --muted: #5c5950; --line: #d8d2c4; --accent: #c4613f;
-  --serif: "Source Serif 4", Georgia, serif; --sans: "DM Sans", system-ui, sans-serif; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #1c1b18; --text: #ece8df; --muted: #a39e92; --line: #3a3730; --accent: #e0805c; }
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 17px/1.55 var(--sans); }
-main { max-width: 72rem; margin: 0 auto; padding: 3rem clamp(1rem, 4vw, 3rem) 5rem; }
-h1 { font: 400 clamp(2.5rem, 6vw, 4rem)/1.06 var(--serif); letter-spacing: -0.015em; margin: 0; text-wrap: balance; }
-.lede { font-size: 1.25rem; color: var(--muted); margin: 1.5rem 0 3rem; max-width: 44rem; text-wrap: pretty; }
-a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-a:hover { text-decoration-color: var(--accent); }
-a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
-th, td { padding: 0.75rem 1rem 0.75rem 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-th { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); border-bottom-color: var(--text); }
-.n { text-align: right; white-space: nowrap; }
-td small { display: block; color: var(--muted); }
-code { font: 0.95em ui-monospace, monospace; overflow-wrap: anywhere; }
-"""
-
-
 def write_index(outcomes):
-    faces = "".join(
-        f'@font-face {{ font-family: "{family}"; font-weight: {weight}; src: url(data:font/woff2;base64,'
-        f'{base64.b64encode((FONTS / file).read_bytes()).decode()}) format("woff2"); }}\n'
-        for family, weight, file in [("Source Serif 4", "400", "source-serif-4.woff2"),
-                                     ("DM Sans", "100 1000", "dm-sans.woff2")]
-    )
+    """index.html: a report of `fh report` with the text only, so that it has the look of the
+    other views (the UI layer, DESIGN.md section 8)."""
     rows = []
     for case in sorted(p.name for p in CASES.iterdir() if (p / "check.toml").is_file()):
         result, detail, size, version = outcomes.get(case, ["not run", "", "", ""])
         name = f'<a href="{case}.html">{case}</a>' if (OUT / f"{case}.html").is_file() else case
         size = f"{int(size) / 1e6:.2f} MB" if size else ""
-        note = f"<small>{esc(detail)}</small>" if detail else ""
-        rows.append(f"<tr><td>{name}</td><td>{esc(result)}{note}</td><td class=n>{size}</td><td>{esc(version)}</td></tr>")
+        note = f"<br><small>{esc(detail)}</small>" if detail else ""
+        rows.append(f"<tr><td>{name}</td><td>{esc(result)}{note}</td><td>{size}</td><td>{esc(version)}</td></tr>")
     passed = sum(1 for o in outcomes.values() if o[0] == "pass")
-    (OUT / "index.html").write_text(f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>femahoy validation reports</title>
-<style>
-{faces}{INDEX_STYLE}</style>
-</head>
-<body>
-<main>
-<h1>Validation reports</h1>
-<p class="lede">1 report for each validation case of femahoy: the checks, the derivation and a 3D view of the runs. {passed} of {len(rows)} cases pass. Made by <code>scripts/validation-reports.py</code>.</p>
+    with tempfile.TemporaryDirectory(prefix="fh-index-") as tmp:
+        text = Path(tmp) / "index.html"
+        text.write_text(f"""<h1>Validation reports</h1>
+<p>1 report for each validation case of femahoy: the checks, the derivation and a 3D view of the runs. {passed} of {len(rows)} cases pass. Made by <code>scripts/validation-reports.py</code>.</p>
 <table>
-<thead><tr><th>Case</th><th>Result</th><th class=n>Report</th><th>Version</th></tr></thead>
+<thead><tr><th>Case</th><th>Result</th><th>Report</th><th>Version</th></tr></thead>
 <tbody>
 {chr(10).join(rows)}
 </tbody>
 </table>
-</main>
-</body>
-</html>
 """)
+        r = fh("report", text, "-o", OUT / "index.html", env=dict(os.environ, FH_STATE=str(Path(tmp) / "state")))
+        return r.stderr.strip() if r.returncode else None
 
 
 def main(args):
@@ -508,7 +469,9 @@ def main(args):
         shutil.rmtree(tmp, ignore_errors=True)
         outcomes = {c: [local(f) for f in o] for c, o in outcomes.items()}
         write_outcomes(outcomes)
-        write_index(outcomes)
+        error = write_index(outcomes)
+    if error:
+        sys.exit(f"validation-reports: fh report index.html: {error}")
 
 
 if __name__ == "__main__":

@@ -30,8 +30,8 @@
 //!   elements. A report with no run has no viewer.
 //!
 //! The template allows no script but its own (a new nonce for each report) and no network, so
-//! the text of the agent cannot run a script or load a file. The fonts are in the template as
-//! `data:` URLs ([`font_faces`]).
+//! the text of the agent cannot run a script or load a file. The fonts and the style of the UI
+//! layer are in the template, the fonts as `data:` URLs ([`ui_style`]).
 
 use std::fs;
 use std::ops::Range;
@@ -128,10 +128,11 @@ fn base64(out: &mut String, bytes: &[u8]) {
     }
 }
 
-/// The `@font-face` rules of the fonts of the site style (`fonts/`, SIL Open Font License 1.1):
-/// Source Serif 4 for the titles and DM Sans for the text. The fonts are `data:` URLs, so the
-/// page of `fh serve` and a report load no font file.
-pub(super) fn font_faces() -> String {
+/// The style of the UI layer for the mark `/*UI*/` of the page of `fh serve` and of a report:
+/// the `@font-face` rules of the fonts of the site style (`fonts/`, SIL Open Font License 1.1),
+/// Source Serif 4 for the titles and DM Sans for the text, then the tokens and the components
+/// of `fh_viewer::ui`. The fonts are `data:` URLs, so the page and a report load no font file.
+pub(super) fn ui_style() -> String {
     let mut css = String::new();
     for (family, weight, bytes) in [
         (
@@ -152,7 +153,8 @@ pub(super) fn font_faces() -> String {
         base64(&mut css, bytes);
         css.push_str(") format(\"woff2\"); }\n");
     }
-    css
+    css.push_str(":root { --serif: \"Source Serif 4\", Georgia, serif; --sans: \"DM Sans\", system-ui, sans-serif; }\n");
+    css + &fh_viewer::ui::css()
 }
 
 /// Add the file `bytes` that the viewer fetches from the daemon path `path` to `out`, as raw
@@ -436,7 +438,7 @@ fn build(o: &Options) -> Result<String, String> {
     }
     let page = TEMPLATE
         .replace("NONCE", &nonce)
-        .replace("/*FONTS*/", &font_faces())
+        .replace("/*UI*/", &ui_style())
         .replace("<!--VIEWER-->", &shared);
     let (head, tail) = page
         .split_once("<!--DATA-->")
