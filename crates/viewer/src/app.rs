@@ -419,7 +419,7 @@ impl Shown {
                 tag(
                     painter,
                     rect,
-                    at,
+                    egui::Rect::from_pos(at),
                     &format!("{}: {}", probe.label, probe.value),
                     hex(MARK),
                     placed,
@@ -436,7 +436,14 @@ impl Shown {
                 hex(MARK),
                 egui::Stroke::new(2.0, egui::Color32::BLACK),
             );
-            tag(painter, rect, at, &mark.text, hex(MARK), placed);
+            tag(
+                painter,
+                rect,
+                egui::Rect::from_pos(at),
+                &mark.text,
+                hex(MARK),
+                placed,
+            );
         }
     }
 }
@@ -456,13 +463,14 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
     })
 }
 
-/// The text `text` on a box of the colour `color`, next to the point `at` on the side away from
-/// the view centre, in the view `rect`, with a line width of at most half the view. The tag does not cover the
-/// earlier tags in `placed`, if the view has space for it, and is added to `placed`.
+/// The text `text` on a box of the colour `color`, next to the screen box `around` (a point or
+/// the faces of a set) on the side away from the view centre, in the view `rect`, with a line
+/// width of at most half the view. The tag does not cover the earlier tags in `placed`, if the
+/// view has space for it, and is added to `placed`.
 fn tag(
     painter: &egui::Painter,
     rect: egui::Rect,
-    at: egui::Pos2,
+    around: egui::Rect,
     text: &str,
     color: egui::Color32,
     placed: &mut Vec<egui::Rect>,
@@ -490,13 +498,20 @@ fn tag(
     };
     // The camera looks at the view centre, so a tag on the far side of the point from the
     // centre does not cover the model.
+    let at = around.center();
     let (left, up) = (at.x < rect.center().x, at.y < rect.center().y);
     let anchor = egui::Align2([
         [egui::Align::Min, egui::Align::Max][usize::from(left)],
         [egui::Align::Min, egui::Align::Max][usize::from(up)],
     ]);
-    let gap = egui::vec2(if left { -6.0 } else { 6.0 }, if up { -6.0 } else { 6.0 });
-    let first = fit(anchor.anchor_size(at + gap, galley.size()));
+    // Above or below the box, so that the tag does not cover the faces of a set.
+    let y = if up {
+        around.top() - 6.0
+    } else {
+        around.bottom() + 6.0
+    };
+    let x = if left { at.x - 6.0 } else { at.x + 6.0 };
+    let first = fit(anchor.anchor_size(egui::pos2(x, y), galley.size()));
     let mut place = first;
     // Move the tag below each earlier tag that it covers.
     for _ in 0..placed.len() {
@@ -655,10 +670,21 @@ fn loads_overlay(
             }
         }
         let Some(at) = at else { continue };
+        // A support tag goes next to the screen box of its outline, not on its faces.
+        let mut around = egui::Rect::from_pos(at);
+        if p.arrow(item).is_none() {
+            for &([a, b], _) in &item.outline {
+                for x in [a, b].iter().filter_map(|&n| positions.get(n as usize)) {
+                    if let Some(s) = screen(*x) {
+                        around.extend_with(s);
+                    }
+                }
+            }
+        }
         tag(
             painter,
             rect,
-            at,
+            around,
             &item.label,
             rgb(COLORS[item.color]),
             placed,
