@@ -28,6 +28,8 @@ article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; backg
 article :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--code); overflow-wrap: anywhere; }
 /* A table scrolls on a narrow screen: a name in a cell stays whole and does not break inside a word. */
 article td > code { overflow-wrap: normal; }
+/* The first column (the name of each row) stays in view while the table scrolls sideways. */
+article :is(th, td):first-child { position: sticky; left: 0; background: var(--side); }
 article button, article select, .toolbar button, .toolbar select { font-size: var(--body); }
 /* A report with no run has no viewer: the text fills the page. */
 body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
