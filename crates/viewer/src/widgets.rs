@@ -198,19 +198,40 @@ pub fn legend(
         );
         return;
     }
+    let (min, max) = if fixed_range {
+        ("Range min", "Range max")
+    } else {
+        ("Min", "Max")
+    };
+    // A short panel (the panel below the model on a phone) shows all bands as one bar on one
+    // row: the smallest value, the bands (the lowest at the left), the largest value. The bands
+    // are equal, so the two ends give their limits.
+    if ui.clip_rect().height() < 400.0 {
+        text_row(ui, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.weak(max);
+                ui.monospace(view::format_value(hi));
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.weak(min);
+                    ui.monospace(view::format_value(lo));
+                    let size = egui::vec2(ui.available_width(), 14.0);
+                    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+                    let width = rect.width() / BANDS as f32;
+                    for (i, &color) in BAND_COLORS.iter().enumerate() {
+                        let left = rect.left() + width * i as f32;
+                        let cell = egui::Rect::from_x_y_ranges(left..=left + width, rect.y_range());
+                        ui.painter().rect_filled(cell, 0.0, rgb(color));
+                    }
+                });
+            });
+        });
+        return;
+    }
     let limits = results::band_limits(lo, hi);
     let texts = view::format_limits(&limits);
     for i in (0..BANDS).rev() {
         band(ui, i, format!("{} to {}", texts[i], texts[i + 1]));
     }
-    readout(
-        ui,
-        if fixed_range { "Range min" } else { "Min" },
-        &view::format_value(lo),
-    );
-    readout(
-        ui,
-        if fixed_range { "Range max" } else { "Max" },
-        &view::format_value(hi),
-    );
+    readout(ui, min, &view::format_value(lo));
+    readout(ui, max, &view::format_value(hi));
 }

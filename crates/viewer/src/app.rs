@@ -620,8 +620,10 @@ fn results_panel(
     drawn: Option<&[[f32; 3]]>,
 ) -> bool {
     let before = v.clone();
-    ui.heading("Results");
-    ui.label(format!("Units: {}", r.units));
+    ui.horizontal(|ui| {
+        ui.heading("Results");
+        ui.label(format!("Units: {}", r.units));
+    });
     if let Some(all) = all {
         ui.checkbox(all, "Show all controls")
             .on_hover_text("also the fields that are not important for this run");
