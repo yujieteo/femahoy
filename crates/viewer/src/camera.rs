@@ -116,6 +116,19 @@ impl Camera {
         ]
     }
 
+    /// The world ray through a normalized viewport point, with Y up.
+    pub fn ray(&self, aspect: f32, at: [f32; 2]) -> ([f32; 3], [f32; 3]) {
+        let (right, up) = self.right_up();
+        let forward = neg(self.eye_dir());
+        let tan = (FOV_Y * 0.5).tan();
+        (
+            self.eye(),
+            normalize(std::array::from_fn(|k| {
+                forward[k] + tan * (at[0] * aspect * right[k] + at[1] * up[k])
+            })),
+        )
+    }
+
     pub fn eye(&self) -> [f32; 3] {
         let d = self.eye_dir();
         std::array::from_fn(|k| self.target[k] + d[k] * self.distance)
@@ -259,6 +272,21 @@ mod tests {
                         c[0].abs() <= c[3] && c[1].abs() <= c[3],
                         "bounds outside aspect {aspect}: {c:?}"
                     );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_probe_ray_projects_back_to_its_viewport_point() {
+        let camera = Camera::fit(None, false);
+        for aspect in [0.5, 1.0, 2.0] {
+            for ndc in [[0.0, 0.0], [-0.6, 0.3], [0.8, -0.4]] {
+                let (origin, direction) = camera.ray(aspect, ndc);
+                let point = std::array::from_fn(|k| origin[k] + camera.distance * direction[k]);
+                let clip = transform(&camera.view_proj(aspect), point);
+                for k in 0..2 {
+                    assert!((clip[k] / clip[3] - ndc[k]).abs() < 1e-5);
                 }
             }
         }

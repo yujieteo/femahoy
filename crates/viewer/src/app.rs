@@ -5,8 +5,8 @@
 //! an arrow for each load and a label for each set.
 //! The results show the same labels and arrows, with the outline of the faces of each set.
 //! The results panel shows the controls of the view of the run (see [`view::Panel`]), and the
-//! viewport shows the marks of the view. A run with no view shows its important controls and the
-//! switch "Show all controls". A report can ask for all the controls of the run, and for a step
+//! viewport shows the marks of the view. A run with no view shows each control that applies, its
+//! important fields and the switch "Show all controls". A report can ask for all the controls of the run, and for a step
 //! of the open run (see [`Request`]).
 
 use std::sync::{Arc, Mutex};
@@ -56,7 +56,7 @@ pub type RequestSlot = Arc<Mutex<Request>>;
 /// The results of a run with their view state, their panel and their view, or a model before
 /// the solve.
 enum Body {
-    Results(Box<Results>, ViewState, Loads, Panel, View),
+    Results(Box<Results>, Box<ViewState>, Loads, Panel, View),
     Preview(Box<Preview>),
 }
 
@@ -114,7 +114,11 @@ impl ViewerApp {
         let mut frame = None;
         let body = match content {
             Content::Results(r, preview, view) => {
-                let state = ViewState::open(&r, &view, &panel(&r, &view, &preview, false));
+                let state = Box::new(ViewState::open(
+                    &r,
+                    &view,
+                    &panel(&r, &view, &preview, false),
+                ));
                 let panel = panel(&r, &view, &preview, self.all);
                 let same_mesh = (r.meshes.iter())
                     .map(|m| preview.as_ref().is_ok_and(|p| p.matches(m)))
@@ -183,6 +187,7 @@ impl ViewerApp {
         if let Some(shown) = self.shown.as_mut() {
             if let Body::Results(r, v, ..) = &mut shown.body {
                 v.step = step.min(r.steps.len().saturating_sub(1));
+                v.probe = None;
                 v.playing = None;
                 shown.refresh();
             }
@@ -314,11 +319,12 @@ impl Shown {
     /// The panel of the body. A run with no view has the switch `all`. Returns true when the
     /// view state changed.
     fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
+        let drawn = self.geometry.as_deref().map(|g| &g.positions[..]);
         match &mut self.body {
             Body::Results(r, v, loads, panel, view) => {
                 let before = *all;
                 let switch = (*view == View::default()).then_some(&mut *all);
-                let changed = results_panel(ui, r, v, panel, switch);
+                let changed = results_panel(ui, r, v, panel, switch, drawn);
                 if *all != before {
                     *panel = self::panel(r, view, &loads.preview, *all);
                 }
@@ -361,6 +367,23 @@ impl Shown {
             return;
         };
         let shown = |mark: &&Mark| mark.step.is_none_or(|s| s == v.step);
+        if let Some(probe) = &v.probe {
+            if let Some(at) = probe.drawn_at.and_then(|p| screen(m, rect, p)) {
+                painter.circle(
+                    at,
+                    6.0,
+                    hex(MARK),
+                    egui::Stroke::new(2.0, painter.ctx().global_style().visuals.text_color()),
+                );
+                tag(
+                    painter,
+                    rect,
+                    at,
+                    &format!("{}: {}", probe.label, probe.value),
+                    hex(MARK),
+                );
+            }
+        }
         for mark in view.marks.iter().filter(shown) {
             let Some(at) = screen(m, rect, mark.at) else {
                 continue;
@@ -422,7 +445,7 @@ fn tag(
     painter.galley(place.min, galley, ink);
 }
 
-/// The panel of the results `r` with the view `view` (the important controls when it is empty),
+/// The panel of the results `r` with the view `view` (the important fields when it is empty),
 /// or with each control of the run when `all` is true. `preview` has the supports and loads of
 /// the input.
 fn panel(r: &Results, view: &View, preview: &Result<Box<Preview>, String>, all: bool) -> Panel {
@@ -561,20 +584,22 @@ fn loads_overlay(
 }
 
 /// The results panel: the switch `all` when it is given, and the controls and the fields of
-/// `panel`. Returns true when the view state changed.
+/// `panel`. `drawn` has the positions of the drawn mesh of `v`. Returns true when the view
+/// state changed.
 fn results_panel(
     ui: &mut egui::Ui,
     r: &Results,
     v: &mut ViewState,
     panel: &Panel,
     all: Option<&mut bool>,
+    drawn: Option<&[[f32; 3]]>,
 ) -> bool {
     let before = v.clone();
     ui.heading("Results");
     ui.label(format!("Units: {}", r.units));
     if let Some(all) = all {
         ui.checkbox(all, "Show all controls")
-            .on_hover_text("also the controls that are not important for this run");
+            .on_hover_text("also the fields that are not important for this run");
     }
     ui.separator();
 
@@ -603,6 +628,46 @@ fn results_panel(
                 }
             });
     }
+    if v.step != before.step
+        || v.field != before.field
+        || v.scale != before.scale
+        || v.deformed != before.deformed
+    {
+        v.probe = None;
+    }
+    if shows(Control::Scale) {
+        readout(
+            ui,
+            "Deformation",
+            &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
+        );
+    }
+    if shows(Control::Range) {
+        ui.label("Colour range");
+        let items = [
+            ("Current step", !v.all_steps, "limits of this step"),
+            ("All steps", v.all_steps, "one range across this run"),
+        ];
+        if let Some(i) = segmented(ui, &items) {
+            v.all_steps = i == 1;
+        }
+        if matches!(v.contour(r), Contour::On { .. }) {
+            ui.weak(if v.all_steps {
+                "Range: all steps"
+            } else {
+                "Range: current step"
+            });
+        }
+    }
+    if shows(Control::Probe) {
+        let same =
+            v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
+        let scale_shown = shows(Control::Scale) || shows(Control::Deformation);
+        probe_controls(ui, r, v, drawn.filter(|_| same), scale_shown);
+    } else {
+        v.probe_mode = false;
+        v.probe = None;
+    }
     match v.contour(r) {
         Contour::Off => {}
         Contour::Missing(name) => {
@@ -614,6 +679,106 @@ fn results_panel(
         Contour::On { field, lo, hi } => legend(ui, &r.units, field, lo, hi),
     }
     *v != before
+}
+
+/// The probe controls. `drawn` has the positions of the drawn mesh, or is `None` when the
+/// drawn mesh is not yet the mesh of `v`. The probe shows the deformation scale when
+/// `scale_shown` is false.
+fn probe_controls(
+    ui: &mut egui::Ui,
+    r: &Results,
+    v: &mut ViewState,
+    drawn: Option<&[[f32; 3]]>,
+    scale_shown: bool,
+) {
+    ui.checkbox(&mut v.probe_mode, "Probe surface")
+        .on_hover_text("click the model to probe, Escape clears");
+    let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
+        return;
+    };
+    let mesh = r.mesh(v.current(r));
+    let positions = |v: &ViewState| match drawn {
+        Some(p) => std::borrow::Cow::Borrowed(p),
+        None => std::borrow::Cow::Owned(results::deformed_positions(
+            mesh,
+            v.current(r),
+            if v.deformed { v.scale } else { 0.0 },
+        )),
+    };
+    let mut chosen = None;
+    ui.horizontal(|ui| {
+        if widgets::button(ui, "Min", "locate the actual minimum item").clicked() {
+            chosen = Some(false);
+        }
+        if widgets::button(ui, "Max", "locate the actual maximum item").clicked() {
+            chosen = Some(true);
+        }
+        if widgets::button(ui, "Clear", "clear probe (Escape)").clicked() {
+            chosen = None;
+            v.probe = None;
+        }
+    });
+    if let Some(max) = chosen {
+        v.probe = crate::probe::extreme(mesh, &positions(v), field, max);
+    }
+    if v.probe_mode && !field.values.is_empty() {
+        let mut index = v.probe.as_ref().map_or(1, |p| p.index + 1);
+        ui.horizontal(|ui| {
+            let text = match field.location {
+                results::Location::Point => "Node index",
+                results::Location::Cell => "Element index",
+            };
+            let label = ui.label(text);
+            if ui
+                .add(
+                    egui::DragValue::new(&mut index)
+                        .range(1..=field.values.len())
+                        .speed(1),
+                )
+                .labelled_by(label.id)
+                .changed()
+            {
+                v.probe = crate::probe::at_index(mesh, &positions(v), field, index - 1);
+            }
+        });
+    }
+    if let Some(p) = &v.probe {
+        ui.strong(format!(
+            "{} · {} · Step {}",
+            p.label,
+            field.name,
+            v.step + 1
+        ));
+        let location = match field.location {
+            results::Location::Point => "At node index",
+            results::Location::Cell => "Per element index",
+        };
+        readout(ui, location, &(p.index + 1).to_string());
+        readout(
+            ui,
+            "Value",
+            &format!("{} {}", p.value, view::unit_text(&r.units, field.quantity)),
+        );
+        if let Some(at) = p.at {
+            ui.label(format!(
+                "Model coordinates: {}, {}, {} ({})",
+                at[0],
+                at[1],
+                at[2],
+                view::unit_text(&r.units, results::Quantity::Displacement)
+            ));
+            ui.weak("Surface marker may be hidden by another face.");
+        } else {
+            ui.label(format!("{} is hidden: no surface marker.", p.label));
+        }
+        if !scale_shown {
+            readout(
+                ui,
+                "Deformation",
+                &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
+            );
+        }
+    }
 }
 
 /// The step selector, the play button and the step slider.
@@ -704,6 +869,15 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.take_request();
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if let Some(Shown {
+                body: Body::Results(_, v, ..),
+                ..
+            }) = self.shown.as_mut()
+            {
+                v.probe = None;
+            }
+        }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
             ui.weak(self.status_text());
@@ -797,6 +971,34 @@ impl eframe::App for ViewerApp {
             let view_proj = shown
                 .camera
                 .view_proj(rect.width() / rect.height().max(1.0));
+            if response.clicked() && !response.double_clicked() {
+                if let (Some(pointer), Body::Results(r, v, ..), Some(g)) = (
+                    response.interact_pointer_pos(),
+                    &mut shown.body,
+                    &shown.geometry,
+                ) {
+                    if v.probe_mode {
+                        if let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n))
+                        {
+                            let mesh = r.mesh(v.current(r));
+                            let ndc = [
+                                2.0 * (pointer.x - rect.left()) / rect.width() - 1.0,
+                                1.0 - 2.0 * (pointer.y - rect.top()) / rect.height(),
+                            ];
+                            let (origin, direction) =
+                                shown.camera.ray(rect.width() / rect.height().max(1.0), ndc);
+                            v.probe = crate::probe::pick(
+                                mesh,
+                                &g.positions,
+                                field,
+                                origin,
+                                direction,
+                                &view_proj,
+                            );
+                        }
+                    }
+                }
+            }
             let params = FrameParams {
                 view_proj,
                 eye: shown.camera.eye(),

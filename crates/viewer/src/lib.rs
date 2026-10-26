@@ -16,6 +16,7 @@ mod controls;
 mod gpu;
 pub mod mesh;
 pub mod preview;
+pub mod probe;
 pub mod results;
 pub mod ui;
 pub mod view;
