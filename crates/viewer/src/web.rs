@@ -201,8 +201,23 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement, token: String) -> Result<
     let control_canvas = canvas.clone();
     let canvas_id = canvas.id();
     let ctx: Rc<RefCell<Option<egui::Context>>> = Rc::default();
+    // While the results panel is in the page flow (a phone), a touch that starts outside the
+    // model area keeps its browser action, so a swipe there scrolls the page. A touch on the
+    // model keeps the gestures of the model. Each release stops the mouse events of the browser.
+    let (touch_slot, on_model) = (slot.clone(), Cell::new(true));
     let options = eframe::WebOptions {
         depth_buffer: crate::gpu::DEPTH_BITS,
+        should_prevent_default: Box::new(move |event| match event {
+            egui::Event::PointerButton {
+                pos, pressed: true, ..
+            } => {
+                let model = touch_slot.lock().ok().and_then(|r| r.model);
+                on_model.set(model.is_none_or(|m| m.contains(*pos)));
+                on_model.get()
+            }
+            egui::Event::PointerMoved(_) => on_model.get(),
+            _ => true,
+        }),
         ..Default::default()
     };
     let (app_slot, app_ctx) = (slot.clone(), ctx.clone());

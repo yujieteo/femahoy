@@ -59,6 +59,11 @@ pub struct Request {
     pub mesh: Option<bool>,
     pub camera_link: Option<Option<CameraLink>>,
     pub status: String,
+    /// The model area in canvas points while the results panel is in the page flow (a phone).
+    /// A touch that starts outside it scrolls the page.
+    pub model: Option<egui::Rect>,
+    /// The page scrolled under the last touch, so its release is the end of a swipe, not a tap.
+    pub scrolled: bool,
 }
 
 /// A request that the page fills, then asks for a repaint.
@@ -87,7 +92,9 @@ struct Shown {
     home: Camera,
     /// The camera after the last view action. Orbit, pan or zoom away from it shows Custom.
     named: Camera,
-    initial_fit: bool,
+    /// The model area size at the last fit of the first view. Until the person moves the camera,
+    /// a new size fits the first view again, for example when the page layout settles.
+    fit_size: Option<egui::Vec2>,
     /// The index of the mesh on the GPU.
     uploaded: Option<usize>,
 }
@@ -112,6 +119,8 @@ pub struct ViewerApp {
     text_scale: f32,
     /// The height that the results panel below the model needed at the last frame.
     results_height: Option<f32>,
+    /// The height of the results panel in the page flow that the page has, 0 for none.
+    flow_height: f32,
 }
 
 impl ViewerApp {
@@ -120,6 +129,7 @@ impl ViewerApp {
             canvas_id,
             text_scale: 0.0,
             results_height: None,
+            flow_height: 0.0,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
@@ -168,7 +178,7 @@ impl ViewerApp {
             home: Camera::fit(None, false),
             named: Camera::fit(None, false),
             uploaded: None,
-            initial_fit: true,
+            fit_size: None,
         };
         shown.home = match frame {
             _ if self.mesh_only => Camera::fit(shown.mesh().bounds, false),
@@ -777,7 +787,7 @@ fn results_panel(
     };
     // A short panel (the panel below the model on a phone) shows the header last, so that
     // the colour scale and the probe stay in view at a large text size.
-    let short = ui.clip_rect().height() < 400.0;
+    let short = widgets::short(ui);
     if !short {
         header(ui);
         ui.separator();
@@ -1103,6 +1113,22 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 }
 
 impl eframe::App for ViewerApp {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        let scrolled = (self.slot.lock()).is_ok_and(|mut r| std::mem::take(&mut r.scrolled));
+        // A move far from the press before the release makes the release no click, so a
+        // swipe that scrolls the page does not press the button under the finger.
+        let release = raw_input
+            .events
+            .iter()
+            .position(|e| matches!(e, egui::Event::PointerButton { pressed: false, .. }));
+        if let (true, Some(i)) = (scrolled, release) {
+            if let egui::Event::PointerButton { pos, .. } = raw_input.events[i] {
+                let far = pos + egui::vec2(0.0, 1e4);
+                raw_input.events.insert(i, egui::Event::PointerMoved(far));
+            }
+        }
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         if crate::controls::fit_backing_store(&self.canvas_id) {
             ui.ctx().request_repaint();
@@ -1155,19 +1181,33 @@ impl eframe::App for ViewerApp {
             // Results panel. The full text shows on hover and goes to the screen reader.
             ui.add(egui::Label::new(egui::RichText::new(self.status_text()).weak()).truncate());
         });
+        // On a phone the page puts the results panel in its flow: the canvas is taller by the
+        // panel height, so a swipe on the panel scrolls the page.
+        let flow = crate::controls::page_flow();
+        ui.data_mut(|d| d.insert_temp(egui::Id::new(widgets::IN_FLOW), flow));
+        let mut flow_height = 0.0;
         if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
             // On a narrow view (a phone) the results go below the model, so that the model
-            // keeps the full width. A short, wide view (a phone in landscape) keeps them on
-            // the right when the model area then stays at least as wide as it is high.
+            // keeps the full width. A short, wide view (a desktop) keeps them on the right
+            // when the model area then stays at least as wide as it is high.
             const RIGHT: f32 = 260.0;
             let size = ui.available_size();
             // Below the model, the panel is only as high as its content, so that a view
             // with few controls (a report) gives the rest of the height to the model.
-            let below = size.x < 600.0 && size.x - RIGHT < size.y;
+            let below = flow || (size.x < 600.0 && size.x - RIGHT < size.y);
+            // In the page flow the GPU surface is the canvas height in device pixels. It must
+            // not be more than the largest texture side, so a taller panel scrolls in its box.
+            let (screen, pixels) = ui.input(|i| (i.content_rect().height(), i.pixels_per_point));
+            let max_side = ui.input(|i| i.max_texture_side) as f32;
+            let flow_most = (max_side / pixels - (screen - self.flow_height) - 1.0)
+                .floor()
+                .max(0.0);
             let panel = if below {
-                let most = size.y * 0.4;
-                egui::Panel::bottom("results")
-                    .exact_size(self.results_height.map_or(most, |needed| needed.min(most)))
+                let most = if flow { flow_most } else { size.y * 0.4 };
+                egui::Panel::bottom("results").exact_size(
+                    self.results_height
+                        .map_or(size.y * 0.4, |needed| needed.min(most)),
+                )
             } else {
                 egui::Panel::right("results").min_size(RIGHT)
             };
@@ -1187,7 +1227,14 @@ impl eframe::App for ViewerApp {
                     self.results_height = Some(needed);
                     ui.ctx().request_repaint();
                 }
+                if flow {
+                    flow_height = needed.min(flow_most);
+                }
             }
+        }
+        if flow_height != self.flow_height {
+            self.flow_height = flow_height;
+            crate::controls::set_flow_height(flow_height);
         }
         self.upload();
         if let Some(shown) = &self.shown {
@@ -1218,17 +1265,26 @@ impl eframe::App for ViewerApp {
             };
             let size = ui.available_size();
             let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+            if let Ok(mut request) = self.slot.lock() {
+                request.model = flow.then_some(rect);
+            }
             if response.clicked() {
                 response.request_focus();
             }
             let aspect = rect.width() / rect.height().max(1.0);
             // A hidden view (for example the page with Runs open and no run) is 0 px wide,
-            // so the first fit waits for a view with a size.
-            if shown.initial_fit && rect.width() >= 1.0 && rect.height() >= 1.0 {
+            // so the first fit waits for a view with a size. Before the page layout settles
+            // the view can be very narrow, and a fit then shows a very small model.
+            let unmoved = shown.fit_size.is_none() || shown.camera == shown.home;
+            if unmoved
+                && shown.fit_size != Some(size)
+                && rect.width() >= 1.0
+                && rect.height() >= 1.0
+            {
                 shown.home.fit_distance(aspect);
                 shown.camera = shown.home;
                 shown.named = shown.camera;
-                shown.initial_fit = false;
+                shown.fit_size = Some(size);
                 if self.mesh_only {
                     if let Some(link) = &self.camera_link {
                         if let Ok(mut camera) = link.lock() {

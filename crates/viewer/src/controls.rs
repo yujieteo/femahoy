@@ -1,13 +1,21 @@
 //! The camera toolbar of the shared UI layer. Both page types get this component from the
 //! viewer, so its native HTML controls have the same keyboard paths and VoiceOver labels.
+//! On a phone the toolbar is a pull-down menu: 1 round button over the corner of the 3D view.
 
 use eframe::egui;
+use std::cell::Cell;
+use std::rc::Rc;
+
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
-use web_sys::{Element, HtmlCanvasElement, HtmlElement, HtmlSelectElement, KeyboardEvent};
+use web_sys::{
+    Element, EventTarget, HtmlCanvasElement, HtmlElement, HtmlSelectElement, KeyboardEvent,
+};
 
 use crate::{app::RequestSlot, view::Control};
 
 const TOOLBAR: &str = r#"
+<button type="button" class="icon" data-camera-menu id="fh-camera-menu" aria-label="Camera controls" aria-controls="fh-camera-panel" aria-expanded="false"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="13" cy="8" r="1.5" fill="currentColor"/></svg></button>
+<div data-camera-panel id="fh-camera-panel">
 <div class="toolbar" role="group" aria-label="Camera controls">
   <button type="button" data-camera="fit" aria-keyshortcuts="F" title="Fit the full model. Keep the camera direction.">Fit <kbd>F</kbd></button>
   <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Go back to the first view of the model">Reset view <kbd>Home</kbd></button>
@@ -23,15 +31,23 @@ const TOOLBAR: &str = r#"
   <span data-pointer="mouse">Shortcuts act when the model has focus.</span>
   <span data-pointer="touch"><b>Drag</b> Orbit</span><span data-pointer="touch"><b>Two-finger drag</b> Pan</span>
   <span data-pointer="touch"><b>Pinch</b> Zoom</span><span data-pointer="touch"><b>Double tap</b> Reset view</span>
-</p></div>"#;
+</p></div>
+</div>"#;
 
+/// Listen to `event` on `target`. With `capture`, a window listener runs before the
+/// listeners of eframe.
 fn listen(
-    element: &Element,
+    target: &EventTarget,
     event: &str,
+    capture: bool,
     action: impl FnMut(web_sys::Event) + 'static,
 ) -> Result<(), JsValue> {
     let callback = Closure::wrap(Box::new(action) as Box<dyn FnMut(web_sys::Event)>);
-    element.add_event_listener_with_callback(event, callback.as_ref().unchecked_ref())?;
+    target.add_event_listener_with_callback_and_bool(
+        event,
+        callback.as_ref().unchecked_ref(),
+        capture,
+    )?;
     // The toolbar and its listeners live for the lifetime of this viewer page.
     callback.forget();
     Ok(())
@@ -56,6 +72,13 @@ fn toggle_help(toolbar: &Element) {
     }
 }
 
+/// Open or close the pull-down menu of a phone. On a desktop the button is not shown.
+fn set_menu(toolbar: &Element, open: bool) {
+    if let Ok(Some(button)) = toolbar.query_selector("[data-camera-menu]") {
+        let _ = button.set_attribute("aria-expanded", if open { "true" } else { "false" });
+    }
+}
+
 pub fn install(
     canvas: &HtmlCanvasElement,
     slot: RequestSlot,
@@ -74,11 +97,18 @@ pub fn install(
     }
     let toolbar = doc.create_element("section")?;
     toolbar.set_id(&format!("{}-camera-controls", canvas.id()));
+    toolbar.set_class_name("camera");
     toolbar.set_attribute("aria-label", "Camera controls")?;
     toolbar.set_attribute("hidden", "")?;
     toolbar.set_inner_html(TOOLBAR);
     // Each canvas owns its toolbar, also when a page compares two runs.
-    for id in ["fh-direction", "fh-help-button", "fh-camera-help"] {
+    for id in [
+        "fh-direction",
+        "fh-help-button",
+        "fh-camera-help",
+        "fh-camera-menu",
+        "fh-camera-panel",
+    ] {
         if let Some(element) = toolbar.query_selector(&format!("#{id}"))? {
             element.set_id(&format!("{}-{id}", canvas.id()));
         }
@@ -86,7 +116,25 @@ pub fn install(
     if let Some(button) = toolbar.query_selector("[data-camera='help']")? {
         button.set_attribute("aria-controls", &format!("{}-fh-camera-help", canvas.id()))?;
     }
+    let menu = toolbar
+        .query_selector("[data-camera-menu]")?
+        .ok_or("no camera menu")?;
+    menu.set_attribute("aria-controls", &format!("{}-fh-camera-panel", canvas.id()))?;
     model.insert_before(&toolbar, Some(&view))?;
+    let target = toolbar.clone();
+    let button = menu.clone();
+    listen(&menu, "click", false, move |_| {
+        set_menu(
+            &target,
+            button.get_attribute("aria-expanded").as_deref() != Some("true"),
+        );
+    })?;
+    // A touch on the model closes the menu, as on iOS.
+    let target = toolbar.clone();
+    listen(canvas, "pointerdown", false, move |_| {
+        set_menu(&target, false)
+    })?;
+    touch_scroll(canvas, slot.clone())?;
     for name in ["fit", "report-view", "views", "help"] {
         let control = toolbar
             .query_selector(&format!("[data-camera='{name}']"))?
@@ -94,11 +142,13 @@ pub fn install(
         let event = if name == "views" { "change" } else { "click" };
         let (slot, ctx, canvas) = (slot.clone(), ctx.clone(), canvas.clone());
         let toolbar = toolbar.clone();
-        listen(&control, event, move |event| {
+        listen(&control, event, false, move |event| {
             if name == "help" {
                 toggle_help(&toolbar);
                 return;
             }
+            // A choice closes the menu, as on iOS.
+            set_menu(&toolbar, false);
             let action = if name == "views" {
                 let Some(select) = event
                     .target()
@@ -120,9 +170,8 @@ pub fn install(
             }
         })?;
     }
-    let element: &Element = canvas.as_ref();
     let target = canvas.clone();
-    listen(element, "keydown", move |event| {
+    listen(canvas, "keydown", false, move |event| {
         let Some(key) = event.dyn_ref::<KeyboardEvent>() else {
             return;
         };
@@ -150,6 +199,63 @@ pub fn install(
         key.prevent_default();
     })?;
     Ok(())
+}
+
+/// Mark a touch on the canvas that scrolled the page, so that the app does not take its
+/// release as a tap. The canvas moves on the screen when the page scrolls.
+fn touch_scroll(canvas: &HtmlCanvasElement, slot: RequestSlot) -> Result<(), JsValue> {
+    let window = web_sys::window().ok_or("no window")?;
+    let start: Rc<Cell<Option<f64>>> = Rc::default();
+    let (top, from, clear) = (canvas.clone(), start.clone(), slot.clone());
+    listen(&window, "touchstart", true, move |event| {
+        let on_canvas = event.target().as_ref() == Some(top.as_ref());
+        from.set(on_canvas.then(|| top.get_bounding_client_rect().top()));
+        if let Ok(mut r) = clear.lock() {
+            r.scrolled = false;
+        }
+    })?;
+    let top = canvas.clone();
+    for event in ["touchend", "touchcancel"] {
+        let (top, start, slot) = (top.clone(), start.clone(), slot.clone());
+        listen(&window, event, true, move |_| {
+            let Some(from) = start.take() else {
+                return;
+            };
+            if (top.get_bounding_client_rect().top() - from).abs() > 1.0 {
+                if let Ok(mut r) = slot.lock() {
+                    r.scrolled = true;
+                }
+            }
+        })?;
+    }
+    Ok(())
+}
+
+/// True when the page puts the results panel in its flow (a phone): its CSS sets `--fh-flow`
+/// to 1. Then the canvas is taller by the panel height (`--fh-panel`, see [`set_flow_height`]).
+pub fn page_flow() -> bool {
+    web_sys::window()
+        .and_then(|window| {
+            let root = window.document()?.document_element()?;
+            let value = window
+                .get_computed_style(&root)
+                .ok()??
+                .get_property_value("--fh-flow")
+                .ok()?;
+            Some(value.trim() == "1")
+        })
+        .unwrap_or(false)
+}
+
+/// Give the page the height of the results panel in its flow, in CSS pixels.
+pub fn set_flow_height(height: f32) {
+    let root = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.document_element());
+    if let Some(root) = root {
+        let _ = (root.unchecked_ref::<HtmlElement>().style())
+            .set_property("--fh-panel", &format!("{}px", height.ceil()));
+    }
 }
 
 /// Show only the named controls, unless the person asks for all controls.
