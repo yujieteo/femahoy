@@ -119,6 +119,10 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   #model { flex: none; height: 100svh; }
   /* With no model to show, the empty view only fills the rest of the screen below the chat. */
   #model[data-empty] { flex: 1; height: auto; }
+  /* With no model and Runs open, the list is the view: it has no own scroll box and the empty
+     3D view with its "No run is open" text is not shown. */
+  #model[data-empty]:has(#runs[open]) #pair { display: none; }
+  #model[data-empty] #run-list { max-height: none; }
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
   /* Runs, Files and Open report stay on 1 row: the run name gets shorter, from its start. */
   #runs { flex: 1 1 0; }

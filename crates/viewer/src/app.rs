@@ -1166,7 +1166,9 @@ impl eframe::App for ViewerApp {
                 response.request_focus();
             }
             let aspect = rect.width() / rect.height().max(1.0);
-            if shown.initial_fit {
+            // A hidden view (for example the page with Runs open and no run) is 0 px wide,
+            // so the first fit waits for a view with a size.
+            if shown.initial_fit && rect.width() >= 1.0 && rect.height() >= 1.0 {
                 shown.home.fit_distance(aspect);
                 shown.camera = shown.home;
                 shown.named = shown.camera;
