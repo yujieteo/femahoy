@@ -1,10 +1,61 @@
 <h2>Conclusion</h2>
 <p>The model gives the effect of the flap with the correct sign and about the correct size. Each 10 degrees of flap down adds 0.56 to the lift coefficient of the model. In the test of Abbott and Greenberg (1939), it adds 0.44 to 0.50. The lift of the model is 7 % to 22 % above Table I of the test. The moment of the airfoil with the flap up or down is 20 % to 28 % larger. The section "Tolerance" below gives the causes. The lift slope of the model is 0.106 to 0.111 per degree, and the lift slope of the test is 0.094 to 0.100. The boundary layer on the flap of the test was thicker.</p>
-<!--curve flap.csv-->
-<label data-bar>Flap angle <select>
-<option data-run="d-10" data-fields="p" data-controls="" data-box="-0.15,-0.35,1,1.25,0.35,1" data-marks="0.8,0.0044,1 hinge, x / c = 0.8">10 degrees up</option>
-<option data-run="d0" data-fields="p" data-controls="" data-box="-0.15,-0.35,1,1.25,0.35,1" data-marks="0.8,0.0044,1 hinge, x / c = 0.8">0 degrees</option>
-<option data-run="d10" data-fields="p" data-controls="" data-box="-0.15,-0.35,1,1.25,0.35,1" data-marks="0.8,0.0044,1 hinge, x / c = 0.8" selected>10 degrees down</option>
+<section data-cfd>
+<p>The field and the plots use the same solved flap angle. Each plot has its own vertical scale.</p>
+<label data-bar data-cfd-control="cfd-flap">Flap angle <select data-cfd-flap name="cfd-flap"><option data-run="d-10" data-angle="-10" data-fields="p" data-controls="cfd-field,cfd-mesh,cfd-flap,cfd-load,cfd-chord-station,cfd-force-interval,cfd-streamlines,cfd-flap-seed" data-box="-0.15,-0.35,1,1.25,0.35,1" data-marks="0.8,0.0044,1 hinge, x / c = 0.8">10 degrees up</option>
+<option data-run="d0" data-angle="0" data-fields="p" data-controls="cfd-field,cfd-mesh,cfd-flap,cfd-load,cfd-chord-station,cfd-force-interval,cfd-streamlines,cfd-flap-seed" data-box="-0.15,-0.35,1,1.25,0.35,1" data-marks="0.8,0.0044,1 hinge, x / c = 0.8">0 degrees</option>
+<option data-run="d10" data-angle="10" data-fields="p" data-controls="cfd-field,cfd-mesh,cfd-flap,cfd-load,cfd-chord-station,cfd-force-interval,cfd-streamlines,cfd-flap-seed" data-box="-0.15,-0.35,1,1.25,0.35,1" data-marks="0.8,0.0044,1 hinge, x / c = 0.8" selected>10 degrees down</option>
 </select></label>
-<p>The flap changes the pressure on the full chord, not only on the flap. Select a flap angle above the view to see the pressure <code>p</code> near the airfoil. The dot marks the hinge of the flap. At x / c = 0.3 on the upper surface, -Cp is 0.18 with the flap up, 0.44 at 0 degrees and 0.71 with the flap down.</p>
-<!--curve cp.csv-->
+<div data-bar data-cfd-control="cfd-field" class="segmented" role="group" aria-label="CFD field">
+<label><input data-cfd-field type="radio" name="cfd-field" value="p" checked>Pressure</label>
+<label><input data-cfd-field type="radio" name="cfd-field" value="U magnitude">Speed</label>
+</div>
+<label data-bar data-cfd-control="cfd-mesh"><input data-cfd-mesh name="cfd-mesh" type="checkbox">Mesh</label>
+<p class="keys" data-bar data-cfd-control="cfd-field"><kbd>Tab</kbd> Select a control <kbd>←</kbd><kbd>→</kbd> Change the field or station</p>
+<p>Pressure means p/rho in m²/s². Speed uses m/s. The colour limits cover all 3 final fields.</p>
+<div data-cfd-load="lift">
+<label data-cfd-control="cfd-flap">Lift plot flap angle <select data-cfd-flap name="cfd-flap"></select></label>
+<p class="readout" data-cfd-control="cfd-load"><output aria-live="polite"></output></p>
+<!--cfd-curve lift.csv-->
+</div>
+<div data-cfd-load="moment">
+<label data-cfd-control="cfd-flap">Moment plot flap angle <select data-cfd-flap name="cfd-flap"></select></label>
+<p class="readout" data-cfd-control="cfd-load"><output aria-live="polite"></output></p>
+<!--cfd-curve moment.csv-->
+</div>
+<div data-cfd-cp>
+<h3>Pressure on each surface</h3>
+<label data-cfd-control="cfd-chord-station">Chord station x/c <input data-cfd-station name="cfd-station" type="range" min="0.01" max="0.99" step="0.01" value="0.8"></label>
+<p class="keys" data-cfd-control="cfd-chord-station"><kbd>←</kbd><kbd>→</kbd> Change the selected station</p>
+<p class="readout"><output aria-live="polite"></output></p>
+<p>Solid traces show the upper surface. Dashed traces show the lower surface. The heavier traces show the selected flap angle.</p>
+<p>The long dashed mark shows the hinge at x/c = 0.8. The short dashed mark shows the selected chord station.</p>
+<!--cfd-curve cp.csv-->
+</div>
+<div data-cfd-history>
+<h3>Force history and initial residuals</h3>
+<label data-cfd-control="cfd-force-interval">First sample of the interval <input data-cfd-interval name="cfd-interval" type="range" min="0" max="0" value="0"></label>
+<p class="readout"><output aria-live="polite"></output></p>
+<p data-cfd-history-absent></p>
+<div data-cfd-angle="-10">
+<!--cfd-curve history-d-10-cl.csv-->
+<!--cfd-curve history-d-10-cm.csv-->
+<!--cfd-curve residuals-d-10.csv-->
+</div>
+<div data-cfd-angle="0">
+<!--cfd-curve history-d0-cl.csv-->
+<!--cfd-curve history-d0-cm.csv-->
+<!--cfd-curve residuals-d0.csv-->
+</div>
+<div data-cfd-angle="10">
+<!--cfd-curve history-d10-cl.csv-->
+<!--cfd-curve history-d10-cm.csv-->
+<!--cfd-curve residuals-d10.csv-->
+</div>
+<p>Force convergence concerns the selected iteration interval. Mesh convergence requires a separate mesh study.</p>
+</div>
+<h3>Flow near the flap</h3>
+<label data-cfd-control="cfd-streamlines"><input data-cfd-streamlines name="cfd-streamlines" type="checkbox" checked>2D streamlines</label>
+<label data-cfd-control="cfd-flap-seed"><input data-cfd-seed name="cfd-seed" type="checkbox">Seed near the flap</label>
+<figure class="curve" data-cfd-flow></figure>
+</section>

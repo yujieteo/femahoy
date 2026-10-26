@@ -300,16 +300,23 @@ impl Curve {
         // The lines first, so that the points are on top.
         for (i, s) in self.series.iter().enumerate() {
             if s.source.is_none() {
-                let points: Vec<String> = self
-                    .values(i)
+                let mut points = Vec::new();
+                for (x, values) in self
+                    .rows
                     .iter()
-                    .map(|&(x, y)| format!("{:.1},{:.1}", px(x), py(y)))
-                    .collect();
-                svg.push_str(&format!(
-                    "<polyline style=\"stroke:var(--s{})\" points=\"{}\"/>",
-                    i + 1,
-                    points.join(" ")
-                ));
+                    .chain(std::iter::once(&(0.0, vec![None; self.series.len()])))
+                {
+                    if let Some(y) = values[i] {
+                        points.push(format!("{:.1},{:.1}", px(*x), py(y)));
+                    } else if !points.is_empty() {
+                        svg.push_str(&format!(
+                            "<polyline style=\"stroke:var(--s{})\" points=\"{}\"/>",
+                            i + 1,
+                            points.join(" ")
+                        ));
+                        points.clear();
+                    }
+                }
             }
         }
         for (i, s) in self.series.iter().enumerate() {
@@ -477,6 +484,16 @@ mod tests {
 
     const FRONT: &str = "# title: Front\n# y: Z [1]\n# points measured: Martin and Moyce (1952)\n\
                          # note: a <b>\nT [1],model,measured\n0.5,1.0,\n1.0,1.5,\n1.19,,1.44\n";
+
+    #[test]
+    fn an_absent_sample_leaves_a_gap_in_the_plot() {
+        let curve = Curve::parse(
+            "# y: residual [1]\niteration [1],p\n1,0.1\n2,0.05\n3,\n4,0.01\n5,0.001\n",
+            "residual",
+        )
+        .unwrap();
+        assert_eq!(curve.figure().matches("<polyline").count(), 2);
+    }
 
     #[test]
     fn a_curve_file_gives_its_series_and_round_trips() {

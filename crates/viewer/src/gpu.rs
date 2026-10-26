@@ -32,6 +32,7 @@ pub struct FrameParams {
     pub contour: bool,
     /// Draw the outline of the undeformed shape.
     pub ghost: bool,
+    pub mesh: bool,
     /// Colours for the bands in place of the contour colours.
     pub palette: Option<[[f32; 3]; BANDS]>,
 }
@@ -247,7 +248,7 @@ impl MeshGpu {
         put(&self.ghost, ghost, false);
     }
 
-    fn draw(&self, pass: &mut wgpu::RenderPass<'static>, ghost: bool) {
+    fn draw(&self, pass: &mut wgpu::RenderPass<'static>, ghost: bool, mesh: bool) {
         if self.face_count > 0 {
             pass.set_pipeline(&self.face_pipeline);
             pass.set_bind_group(0, &self.faces.bind_group, &[]);
@@ -264,7 +265,9 @@ impl MeshGpu {
             pass.set_index_buffer(layer.indices.slice(..), wgpu::IndexFormat::Uint32);
             pass.draw_indexed(0..layer.count, 0, 0..1);
         };
-        lines(&self.positions, &self.edges);
+        if mesh {
+            lines(&self.positions, &self.edges);
+        }
         lines(&self.positions, &self.features);
         if ghost {
             lines(&self.base, &self.ghost);
@@ -304,7 +307,7 @@ impl egui_wgpu::CallbackTrait for MeshCallback {
         resources: &egui_wgpu::CallbackResources,
     ) {
         if let Some(gpu) = resources.get::<MeshGpu>() {
-            gpu.draw(pass, self.params.ghost);
+            gpu.draw(pass, self.params.ghost, self.params.mesh);
         }
     }
 }

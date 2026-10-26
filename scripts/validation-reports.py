@@ -493,6 +493,9 @@ def main(args):
                 print(f"{case}: {e}", flush=True)
                 continue
             args = [a for run, _ in runs for a in ("--run", run)] + [a for c in curves for a in ("--curve", c)]
+            cfd = tmp / f"curves-{case}" / "cfd.json"
+            if cfd.is_file():
+                args += ["--cfd", cfd]
             if runs:
                 args += ["--viewer", "viewer.js"]
             r = fh("report", page, "-o", report, *args, env=env)

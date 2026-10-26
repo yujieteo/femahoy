@@ -79,6 +79,7 @@ output { margin-left: var(--space-2); }
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 <!--VIEWER-->
+<!--CFD-DATA-->
 <script type="module" nonce="NONCE">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
@@ -97,6 +98,7 @@ output { margin-left: var(--space-2); }
 // of the runs and the controls of the viewer that the view does not show stay behind the
 // switch "Show all controls". At the start, the report opens the first chosen element of the
 // bar, else of the text, else the first run of the list.
+/*CFD*/
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
@@ -237,6 +239,7 @@ async function start() {
   if (!runs.options.length) {
     const all = $("all");
     if (document.querySelector('.curve [data-control="values"][hidden]')) text.prepend(all);
+    await cfdControls(text, $("bar"), () => false);
     $("model").remove();
     return;
   }
@@ -245,7 +248,6 @@ async function start() {
     const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
-    $("msg").remove();
     const bar = $("bar");
     bar.append(...text.querySelectorAll("[data-bar]"));
     const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];
@@ -260,15 +262,19 @@ async function start() {
     };
     views().filter(slider).forEach(label);
     let current = null;
+    const cfd = await cfdControls(text, bar, (e) => open(e));
     // Open the run of the element `e`, with its view. False when the report has no such run.
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
       identity();
-      const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
+      const settings = cfd.view(e);
+      // The CFD controls keep their own state in `data-angle` and `data-cfd-*`, not in the view.
+      const lines = Object.entries(settings).filter(([key]) => !["run", "labels", "bar", "angle"].includes(key) && !key.startsWith("cfd"));
       if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
       current = e;
+      cfd.select(e);
       return true;
     };
     // The list of the runs opens a run with the view of its first element.
@@ -276,6 +282,7 @@ async function start() {
     $("all").addEventListener("change", (e) => {
       runs.hidden = !e.target.checked;
       view.all(e.target.checked);
+      cfd.all(e.target.checked);
     });
     for (const area of [bar, text]) {
       area.addEventListener("click", (e) => {
@@ -295,6 +302,7 @@ async function start() {
     }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
+    $("msg").remove();
   } catch (e) {
     $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);
   }
