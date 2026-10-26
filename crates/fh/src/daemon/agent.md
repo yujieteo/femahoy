@@ -463,6 +463,7 @@ S
 ## Optional controls of the live page
 
 The live page uses named controls from the shared UI layer. Its `data-controls` attribute on `body` selects only the named optional controls.
+The Runs list is page navigation, not an optional control. It is always on the page.
 For example, `&controls=run-search,files,mesh-compare` shows the controls for a mesh study.
 The `controls` URL parameter sets that attribute for a live page link.
 Without `data-controls`, the page offers every applicable control. With `data-controls`, it offers exactly the named optional controls.
@@ -474,7 +475,7 @@ Keep the `token` and `run` parameters. Never put the token in a report or an art
 | `command-state` | Show Active, Done, Failed, or Stopped, with the elapsed command time. Use it for a solve or a report command. |
 | `prepare-rerun` | After a stop, fill the composer with a request for the retained input of the selected run. The person must send the request. |
 | `files` | Offer the retained input, result files, and the latest registered report of the selected run. Use it when the person must inspect the input or report. |
-| `run-search` | Search run IDs and source paths. Use it when an analysis has several runs. |
+| `run-search` | Show a search box above the Runs list for run IDs and source paths. Use it when an analysis has several runs. |
 | `mesh-compare` | Choose mesh A and mesh B from Runs. Show undeformed meshes with a linked camera and zoom. Use it to inspect mesh changes. |
 
 A mesh pair gives no convergence result. It compares no contour field, unit, time step, or independent deformation scale.

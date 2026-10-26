@@ -56,8 +56,9 @@ const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,\
 /// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
 /// 2 minutes by default, and a solve of a large model can take hours.
 const BASH_TIMEOUT_MS: &str = "86400000";
-/// The most entries that the daemon keeps. An older entry goes first.
-const MAX_ENTRIES: usize = 4000;
+/// The most entries that the daemon keeps: about 4000 commands and results, each with its
+/// `identity` and `time` entries. An older entry goes first.
+const MAX_ENTRIES: usize = 12000;
 /// The most characters of one tool result in an entry.
 const MAX_RESULT: usize = 4000;
 
@@ -101,6 +102,20 @@ impl Log {
     /// The agent works: it has a message that it did not read, or a turn with no end.
     fn running(&self) -> bool {
         self.reading && (self.turn || self.sent > self.taken)
+    }
+
+    /// Add an entry. Over the limit, the oldest entry goes with its `identity` and `time`
+    /// entries, so that no command loses its identity.
+    fn append(&mut self, entry: String) {
+        self.next += 1;
+        self.entries.push_back((self.next, entry));
+        while self.entries.len() > MAX_ENTRIES {
+            while let Some((_, e)) = self.entries.pop_front() {
+                if !e.starts_with("identity ") && !e.starts_with("time ") {
+                    break;
+                }
+            }
+        }
     }
 
     /// The agent works no more.
@@ -182,11 +197,7 @@ impl Chat {
             self.push(log, "time", &now_ms().to_string());
         }
         let text = escape(&text.replace(&self.token, "<token>"));
-        log.next += 1;
-        log.entries.push_back((log.next, format!("{kind} {text}")));
-        if log.entries.len() > MAX_ENTRIES {
-            log.entries.pop_front();
-        }
+        log.append(format!("{kind} {text}"));
     }
 
     /// The state of the chat and the entries after `since`, as the items `<seq> <kind>
@@ -576,6 +587,26 @@ mod tests {
             "{problem}"
         );
         assert_eq!(agent_problem("true"), None);
+    }
+
+    #[test]
+    fn a_trim_keeps_the_identity_and_time_of_each_command() {
+        let mut log = Log::default();
+        log.append("note start".into());
+        for i in 0..MAX_ENTRIES {
+            log.append(format!("identity {i}"));
+            log.append("time 1".into());
+            log.append(format!("cmd {i}"));
+        }
+        assert!(log.entries.len() <= MAX_ENTRIES);
+        assert!(log.entries.len() >= MAX_ENTRIES - 2);
+        let entries: Vec<&str> = log.entries.iter().map(|(_, e)| e.as_str()).collect();
+        assert!(entries[0].starts_with("identity "), "{}", entries[0]);
+        for (i, e) in entries.iter().enumerate() {
+            if let Some(n) = e.strip_prefix("cmd ") {
+                assert_eq!(entries[i - 2], format!("identity {n}"));
+            }
+        }
     }
 
     #[test]

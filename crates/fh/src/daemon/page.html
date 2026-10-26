@@ -113,9 +113,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 </aside>
 <main id="model">
   <header class="toolbar">
-    <details id="runs" data-control="run-search">
+    <details id="runs">
       <summary>Runs <span id="selected-run"></span></summary>
-      <label>Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
+      <label data-control="run-search">Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
       <div id="run-list" aria-label="Runs"></div>
     </details>
     <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
@@ -237,9 +237,8 @@ async function listRuns() {
 }
 
 function renderRuns() {
-  const search = ($("run-search")?.value || "").toLowerCase();
+  const search = $("run-search").value.toLowerCase();
   const list = $("run-list");
-  if (!list) return;
   list.replaceChildren();
   const matched = foundRuns.filter(([run, path]) => (run + " " + path).toLowerCase().includes(search));
   list.append(el("p", "note", matched.length + " runs"));
@@ -261,7 +260,7 @@ function renderRuns() {
     list.append(row);
   }
 }
-$("run-search")?.addEventListener("input", renderRuns);
+$("run-search").addEventListener("input", renderRuns);
 
 async function openFile(run, path) {
   // Create the tab during the gesture, before the fetch, so a browser permits it.
@@ -493,6 +492,7 @@ function entry(kind, text, fresh) {
     case "identity": identity = split(text); return;
 
     case "you":
+      $("rerun").hidden = true;
       return el("div", "you", text);
     case "say":
       return el("p", "say", text);
@@ -550,12 +550,13 @@ function entry(kind, text, fresh) {
       return b;
     }
     case "end":
+      $("rerun").hidden = true;
       rest("Done");
       return el("p", "end", text);
     default: {
       if (text === "stopped the agent") {
         rest("Stopped");
-        if ($("rerun")) $("rerun").hidden = false;
+        $("rerun").hidden = false;
       }
       if (!text.includes("\n")) return el("p", "note", text);
       const d = action("Note", text.split("\n")[0], false);
@@ -639,7 +640,7 @@ input.addEventListener("input", () => {
 stop.addEventListener("click", () =>
   call("/api/v1/chat/stop", "").then(() => read(), (e) => showError(e.message)));
 
-$("rerun")?.addEventListener("click", () => {
+$("rerun").addEventListener("click", () => {
   const target = shown || compareA;
   input.value = target
     ? "Prepare a new run from the retained input of " + target + ". Preserve the previous result. Confirm the input and result target before the solve."
