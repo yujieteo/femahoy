@@ -944,16 +944,20 @@ impl eframe::App for ViewerApp {
             ui.weak(self.status_text());
         });
         if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
-            egui::Panel::right("results")
-                .resizable(false)
-                .min_size(260.0)
-                .show(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if shown.panel(ui, &mut self.labels, &mut self.all) {
-                            shown.refresh();
-                        }
-                    });
+            // On a narrow view (a phone) the results go below the model, so that the model
+            // keeps the full width.
+            let panel = if ui.available_width() < 600.0 {
+                egui::Panel::bottom("results").exact_size(ui.available_height() * 0.4)
+            } else {
+                egui::Panel::right("results").min_size(260.0)
+            };
+            panel.resizable(false).show(ui, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if shown.panel(ui, &mut self.labels, &mut self.all) {
+                        shown.refresh();
+                    }
                 });
+            });
         }
         self.upload();
         if let Some(shown) = &self.shown {
