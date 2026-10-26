@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use eframe::egui;
 
-use crate::results::{self, Location, BANDS, BAND_COLORS};
+use crate::results::{self, BAND_COLORS, BANDS, Location};
 use crate::ui::{self, Colors};
 use crate::view;
 
@@ -33,8 +33,9 @@ fn colors(ui: &egui::Ui) -> &'static Colors {
 
 /// The look of the page in the light and the dark appearance: the DM Sans font, and the
 /// colours, type sizes, spacing, radius and hit target of the tokens. No widget moves: egui
-/// has no reduced motion setting of the browser, so it has no animation.
-pub fn style(ctx: &egui::Context) {
+/// has no reduced motion setting of the browser, so it has no animation. The type sizes are
+/// times `scale`, so that the panel text follows the iOS Dynamic Type size of the page text.
+pub fn style(ctx: &egui::Context, scale: f32) {
     let mut fonts = egui::FontDefinitions::default();
     let sans = egui::FontData::from_static(DM_SANS);
     fonts.font_data.insert("DM Sans".into(), Arc::new(sans));
@@ -49,17 +50,18 @@ pub fn style(ctx: &egui::Context) {
         ctx.style_mut_of(theme, |s| {
             use egui::{FontId, TextStyle};
             s.text_styles = [
-                (TextStyle::Small, FontId::proportional(ui::SMALL)),
-                (TextStyle::Body, FontId::proportional(ui::BODY)),
-                (TextStyle::Button, FontId::proportional(ui::BODY)),
-                (TextStyle::Heading, FontId::proportional(ui::TITLE)),
-                (TextStyle::Monospace, FontId::monospace(ui::MONO)),
+                (TextStyle::Small, FontId::proportional(scale * ui::SMALL)),
+                (TextStyle::Body, FontId::proportional(scale * ui::BODY)),
+                (TextStyle::Button, FontId::proportional(scale * ui::BODY)),
+                (TextStyle::Heading, FontId::proportional(scale * ui::TITLE)),
+                (TextStyle::Monospace, FontId::monospace(scale * ui::MONO)),
             ]
             .into();
             s.animation_time = 0.0;
             s.spacing.item_spacing = egui::vec2(ui::SPACE[1], ui::SPACE[1]);
             s.spacing.button_padding = egui::vec2(ui::SPACE[2], ui::SPACE[0]);
-            s.spacing.interact_size.y = ui::TARGET;
+            // A number field (DragValue) has the width of interact_size.x, 40 by default.
+            s.spacing.interact_size = egui::vec2(ui::TARGET, ui::TARGET);
             let v = &mut s.visuals;
             v.panel_fill = hex(c.bg);
             v.window_fill = hex(c.bg);
@@ -69,6 +71,8 @@ pub fn style(ctx: &egui::Context) {
             v.selection.stroke.color = hex(c.text);
             v.widgets.noninteractive.bg_stroke.color = hex(c.line);
             v.override_text_color = Some(hex(c.text));
+            // The egui weak text (60% of the text colour) has 4.3:1 on the light page.
+            v.weak_text_color = Some(hex(c.muted));
             for (w, fill) in [
                 (&mut v.widgets.inactive, c.bg),
                 (&mut v.widgets.hovered, c.raised),
@@ -85,6 +89,56 @@ pub fn style(ctx: &egui::Context) {
             v.widgets.inactive.bg_fill = hex(c.raised);
         });
     }
+}
+
+/// The size of the box of a checkbox, the same as in `ui.css`.
+const BOX: f32 = 18.0;
+
+/// A checkbox with the look of the page checkbox (`ui.css`): an 18 pt square with a border in
+/// the muted colour, which has more than 3:1 contrast (WCAG 1.4.11), and the accent fill when it
+/// is on. The egui default has the faint border of a button and the radius makes it a circle.
+pub fn checkbox(ui: &mut egui::Ui, on: &mut bool, text: &str) -> egui::Response {
+    let c = colors(ui);
+    let (fill, line) = if *on {
+        (c.accent, c.accent)
+    } else {
+        (c.bg, c.muted)
+    };
+    // egui fits the label in the space that is left on the row and breaks it in a word. In a
+    // wrapped row, a checkbox that does not fit goes to the next row in 1 piece.
+    let width = egui::WidgetText::from(text)
+        .into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Body,
+        )
+        .size()
+        .x
+        + BOX
+        + ui.spacing().icon_spacing;
+    if ui.layout().main_wrap && width > ui.available_size_before_wrap().x {
+        ui.end_row();
+    }
+    ui.scope(|ui| {
+        let s = ui.style_mut();
+        s.spacing.icon_width = BOX;
+        s.spacing.icon_width_inner = 10.0;
+        let w = &mut s.visuals.widgets;
+        for w in [
+            &mut w.noninteractive,
+            &mut w.inactive,
+            &mut w.hovered,
+            &mut w.active,
+        ] {
+            w.bg_fill = hex(fill);
+            w.bg_stroke = egui::Stroke::new(1.5, hex(line));
+            w.fg_stroke = egui::Stroke::new(2.0, hex(c.on_button));
+            w.corner_radius = egui::CornerRadius::same(4);
+        }
+        ui.checkbox(on, text)
+    })
+    .inner
 }
 
 /// A segmented control: 1 segment for each item `(text, chosen)`. The chosen segment has the
@@ -121,10 +175,24 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, bool, &str)]) -> Option<usiz
     clicked
 }
 
-/// A standard button with the shared hit target.
-pub fn button(ui: &mut egui::Ui, text: &str, hint: &str) -> egui::Response {
-    ui.add(egui::Button::new(text).min_size(egui::vec2(ui::TARGET, ui::TARGET)))
-        .on_hover_text(hint)
+/// A standard button with the shared hit target. A disabled button is greyed out and keeps
+/// its place in a wrapped row (a child `add_enabled_ui` gets only the rest of the row).
+pub fn button(ui: &mut egui::Ui, enabled: bool, text: &str, hint: &str) -> egui::Response {
+    let button = egui::Button::new(text).min_size(egui::vec2(ui::TARGET, ui::TARGET));
+    ui.add_enabled(enabled, button).on_hover_text(hint)
+}
+
+/// A menu with the chevron of the page menu (`select` in `ui.css`), not the filled egui triangle.
+pub fn menu(id: &str, text: impl Into<egui::WidgetText>) -> egui::ComboBox {
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(text)
+        .icon(|ui, rect, _, _| {
+            // The path 'm4 6 4 4 4-4' in a 16 x 16 box, as --chevron in ui.rs.
+            let p = |x: f32, y: f32| rect.min + rect.size() * egui::vec2(x, y) / 16.0;
+            let stroke = egui::Stroke::new(1.6 * rect.width() / 16.0, hex(colors(ui).muted));
+            ui.painter()
+                .line(vec![p(4.0, 6.0), p(8.0, 10.0), p(12.0, 6.0)], stroke);
+        })
 }
 
 /// A row of text with no control: it has the height of its text, not of a hit target.
@@ -132,6 +200,14 @@ pub fn text_row(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     ui.scope(|ui| {
         ui.spacing_mut().interact_size.y = 0.0;
         ui.horizontal(add);
+    });
+}
+
+/// A [`text_row`] that wraps when its text is wider than the panel.
+fn wrapped_text_row(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.scope(|ui| {
+        ui.spacing_mut().interact_size.y = 0.0;
+        ui.horizontal_wrapped(add);
     });
 }
 
@@ -166,23 +242,33 @@ pub fn legend(
     } else {
         &field.name
     };
-    match quantity {
-        Some("velocity") => {
-            ui.strong("Speed (m/s)");
+    let caption = |ui: &mut egui::Ui| {
+        match quantity {
+            Some("velocity") => {
+                ui.strong("Speed (m/s)");
+            }
+            Some("kinematic-pressure") => {
+                ui.strong("p/rho (m²/s²)");
+            }
+            _ => {
+                ui.strong(format!("{name} ({unit})"));
+            }
         }
-        Some("kinematic-pressure") => {
-            ui.strong("p/rho (m²/s²)");
+        ui.weak(match field.location {
+            Location::Point => "At the nodes",
+            Location::Cell => "Per element",
+        });
+        if fixed_range {
+            ui.weak("Fixed range from report");
         }
-        _ => {
-            ui.strong(format!("{name} ({unit})"));
-        }
-    }
-    ui.weak(match field.location {
-        Location::Point => "At the nodes",
-        Location::Cell => "Per element",
-    });
-    if fixed_range {
-        ui.weak("Fixed range from report");
+    };
+    // A short panel (the panel below the model on a phone) shows all bands as one bar on one
+    // row: the smallest value, the bands (the lowest at the left), the largest value. The bands
+    // are equal, so the two ends give their limits. The bar goes above its caption, so that it
+    // stays in view when the caption wraps at a large text size.
+    let short = ui.clip_rect().height() < 400.0;
+    if !short {
+        caption(ui);
     }
     let band = |ui: &mut egui::Ui, band: usize, text: String| {
         text_row(ui, |ui| {
@@ -196,6 +282,37 @@ pub fn legend(
             BANDS / 2,
             format!("constant {}", view::format_value(lo)),
         );
+        if short {
+            wrapped_text_row(ui, caption);
+        }
+        return;
+    }
+    let (min, max) = if fixed_range {
+        ("Range min", "Range max")
+    } else {
+        ("Min", "Max")
+    };
+    if short {
+        text_row(ui, |ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.weak(max);
+                ui.monospace(view::format_value(hi));
+                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.weak(min);
+                    ui.monospace(view::format_value(lo));
+                    let size = egui::vec2(ui.available_width(), 14.0);
+                    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+                    let width = rect.width() / BANDS as f32;
+                    for (i, &color) in BAND_COLORS.iter().enumerate() {
+                        let left = rect.left() + width * i as f32;
+                        let cell = egui::Rect::from_x_y_ranges(left..=left + width, rect.y_range());
+                        ui.painter().rect_filled(cell, 0.0, rgb(color));
+                    }
+                });
+            });
+        });
+        // One wrapped row, so that the step controls below it stay in view on a phone.
+        wrapped_text_row(ui, caption);
         return;
     }
     let limits = results::band_limits(lo, hi);
@@ -203,14 +320,6 @@ pub fn legend(
     for i in (0..BANDS).rev() {
         band(ui, i, format!("{} to {}", texts[i], texts[i + 1]));
     }
-    readout(
-        ui,
-        if fixed_range { "Range min" } else { "Min" },
-        &view::format_value(lo),
-    );
-    readout(
-        ui,
-        if fixed_range { "Range max" } else { "Max" },
-        &view::format_value(hi),
-    );
+    readout(ui, min, &view::format_value(lo));
+    readout(ui, max, &view::format_value(hi));
 }

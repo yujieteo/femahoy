@@ -17,13 +17,13 @@ use eframe::egui_wgpu;
 use crate::camera::{self, Camera};
 use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
-use crate::preview::{Kind, Preview, COLORS};
-use crate::results::{self, Results, BANDS};
-use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
+use crate::preview::{COLORS, Kind, Preview};
+use crate::results::{self, BANDS, Results};
+use crate::view::{self, Contour, Control, Geometry, Mark, Panel, View, ViewState, face_vertices};
 use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
-const NO_RUN: &str = "No run is open. Select a run at the top, or ask the agent for a model.";
+const NO_RUN: &str = "No run is open. Select a run in Runs, or ask the agent for a model.";
 
 /// What the viewer shows.
 pub enum Content {
@@ -38,9 +38,10 @@ pub enum Content {
     Failed(String),
 }
 
-/// The cameras share a pose. A gesture asks both canvases for a frame.
+/// The cameras share a pose and its named view. A gesture asks both canvases for a frame.
 pub struct LinkedCamera {
-    pub camera: Option<Camera>,
+    /// The camera and the camera after the last view action, so that both Views menus agree.
+    pub camera: Option<(Camera, Camera)>,
     pub contexts: [egui::Context; 2],
 }
 pub type CameraLink = Arc<Mutex<LinkedCamera>>;
@@ -102,22 +103,30 @@ pub struct ViewerApp {
     labels: bool,
     /// Show all the controls of a run, also the controls that its view does not show.
     all: bool,
+    /// The page has its own switch "Show all controls", so the results panel shows none.
+    page_switch: bool,
     camera_action: Option<String>,
     mesh_only: bool,
     camera_link: Option<CameraLink>,
+    /// The scale of the panel text at the last style. A new Dynamic Type size changes it.
+    text_scale: f32,
+    /// The height that the results panel below the model needed at the last frame.
+    results_height: Option<f32>,
 }
 
 impl ViewerApp {
     pub fn new(cc: &eframe::CreationContext<'_>, slot: RequestSlot, canvas_id: String) -> Self {
-        widgets::style(&cc.egui_ctx);
         Self {
             canvas_id,
+            text_scale: 0.0,
+            results_height: None,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
             slot,
             labels: true,
             all: false,
+            page_switch: false,
             camera_action: None,
             mesh_only: false,
             camera_link: None,
@@ -190,6 +199,7 @@ impl ViewerApp {
         }
         if let Some(all) = request.all.take() {
             self.all = all;
+            self.page_switch = true;
             if let Some(Body::Results(r, _, loads, p, view)) =
                 self.shown.as_mut().map(|s| &mut s.body)
             {
@@ -337,16 +347,16 @@ impl Shown {
         }
     }
 
-    /// The panel of the body. A run with no view has the switch `all`. Returns true when the
-    /// view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
+    /// The panel of the body. A run with no view has the switch `all` when it is given. Returns
+    /// true when the view state changed.
+    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: Option<&mut bool>) -> bool {
         let drawn = self.geometry.as_deref().map(|g| &g.positions[..]);
         match &mut self.body {
             Body::Results(r, v, loads, panel, view) => {
-                let before = *all;
-                let switch = (*view == View::default()).then_some(&mut *all);
-                let changed = results_panel(ui, r, v, panel, switch, drawn);
-                if *all != before {
+                let mut switch = all.filter(|_| *view == View::default());
+                let before = switch.as_deref().copied();
+                let changed = results_panel(ui, r, v, panel, switch.as_deref_mut(), drawn);
+                if let Some(all) = switch.filter(|a| Some(**a) != before) {
                     *panel = self::panel(r, view, &loads.preview, *all);
                 }
                 if panel.controls.contains(&Control::Loads) {
@@ -364,10 +374,18 @@ impl Shown {
 
     /// The supports and loads on top of the model, with the positions of the drawn mesh. The
     /// results show them only with the supports and loads controls.
-    fn overlay(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+    fn overlay(
+        &self,
+        painter: &egui::Painter,
+        rect: egui::Rect,
+        m: &camera::Mat4,
+        tags: &mut Tags,
+    ) {
         let eye = self.camera.eye();
         match &self.body {
-            Body::Preview(p) => loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false),
+            Body::Preview(p) => {
+                loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false, tags)
+            }
             Body::Results(r, v, loads, ..) => {
                 if !self.shows(Control::Loads) {
                     return;
@@ -377,13 +395,13 @@ impl Shown {
                     (Some(g), true) => &g.positions,
                     _ => &p.mesh.positions,
                 };
-                loads_overlay(painter, rect, m, eye, p, positions, true);
+                loads_overlay(painter, rect, m, eye, p, positions, true, tags);
             }
         }
     }
 
     /// The marks of the view at the shown step.
-    fn marks(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4) {
+    fn marks(&self, painter: &egui::Painter, rect: egui::Rect, m: &camera::Mat4, tags: &mut Tags) {
         let Body::Results(_, v, _, _, view) = &self.body else {
             return;
         };
@@ -399,9 +417,10 @@ impl Shown {
                 tag(
                     painter,
                     rect,
-                    at,
-                    &format!("{}: {}", probe.label, probe.value),
+                    egui::Rect::from_pos(at),
+                    &format!("{}: {}", probe.label, view::format_value(probe.value)),
                     hex(MARK),
+                    tags,
                 );
             }
         }
@@ -415,7 +434,14 @@ impl Shown {
                 hex(MARK),
                 egui::Stroke::new(2.0, egui::Color32::BLACK),
             );
-            tag(painter, rect, at, &mark.text, hex(MARK));
+            tag(
+                painter,
+                rect,
+                egui::Rect::from_pos(at),
+                &mark.text,
+                hex(MARK),
+                tags,
+            );
         }
     }
 }
@@ -435,33 +461,107 @@ fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2>
     })
 }
 
-/// The text `text` on a box of the colour `color`, up and to the right of the point `at`, in
-/// the view `rect`.
+/// The tags in a view: the boxes of the tags placed so far, and the screen points of the
+/// drawn model, which a tag does not cover if it can.
+struct Tags {
+    placed: Vec<egui::Rect>,
+    model: Vec<egui::Pos2>,
+}
+
+/// The text `text` on a box of the colour `color`, next to the screen box `around` (a point or
+/// the faces of a set) on the side away from the view centre, in the view `rect`, with a line
+/// width of at most half the view. The tag does not cover the earlier tags in `tags`, if the
+/// view has space for it, and is added to `tags`.
 fn tag(
     painter: &egui::Painter,
     rect: egui::Rect,
-    at: egui::Pos2,
+    around: egui::Rect,
     text: &str,
     color: egui::Color32,
+    tags: &mut Tags,
 ) {
-    let [r, g, b] = [color.r(), color.g(), color.b()].map(|x| f32::from(x) / 255.0);
-    let ink = if 0.3 * r + 0.6 * g + 0.1 * b > 0.5 {
+    // The ink with the higher WCAG contrast: black above a relative luminance of 0.179.
+    let c = egui::Rgba::from(color);
+    let ink = if 0.2126 * c.r() + 0.7152 * c.g() + 0.0722 * c.b() > 0.179 {
         egui::Color32::BLACK
     } else {
         egui::Color32::WHITE
     };
     let font = egui::FontId::proportional(14.0);
-    let galley = painter.layout_no_wrap(text.to_owned(), font, ink);
-    let place = egui::Align2::LEFT_BOTTOM.anchor_size(at + egui::vec2(6.0, -6.0), galley.size());
+    // Wrap long text at half the view width, so that on a phone a tag does not cover the model.
+    let wrap = (0.5 * rect.width()).max(180.0);
+    let galley = painter.layout(text.to_owned(), font, ink, wrap);
     // Keep the text in the view.
     let inner = rect.shrink(4.0);
-    let dx = (inner.right() - place.right())
-        .min(0.0)
-        .max(inner.left() - place.left());
-    let dy = (inner.bottom() - place.bottom())
-        .min(0.0)
-        .max(inner.top() - place.top());
-    let place = place.translate(egui::vec2(dx, dy));
+    let fit = |place: egui::Rect| {
+        let dx = (inner.right() - place.right())
+            .min(0.0)
+            .max(inner.left() - place.left());
+        let dy = (inner.bottom() - place.bottom())
+            .min(0.0)
+            .max(inner.top() - place.top());
+        place.translate(egui::vec2(dx, dy))
+    };
+    // The camera looks at the view centre, so a tag on the far side of the point from the
+    // centre usually does not cover the model. Of the 4 sides, the tag takes the first one that
+    // covers the fewest earlier tags, then the fewest points of the drawn model `model`.
+    let at = around.center();
+    let away = (at.x < rect.center().x, at.y < rect.center().y);
+    let side = |(left, up): (bool, bool)| {
+        let anchor = egui::Align2([
+            [egui::Align::Min, egui::Align::Max][usize::from(left)],
+            [egui::Align::Min, egui::Align::Max][usize::from(up)],
+        ]);
+        // Above or below the box, so that the tag does not cover the faces of a set.
+        let y = if up {
+            around.top() - 6.0
+        } else {
+            around.bottom() + 6.0
+        };
+        let x = if left { at.x - 6.0 } else { at.x + 6.0 };
+        fit(anchor.anchor_size(egui::pos2(x, y), galley.size()))
+    };
+    let covered = |place: egui::Rect| {
+        let near = |o: &&egui::Rect| o.expand(1.0).intersects(place.expand(3.0));
+        let points = tags.model.iter().filter(|p| place.contains(**p)).count();
+        (tags.placed.iter().filter(near).count(), points)
+    };
+    let first = [
+        away,
+        (away.0, !away.1),
+        (!away.0, away.1),
+        (!away.0, !away.1),
+    ]
+    .map(side)
+    .into_iter()
+    .min_by_key(|place| covered(*place))
+    .expect("4 sides");
+    let mut place = first;
+    // Move the tag below each earlier tag that it covers, or above it when the view bottom
+    // pushes the tag back onto it (a short view on a phone).
+    for _ in 0..tags.placed.len() {
+        let Some(other) = tags
+            .placed
+            .iter()
+            .find(|o| o.expand(1.0).intersects(place.expand(3.0)))
+        else {
+            break;
+        };
+        let below = fit(place.translate(egui::vec2(0.0, other.bottom() + 5.0 - place.top())));
+        place = if other.expand(1.0).intersects(below.expand(3.0)) {
+            fit(place.translate(egui::vec2(0.0, other.top() - 5.0 - place.bottom())))
+        } else {
+            below
+        };
+    }
+    tags.placed.push(place.expand(3.0));
+    if place != first {
+        // A line from the point to the moved tag.
+        painter.line_segment(
+            [at, place.expand(3.0).clamp(at)],
+            egui::Stroke::new(1.5, color),
+        );
+    }
     painter.rect_filled(place.expand(3.0), 3.0, color);
     painter.galley(place.min, galley, ink);
 }
@@ -510,7 +610,7 @@ fn loads_panel(ui: &mut egui::Ui, loads: &Loads, same_mesh: bool, labels: &mut b
             return;
         }
     };
-    ui.checkbox(labels, "Show them on the model");
+    widgets::checkbox(ui, labels, "Show them on the model");
     for item in &p.items {
         text_row(ui, |ui| {
             swatch(ui, COLORS[item.color]);
@@ -530,7 +630,14 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
         p.title
     ));
     ui.label(format!("Units: {}", p.units));
-    ui.checkbox(labels, "Show the labels and the arrows");
+    // A model with only supports, or with zero loads, has no arrow to name.
+    let arrows = p.items.iter().any(|item| p.arrow(item).is_some());
+    let text = if arrows {
+        "Show the labels and the arrows"
+    } else {
+        "Show the labels"
+    };
+    widgets::checkbox(ui, labels, text);
     if p.items.is_empty() {
         let error = ui.visuals().error_fg_color;
         ui.colored_label(error, "The input has no support and no load.");
@@ -550,8 +657,10 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
             ui.colored_label(error, "No surface face has all of its nodes in this set.");
         }
     }
-    ui.separator();
-    ui.weak("Each arrow shows the direction of the total force of a load.");
+    if arrows {
+        ui.separator();
+        ui.weak("Each arrow shows the direction of the total force of a load.");
+    }
 }
 
 /// The supports and loads on top of the model: with `outline`, the outline of the faces of
@@ -565,6 +674,7 @@ fn loads_overlay(
     p: &Preview,
     positions: &[[f32; 3]],
     outline: bool,
+    tags: &mut Tags,
 ) {
     let screen = |x: [f32; 3]| screen(m, rect, x);
     for item in p.items.iter().filter(|_| outline) {
@@ -600,7 +710,25 @@ fn loads_overlay(
             }
         }
         let Some(at) = at else { continue };
-        tag(painter, rect, at, &item.label, rgb(COLORS[item.color]));
+        // A support tag goes next to the screen box of its outline, not on its faces.
+        let mut around = egui::Rect::from_pos(at);
+        if p.arrow(item).is_none() {
+            for &([a, b], _) in &item.outline {
+                for x in [a, b].iter().filter_map(|&n| positions.get(n as usize)) {
+                    if let Some(s) = screen(*x) {
+                        around.extend_with(s);
+                    }
+                }
+            }
+        }
+        tag(
+            painter,
+            rect,
+            around,
+            &item.label,
+            rgb(COLORS[item.color]),
+            tags,
+        );
     }
 }
 
@@ -612,17 +740,28 @@ fn results_panel(
     r: &Results,
     v: &mut ViewState,
     panel: &Panel,
-    all: Option<&mut bool>,
+    mut all: Option<&mut bool>,
     drawn: Option<&[[f32; 3]]>,
 ) -> bool {
     let before = v.clone();
-    ui.heading("Results");
-    ui.label(format!("Units: {}", r.units));
-    if let Some(all) = all {
-        ui.checkbox(all, "Show all controls")
-            .on_hover_text("also the fields that are not important for this run");
+    // One wrapped row, so that a wide short panel (a phone) keeps its height for the legend.
+    let mut header = |ui: &mut egui::Ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.heading("Results");
+            ui.label(format!("Units: {}", r.units));
+            if let Some(all) = all.as_deref_mut() {
+                widgets::checkbox(ui, all, "Show all controls")
+                    .on_hover_text("also the fields that are not important for this run");
+            }
+        });
+    };
+    // A short panel (the panel below the model on a phone) shows the header last, so that
+    // the colour scale and the probe stay in view at a large text size.
+    let short = ui.clip_rect().height() < 400.0;
+    if !short {
+        header(ui);
+        ui.separator();
     }
-    ui.separator();
 
     let n = r.steps.len();
     // Before the controls, so that they show the step of the shape.
@@ -630,24 +769,76 @@ fn results_panel(
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_secs_f64(wait));
     }
+    // The field menu and its colour scale. A short panel (a phone) shows them first, above the
+    // deformation controls, so that the colour scale and the probe stay in view.
+    let contour = |ui: &mut egui::Ui, v: &mut ViewState| {
+        // The label and its menu on one row, so that a short panel (a phone) keeps a row for the legend.
+        // With no menu (a report), the label goes too: the legend title names the field.
+        if !panel.fields.is_empty() {
+            ui.horizontal(|ui| {
+                ui.strong("Contour");
+                let field = v.field.clone().unwrap_or_else(|| "None".into());
+                widgets::menu("field", field).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut v.field, None, "None");
+                    for name in &panel.fields {
+                        ui.selectable_value(&mut v.field, Some(name.clone()), name);
+                    }
+                });
+            });
+        }
+        // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
+        match v.contour(r) {
+            Contour::Off => {}
+            Contour::Missing(name) => {
+                ui.colored_label(
+                    ui.visuals().error_fg_color,
+                    format!("Step {} has no field {name}.", v.step + 1),
+                );
+            }
+            Contour::On { field, lo, hi } => {
+                let quantity = if v.field == v.configured_field {
+                    v.quantity.as_deref()
+                } else {
+                    None
+                };
+                legend(
+                    ui,
+                    &r.units,
+                    field,
+                    lo,
+                    hi,
+                    quantity,
+                    v.field == v.configured_field && v.range.is_some(),
+                );
+            }
+        }
+    };
     let shows = |c: Control| panel.controls.contains(&c);
+    let probe = |ui: &mut egui::Ui, v: &mut ViewState| {
+        if shows(Control::Probe) {
+            let same =
+                v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
+            let scale_shown = shows(Control::Scale) || shows(Control::Deformation);
+            probe_controls(ui, r, v, drawn.filter(|_| same), scale_shown);
+        } else {
+            v.probe_mode = false;
+            v.probe = None;
+        }
+    };
+    // A short panel (a phone) shows the probe above the step and deformation controls, so
+    // that a tap on the model shows its value with no scroll.
+    if short {
+        contour(ui, v);
+        probe(ui, v);
+    }
     if shows(Control::Steps) {
         steps_controls(ui, r, v);
     }
     if shows(Control::Deformation) {
         deformation_controls(ui, r, v);
     }
-
-    ui.strong("Contour");
-    if !panel.fields.is_empty() {
-        egui::ComboBox::from_id_salt("field")
-            .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut v.field, None, "None");
-                for name in &panel.fields {
-                    ui.selectable_value(&mut v.field, Some(name.clone()), name);
-                }
-            });
+    if !short {
+        contour(ui, v);
     }
     if v.step != before.step
         || v.field != before.field
@@ -657,11 +848,7 @@ fn results_panel(
         v.probe = None;
     }
     if shows(Control::Scale) {
-        readout(
-            ui,
-            "Deformation",
-            &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
-        );
+        readout(ui, "Deformation", &deformation_text(v));
     }
     if shows(Control::Range) {
         ui.label("Colour range");
@@ -680,39 +867,12 @@ fn results_panel(
             });
         }
     }
-    if shows(Control::Probe) {
-        let same =
-            v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
-        let scale_shown = shows(Control::Scale) || shows(Control::Deformation);
-        probe_controls(ui, r, v, drawn.filter(|_| same), scale_shown);
-    } else {
-        v.probe_mode = false;
-        v.probe = None;
+    if !short {
+        probe(ui, v);
     }
-    match v.contour(r) {
-        Contour::Off => {}
-        Contour::Missing(name) => {
-            ui.colored_label(
-                ui.visuals().error_fg_color,
-                format!("Step {} has no field {name}.", v.step + 1),
-            );
-        }
-        Contour::On { field, lo, hi } => {
-            let quantity = if v.field == v.configured_field {
-                v.quantity.as_deref()
-            } else {
-                None
-            };
-            legend(
-                ui,
-                &r.units,
-                field,
-                lo,
-                hi,
-                quantity,
-                v.field == v.configured_field && v.range.is_some(),
-            );
-        }
+    if short {
+        ui.separator();
+        header(ui);
     }
     *v != before
 }
@@ -727,9 +887,27 @@ fn probe_controls(
     drawn: Option<&[[f32; 3]]>,
     scale_shown: bool,
 ) {
-    ui.checkbox(&mut v.probe_mode, "Probe surface")
-        .on_hover_text("click the model to probe, Escape clears");
-    let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
+    let field = v.field.as_deref().and_then(|n| v.current(r).field(n));
+    let mut chosen = None;
+    // One wrapped row, so that a wide short panel (a phone) shows the buttons with no scroll.
+    ui.horizontal_wrapped(|ui| {
+        widgets::checkbox(ui, &mut v.probe_mode, "Probe surface")
+            .on_hover_text("click the model to probe, Escape clears");
+        if field.is_none() {
+            return;
+        }
+        if widgets::button(ui, true, "Min", "locate the actual minimum item").clicked() {
+            chosen = Some(false);
+        }
+        if widgets::button(ui, true, "Max", "locate the actual maximum item").clicked() {
+            chosen = Some(true);
+        }
+        if widgets::button(ui, v.probe.is_some(), "Clear", "clear probe (Escape)").clicked() {
+            chosen = None;
+            v.probe = None;
+        }
+    });
+    let Some(field) = field else {
         return;
     };
     let mesh = r.mesh(v.current(r));
@@ -741,19 +919,6 @@ fn probe_controls(
             if v.deformed { v.scale } else { 0.0 },
         )),
     };
-    let mut chosen = None;
-    ui.horizontal(|ui| {
-        if widgets::button(ui, "Min", "locate the actual minimum item").clicked() {
-            chosen = Some(false);
-        }
-        if widgets::button(ui, "Max", "locate the actual maximum item").clicked() {
-            chosen = Some(true);
-        }
-        if widgets::button(ui, "Clear", "clear probe (Escape)").clicked() {
-            chosen = None;
-            v.probe = None;
-        }
-    });
     if let Some(max) = chosen {
         v.probe = crate::probe::extreme(mesh, &positions(v), field, max);
     }
@@ -764,14 +929,13 @@ fn probe_controls(
                 results::Location::Point => "Node index",
                 results::Location::Cell => "Element index",
             };
-            let label = ui.label(text);
+            ui.label(text);
             if ui
                 .add(
                     egui::DragValue::new(&mut index)
                         .range(1..=field.values.len())
                         .speed(1),
                 )
-                .labelled_by(label.id)
                 .changed()
             {
                 v.probe = crate::probe::at_index(mesh, &positions(v), field, index - 1);
@@ -785,11 +949,15 @@ fn probe_controls(
             field.name,
             v.step + 1
         ));
-        let location = match field.location {
-            results::Location::Point => "At node index",
-            results::Location::Cell => "Per element index",
-        };
-        readout(ui, location, &(p.index + 1).to_string());
+        // The index field above already shows the index in probe mode, so a phone gets the
+        // Value row 1 row higher.
+        if !v.probe_mode {
+            let location = match field.location {
+                results::Location::Point => "At node index",
+                results::Location::Cell => "Per element index",
+            };
+            readout(ui, location, &(p.index + 1).to_string());
+        }
         readout(
             ui,
             "Value",
@@ -798,9 +966,9 @@ fn probe_controls(
         if let Some(at) = p.at {
             ui.label(format!(
                 "Model coordinates: {}, {}, {} ({})",
-                at[0],
-                at[1],
-                at[2],
+                view::format_value(at[0].into()),
+                view::format_value(at[1].into()),
+                view::format_value(at[2].into()),
                 view::unit_text(&r.units, results::Quantity::Displacement)
             ));
             ui.weak("Surface marker may be hidden by another face.");
@@ -808,66 +976,82 @@ fn probe_controls(
             ui.label(format!("{} is hidden: no surface marker.", p.label));
         }
         if !scale_shown {
-            readout(
-                ui,
-                "Deformation",
-                &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
-            );
+            readout(ui, "Deformation", &deformation_text(v));
         }
     }
+}
+
+/// The deformation scale that the 3D view draws, as the legend shows it.
+fn deformation_text(v: &ViewState) -> String {
+    format!(
+        "×{}",
+        view::format_value(if v.deformed { v.scale } else { 0.0 })
+    )
 }
 
 /// The step selector, the play button and the step slider.
 fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     let n = r.steps.len();
-    ui.strong("Step");
-    ui.horizontal(|ui| {
-        if ui
-            .add_enabled(v.step > 0, egui::Button::new("<"))
-            .on_hover_text("previous step")
-            .clicked()
-        {
+    // No "Step" heading and no count row: the menu text starts with "Step N of n", so the
+    // controls keep their phone rows. No file name in the closed menu, so that the row fits
+    // a phone. The list names the files.
+    // One wrapped row, so that Play goes on the step row when it fits (a phone shows it with
+    // no scroll), and the rail goes on the next row when the row has no space for it.
+    ui.horizontal_wrapped(|ui| {
+        if widgets::button(ui, v.step > 0, "<", "previous step").clicked() {
             v.step -= 1;
         }
-        egui::ComboBox::from_id_salt("step")
-            .selected_text(view::step_label(v.step, &r.steps[v.step]))
-            .show_ui(ui, |ui| {
-                for (i, s) in r.steps.iter().enumerate() {
-                    ui.selectable_value(&mut v.step, i, view::step_label(i, s));
-                }
-            });
-        if ui
-            .add_enabled(v.step + 1 < n, egui::Button::new(">"))
-            .on_hover_text("next step")
-            .clicked()
-        {
+        widgets::menu(
+            "step",
+            format!(
+                "Step {} of {n} (time {})",
+                v.step + 1,
+                view::format_value(r.steps[v.step].time)
+            ),
+        )
+        .show_ui(ui, |ui| {
+            for (i, s) in r.steps.iter().enumerate() {
+                ui.selectable_value(&mut v.step, i, view::step_label(i, s));
+            }
+        });
+        if widgets::button(ui, v.step + 1 < n, ">", "next step").clicked() {
             v.step += 1;
         }
-    });
-    if n > 1 {
-        ui.horizontal(|ui| {
-            let text = if v.playing.is_some() { "Pause" } else { "Play" };
-            if ui
-                .button(text)
-                .on_hover_text("show each step in turn")
-                .clicked()
-            {
+        if n > 1 {
+            // A symbol, not a word, so that the button goes on the step row of a phone.
+            let (text, hint) = match v.playing {
+                Some(_) => ("\u{23f8}", "pause"),
+                None => ("\u{23f5}", "play: show each step in turn"),
+            };
+            if widgets::button(ui, true, text, hint).clicked() {
                 v.playing = match v.playing {
                     Some(_) => None,
                     None => Some(ui.input(|i| i.time)),
                 };
             }
+            // The rail fills the row, so that each step is a long drag on a phone.
+            // The space left on this row: available_width() is the full row in a wrapped ui.
+            if ui.available_size_before_wrap().x < 3.0 * crate::ui::TARGET {
+                ui.end_row();
+            }
+            ui.spacing_mut().slider_width = ui.available_size_before_wrap().x;
             ui.add(egui::Slider::new(&mut v.step, 0..=n - 1).show_value(false));
-        });
-    }
-    ui.label(format!("{n} step{}", if n == 1 { "" } else { "s" }));
+        }
+    });
     ui.separator();
 }
 
 /// The deformed shape, its scale and the undeformed outline.
 fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
-    ui.strong("Deformed shape");
-    ui.checkbox(&mut v.deformed, "Show the deformed shape");
+    // The two switches on one wrapped row, so that a short panel (a phone) shows the probe.
+    ui.horizontal_wrapped(|ui| {
+        widgets::checkbox(ui, &mut v.deformed, "Deformed shape");
+        // Not in a child ui, so that the checkbox can go to the next row in 1 piece.
+        if !v.deformed {
+            ui.disable();
+        }
+        widgets::checkbox(ui, &mut v.ghost, "Undeformed outline");
+    });
     ui.add_enabled_ui(v.deformed, |ui| {
         ui.horizontal(|ui| {
             ui.label("Scale");
@@ -893,7 +1077,6 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                 None => {}
             }
         });
-        ui.checkbox(&mut v.ghost, "Undeformed outline");
     });
     let step = v.current(r);
     let unit = view::unit_text(&r.units, results::Quantity::Displacement);
@@ -904,6 +1087,15 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if crate::controls::fit_backing_store(&self.canvas_id) {
+            ui.ctx().request_repaint();
+        }
+        let scale = crate::controls::text_scale();
+        if scale != self.text_scale {
+            self.text_scale = scale;
+            widgets::style(ui.ctx(), scale);
+            ui.ctx().request_repaint();
+        }
         self.take_request();
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             if let Some(Shown {
@@ -936,21 +1128,49 @@ impl eframe::App for ViewerApp {
                 .map(|(_, text)| text.clone())
                 .unwrap_or_else(|| self.status_text());
         }
-        egui::Panel::bottom("status").show(ui, |ui| {
+        // The panels start 16 px from the view edge, the same as the page toolbar
+        // (--space-4). The egui default is 8 px.
+        let frame =
+            egui::Frame::side_top_panel(ui.style()).inner_margin(egui::Margin::symmetric(16, 2));
+        egui::Panel::bottom("status").frame(frame).show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
-            ui.weak(self.status_text());
+            // 1 row only: at a large text size on a phone, 2 rows take the space of the
+            // Results panel. The full text shows on hover and goes to the screen reader.
+            ui.add(egui::Label::new(egui::RichText::new(self.status_text()).weak()).truncate());
         });
         if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
-            egui::Panel::right("results")
-                .resizable(false)
-                .min_size(260.0)
-                .show(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if shown.panel(ui, &mut self.labels, &mut self.all) {
-                            shown.refresh();
-                        }
-                    });
-                });
+            // On a narrow view (a phone) the results go below the model, so that the model
+            // keeps the full width. A short, wide view (a phone in landscape) keeps them on
+            // the right when the model area then stays at least as wide as it is high.
+            const RIGHT: f32 = 260.0;
+            let size = ui.available_size();
+            // Below the model, the panel is only as high as its content, so that a view
+            // with few controls (a report) gives the rest of the height to the model.
+            let below = size.x < 600.0 && size.x - RIGHT < size.y;
+            let panel = if below {
+                let most = size.y * 0.4;
+                egui::Panel::bottom("results")
+                    .exact_size(self.results_height.map_or(most, |needed| needed.min(most)))
+            } else {
+                egui::Panel::right("results").min_size(RIGHT)
+            };
+            let response = panel.frame(frame).resizable(false).show(ui, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    let all = (!self.page_switch).then_some(&mut self.all);
+                    if shown.panel(ui, &mut self.labels, all) {
+                        shown.refresh();
+                    }
+                })
+            });
+            if below {
+                let scroll = &response.inner;
+                let needed = response.response.rect.height() - scroll.inner_rect.height()
+                    + scroll.content_size.y;
+                if self.results_height != Some(needed) {
+                    self.results_height = Some(needed);
+                    ui.ctx().request_repaint();
+                }
+            }
         }
         self.upload();
         if let Some(shown) = &self.shown {
@@ -985,7 +1205,9 @@ impl eframe::App for ViewerApp {
                 response.request_focus();
             }
             let aspect = rect.width() / rect.height().max(1.0);
-            if shown.initial_fit {
+            // A hidden view (for example the page with Runs open and no run) is 0 px wide,
+            // so the first fit waits for a view with a size.
+            if shown.initial_fit && rect.width() >= 1.0 && rect.height() >= 1.0 {
                 shown.home.fit_distance(aspect);
                 shown.camera = shown.home;
                 shown.named = shown.camera;
@@ -1000,10 +1222,11 @@ impl eframe::App for ViewerApp {
             }
             if let Some(link) = &self.camera_link {
                 if let Ok(mut camera) = link.lock() {
-                    if let Some(camera) = camera.camera {
+                    if let Some((camera, named)) = camera.camera {
                         shown.camera = camera;
+                        shown.named = named;
                     } else {
-                        camera.camera = Some(shown.camera);
+                        camera.camera = Some((shown.camera, shown.named));
                         for ctx in &camera.contexts {
                             ctx.request_repaint();
                         }
@@ -1027,18 +1250,26 @@ impl eframe::App for ViewerApp {
                 shown.named = shown.camera;
             }
             let delta = response.drag_delta();
+            // Two fingers pan and pinch. The first finger also drives the pointer, so it must not orbit.
+            let touch = ui
+                .input(|i| i.multi_touch())
+                .filter(|t| rect.contains(t.start_pos));
             let pan = response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)
                 || (response.dragged_by(egui::PointerButton::Primary)
                     && ui.input(|i| i.modifiers.shift));
-            if pan {
+            if let Some(t) = touch {
+                shown
+                    .camera
+                    .pan(t.translation_delta.x, t.translation_delta.y, rect.height());
+            } else if pan {
                 shown.camera.pan(delta.x, delta.y, rect.height());
             } else if response.dragged_by(egui::PointerButton::Primary) {
                 shown.camera.orbit(delta.x, delta.y);
             }
-            if response.hovered() {
-                let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-                shown.camera.zoom(scroll);
+            if response.hovered() || touch.is_some() {
+                let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+                shown.camera.zoom(scroll, pinch);
             }
             if response.double_clicked() {
                 shown.camera = shown.home;
@@ -1058,7 +1289,7 @@ impl eframe::App for ViewerApp {
             if shown.camera != before {
                 if let Some(link) = &self.camera_link {
                     if let Ok(mut camera) = link.lock() {
-                        camera.camera = Some(shown.camera);
+                        camera.camera = Some((shown.camera, shown.named));
                         for ctx in &camera.contexts {
                             ctx.request_repaint();
                         }
@@ -1117,10 +1348,17 @@ impl eframe::App for ViewerApp {
                 },
             ));
             let painter = ui.painter_at(rect);
+            let mut tags = Tags {
+                placed: Vec::new(),
+                model: shown.geometry.as_deref().map_or(Vec::new(), |g| {
+                    let at = |x: &[f32; 3]| screen(&view_proj, rect, *x);
+                    g.positions.iter().filter_map(at).collect()
+                }),
+            };
             if self.labels && !self.mesh_only {
-                shown.overlay(&painter, rect, &view_proj);
+                shown.overlay(&painter, rect, &view_proj, &mut tags);
             }
-            shown.marks(&painter, rect, &view_proj);
+            shown.marks(&painter, rect, &view_proj, &mut tags);
         });
     }
 }

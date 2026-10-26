@@ -6,9 +6,9 @@
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: var(--body)/1.5 var(--sans); }
 h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.15; }
+textarea { font: inherit; }
 code, pre, kbd { font: var(--mono)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-a:hover { text-decoration-color: var(--accent); }
 canvas[aria-label]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
@@ -27,15 +27,18 @@ button, select, input[type="search"] {
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-button:hover, select:hover { background-color: var(--raised); }
 button:disabled { opacity: 0.4; cursor: default; }
-button:disabled:not(.primary):hover { background: var(--bg); }
+/* A hover state only where a pointer can hover: on iOS a tap leaves :hover on until the next tap. */
+@media (hover: hover) {
+  a:hover { text-decoration-color: var(--accent); }
+  button:where(:enabled):hover, select:hover { background-color: var(--raised); }
+}
 button.primary { border-color: var(--button); background: var(--button); color: var(--on-button); }
 button.icon { display: inline-grid; place-items: center; width: var(--target); padding: 0; border-radius: 50%; }
 button.icon svg { width: 16px; height: 16px; }
 select {
   appearance: none; padding-right: calc(var(--space-3) + 20px); text-overflow: ellipsis;
-  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23908a7e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right var(--space-3) center / 14px;
+  background: var(--bg) var(--chevron) no-repeat right var(--space-3) center / 14px;
 }
 option { background: var(--side); color: var(--text); }
 
@@ -64,12 +67,36 @@ output, .readout { font-variant-numeric: tabular-nums; }
 .readout { display: inline-flex; gap: var(--space-2); align-items: baseline; }
 .readout b { font-weight: 500; }
 
-/* Keyboard-shortcut help row: each key in kbd, then its action. */
+/* Text only for screen readers, for example the status of a 3D view that the canvas already shows. */
+.spoken { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Help row: each key in kbd or each pointer gesture in b, then its action. */
 .keys { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--small); color: var(--muted); }
 kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--text); font-size: var(--small); }
+.keys b { color: var(--text); font-weight: 600; }
+/* A touch screen with no hover often has no keyboard: the key hints go, and the camera help
+   shows the touch gestures in place of the mouse and key rows. */
+[data-pointer="touch"] { display: none; }
+@media (hover: none) and (pointer: coarse) {
+  .keys:has(kbd):not([data-camera-help] > .keys), button kbd, [data-pointer="mouse"] { display: none; }
+  [data-pointer="touch"] { display: inline; }
+}
+/* A phone has 390 pt or less: the camera toolbar keeps 1 row. The menu has its own aria-label, so
+   its visible "Views" word can go, and the gaps get smaller. */
+@media (max-width: 430px) {
+  .toolbar:has(> [data-camera]) { column-gap: var(--space-2); }
+  [data-camera="views"] > span { display: none; }
+}
+/* A phone in landscape has about 390 pt of height, and 2 toolbar rows are above the model. Less
+   space above and below each row gives the model more height. The targets stay --target high. */
+@media (max-height: 500px) {
+  .toolbar { min-height: calc(var(--target) + 2 * var(--space-1)); padding-block: var(--space-1); }
+}
+/* iOS Safari zooms the page when a text field or a menu under 16px gets the focus. This floor
+   wins over the font size of a view (!important), because the zoom does not stop below 16px. */
+@media (pointer: coarse) { textarea, select, input[type="search"] { font-size: max(16px, var(--body)) !important; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
-[hidden] { display: none !important; }

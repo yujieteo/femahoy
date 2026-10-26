@@ -10,17 +10,19 @@ use crate::{app::RequestSlot, view::Control};
 const TOOLBAR: &str = r#"
 <div class="toolbar" role="group" aria-label="Camera controls">
   <button type="button" data-camera="fit" aria-keyshortcuts="F" title="Fit the full model. Keep the camera direction.">Fit <kbd>F</kbd></button>
-  <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Restore the view of the report">Report view <kbd>Home</kbd></button>
-  <label data-camera="views">Views <select id="fh-direction" aria-label="Camera direction">
+  <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Go back to the first view of the model">Reset view <kbd>Home</kbd></button>
+  <label data-camera="views"><span>Views</span> <select id="fh-direction" aria-label="Camera direction">
     <option disabled>Custom</option><option>+X</option><option>-X</option><option>+Y</option><option>-Y</option><option>+Z</option><option>-Z</option><option>Isometric</option>
   </select></label>
   <button type="button" data-camera="help" id="fh-help-button" aria-controls="fh-camera-help" aria-expanded="false" aria-keyshortcuts="?">Help <kbd>?</kbd></button>
 </div>
 <div class="toolbar" id="fh-camera-help" data-camera-help hidden><p class="keys">
-  <span><kbd>Drag</kbd> Orbit</span><span><kbd>Right or Shift drag</kbd> Pan</span>
-  <span><kbd>Scroll</kbd> Zoom</span><span><kbd>Double click</kbd> Report view</span>
-  <span><kbd>F</kbd> Fit</span><span><kbd>Home</kbd> Report view</span><span><kbd>?</kbd> Help</span>
-  <span>Shortcuts act when the model has focus.</span>
+  <span data-pointer="mouse"><b>Drag</b> Orbit</span><span data-pointer="mouse"><b>Right or Shift drag</b> Pan</span>
+  <span data-pointer="mouse"><b>Scroll</b> Zoom</span><span data-pointer="mouse"><b>Double click</b> Reset view</span>
+  <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Reset view</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
+  <span data-pointer="mouse">Shortcuts act when the model has focus.</span>
+  <span data-pointer="touch"><b>Drag</b> Orbit</span><span data-pointer="touch"><b>Two-finger drag</b> Pan</span>
+  <span data-pointer="touch"><b>Pinch</b> Zoom</span><span data-pointer="touch"><b>Double tap</b> Reset view</span>
 </p></div>"#;
 
 fn listen(
@@ -62,6 +64,11 @@ pub fn install(
     let doc = canvas.owner_document().ok_or("no document")?;
     let view = canvas.parent_element().ok_or("no model area")?;
     let model = view.parent_element().ok_or("no model view")?;
+    // eframe puts its hidden text input after the canvas with no name, so VoiceOver reads "text field".
+    if let Some(input) = canvas.next_element_sibling().filter(|e| e.tag_name() == "INPUT") {
+        let name = canvas.get_attribute("aria-label").unwrap_or_default();
+        input.set_attribute("aria-label", &format!("Text entry for {name}"))?;
+    }
     let toolbar = doc.create_element("section")?;
     toolbar.set_id(&format!("{}-camera-controls", canvas.id()));
     toolbar.set_attribute("aria-label", "Camera controls")?;
@@ -183,4 +190,41 @@ pub fn update(canvas_id: &str, controls: &[Control], all: bool, direction: &str)
                 .set_value(direction);
         }
     }
+}
+
+/// The page text size over the body token. It is 1 on a desktop and at the iOS default text
+/// size, and more at a larger Dynamic Type size, because the page CSS follows that size.
+pub fn text_scale() -> f32 {
+    let size = web_sys::window().and_then(|window| {
+        let body = window.document()?.body()?;
+        let size = window.get_computed_style(&body).ok()??.get_property_value("font-size").ok()?;
+        size.strip_suffix("px")?.parse::<f32>().ok()
+    });
+    size.map_or(1.0, |px| px / crate::ui::BODY)
+}
+
+/// Give the canvas 1 backing pixel for each device pixel. eframe reads the size from
+/// `devicePixelContentBoxSize`, which Chrome gives in CSS pixels under device emulation.
+/// Then egui draws at 3x into a 1x canvas and the model is off the canvas. True on a change.
+pub fn fit_backing_store(canvas_id: &str) -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Some(canvas) = window
+        .document()
+        .and_then(|d| d.get_element_by_id(canvas_id))
+        .and_then(|e| e.dyn_into::<HtmlCanvasElement>().ok())
+    else {
+        return false;
+    };
+    // The same rounding as eframe: the CSS size in whole pixels times the ratio.
+    let dpr = window.device_pixel_ratio();
+    let width = (f64::from(canvas.client_width()) * dpr) as u32;
+    let height = (f64::from(canvas.client_height()) * dpr) as u32;
+    if width == 0 || height == 0 || (canvas.width(), canvas.height()) == (width, height) {
+        return false;
+    }
+    canvas.set_width(width);
+    canvas.set_height(height);
+    true
 }
