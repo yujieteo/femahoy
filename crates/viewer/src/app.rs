@@ -23,7 +23,7 @@ use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, 
 use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
-const NO_RUN: &str = "No run is open. Select a run at the top, or ask the agent for a model.";
+const NO_RUN: &str = "No run is open. Select a run in Runs, or ask the agent for a model.";
 
 /// What the viewer shows.
 pub enum Content {
