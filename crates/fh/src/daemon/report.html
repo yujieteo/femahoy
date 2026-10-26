@@ -251,6 +251,8 @@ async function start() {
     const viewer = await import(URL.createObjectURL(new Blob([js], { type: "text/javascript" })));
     await viewer.default({ module_or_path: await (await fetch("/viewer/fh_viewer_bg.wasm")).arrayBuffer() });
     const view = await viewer.start($("fh"), "");
+    // The switch of the page replaces the switch of the results panel.
+    view.all($("all").querySelector("input").checked);
     const bar = $("bar");
     bar.append(...text.querySelectorAll("[data-bar]"));
     const views = () => [...bar.querySelectorAll("[data-run]"), ...text.querySelectorAll("[data-run]")];

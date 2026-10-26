@@ -102,6 +102,8 @@ pub struct ViewerApp {
     labels: bool,
     /// Show all the controls of a run, also the controls that its view does not show.
     all: bool,
+    /// The page has its own switch "Show all controls", so the results panel shows none.
+    page_switch: bool,
     camera_action: Option<String>,
     mesh_only: bool,
     camera_link: Option<CameraLink>,
@@ -118,6 +120,7 @@ impl ViewerApp {
             slot,
             labels: true,
             all: false,
+            page_switch: false,
             camera_action: None,
             mesh_only: false,
             camera_link: None,
@@ -190,6 +193,7 @@ impl ViewerApp {
         }
         if let Some(all) = request.all.take() {
             self.all = all;
+            self.page_switch = true;
             if let Some(Body::Results(r, _, loads, p, view)) =
                 self.shown.as_mut().map(|s| &mut s.body)
             {
@@ -337,16 +341,16 @@ impl Shown {
         }
     }
 
-    /// The panel of the body. A run with no view has the switch `all`. Returns true when the
-    /// view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: &mut bool) -> bool {
+    /// The panel of the body. A run with no view has the switch `all` when it is given. Returns
+    /// true when the view state changed.
+    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: Option<&mut bool>) -> bool {
         let drawn = self.geometry.as_deref().map(|g| &g.positions[..]);
         match &mut self.body {
             Body::Results(r, v, loads, panel, view) => {
-                let before = *all;
-                let switch = (*view == View::default()).then_some(&mut *all);
-                let changed = results_panel(ui, r, v, panel, switch, drawn);
-                if *all != before {
+                let mut switch = all.filter(|_| *view == View::default());
+                let before = switch.as_deref().copied();
+                let changed = results_panel(ui, r, v, panel, switch.as_deref_mut(), drawn);
+                if let Some(all) = switch.filter(|a| Some(**a) != before) {
                     *panel = self::panel(r, view, &loads.preview, *all);
                 }
                 if panel.controls.contains(&Control::Loads) {
@@ -953,7 +957,8 @@ impl eframe::App for ViewerApp {
             };
             panel.resizable(false).show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    if shown.panel(ui, &mut self.labels, &mut self.all) {
+                    let all = (!self.page_switch).then_some(&mut self.all);
+                    if shown.panel(ui, &mut self.labels, all) {
                         shown.refresh();
                     }
                 });
