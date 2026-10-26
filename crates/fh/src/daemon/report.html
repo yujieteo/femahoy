@@ -115,9 +115,12 @@ if (controls.has("sections")) {
       heading.focus({ preventScroll: true });
     });
     // The menu shows the section at the top of the text, so a choice of any other section jumps.
+    // At the end of the text, a chosen section in view stays: a short last section cannot reach the top.
     const current = () => {
-      const top = text.getBoundingClientRect().top + 1;
-      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= top);
+      const box = text.getBoundingClientRect();
+      const chosen = headings[$("sections").selectedIndex]?.getBoundingClientRect().top;
+      if (text.scrollTop + text.clientHeight >= text.scrollHeight - 1 && chosen >= box.top && chosen < box.bottom) return;
+      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1);
     };
     text.addEventListener("scroll", current, { passive: true });
     current();
