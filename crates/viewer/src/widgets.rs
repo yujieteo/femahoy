@@ -175,10 +175,11 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, bool, &str)]) -> Option<usiz
     clicked
 }
 
-/// A standard button with the shared hit target.
-pub fn button(ui: &mut egui::Ui, text: &str, hint: &str) -> egui::Response {
-    ui.add(egui::Button::new(text).min_size(egui::vec2(ui::TARGET, ui::TARGET)))
-        .on_hover_text(hint)
+/// A standard button with the shared hit target. A disabled button is greyed out and keeps
+/// its place in a wrapped row (a child `add_enabled_ui` gets only the rest of the row).
+pub fn button(ui: &mut egui::Ui, enabled: bool, text: &str, hint: &str) -> egui::Response {
+    let button = egui::Button::new(text).min_size(egui::vec2(ui::TARGET, ui::TARGET));
+    ui.add_enabled(enabled, button).on_hover_text(hint)
 }
 
 /// A menu with the chevron of the page menu (`select` in `ui.css`), not the filled egui triangle.

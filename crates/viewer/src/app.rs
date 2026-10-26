@@ -886,16 +886,13 @@ fn probe_controls(
         if field.is_none() {
             return;
         }
-        if widgets::button(ui, "Min", "locate the actual minimum item").clicked() {
+        if widgets::button(ui, true, "Min", "locate the actual minimum item").clicked() {
             chosen = Some(false);
         }
-        if widgets::button(ui, "Max", "locate the actual maximum item").clicked() {
+        if widgets::button(ui, true, "Max", "locate the actual maximum item").clicked() {
             chosen = Some(true);
         }
-        let clear = ui.add_enabled_ui(v.probe.is_some(), |ui| {
-            widgets::button(ui, "Clear", "clear probe (Escape)")
-        });
-        if clear.inner.clicked() {
+        if widgets::button(ui, v.probe.is_some(), "Clear", "clear probe (Escape)").clicked() {
             chosen = None;
             v.probe = None;
         }
@@ -991,8 +988,7 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     // One wrapped row, so that Play goes on the step row when it fits (a phone shows it with
     // no scroll), and the rail goes on the next row when the row has no space for it.
     ui.horizontal_wrapped(|ui| {
-        let back = ui.add_enabled_ui(v.step > 0, |ui| widgets::button(ui, "<", "previous step"));
-        if back.inner.clicked() {
+        if widgets::button(ui, v.step > 0, "<", "previous step").clicked() {
             v.step -= 1;
         }
         widgets::menu(
@@ -1008,8 +1004,7 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                 ui.selectable_value(&mut v.step, i, view::step_label(i, s));
             }
         });
-        let next = ui.add_enabled_ui(v.step + 1 < n, |ui| widgets::button(ui, ">", "next step"));
-        if next.inner.clicked() {
+        if widgets::button(ui, v.step + 1 < n, ">", "next step").clicked() {
             v.step += 1;
         }
         if n > 1 {
@@ -1018,7 +1013,7 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                 Some(_) => ("\u{23f8}", "pause"),
                 None => ("\u{23f5}", "play: show each step in turn"),
             };
-            if widgets::button(ui, text, hint).clicked() {
+            if widgets::button(ui, true, text, hint).clicked() {
                 v.playing = match v.playing {
                     Some(_) => None,
                     None => Some(ui.input(|i| i.time)),
