@@ -99,8 +99,8 @@ output { margin-left: var(--space-2); }
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
-// Authors opt into named controls. No marker means no report toolbar.
-const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "").split(","));
+// No marker means every report control. A marker shows only the controls that it names.
+const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "sections,layout,identity").split(","));
 const hasRuns = runs.options.length > 0;
 const hints = [];
 if (controls.has("sections")) {

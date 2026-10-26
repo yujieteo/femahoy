@@ -19,8 +19,8 @@ cases. For each case:
    (see "The story of a report" in crates/fh/src/daemon/agent.md). Its `data-run` names an
    input of the case, for example `data-run="d10"`, and the script gives the name of its run.
    A case that does not pass shows the table of the checks before the story. A case with no
-   story.html gets a link to each run. The story chooses its own report controls with
-   `<div data-report-controls="...">` (agent.md). In the story,
+   story.html gets a link to each run. A story shows each report control, or only the controls
+   that it names in `<div data-report-controls="...">` (agent.md). In the story,
    `<!--hand-check CHECK UNIT-->...<!--/hand-check-->` puts its formula and scope beside the
    result of the check CHECK of check.toml. UNIT comes from the case. The table gives the
    difference in that unit, and "Not specified" for the unit of each other check.
