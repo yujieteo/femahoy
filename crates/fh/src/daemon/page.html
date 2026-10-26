@@ -328,10 +328,17 @@ async function openFile(run, path) {
   const tab = window.open("about:blank", "_blank");
   if (tab) tab.opener = null;
   try {
-    const response = await call("/api/v1/runs/" + run + "/" + path);
-    const url = URL.createObjectURL(new Blob([await response.blob()], { type: "text/plain" }));
-    if (tab) tab.location.replace(url);
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const text = await (await call("/api/v1/runs/" + run + "/" + path)).text();
+    if (!tab) return;
+    // A plain text tab has no viewport tag, so a phone shows it 980 px wide at a third of its size.
+    // textContent puts the file in the page as text only, never as HTML.
+    const d = tab.document;
+    d.head.innerHTML = '<meta name="viewport" content="width=device-width"><meta name="color-scheme" content="light dark">';
+    d.title = path.split("/").pop();
+    const pre = d.createElement("pre");
+    pre.style.cssText = "margin: 16px; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere";
+    pre.textContent = text;
+    d.body.replaceChildren(pre);
   } catch (e) { tab?.close(); showError(e.message); }
 }
 async function openReport(run) {
