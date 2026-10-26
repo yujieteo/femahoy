@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-8d41254e928257aff26c89919f8ef03b' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-34b04d18ea8598b7712e2b4fb68d05aa' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -39,8 +39,8 @@ canvas[aria-label]:focus-visible { outline: 2px solid var(--accent); outline-off
 
 /* Button and menu (select). .primary is the main action of a view. .icon is a round button
    with an icon and an aria-label. */
-button, select {
-  min-height: var(--target); max-width: 100%; padding: 0 var(--space-3);
+button, select, input[type="search"] {
+  min-height: var(--target); min-width: var(--target); max-width: 100%; padding: 0 var(--space-3);
   border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
   color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
@@ -89,8 +89,12 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
+[hidden] { display: none !important; }
+
 body { display: flex; overflow: hidden; font-size: var(--read); }
-article { flex: none; width: clamp(360px, 42vw, 720px); overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
+#report { display: flex; flex-direction: column; min-width: 0; width: clamp(360px, 42vw, 720px); }
+#report > header { border-bottom: 1px solid var(--line); }
+article { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
 article h1 { margin: 0.5rem 0 1rem; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.015em; text-wrap: balance; }
 article h2 { margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1.75rem; }
 article h3 { margin: 2rem 0 0.75rem; font-size: 1.25rem; }
@@ -102,7 +106,17 @@ article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; backg
 article :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--code); overflow-wrap: anywhere; }
 article button, article select, .toolbar button, .toolbar select { font-size: var(--body); }
 /* A report with no run has no viewer: the text fills the page. */
-body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem, calc(50% - 22rem)); }
+body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
+body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
+body.text-mode #model { display: none; }
+#identity { overflow-wrap: anywhere; }
+[data-mesh-trend] > section > h3 { margin-top: var(--space-4); }
+summary { min-height: var(--target); cursor: pointer; padding-block: var(--space-2); }
+@media (max-width: 800px) {
+  body { flex-direction: column; }
+  #report { width: 100%; flex: 1; min-height: 0; }
+  #model { flex: none !important; height: 42%; }
+}
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
@@ -111,6 +125,7 @@ body:not(:has(#model)) article { width: auto; flex: 1; padding-inline: max(1rem,
 .curve .grid { stroke: var(--line); }
 .curve .frame { fill: none; stroke: var(--muted); }
 .curve polyline { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.curve .sample-cursor { stroke: var(--text); stroke-width: 1; stroke-dasharray: 4 3; }
 .curve circle { stroke: var(--side); stroke-width: 2; }
 .curve .legend { font-size: 0.875rem; }
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
@@ -127,20 +142,30 @@ output { margin-left: var(--space-2); }
 </style>
 </head>
 <body>
+<section id="report" aria-label="Report">
+<header id="report-tools" class="toolbar" aria-label="Report controls" hidden>
+<label id="section-control" hidden>Section <select id="sections" aria-label="Report section" aria-keyshortcuts="Alt+S"></select></label>
+<span id="layout-control" class="segmented" role="group" aria-label="Report layout" hidden>
+<label><input type="radio" name="layout" value="text" aria-keyshortcuts="Alt+T">Text</label>
+<label><input type="radio" name="layout" value="split" checked aria-keyshortcuts="Alt+V">Split</label>
+</span>
+<span id="identity" class="readout" aria-live="polite" hidden></span>
+<p id="report-keys" class="keys"></p>
+</header>
 <article><h1>frequency-cantilever derivation</h1>
 <h2>Conclusion</h2>
 <p>The solid model gives the first natural frequency of the cantilever 0.33 % above the beam theory of Blevins (1979). The model gives 419.12 Hz, and the beam theory gives 417.758 Hz. The tolerance is 1 %.</p>
 <p>The former C3D10 mesh study of derivation.md goes from +0.47 % at the size 5 mm to +0.27 % at 1.25 mm. The values go to about +0.2 %, the difference between the solid and the beam theory.</p>
 <p>The check uses only mode 1, but the run gives 6 modes. The effective modal mass of each mode in <code>job.dat</code> gives its direction. The modes 1, 3 and 6 bend the beam in z, and the modes 2 and 4 bend it in y. Mode 5, at 6013.0 Hz, has almost no effective mass in x, y or z, only a rotation about x: it twists the beam. The plot compares the bending modes r = 1, 2, 3 of each direction with the beam theory.</p>
-<figure class="curve"><figcaption>Bending frequencies of the solid against the beam theory</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Bending frequencies of the solid against the beam theory"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="210.0" y="324.0" text-anchor="middle">1.5</text><text x="348.0" y="324.0" text-anchor="middle">2</text><text x="486.0" y="324.0" text-anchor="middle">2.5</text><text x="624.0" y="324.0" text-anchor="middle">3</text><text x="66.0" y="312.0" text-anchor="end">0.94</text><text x="66.0" y="238.0" text-anchor="end">0.96</text><text x="66.0" y="164.0" text-anchor="end">0.98</text><text x="66.0" y="90.0" text-anchor="end">1</text><text x="66.0" y="16.0" text-anchor="end">1.02</text><text class="label" x="348.0" y="354" text-anchor="middle">bending mode r [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">f solid / f beam theory [1]</text><polyline style="stroke:var(--s3)" points="72.0,86.0 348.0,86.0 624.0,86.0"/><circle style="fill:var(--s1)" cx="72.0" cy="73.9" r="4"><title>bend in z: 1, 1.00327</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="116.0" r="4"><title>bend in z: 2, 0.991881</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="179.4" r="4"><title>bend in z: 3, 0.974764</title></circle><circle style="fill:var(--s2)" cx="72.0" cy="101.8" r="4"><title>bend in y: 1, 0.995718</title></circle><circle style="fill:var(--s2)" cx="348.0" cy="259.7" r="4"><title>bend in y: 2, 0.953056</title></circle></svg><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>bend in z</li><li><i class="point" style="background:var(--s2)"></i>bend in y</li><li><i class="line" style="background:var(--s3)"></i>beam theory</li></ul><p>bend in z: the solid modes 1, 3 and 6, ccx/job.dat of the run</p><p>bend in y: the solid modes 2 and 4, ccx/job.dat of the run</p><p>The direction of a mode is the direction of its largest effective modal mass in ccx/job.dat.</p><p>The beam theory is f_r = f1 (λ_r / λ_1)^2 with f1 = 417.758 Hz of check.toml and λ_r of Blevins (1979), Table 8-1. For a bend in y, the beam is 10 mm deep in place of 5 mm, thus f_r is 2 times larger.</p></figure>
+<figure class="curve"><figcaption>Bending frequencies of the solid against the beam theory</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="Bending frequencies of the solid against the beam theory"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="210.0" y1="12" x2="210.0" y2="308.0"/><line x1="348.0" y1="12" x2="348.0" y2="308.0"/><line x1="486.0" y1="12" x2="486.0" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="234.0" x2="624.0" y2="234.0"/><line x1="72" y1="160.0" x2="624.0" y2="160.0"/><line x1="72" y1="86.0" x2="624.0" y2="86.0"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">1</text><text x="210.0" y="324.0" text-anchor="middle">1.5</text><text x="348.0" y="324.0" text-anchor="middle">2</text><text x="486.0" y="324.0" text-anchor="middle">2.5</text><text x="624.0" y="324.0" text-anchor="middle">3</text><text x="66.0" y="312.0" text-anchor="end">0.94</text><text x="66.0" y="238.0" text-anchor="end">0.96</text><text x="66.0" y="164.0" text-anchor="end">0.98</text><text x="66.0" y="90.0" text-anchor="end">1</text><text x="66.0" y="16.0" text-anchor="end">1.02</text><text class="label" x="348.0" y="354" text-anchor="middle">bending mode r [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">f solid / f beam theory [1]</text><polyline style="stroke:var(--s3)" points="72.0,86.0 348.0,86.0 624.0,86.0"/><circle style="fill:var(--s1)" cx="72.0" cy="73.9" r="4"><title>bend in z: 1, 1.00327</title></circle><circle style="fill:var(--s1)" cx="348.0" cy="116.0" r="4"><title>bend in z: 2, 0.991881</title></circle><circle style="fill:var(--s1)" cx="624.0" cy="179.4" r="4"><title>bend in z: 3, 0.974764</title></circle><circle style="fill:var(--s2)" cx="72.0" cy="101.8" r="4"><title>bend in y: 1, 0.995718</title></circle><circle style="fill:var(--s2)" cx="348.0" cy="259.7" r="4"><title>bend in y: 2, 0.953056</title></circle><line class="sample-cursor" x1="72" x2="72" y1="12" y2="308" hidden="hidden"/></svg><div data-control="values" hidden><button type="button" aria-label="Show values for Bending frequencies of the solid against the beam theory" aria-expanded="false">Show values</button><div hidden><label>Sample <input type="range" name="sample" aria-label="Sample of Bending frequencies of the solid against the beam theory" min="0" max="2" value="0" step="1"></label><output class="readout" aria-live="polite"></output><p class="keys"><kbd>←</kbd><kbd>→</kbd> select a source sample</p><table><caption>Original values. — means no sample.</caption><thead><tr><th scope="col">bending mode r [1]</th><th scope="col">bend in z (f solid / f beam theory [1])</th><th scope="col">bend in y (f solid / f beam theory [1])</th><th scope="col">beam theory (f solid / f beam theory [1])</th></tr></thead><tbody><tr data-x="72"><td>1</td><td>1.003268</td><td>0.995718</td><td>1</td></tr><tr data-x="348"><td>2</td><td>0.991881</td><td>0.953056</td><td>1</td></tr><tr data-x="624"><td>3</td><td>0.974764</td><td>—</td><td>1</td></tr></tbody></table></div></div><ul class="legend"><li><i class="point" style="background:var(--s1)"></i>bend in z</li><li><i class="point" style="background:var(--s2)"></i>bend in y</li><li><i class="line" style="background:var(--s3)"></i>beam theory</li></ul><p>bend in z: the solid modes 1, 3 and 6, ccx/job.dat of the run</p><p>bend in y: the solid modes 2 and 4, ccx/job.dat of the run</p><p>The direction of a mode is the direction of its largest effective modal mass in ccx/job.dat.</p><p>The beam theory is f_r = f1 (λ_r / λ_1)^2 with f1 = 417.758 Hz of check.toml and λ_r of Blevins (1979), Table 8-1. For a bend in y, the beam is 10 mm deep in place of 5 mm, thus f_r is 2 times larger.</p></figure>
 
 <p>Mode 1 is the only mode above the beam theory. The other bending modes are below it, and the difference increases with r. In z, r = 2 is 0.81 % lower and r = 3 is 2.5 % lower. In y, the beam is 10 mm deep in place of 5 mm. There the solid is 0.43 % lower at r = 1 and 4.7 % lower at r = 2. derivation.md names the effects that the beam theory does not have: shear deformation, rotary inertia and the Poisson effect across the width.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.01 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
-<table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>f1</code></td><td style="text-align:right">419.123</td><td style="text-align:right">417.758</td><td style="text-align:right">4.178</td><td style="text-align:right">2.812</td></tr></tbody></table>
+<table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>f1</code></td><td>Not specified</td><td style="text-align:right">419.123</td><td style="text-align:right">417.758</td><td style="text-align:right">+1.3654 (+0.32684 %)</td><td style="text-align:right">4.178</td><td style="text-align:right">2.812</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-26, femahoy ac7f349.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-26, femahoy 1326e05.</p>
 <p>This case checks the first natural frequency of a clamped steel beam (units SI-mm).</p>
 <h2>Source</h2>
 <p>R. D. Blevins, <em>Formulas for Natural Frequency and Mode Shape</em>, Van Nostrand Reinhold, New York, 1979, Table 8-1 (single-span beams), the clamped-free beam.
@@ -168,12 +193,13 @@ The mesh retains the 100 x 10 x 5 mm box and the <code>FIXED</code> face at x = 
 <code>job.inp</code> includes the mesh. The material, frequency step, check and 1 % tolerance stay the same.</p>
 <p>Reason: The audit mesh gives 419.1234 Hz, against 419.3186 Hz for the former mesh, with fewer nodes.
 <code>fh validate</code> on the Mac gives 419.1234 Hz, a difference of +0.327 % from the reference.</p></article>
+</section>
 <main id="model">
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden></select><label id="all" class="trail"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="8d41254e928257aff26c89919f8ef03b">
+<script type="module" nonce="34b04d18ea8598b7712e2b4fb68d05aa">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -194,6 +220,79 @@ The mesh retains the 100 x 10 x 5 mm box and the <code>FIXED</code> face at x = 
 const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
+// No marker means every report control. A marker shows only the controls that it names.
+const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "sections,layout,identity").split(","));
+const hasRuns = runs.options.length > 0;
+const hints = [];
+if (controls.has("sections")) {
+  const headings = [...text.querySelectorAll("h2")];
+  if (headings.length) {
+    $("section-control").hidden = false;
+    headings.forEach((h, i) => $("sections").add(new Option(h.textContent, i)));
+    $("sections").addEventListener("change", () => {
+      const heading = headings[$("sections").value];
+      text.scrollTop += heading.getBoundingClientRect().top - text.getBoundingClientRect().top;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    });
+    // The menu shows the section at the top of the text, so a choice of any other section jumps.
+    // At the end of the text, a chosen section in view stays: a short last section cannot reach the top.
+    const current = () => {
+      const box = text.getBoundingClientRect();
+      const chosen = headings[$("sections").selectedIndex]?.getBoundingClientRect().top;
+      if (text.scrollTop + text.clientHeight >= text.scrollHeight - 1 && chosen >= box.top && chosen < box.bottom) return;
+      $("sections").selectedIndex = headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1);
+    };
+    text.addEventListener("scroll", current, { passive: true });
+    current();
+    hints.push("<kbd>Alt S</kbd> Section");
+  }
+}
+if (controls.has("layout") && hasRuns) {
+  $("layout-control").hidden = false;
+  $("layout-control").addEventListener("change", (e) => {
+    // The text reflows to the new width, so keep the first element that starts in view at its offset.
+    const top = () => text.getBoundingClientRect().top;
+    const anchor = [...text.querySelectorAll("*")].find((e) => e.getClientRects().length && e.getBoundingClientRect().top >= top() - 1);
+    const offset = anchor?.getBoundingClientRect().top - top();
+    document.body.classList.toggle("text-mode", e.target.value === "text");
+    if (anchor) text.scrollTop += anchor.getBoundingClientRect().top - top() - offset;
+    window.dispatchEvent(new Event("resize"));
+  });
+  hints.push("<kbd>Alt T</kbd> Text", "<kbd>Alt V</kbd> Split");
+}
+$("report-keys").innerHTML = hints.join(" · ");
+const identity = () => {
+  $("identity").hidden = !controls.has("identity") || !hasRuns;
+  $("identity").textContent = "Run: " + (runs.selectedOptions[0]?.textContent ?? "");
+};
+identity();
+$("report-tools").hidden = !hints.length && $("identity").hidden;
+document.addEventListener("keydown", (e) => {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.target.tagName === "TEXTAREA" || e.target.isContentEditable
+    || (e.target.tagName === "INPUT" && !/^(radio|checkbox|range)$/.test(e.target.type))) return;
+  const key = e.code?.startsWith("Key") ? e.code.slice(3).toLowerCase() : e.key.toLowerCase();
+  if (key === "s" && !$("section-control").hidden) { e.preventDefault(); $("sections").focus(); }
+  if ((key === "t" || key === "v") && !$("layout-control").hidden) {
+    e.preventDefault();
+    $("layout-control").querySelector(`[value="${key === "t" ? "text" : "split"}"]`).click();
+  }
+}, { capture: true });
+// Each trend contains plots from the curve renderer and tables from the same source rows.
+for (const trend of text.querySelectorAll("[data-mesh-trend]")) {
+  const panels = [...trend.children].filter((e) => e.tagName === "SECTION");
+  const select = document.createElement("select");
+  const label = document.createElement("label");
+  label.textContent = "Mesh result ";
+  select.setAttribute("aria-label", "Mesh metric and analysis condition");
+  select.name = "mesh-result";
+  panels.forEach((p, i) => select.add(new Option(p.querySelector("h3").textContent, i)));
+  const show = () => panels.forEach((p, i) => p.hidden = i !== Number(select.value));
+  select.addEventListener("change", show);
+  label.append(select);
+  trend.prepend(label);
+  show();
+}
 const files = new Map([...document.querySelectorAll("script[data-path]")].map((e) => [e.dataset.path, e]));
 
 const decode = (base64) => {
@@ -210,8 +309,54 @@ window.fetch = async (request) => {
   return new Response(new Blob([decode(base64)]).stream().pipeThrough(new DecompressionStream("deflate-raw")));
 };
 
+// The values control uses the source rows, never rounded SVG coordinates.
+function curveControls(all = false) {
+  document.querySelectorAll('.curve [data-control="values"]').forEach((control) => {
+    const policy = control.closest('[data-controls]')?.dataset.controls;
+    control.hidden = !all && policy !== undefined && !policy.split(',').map(s => s.trim()).includes('values');
+    control.querySelector('input').dispatchEvent(new Event('input'));
+  });
+}
+for (const figure of document.querySelectorAll('.curve')) {
+  const control = figure.querySelector('[data-control="values"]');
+  if (!control) continue;
+  const button = control.querySelector('button');
+  const body = button.nextElementSibling;
+  const slider = control.querySelector('input');
+  const rows = [...control.querySelectorAll('tbody tr')];
+  const svg = figure.querySelector('svg');
+  const cursor = svg.querySelector('.sample-cursor');
+  const select = (index) => {
+    slider.value = index;
+    rows.forEach((row, i) => { row.hidden = i !== Number(slider.value); });
+    const row = rows[Number(slider.value)];
+    control.querySelector('output').value = row ? `${Number(slider.value) + 1} of ${rows.length}` : 'No samples';
+    if (row) {
+      cursor.setAttribute('x1', row.dataset.x); cursor.setAttribute('x2', row.dataset.x);
+      slider.setAttribute('aria-valuetext', [...row.cells].map((cell, i) => `${control.querySelectorAll('th')[i].textContent}: ${cell.textContent}`).join(', '));
+    }
+    cursor.toggleAttribute('hidden', control.hidden || body.hidden || !row);
+  };
+  slider.addEventListener('input', () => select(slider.value));
+  button.addEventListener('click', () => { body.hidden = !body.hidden; button.setAttribute('aria-expanded', String(!body.hidden)); select(slider.value); });
+  svg.addEventListener('pointerdown', (event) => {
+    if (control.hidden || !rows.length) return;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(svg.getScreenCTM().inverse());
+    let nearest = 0;
+    rows.forEach((row, i) => { if (Math.abs(Number(row.dataset.x) - point.x) < Math.abs(Number(rows[nearest].dataset.x) - point.x)) nearest = i; });
+    body.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    select(nearest);
+    slider.focus();
+  });
+}
+curveControls();
+$('all').addEventListener('change', (event) => curveControls(event.target.checked));
+
 async function start() {
   if (!runs.options.length) {
+    const all = $("all");
+    if (document.querySelector('.curve [data-control="values"][hidden]')) text.prepend(all);
     $("model").remove();
     return;
   }
@@ -239,6 +384,7 @@ async function start() {
     const open = (e) => {
       if (![...runs.options].some((o) => o.value === e.dataset.run)) return false;
       runs.value = e.dataset.run;
+      identity();
       const lines = Object.entries(e.dataset).filter(([key]) => !["run", "labels", "bar"].includes(key));
       if (slider(e)) lines.push(["step", e.value]);
       view.open(e.dataset.run, lines.map(([key, value]) => key + "=" + value).join("\n"));
