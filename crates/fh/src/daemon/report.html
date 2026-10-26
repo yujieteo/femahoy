@@ -45,6 +45,8 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
   article { border-right: 0; border-bottom: 1px solid var(--line); }
   #model { flex: none !important; height: 55%; }
 }
+/* A phone in landscape: at 360 px the report header uses 4 rows, half of the height. At 50% it uses 2 rows. */
+@media (min-width: 801px) and (max-height: 500px) { #report { width: 50%; } }
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
