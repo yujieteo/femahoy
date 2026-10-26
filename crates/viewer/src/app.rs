@@ -980,8 +980,15 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 
 /// The deformed shape, its scale and the undeformed outline.
 fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
-    ui.strong("Deformed shape");
-    widgets::checkbox(ui, &mut v.deformed, "Show the deformed shape");
+    // The two switches on one wrapped row, so that a short panel (a phone) shows the probe.
+    ui.horizontal_wrapped(|ui| {
+        widgets::checkbox(ui, &mut v.deformed, "Deformed shape");
+        // Not in a child ui, so that the checkbox can go to the next row in 1 piece.
+        if !v.deformed {
+            ui.disable();
+        }
+        widgets::checkbox(ui, &mut v.ghost, "Undeformed outline");
+    });
     ui.add_enabled_ui(v.deformed, |ui| {
         ui.horizontal(|ui| {
             ui.label("Scale");
@@ -1007,7 +1014,6 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
                 None => {}
             }
         });
-        widgets::checkbox(ui, &mut v.ghost, "Undeformed outline");
     });
     let step = v.current(r);
     let unit = view::unit_text(&r.units, results::Quantity::Displacement);
