@@ -1017,7 +1017,9 @@ impl eframe::App for ViewerApp {
         }
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
-            ui.weak(self.status_text());
+            // 1 row only: at a large text size on a phone, 2 rows take the space of the
+            // Results panel. The full text shows on hover and goes to the screen reader.
+            ui.add(egui::Label::new(egui::RichText::new(self.status_text()).weak()).truncate());
         });
         if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
             // On a narrow view (a phone) the results go below the model, so that the model
