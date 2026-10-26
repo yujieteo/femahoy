@@ -303,8 +303,8 @@ function renderRuns() {
     const open = button("Open", () => { runs.open = false; openRunAndShow(run); });
     if (run === shown) open.setAttribute("aria-current", "true");
     if ($("compare").checked) {
-      button("Use as A", () => compareSide("a", run));
-      button("Use as B", () => compareSide("b", run));
+      button("Use as A", () => { runs.open = false; compareSide("a", run); reveal(); });
+      button("Use as B", () => { runs.open = false; compareSide("b", run); reveal(); });
     }
     list.append(row);
   }
@@ -368,6 +368,7 @@ async function compareSide(side, run) {
   if (side === "a") {
     compareA = run;
     shown = run;
+    $("model").removeAttribute("data-empty");
     select();
     query.set("run", run);
     history.replaceState(null, "", "?" + query);
