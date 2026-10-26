@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use eframe::egui;
 
-use crate::results::{self, Location, BANDS, BAND_COLORS};
+use crate::results::{self, BAND_COLORS, BANDS, Location};
 use crate::ui::{self, Colors};
 use crate::view;
 
@@ -179,6 +179,19 @@ pub fn segmented(ui: &mut egui::Ui, items: &[(&str, bool, &str)]) -> Option<usiz
 pub fn button(ui: &mut egui::Ui, text: &str, hint: &str) -> egui::Response {
     ui.add(egui::Button::new(text).min_size(egui::vec2(ui::TARGET, ui::TARGET)))
         .on_hover_text(hint)
+}
+
+/// A menu with the chevron of the page menu (`select` in `ui.css`), not the filled egui triangle.
+pub fn menu(id: &str, text: impl Into<egui::WidgetText>) -> egui::ComboBox {
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(text)
+        .icon(|ui, rect, _, _| {
+            // The path 'm4 6 4 4 4-4' in a 16 x 16 box, as in ui.css.
+            let p = |x: f32, y: f32| rect.min + rect.size() * egui::vec2(x, y) / 16.0;
+            let stroke = egui::Stroke::new(1.6 * rect.width() / 16.0, hex(colors(ui).muted));
+            ui.painter()
+                .line(vec![p(4.0, 6.0), p(8.0, 10.0), p(12.0, 6.0)], stroke);
+        })
 }
 
 /// A row of text with no control: it has the height of its text, not of a hit target.

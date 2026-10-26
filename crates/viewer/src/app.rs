@@ -758,14 +758,13 @@ fn results_panel(
         if !panel.fields.is_empty() {
             ui.horizontal(|ui| {
                 ui.strong("Contour");
-                egui::ComboBox::from_id_salt("field")
-                    .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut v.field, None, "None");
-                        for name in &panel.fields {
-                            ui.selectable_value(&mut v.field, Some(name.clone()), name);
-                        }
-                    });
+                let field = v.field.clone().unwrap_or_else(|| "None".into());
+                widgets::menu("field", field).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut v.field, None, "None");
+                    for name in &panel.fields {
+                        ui.selectable_value(&mut v.field, Some(name.clone()), name);
+                    }
+                });
             });
         }
         // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
@@ -980,17 +979,19 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
         if back.inner.clicked() {
             v.step -= 1;
         }
-        egui::ComboBox::from_id_salt("step")
-            .selected_text(format!(
+        widgets::menu(
+            "step",
+            format!(
                 "Step {} of {n} (time {})",
                 v.step + 1,
                 view::format_value(r.steps[v.step].time)
-            ))
-            .show_ui(ui, |ui| {
-                for (i, s) in r.steps.iter().enumerate() {
-                    ui.selectable_value(&mut v.step, i, view::step_label(i, s));
-                }
-            });
+            ),
+        )
+        .show_ui(ui, |ui| {
+            for (i, s) in r.steps.iter().enumerate() {
+                ui.selectable_value(&mut v.step, i, view::step_label(i, s));
+            }
+        });
         let next = ui.add_enabled_ui(v.step + 1 < n, |ui| widgets::button(ui, ">", "next step"));
         if next.inner.clicked() {
             v.step += 1;
