@@ -6,6 +6,7 @@
 html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: var(--body)/1.5 var(--sans); }
 h1, h2, h3 { font-family: var(--serif); font-weight: 400; line-height: 1.15; }
+textarea { font: inherit; }
 code, pre, kbd { font: var(--mono)/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
 a:hover { text-decoration-color: var(--accent); }
@@ -69,6 +70,9 @@ output, .readout { font-variant-numeric: tabular-nums; }
 kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--text); font-size: var(--small); }
 /* A touch screen with no hover often has no keyboard: the key hints go, but not the camera help. */
 @media (hover: none) and (pointer: coarse) { .keys:has(kbd):not([data-camera-help] > .keys), button kbd { display: none; } }
+/* iOS Safari zooms the page when a text field or a menu under 16px gets the focus. This floor
+   wins over the font size of a view (!important), because the zoom does not stop below 16px. */
+@media (pointer: coarse) { textarea, select, input[type="search"] { font-size: 16px !important; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
