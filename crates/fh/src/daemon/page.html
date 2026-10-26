@@ -85,6 +85,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 @media (max-width: 700px) {
   body { flex-direction: column; overflow: auto; height: auto; min-height: 100%; }
   #chat { width: 100%; height: 45vh; min-height: 320px; border-right: 0; border-bottom: 1px solid var(--line); }
+  /* Before the first message the chat is only as high as its text, so the model starts higher. */
+  #chat:has(#empty) { height: auto; min-height: 0; }
   /* svh: in iOS Safari 100vh is the height with no toolbars, so the toolbars cover the bottom
      of the model (the legend and the status bar). */
   #model { flex: none; height: 100svh; }
