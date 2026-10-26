@@ -86,9 +86,18 @@ Thus the 20 µm copper layer gets flat tetrahedra. All Jacobians are positive, a
 4. The copper modulus comes from nanoindentation. The paper gives no uncertainty for it. The warpage is almost proportional to it.
 5. The paper does not give the mesh of its own model. Linear hexahedral elements are stiff in bending, which can give a lower value than C3D10.
 
-## Reproduce
+## Mapped mesh and reproduction
 
-Make a mesh with H = 1, 0.5 or 0.25, and replace the mesh in a copy of `job.inp`. The mesh in `job.inp` is the coarse mesh from `fh mesh slice.step --size 1 --volume SI=box:0,0,0,25,5,0.73 --volume CU=box:0,0,0.73,25,5,0.75 --face SYM_X=x:0 --face SYM_Y=y:0 --nodes ORIGIN=point:0,0,0 --nodes END=point:25,0,0`. The STEP file comes from `scripts/cad/thick_copper_slice.py`.
+Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
+The quarter model has 13 x 3 elements in its plane, with 2 silicon layers and 1 copper layer.
+The mesh has 117 C3D20R elements and 768 nodes. Both materials share nodes at z = 0.73 mm.
+The transfinite faces and the extrusions use `Recombine`, `Mesh.ElementOrder=2` and `Mesh.SecondOrderIncomplete=1`.
+The script writes the material sets, symmetry sets, `ORIGIN` and `END`.
+`job.inp` includes the mesh and keeps the original materials, temperature step, check and 12 % tolerance.
+
+Reason: The audit mesh removes flat tetrahedra from the copper layer and needs fewer nodes.
+`fh validate` on the Mac gives -0.02709912 mm, a difference of -3.22 % from the measured value.
+The C3D10 study above records the former mesh. The new result differs from the former case by less than 0.05 %.
 
 ## Choice of the case
 

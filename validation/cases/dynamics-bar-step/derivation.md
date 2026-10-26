@@ -30,7 +30,7 @@ ccx uses its stable increment, thus a finer mesh also has a smaller time increme
 |---:|---:|---:|---:|---:|---:|
 | 10 | 408 | 5.32e-8 | 4 s | 0.0186896 | -1.88 % |
 | 7 | 556 | 7.34e-8 | 4 s | 0.0187101 | -1.77 % |
-| 5 (this case) | 794 | 4.64e-8 | 7 s | 0.0187435 | -1.60 % |
+| 5 (former case) | 794 | 4.64e-8 | 7 s | 0.0187435 | -1.60 % |
 | 3.3 | 3830 | 2.08e-8 | 33 s | 0.0187887 | -1.36 % |
 | 2.5 | 7256 | 1.86e-8 | 139 s | 0.0187850 | -1.38 % |
 
@@ -46,7 +46,7 @@ The peak of the 1D theory has a sharp corner at t = 2L/c. The 3D bar has lateral
 
 | Model | u1 (mm) | Difference |
 |---|---:|---:|
-| This case: explicit, size 5 mm, at 2L/c | 0.0187435 | -1.60 % |
+| Former case: explicit, size 5 mm, at 2L/c | 0.0187435 | -1.60 % |
 | Chat run: implicit, size 2.5 mm, 0.25 µs, the peak at 77.75 µs | 0.0187947 | -1.33 % |
 
 Before the corner, the chat run agrees with the 1D theory: at t = 50 µs it gives 0.012309 mm against 0.012315 mm (-0.05 %).
@@ -62,5 +62,13 @@ Most of the time was the last solve: 400 implicit increments of 0.25 µs. The ch
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh part.step --size 5 --face FIXED=x:0 --face END=x:200`.
-`part.step` is a box of 200 x 10 x 10 mm with a corner at the origin.
+Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
+The transfinite faces and the extrusion use `Recombine` and `Mesh.ElementOrder=1`.
+The mesh has 80 x 4 x 4 C3D8R elements, 1280 elements and 2025 nodes.
+The mesh retains the 200 x 10 x 10 mm box, `FIXED` at x = 0 and `END` at x = 200.
+The `END` surface uses the outward S4 face of each end element.
+`job.inp` includes the mesh and keeps the original material, explicit step, pressure, check and 3 % tolerance.
+
+Reason: The audit mesh gives the same accuracy with a shorter solver time and a uniform stable increment.
+`fh validate` on the Mac gives 0.01874844 mm, a difference of -1.57 % from the reference.
+The C3D10 study above records the former mesh. The new result differs from the former case by less than 0.03 %.

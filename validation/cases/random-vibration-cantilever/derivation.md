@@ -95,19 +95,19 @@ It is 1.9 % lower than the modal sum. The modal sum also has the base accelerati
 
 | Item | Value |
 |---|---|
-| Mesh | `mesh.inp`: C3D10, size 3.3 mm, 2263 nodes, 1028 elements. The same mesh as `frequency-cantilever` |
+| Mesh | `mesh.inp`: mapped C3D20R, 40 x 4 x 2 elements, 2117 nodes. The same mesh as `frequency-cantilever` |
 | Support | `FIXED`, the face x = 0: `*BOUNDARY` in x, y and z |
 | Step 1 | `*FREQUENCY, STORAGE=YES`, 10 modes, up to 18.2 kHz. `STORAGE=YES` keeps the modes for step 2. `*NODE FILE` writes the modes for the page |
 | PSD | `*AMPLITUDE, NAME=PSD`: sqrt(W) = 0.2 g = 1961.33 mm/s2 at all frequencies |
 | Step 2 | `*STEADY STATE DYNAMICS`: 20 to 2000 Hz, 101 points in each interval, bias 1 |
 | Damping | `*MODAL DAMPING`: modes 1 to 10, zeta = 0.02 |
 | Base motion | `*BASE MOTION, DOF=3, TYPE=ACCELERATION, AMPLITUDE=PSD` on `FIXED` |
-| Output | `*NODE PRINT` of `U` for `TIP`, the 57 nodes of the face x = 100 mm. `*NODE FILE, FREQUENCY=0` stops the field output of step 1 in step 2 |
+| Output | `*NODE PRINT` of `U` for `TIP`, the 37 nodes of the face x = 100 mm. `*NODE FILE, FREQUENCY=0` stops the field output of step 1 in step 2 |
 
 `ccx` puts the frequency points in the intervals between 20 Hz, each natural frequency in the band (419.3 Hz and 832.1 Hz) and 2000 Hz: 301 points.
 At each point it prints the real part and the imaginary part of `U`. With the amplitude sqrt(W), |U(f)|^2 is the PSD of the displacement.
 `fh` integrates (2 π f)^4 |U|^2 over the points with the trapezoid rule and writes the RMS acceleration of each node to `ccx/rms.txt`.
-The check `a_tip_rms` is the mean of `A3` over the nodes of `TIP`. The 57 values differ by less than 0.002 %.
+The check `a_tip_rms` is the mean of `A3` over the nodes of `TIP`. The former 57 values differ by less than 0.002 %.
 
 The step-1 output has the effective modal mass of each mode in z. It agrees with G_r^2 of the beam theory:
 
@@ -135,14 +135,14 @@ The values below use the check mesh, 10 modes and bias 1. h is the spacing of th
 With 21 points and bias 3, the points near mode 1 are 7.3 Hz apart, but the value is +0.68 % (403939.8).
 A spacing h of zeta f_1 / 2 or less, with bias 1, makes this error negligible.
 
-## Mesh study
+## Former C3D10 mesh study
 
 The meshes come from `fh mesh part.step --size H -o mesh.inp --face FIXED=x:0 --nodes TIP=x:100`, with 101 points and 10 modes.
 
 | H (mm) | Nodes | f_1 (Hz) | A_rms (mm/s2) | Difference to the reference | Time |
 |---:|---:|---:|---:|---:|---:|
 | 5 | 939 | 419.73 | 401397.3 | +0.118 % | 1.5 s |
-| 3.3, the check | 2263 | 419.32 | 401236.1 | +0.078 % | 3.5 s |
+| 3.3, the former check | 2263 | 419.32 | 401236.1 | +0.078 % | 3.5 s |
 | 2.5 | 3969 | 419.20 | 401195.0 | +0.067 % | 9.0 s |
 | 1.67 | 11154 | 418.99 | 401110.7 | +0.046 % | 26 s |
 | 1.25 | 22303 | 418.90 | 401075.7 | +0.037 % | 58 s |
@@ -163,7 +163,7 @@ The tolerance is `rel_tol = 0.005` and `abs_tol = 0`.
 | Mesh error of the check mesh | 3.3 mm against 1.25 mm | +0.04 % |
 | Frequency points | 101 against 201 points | +0.001 % |
 | Modes | 10 against 20 modes | +0.003 % |
-| Another mesh of the same size | gmsh of another version can make another mesh. The coarser mesh of 5 mm has +0.118 % | +0.12 % or less |
+| Another mesh of the same size | The former free mesh varies with the gmsh version. The mapped mesh fixes the grid. The original budget stays conservative. | +0.12 % or less |
 
 `rel_tol` = 0.5 % is 4 times the largest of these. The check value is far from 0, thus `abs_tol` is 0.
 
@@ -189,3 +189,15 @@ The tolerance stops these errors. Each line is a change of `job.inp`, solved wit
 - A PSD that is not flat: `ccx` interpolates the amplitude linearly between its points. The flat PSD of the check has no interpolation error.
 
 On a Mac with 10 cores, `fh run` of the case took 3.5 s.
+
+## Mapped mesh
+
+Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
+The box uses the same mapped mesh as `frequency-cantilever`: 320 C3D20R elements and 2117 nodes.
+The transfinite faces and the extrusion use `Recombine`, `Mesh.ElementOrder=2` and `Mesh.SecondOrderIncomplete=1`.
+The mesh retains `FIXED` at x = 0 and `TIP` at x = 100 mm.
+
+Reason: The audit shows fewer nodes for the same accuracy. The mapped grid also removes the free mesh choice.
+`fh validate` on the Mac gives 401161.7 mm/s2, a difference of +0.059 % from the reference.
+The frequency steps, PSD, damping, base motion, check and 0.5 % tolerance stay the same.
+The earlier frequency-point and mode studies above use the former C3D10 mesh.

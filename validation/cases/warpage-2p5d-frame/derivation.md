@@ -74,11 +74,11 @@ The relative tolerance is 0.13. It is the root sum square of these contributions
 |---|---|---:|
 | Moiré zero | The moiré gives -15.8 µm at 140 °C, where the package is flat and the other 2 methods give 0. The budget uses ±15.8 µm. | 9.8% |
 | Die layout | The paper gives no die size. A die block that fills the module gives 7.5% more warpage. Gaps between the dies give less. | 7.5% |
-| Mesh | The case mesh gives 1.5% more than the 0.5 mm mesh. | 1.5% |
+| Mesh | The former C3D10 mesh gives 1.5% more than the 0.5 mm mesh. This budget stays conservative for the mapped mesh. | 1.5% |
 | nu of the EMC | nu from 0.25 to 0.45 changes the result by 0.6% or less. | 0.6% |
 | Fillet | No fillet changes the result by -0.3%. | 0.3% |
 
-## Measured result
+## Former C3D10 result
 
 The check passed on macOS 27.0.1 arm64 with Python 3.12.13, build123d 0.13.0, gmsh 4.15.2-git and CalculiX 2.23.
 The solver time is the run time that `fh run` prints. It changes with the load of the machine.
@@ -86,12 +86,12 @@ The solver time is the run time that `fh run` prints. It changes with the load o
 | Mesh size (mm) | Nodes | C3D10 elements | Minimum scaled Jacobian | Warpage (mm) | Measured (mm) | Difference (%) | Solver time (s) |
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | 4 | 3421 | 2002 | 0.0006 | -0.149052 | -0.162 | -8.0 | 0.34 |
-| 3 (the case) | 5104 | 3034 | 0.0015 | -0.147691 | -0.162 | -8.8 | 0.43 |
+| 3 (former case) | 5104 | 3034 | 0.0015 | -0.147691 | -0.162 | -8.8 | 0.43 |
 | 2 | 9829 | 5997 | 0.0034 | -0.146651 | -0.162 | -9.5 | 0.87 |
 | 1 | 36759 | 23463 | 0.0003 | -0.145713 | -0.162 | -10.1 | 5.75 |
 | 0.5 | 164228 | 109531 | 0.0045 | -0.145454 | -0.162 | -10.2 | 71.1 |
 
-The computed warpage is 8.8% below the measured value. This is within the 13% tolerance.
+The former C3D10 warpage is 8.8% below the measured value. This is within the 13% tolerance.
 The minimum scaled Jacobian is low, because `fh mesh` has one size for the full part. Thus the thin layers (0.04 to 0.1 mm) get flat tetrahedra. All Jacobians are positive.
 
 ## Other results
@@ -128,12 +128,35 @@ At 260 °C the profile on the diagonal has the same shape as the FEM of the pape
 4. The moiré gives -15.8 µm at the stress-free temperature. This zero error is about 10% of the warpage at 60 °C.
 5. The frame has a large effect: with no frame, the warpage at 25 °C is -344 µm. Thus the warpage is sensitive to each input of the frame and the adhesive.
 
+## Mapped mesh and convergence
+
+`mesh.py` writes a tensor grid through every material boundary. Adjacent blocks share corner nodes and middle nodes.
+Each block has C3D20R elements, with 4 elements through the substrate and at least 1 through each thin layer.
+Each interval uses `max(1, ceil(length / h - 1e-9))` elements, except the substrate thickness.
+This grid matches the audit mesh and the transfinite box rule in gmsh.
+The UF2 fillet has 3 steps, each 0.3 mm wide. The midpoint of each third sets its height.
+The grid preserves the material sets, symmetry sets, `ORIGIN` and `CORNER`.
+
+Reason: The audit shows a 1.6 % mesh error in the former case. The mapped mesh gives a converged result with 5459 nodes.
+
+These results use CalculiX 2.23 on the Mac. Each row passes `fh validate` with the original check and tolerance.
+
+| h (mm) | Elements | Nodes | Warpage (mm) |
+|---:|---:|---:|---:|
+| 6, this case | 996 | 5459 | -0.1452954 |
+| 4 | 1272 | 6830 | -0.1453125 |
+| 2 | 3244 | 16019 | -0.1453084 |
+
+The case differs from the 2 mm result by 0.009 % and from the measured value by -10.31 %.
+The 13 % tolerance stays the same. The original 1.5 % mesh budget stays conservative.
+The fillet approximation stays within the original 0.3 % fillet budget.
+
 ## Reproduce
 
-1. Write the STEP file: `python scripts/cad/package_2p5d.py package.step` with build123d.
-2. Make the mesh with H = 3 (the case), 4, 2, 1 or 0.5:
-   `fh mesh package.step --size H -o mesh.inp --volume SUB=box:0,0,0,27.5,27.5,1.81 --volume UF2=box:0,0,1.81,20.5,13.75,1.91 --volume INT=box:0,0,1.91,20.5,13.75,2.0 --volume UF1=box:0,0,2.0,19.5,12.2,2.04 --volume DIE=box:0,0,2.04,19.5,12.2,2.73 --volume EMC_X=box:19.5,0,2.0,20.5,13.75,2.73 --volume EMC_Y=box:0,12.2,2.0,19.5,13.75,2.73 --volume FIL_X=box:20.5,0,1.81,21.4,13.75,2.73 --volume FIL_Y=box:0,13.75,1.81,20.5,14.65,2.73 --volume FIL_C=box:20.5,13.75,1.81,21.4,14.65,2.73 --volume ADH_X=box:24.3,0,1.81,27.5,27.5,1.87 --volume ADH_Y=box:0,20.1,1.81,24.3,27.5,1.87 --volume FRM_X=box:24.3,0,1.87,27.5,27.5,2.745 --volume FRM_Y=box:0,20.1,1.87,24.3,27.5,2.745 --face SYM_X=x:0 --face SYM_Y=y:0 --face BOTTOM=z:0 --nodes ORIGIN=point:0,0,0 --nodes CORNER=point:27.5,27.5,0`
-3. Put `mesh.inp` next to a copy of `job.inp`, and run `fh run job.inp`.
+Run `python3 mesh.py` to write the case mesh at h = 6 mm.
+Run `python3 mesh.py H` to write another mesh, with H = 4 or 2 for the table.
+Run `fh validate --root ROOT` with a copy of this case under `ROOT/validation/cases`.
+The script needs only the Python standard library. The material data and the step stay in `job.inp`.
 
 ## Choice of the case
 

@@ -28,7 +28,7 @@ The result of the solid against the mesh size:
 | Size (mm) | f1 (Hz) | Difference |
 |---:|---:|---:|
 | 5 | 419.73 | +0.47 % |
-| 3.3 (this case) | 419.32 | +0.37 % |
+| 3.3 (former case) | 419.32 | +0.37 % |
 | 2.5 | 419.20 | +0.34 % |
 | 1.25 (chat run) | 418.90 | +0.27 % |
 
@@ -42,5 +42,12 @@ The run took 38 s and cost 0.42 USD. The chat had no failure. This case uses the
 
 ## Files
 
-The mesh in `job.inp` comes from `fh mesh part.step --size 3.3 --face FIXED=x:0`.
-`part.step` is a box of 100 x 10 x 5 mm with a corner at the origin.
+Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
+The mapped mesh has 40 x 4 x 2 C3D20R elements, 320 elements and 2117 nodes.
+`Transfinite Curve`, `Transfinite Surface`, `Recombine` and an extrusion with 2 layers define the grid.
+`Mesh.ElementOrder=2` and `Mesh.SecondOrderIncomplete=1` produce 20-node hexahedra.
+The mesh retains the 100 x 10 x 5 mm box and the `FIXED` face at x = 0.
+`job.inp` includes the mesh. The material, frequency step, check and 1 % tolerance stay the same.
+
+Reason: The audit mesh gives 419.1234 Hz, against 419.3186 Hz for the former mesh, with fewer nodes.
+`fh validate` on the Mac gives 419.1234 Hz, a difference of +0.327 % from the reference.
