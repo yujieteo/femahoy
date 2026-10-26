@@ -80,6 +80,9 @@ pub fn style(ctx: &egui::Context) {
                 w.bg_stroke = egui::Stroke::new(1.0, hex(c.line));
                 w.corner_radius = egui::CornerRadius::same(ui::RADIUS as u8);
             }
+            // The rail of a slider has the fill of an inactive widget and no border. A button
+            // has the weak fill.
+            v.widgets.inactive.bg_fill = hex(c.raised);
         });
     }
 }
