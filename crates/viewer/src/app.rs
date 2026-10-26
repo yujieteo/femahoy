@@ -653,6 +653,32 @@ fn results_panel(
                 }
             });
     }
+    // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
+    match v.contour(r) {
+        Contour::Off => {}
+        Contour::Missing(name) => {
+            ui.colored_label(
+                ui.visuals().error_fg_color,
+                format!("Step {} has no field {name}.", v.step + 1),
+            );
+        }
+        Contour::On { field, lo, hi } => {
+            let quantity = if v.field == v.configured_field {
+                v.quantity.as_deref()
+            } else {
+                None
+            };
+            legend(
+                ui,
+                &r.units,
+                field,
+                lo,
+                hi,
+                quantity,
+                v.field == v.configured_field && v.range.is_some(),
+            );
+        }
+    }
     if v.step != before.step
         || v.field != before.field
         || v.scale != before.scale
@@ -692,31 +718,6 @@ fn results_panel(
     } else {
         v.probe_mode = false;
         v.probe = None;
-    }
-    match v.contour(r) {
-        Contour::Off => {}
-        Contour::Missing(name) => {
-            ui.colored_label(
-                ui.visuals().error_fg_color,
-                format!("Step {} has no field {name}.", v.step + 1),
-            );
-        }
-        Contour::On { field, lo, hi } => {
-            let quantity = if v.field == v.configured_field {
-                v.quantity.as_deref()
-            } else {
-                None
-            };
-            legend(
-                ui,
-                &r.units,
-                field,
-                lo,
-                hi,
-                quantity,
-                v.field == v.configured_field && v.range.is_some(),
-            );
-        }
     }
     *v != before
 }
