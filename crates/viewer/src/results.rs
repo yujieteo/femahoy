@@ -496,6 +496,36 @@ pub fn band_limits(lo: f64, hi: f64) -> Vec<f64> {
         .collect()
 }
 
+/// The finite range of each field over all steps. Absent fields contribute no values.
+pub fn all_ranges(results: &Results) -> Vec<(String, Location, f64, f64)> {
+    let mut ranges: Vec<(String, Location, f64, f64)> = Vec::new();
+    for field in results.steps.iter().flat_map(|s| &s.fields) {
+        let Some((lo, hi)) = field
+            .values
+            .iter()
+            .copied()
+            .filter(|v| v.is_finite())
+            .map(|v| (v, v))
+            .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))
+        else {
+            continue;
+        };
+        if let Some((_, _, a, b)) = ranges
+            .iter_mut()
+            .find(|(n, l, _, _)| n == &field.name && *l == field.location)
+        {
+            *a = a.min(lo);
+            *b = b.max(hi);
+        } else {
+            ranges.push((field.name.clone(), field.location, lo, hi));
+        }
+    }
+    for (_, _, lo, hi) in &mut ranges {
+        (*lo, *hi) = collapse(*lo, *hi);
+    }
+    ranges
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,34 +758,4 @@ mod tests {
             "SI-m"
         );
     }
-}
-
-/// The finite range of each field over all steps. Absent fields contribute no values.
-pub fn all_ranges(results: &Results) -> Vec<(String, Location, f64, f64)> {
-    let mut ranges: Vec<(String, Location, f64, f64)> = Vec::new();
-    for field in results.steps.iter().flat_map(|s| &s.fields) {
-        let Some((lo, hi)) = field
-            .values
-            .iter()
-            .copied()
-            .filter(|v| v.is_finite())
-            .map(|v| (v, v))
-            .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)))
-        else {
-            continue;
-        };
-        if let Some((_, _, a, b)) = ranges
-            .iter_mut()
-            .find(|(n, l, _, _)| n == &field.name && *l == field.location)
-        {
-            *a = a.min(lo);
-            *b = b.max(hi);
-        } else {
-            ranges.push((field.name.clone(), field.location, lo, hi));
-        }
-    }
-    for (_, _, lo, hi) in &mut ranges {
-        (*lo, *hi) = collapse(*lo, *hi);
-    }
-    ranges
 }
