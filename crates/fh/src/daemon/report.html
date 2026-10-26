@@ -191,6 +191,7 @@ window.fetch = async (request) => {
   return new Response(new Blob([decode(base64)]).stream().pipeThrough(new DecompressionStream("deflate-raw")));
 };
 
+await cfdFigures(text);
 // The values control uses the source rows, never rounded SVG coordinates.
 function curveControls(all = false) {
   document.querySelectorAll('.curve [data-control="values"]').forEach((control) => {

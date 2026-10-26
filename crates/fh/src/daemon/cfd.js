@@ -1,13 +1,16 @@
 // Optional CFD report controls. The author supplies each control in the shared UI layer.
 // Data comes from --cfd, never from an inferred or fabricated force history.
-async function cfdControls(text, bar, open = () => false) {
-  const root = text.querySelector('[data-cfd]');
-  if (!root) return {view: e => e.dataset, select: () => {}, all: () => {}};
-  const inflate = async encoded => new Response(new Blob([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
-  await Promise.all([...root.querySelectorAll('[data-cfd-figure]')].map(async host => {
+const inflate = async encoded => new Response(new Blob([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+// The compact plots of `<!--cfd-curve-->` inflate before the shared curve controls connect.
+async function cfdFigures(text) {
+  await Promise.all([...text.querySelectorAll('[data-cfd-figure]')].map(async host => {
     host.innerHTML = await inflate(host.dataset.cfdFigure);
     delete host.dataset.cfdFigure;
   }));
+}
+async function cfdControls(text, bar, open = () => false) {
+  const root = text.querySelector('[data-cfd]');
+  if (!root) return {view: e => e.dataset, select: () => {}, all: () => {}};
   const source = document.getElementById('cfd-data');
   let data = {runs: {}, ranges: {}};
   try {
