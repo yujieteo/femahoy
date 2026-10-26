@@ -970,14 +970,20 @@ fn deformation_text(v: &ViewState) -> String {
 /// The step selector, the play button and the step slider.
 fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     let n = r.steps.len();
-    // No "Step" heading: the menu text starts with "Step", so the controls keep a phone row.
+    // No "Step" heading and no count row: the menu text starts with "Step N of n", so the
+    // controls keep their phone rows. No file name in the closed menu, so that the row fits
+    // a phone. The list names the files.
     ui.horizontal(|ui| {
         let back = ui.add_enabled_ui(v.step > 0, |ui| widgets::button(ui, "<", "previous step"));
         if back.inner.clicked() {
             v.step -= 1;
         }
         egui::ComboBox::from_id_salt("step")
-            .selected_text(view::step_label(v.step, &r.steps[v.step]))
+            .selected_text(format!(
+                "Step {} of {n} (time {})",
+                v.step + 1,
+                view::format_value(r.steps[v.step].time)
+            ))
             .show_ui(ui, |ui| {
                 for (i, s) in r.steps.iter().enumerate() {
                     ui.selectable_value(&mut v.step, i, view::step_label(i, s));
@@ -1002,7 +1008,6 @@ fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
             ui.add(egui::Slider::new(&mut v.step, 0..=n - 1).show_value(false));
         });
     }
-    ui.label(format!("{n} step{}", if n == 1 { "" } else { "s" }));
     ui.separator();
 }
 
