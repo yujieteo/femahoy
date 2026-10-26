@@ -11,6 +11,8 @@
 mod app;
 pub mod camera;
 #[cfg(target_arch = "wasm32")]
+mod controls;
+#[cfg(target_arch = "wasm32")]
 mod gpu;
 pub mod mesh;
 pub mod preview;

@@ -47,6 +47,7 @@ pub struct Request {
     pub step: Option<usize>,
     /// Show all the controls of a run, also the controls that its view does not show.
     pub all: Option<bool>,
+    pub camera: Option<String>,
 }
 
 /// A request that the page fills, then asks for a repaint.
@@ -73,11 +74,13 @@ struct Shown {
     version: u64,
     camera: Camera,
     home: Camera,
+    initial_fit: bool,
     /// The index of the mesh on the GPU.
     uploaded: Option<usize>,
 }
 
 pub struct ViewerApp {
+    canvas_id: String,
     render_state: Option<egui_wgpu::RenderState>,
     shown: Option<Shown>,
     message: Option<(bool, String)>,
@@ -87,18 +90,21 @@ pub struct ViewerApp {
     labels: bool,
     /// Show all the controls of a run, also the controls that its view does not show.
     all: bool,
+    camera_action: Option<String>,
 }
 
 impl ViewerApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, slot: RequestSlot) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, slot: RequestSlot, canvas_id: String) -> Self {
         widgets::style(&cc.egui_ctx);
         Self {
+            canvas_id,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
             slot,
             labels: true,
             all: false,
+            camera_action: None,
         }
     }
 
@@ -132,6 +138,7 @@ impl ViewerApp {
             camera: Camera::fit(None, false),
             home: Camera::fit(None, false),
             uploaded: None,
+            initial_fit: true,
         };
         shown.home = match frame {
             Some((b, top)) => Camera::fit(Some(b), top),
@@ -159,6 +166,9 @@ impl ViewerApp {
             {
                 *p = panel(r, view, &loads.preview, all);
             }
+        }
+        if let Some(action) = request.camera.take() {
+            self.camera_action = Some(action);
         }
         if self.message.is_some() {
             return;
@@ -259,6 +269,20 @@ impl Shown {
             },
         };
         self.geometry = Some(Arc::new(geometry));
+    }
+
+    /// Include the visible deformation scale when Fit frames the model.
+    fn fit_bounds(&self) -> Option<Bounds> {
+        let mut bounds = self.view_bounds()?;
+        if let Some(geometry) = &self.geometry {
+            for point in &geometry.positions {
+                for (k, value) in point.iter().enumerate() {
+                    bounds.min[k] = bounds.min[k].min(*value);
+                    bounds.max[k] = bounds.max[k].max(*value);
+                }
+            }
+        }
+        Some(bounds)
     }
 
     /// True when the panel shows the group of controls `c`. A preview has no such group.
@@ -679,15 +703,6 @@ impl eframe::App for ViewerApp {
         egui::Panel::bottom("status").show(ui, |ui| {
             ui.spacing_mut().interact_size.y = 0.0;
             ui.weak(self.status_text());
-            widgets::keys(
-                ui,
-                &[
-                    ("Drag", "orbit"),
-                    ("Right or Shift drag", "pan"),
-                    ("Scroll", "zoom"),
-                    ("Double click", "reset"),
-                ],
-            );
         });
         if let Some(shown) = self.shown.as_mut() {
             egui::Panel::right("results")
@@ -702,6 +717,18 @@ impl eframe::App for ViewerApp {
                 });
         }
         self.upload();
+        if let Some(shown) = &self.shown {
+            let controls = match &shown.body {
+                Body::Results(_, _, _, _, view) => view.controls.as_deref().unwrap_or(&[]),
+                Body::Preview(_) => Control::ALL,
+            };
+            crate::controls::update(
+                &self.canvas_id,
+                controls,
+                self.all,
+                shown.camera.direction_name(),
+            );
+        }
         egui::CentralPanel::default().show(ui, |ui| {
             if let Some((error, text)) = &self.message {
                 ui.centered_and_justified(|ui| {
@@ -718,6 +745,29 @@ impl eframe::App for ViewerApp {
             };
             let size = ui.available_size();
             let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+            if response.clicked() {
+                response.request_focus();
+            }
+            let aspect = rect.width() / rect.height().max(1.0);
+            if shown.initial_fit {
+                shown.home.fit_distance(aspect);
+                shown.camera = shown.home;
+                shown.initial_fit = false;
+            }
+            if let Some(action) = self.camera_action.take() {
+                ui.ctx().request_repaint();
+                match action.as_str() {
+                    "fit" => shown.camera.fit_bounds(shown.fit_bounds(), aspect),
+                    "report-view" => {
+                        shown.camera = shown.home;
+                        shown.camera.fit_distance(aspect);
+                    }
+                    direction => {
+                        shown.camera.direction(direction);
+                        shown.camera.fit_bounds(shown.fit_bounds(), aspect);
+                    }
+                }
+            }
             let delta = response.drag_delta();
             let pan = response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)
@@ -734,6 +784,7 @@ impl eframe::App for ViewerApp {
             }
             if response.double_clicked() {
                 shown.camera = shown.home;
+                shown.camera.fit_distance(aspect);
             }
             let (contour, palette, ghost) = shown.frame();
             let view_proj = shown

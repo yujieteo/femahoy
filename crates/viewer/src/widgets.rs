@@ -134,22 +134,6 @@ pub fn readout(ui: &mut egui::Ui, label: &str, value: &str) {
     });
 }
 
-/// The keyboard-shortcut help row: each key or mouse action, then what it does.
-pub fn keys(ui: &mut egui::Ui, items: &[(&str, &str)]) {
-    let line = hex(colors(ui).line);
-    ui.horizontal_wrapped(|ui| {
-        for (key, action) in items {
-            egui::Frame::new()
-                .stroke(egui::Stroke::new(1.0, line))
-                .corner_radius(4.0)
-                .inner_margin(egui::Margin::symmetric(5, 1))
-                .show(ui, |ui| ui.small(*key));
-            ui.weak(*action);
-            ui.add_space(ui::SPACE[1]);
-        }
-    });
-}
-
 /// A small box of the colour `color`.
 pub fn swatch(ui: &mut egui::Ui, color: [f32; 3]) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(18.0, 14.0), egui::Sense::hover());
