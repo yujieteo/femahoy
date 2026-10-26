@@ -645,17 +645,22 @@ fn results_panel(
         deformation_controls(ui, r, v);
     }
 
-    ui.strong("Contour");
-    if !panel.fields.is_empty() {
-        egui::ComboBox::from_id_salt("field")
-            .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut v.field, None, "None");
-                for name in &panel.fields {
-                    ui.selectable_value(&mut v.field, Some(name.clone()), name);
-                }
-            });
-    }
+    // The label and its menu on one row, so that a short panel (a phone) keeps a row for the legend.
+    ui.horizontal(|ui| {
+        let label = ui.strong("Contour");
+        if !panel.fields.is_empty() {
+            egui::ComboBox::from_id_salt("field")
+                .selected_text(v.field.clone().unwrap_or_else(|| "None".into()))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut v.field, None, "None");
+                    for name in &panel.fields {
+                        ui.selectable_value(&mut v.field, Some(name.clone()), name);
+                    }
+                })
+                .response
+                .labelled_by(label.id);
+        }
+    });
     // Directly below its menu, so that a short panel (a phone) shows the scale of the colours.
     match v.contour(r) {
         Contour::Off => {}
