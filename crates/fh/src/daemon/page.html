@@ -282,11 +282,15 @@ async function openReport(run) {
   } catch (e) { tab?.close(); showError(e.message); }
 }
 let fileVersion = 0;
+let filesRun = null;
 async function loadFiles(run) {
   if (!$("files")) return;
   const version = ++fileVersion;
-  $("report").hidden = true;
-  $("files").hidden = true;
+  if (run !== filesRun) {
+    filesRun = run;
+    $("report").hidden = true;
+    $("files").hidden = true;
+  }
   try {
     const {items} = await reply("/api/v1/runs/" + run + "/artifacts");
     if (version !== fileVersion) return;
@@ -457,6 +461,13 @@ function action(verb, subject, full) {
   const s = document.createElement("summary");
   s.append(el("span", "", verb), el("code", "", subject), el("span", "meta", ""));
   d.append(s);
+  if (full) d.append(el("pre", "", subject));
+  return d;
+}
+
+// A command, a tool or a result, with its state and its elapsed time.
+function command(verb, subject, full) {
+  const d = action(verb, subject, full);
   d.dataset.started = eventTime || Date.now();
   d.dataset.toolId = identity?.[0] || "";
   identity = null;
@@ -464,7 +475,6 @@ function action(verb, subject, full) {
   if (controls && !controls.has("command-state")) d.querySelector(".meta").dataset.omit = "true";
   d.dataset.state = "Active";
   updateAction(d);
-  if (full) d.append(el("pre", "", subject));
   return d;
 }
 
@@ -497,13 +507,13 @@ function entry(kind, text, fresh) {
     case "say":
       return el("p", "say", text);
     case "cmd": {
-      const d = action("$", text, text.length > 48 || text.includes("\n"));
+      const d = command("$", text, text.length > 48 || text.includes("\n"));
       waiting.push(d);
       status("now", "$ " + text.split("\n")[0]);
       return d;
     }
     case "tool": {
-      const d = action(...split(text), false);
+      const d = command(...split(text), false);
       waiting.push(d);
       status("now", text);
       return d;
@@ -515,7 +525,7 @@ function entry(kind, text, fresh) {
       if (shown && fresh) loadFiles(shown);
       if (d) return result(d, kind, text);
       if (kind === "fail") return failure("Error", text);
-      const alone = action("Result", text.split("\n")[0], false);
+      const alone = command("Result", text.split("\n")[0], false);
       result(alone, kind, text);
       return alone;
     }
