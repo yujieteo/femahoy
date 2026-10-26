@@ -17,12 +17,12 @@ const TOOLBAR: &str = r#"
   <button type="button" data-camera="help" id="fh-help-button" aria-controls="fh-camera-help" aria-expanded="false" aria-keyshortcuts="?">Help <kbd>?</kbd></button>
 </div>
 <div class="toolbar" id="fh-camera-help" data-camera-help hidden><p class="keys">
-  <span data-pointer="mouse"><kbd>Drag</kbd> Orbit</span><span data-pointer="mouse"><kbd>Right or Shift drag</kbd> Pan</span>
-  <span data-pointer="mouse"><kbd>Scroll</kbd> Zoom</span><span data-pointer="mouse"><kbd>Double click</kbd> Reset view</span>
+  <span data-pointer="mouse"><b>Drag</b> Orbit</span><span data-pointer="mouse"><b>Right or Shift drag</b> Pan</span>
+  <span data-pointer="mouse"><b>Scroll</b> Zoom</span><span data-pointer="mouse"><b>Double click</b> Reset view</span>
   <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Reset view</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
   <span data-pointer="mouse">Shortcuts act when the model has focus.</span>
-  <span data-pointer="touch"><kbd>Drag</kbd> Orbit</span><span data-pointer="touch"><kbd>Two-finger drag</kbd> Pan</span>
-  <span data-pointer="touch"><kbd>Pinch</kbd> Zoom</span><span data-pointer="touch"><kbd>Double tap</kbd> Reset view</span>
+  <span data-pointer="touch"><b>Drag</b> Orbit</span><span data-pointer="touch"><b>Two-finger drag</b> Pan</span>
+  <span data-pointer="touch"><b>Pinch</b> Zoom</span><span data-pointer="touch"><b>Double tap</b> Reset view</span>
 </p></div>"#;
 
 fn listen(

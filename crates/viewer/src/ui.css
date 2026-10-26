@@ -70,9 +70,10 @@ output, .readout { font-variant-numeric: tabular-nums; }
 /* Text only for screen readers, for example the status of a 3D view that the canvas already shows. */
 .spoken { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* Keyboard-shortcut help row: each key in kbd, then its action. */
+/* Help row: each key in kbd or each pointer gesture in b, then its action. */
 .keys { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--small); color: var(--muted); }
 kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); color: var(--text); font-size: var(--small); }
+.keys b { color: var(--text); font-weight: 600; }
 /* A touch screen with no hover often has no keyboard: the key hints go, and the camera help
    shows the touch gestures in place of the mouse and key rows. */
 [data-pointer="touch"] { display: none; }
