@@ -258,8 +258,10 @@ let shown = query.get("run");
 $("model").toggleAttribute("data-empty", !shown);
 
 // Show the results of a run, and keep the run in the page address for a reload.
+// The Runs list closes, so on a phone the model gets its full height.
 function openRun(run) {
   shown = run;
+  runs.open = false;
   $("model").removeAttribute("data-empty");
   select();
   query.set("run", run);
@@ -319,7 +321,7 @@ function renderRuns() {
       row.append(b);
       return b;
     };
-    const open = button("Open", () => { runs.open = false; openRunAndShow(run); });
+    const open = button("Open", () => openRunAndShow(run));
     if (run === shown) open.setAttribute("aria-current", "true");
     if ($("compare").checked) {
       button("Use as A", () => { runs.open = false; compareSide("a", run); reveal(); });
