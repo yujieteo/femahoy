@@ -184,3 +184,29 @@ pub fn update(canvas_id: &str, controls: &[Control], all: bool, direction: &str)
         }
     }
 }
+
+/// Give the canvas 1 backing pixel for each device pixel. eframe reads the size from
+/// `devicePixelContentBoxSize`, which Chrome gives in CSS pixels under device emulation.
+/// Then egui draws at 3x into a 1x canvas and the model is off the canvas. True on a change.
+pub fn fit_backing_store(canvas_id: &str) -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Some(canvas) = window
+        .document()
+        .and_then(|d| d.get_element_by_id(canvas_id))
+        .and_then(|e| e.dyn_into::<HtmlCanvasElement>().ok())
+    else {
+        return false;
+    };
+    // The same rounding as eframe: the CSS size in whole pixels times the ratio.
+    let dpr = window.device_pixel_ratio();
+    let width = (f64::from(canvas.client_width()) * dpr) as u32;
+    let height = (f64::from(canvas.client_height()) * dpr) as u32;
+    if width == 0 || height == 0 || (canvas.width(), canvas.height()) == (width, height) {
+        return false;
+    }
+    canvas.set_width(width);
+    canvas.set_height(height);
+    true
+}

@@ -904,6 +904,9 @@ fn deformation_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
 
 impl eframe::App for ViewerApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if crate::controls::fit_backing_store(&self.canvas_id) {
+            ui.ctx().request_repaint();
+        }
         self.take_request();
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             if let Some(Shown {
