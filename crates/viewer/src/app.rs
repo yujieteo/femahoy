@@ -970,7 +970,7 @@ fn deformation_text(v: &ViewState) -> String {
 /// The step selector, the play button and the step slider.
 fn steps_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
     let n = r.steps.len();
-    ui.strong("Step");
+    // No "Step" heading: the menu text starts with "Step", so the controls keep a phone row.
     ui.horizontal(|ui| {
         let back = ui.add_enabled_ui(v.step > 0, |ui| widgets::button(ui, "<", "previous step"));
         if back.inner.clicked() {

@@ -189,6 +189,14 @@ pub fn text_row(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
     });
 }
 
+/// A [`text_row`] that wraps when its text is wider than the panel.
+fn wrapped_text_row(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui)) {
+    ui.scope(|ui| {
+        ui.spacing_mut().interact_size.y = 0.0;
+        ui.horizontal_wrapped(add);
+    });
+}
+
 /// A value readout: the label, then the value in digits of equal width.
 pub fn readout(ui: &mut egui::Ui, label: &str, value: &str) {
     text_row(ui, |ui| {
@@ -261,7 +269,7 @@ pub fn legend(
             format!("constant {}", view::format_value(lo)),
         );
         if short {
-            caption(ui);
+            wrapped_text_row(ui, caption);
         }
         return;
     }
@@ -289,7 +297,8 @@ pub fn legend(
                 });
             });
         });
-        caption(ui);
+        // One wrapped row, so that the step controls below it stay in view on a phone.
+        wrapped_text_row(ui, caption);
         return;
     }
     let limits = results::band_limits(lo, hi);
