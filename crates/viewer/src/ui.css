@@ -85,7 +85,7 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
    no space for that row, so the controls go in a pull-down menu: 1 round button over the top
    right corner of the view. The menu is closed at the start. */
 .camera > [data-camera-menu] { display: none; }
-@media (max-width: 430px), (max-height: 500px) {
+@media (pointer: coarse) and (max-width: 430px), (pointer: coarse) and (max-height: 500px) {
   .camera { position: relative; z-index: 1; height: 0; }
   .camera > [data-camera-menu] { display: inline-grid; position: absolute; top: var(--space-2); right: var(--space-2); }
   [data-camera-menu][aria-expanded="false"] + [data-camera-panel] { display: none; }
@@ -95,7 +95,7 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
   }
   [data-camera-panel] > .toolbar[role="group"] { flex-direction: column; align-items: stretch; }
 }
-/* A phone in landscape has about 390 pt of height, and 2 toolbar rows are above the model. Less
+/* A phone in landscape has about 390 pt of height, and a toolbar row is above the model. Less
    space above and below each row gives the model more height. The targets stay --target high. */
 @media (max-height: 500px) {
   .toolbar { min-height: calc(var(--target) + 2 * var(--space-1)); padding-block: var(--space-1); }

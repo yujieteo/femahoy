@@ -1182,7 +1182,7 @@ impl eframe::App for ViewerApp {
             ui.add(egui::Label::new(egui::RichText::new(self.status_text()).weak()).truncate());
         });
         // On a phone the page puts the results panel in its flow: the canvas is taller by the
-        // panel height, so a swipe on the panel scrolls the page and no panel scrolls in a box.
+        // panel height, so a swipe on the panel scrolls the page.
         let flow = crate::controls::page_flow();
         ui.data_mut(|d| d.insert_temp(egui::Id::new(widgets::IN_FLOW), flow));
         let mut flow_height = 0.0;
@@ -1195,8 +1195,15 @@ impl eframe::App for ViewerApp {
             // Below the model, the panel is only as high as its content, so that a view
             // with few controls (a report) gives the rest of the height to the model.
             let below = flow || (size.x < 600.0 && size.x - RIGHT < size.y);
+            // In the page flow the GPU surface is the canvas height in device pixels. It must
+            // not be more than the largest texture side, so a taller panel scrolls in its box.
+            let (screen, pixels) = ui.input(|i| (i.content_rect().height(), i.pixels_per_point));
+            let max_side = ui.input(|i| i.max_texture_side) as f32;
+            let flow_most = (max_side / pixels - (screen - self.flow_height) - 1.0)
+                .floor()
+                .max(0.0);
             let panel = if below {
-                let most = if flow { f32::INFINITY } else { size.y * 0.4 };
+                let most = if flow { flow_most } else { size.y * 0.4 };
                 egui::Panel::bottom("results").exact_size(
                     self.results_height
                         .map_or(size.y * 0.4, |needed| needed.min(most)),
@@ -1221,7 +1228,7 @@ impl eframe::App for ViewerApp {
                     ui.ctx().request_repaint();
                 }
                 if flow {
-                    flow_height = needed;
+                    flow_height = needed.min(flow_most);
                 }
             }
         }
