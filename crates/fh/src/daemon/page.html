@@ -59,6 +59,13 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   resize: none; background: none; color: inherit;
 }
 #input::placeholder { color: var(--muted); }
+/* A touch screen has no key hint, so Send goes on the line of the text field, and the text
+   field is a full touch target. Stop or the "next step" note puts the row on a new line. */
+@media (hover: none) and (pointer: coarse) {
+  #composer { display: flex; flex-wrap: wrap; align-items: flex-end; padding-top: 6px; }
+  #input { flex: 1 1 60%; min-width: 0; min-height: var(--target); padding: 10px 0; }
+  #composer .row { margin-left: auto; }
+}
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .row .keys { flex: 1 1 12em; }
 #stop { margin-left: auto; }
