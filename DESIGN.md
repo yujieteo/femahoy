@@ -109,7 +109,7 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 `fh run` and `fh validate` start each solver directly, as a separate program (section 2). `scripts/install.sh` installs each solver for the user, with no root. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there.
 
-This table is the only list of the solvers in the docs. A new solver adds 1 row here, and the other docs point to this table. CI and the install script have the other lists of the solvers: `scripts/ci-select.sh`, `.github/workflows/ci.yml` and `scripts/install.sh` must install each tool, so they name each solver.
+This table is the only list of the solvers in the docs. A new solver adds 1 row here, and the other docs point to this table. The install script has the other list of the solvers: `scripts/install.sh` must install each tool, so it names each solver.
 
 | Analysis type | Solver | Input | Reason |
 |---|---|---|---|
@@ -122,7 +122,7 @@ This table is the only list of the solvers in the docs. A new solver adds 1 row 
 | Random vibration | A short step in `fh` after `ccx` (`crates/fh/src/ccx/rms.rs`). `ccx` solves a `*STEADY STATE DYNAMICS` step with the square root of the PSD as the amplitude. `fh` integrates the squared response over the frequencies and writes the RMS to `ccx/rms.txt`. | CalculiX `.inp` text | `ccx` has no random response step. The integral needs only the response at each frequency, which `ccx` prints. |
 | Multibody dynamics | Project Chrono: a Python with PyChrono runs the script | Chrono case folder: `chrono.py`, a PyChrono script | The other solvers do not solve mechanisms with joints and large rigid motion, for example the actuator linkage of a control surface. PyChrono has builds for macOS (Apple Silicon) and Linux. |
 | Particles (SPH, DEM) | LAMMPS | LAMMPS case folder: `case.lmp` | The mesh solvers do not solve a free surface with a large motion or a granular flow. LAMMPS has packages for macOS (Apple Silicon) and Linux. DualSPHysics does not run on Apple Silicon. |
-| Explicit dynamics (impact) | CalculiX (`ccx`) with `*DYNAMIC, EXPLICIT` | CalculiX `.inp` text | OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS and in CI. |
+| Explicit dynamics (impact) | CalculiX (`ccx`) with `*DYNAMIC, EXPLICIT` | CalculiX `.inp` text | OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS. |
 | Optics and photonics | Meep: a Python with Meep runs the script | Meep case folder: `meep_case.py`, a Meep script | An optics problem needs the spectrum of a structure of a few wavelengths in open space. GetDP solves 1 frequency in each run. Meep, an FDTD solver, gives the full spectrum from 1 run on a regular grid with no mesh, and it has builds for macOS (Apple Silicon) and Linux. |
 | Antennas | openEMS (FDTD): a Python with the modules of openEMS runs the script | openEMS case folder: `openems.py`, a script for the Python modules of openEMS | GetDP solves 1 frequency in each solve. An antenna needs its input impedance and S11 over a broad band, and its far field. 1 FDTD run of openEMS gives all of them. openEMS builds from source on macOS (Apple Silicon) and Linux. |
 
@@ -159,11 +159,11 @@ Reason of the output times: the dam break, the Taylor bar impact and the superso
 - Each case has a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
 - Each case states its discretization error from at least 2 meshes or 2 time steps, or states why it cannot.
 - A change to a solver or its adapter merges only if `fh validate` passes the cases of that solver. A failure blocks the merge. There is no override.
-- On a pull request, CI installs only the solvers of the changed paths and runs their cases (`scripts/ci-select.sh`). A change to shared code outside 1 solver module, to the Cargo files or to CI selects every solver. After each merge, CI runs the full suite on main.
+- CI installs no solver for now. It runs the tests that need no solver, and each test that solves skips. The validation cases run by hand with `fh validate`.
 
 Reason: a solver can give a wrong result without a warning. The suite is the only check. In CFD the mesh error is often the largest error. In the electromagnetic case it is 40 % of the tolerance. 1 mesh cannot show it. 1 rule for all analysis types means that a new analysis type needs no new rule.
 
-Reason of the selection: a change to 1 solver does not change the results of the other solvers, and the full suite on each pull request took about 12 minutes for 7 solver tools. The full suite on main finds a fault of the selection after 1 merge.
+Reason of no solver in CI: the solver installs download from a slow Ubuntu mirror, and 4 runs on main stopped at the 65-minute limit on 2026-10-26. The job without solvers takes about 2 minutes.
 
 ---
 
@@ -194,7 +194,7 @@ About 10 workers add solvers and cases at the same time. These rules changed wit
 
 1. `validate_runs_every_case` checks only that no case fails. It has no count and no list of the cases. Reason: each new case changed the count, thus parallel pull requests conflicted after each merge, and main failed once when 2 pull requests both changed 14 to 15. Exit test: a pull request that adds a case does not change `crates/fh/tests/cli.rs`.
 2. A new case with a written tolerance budget needs no approval. A change to the tolerance of an existing case needs the approval of the owner (`AGENTS.md`). Reason: a wider tolerance can hide a fault that an existing case found, but a new case has no earlier result to hide. Exit test: each tolerance change of an existing case on main has the approval of the owner.
-3. A pull request installs only the solvers of its changed paths and runs their cases. Main runs the full suite after each merge (section 7). Reason: the full suite took about 12 minutes on each pull request, for 7 solver tools. Exit test: the full suite on main passes after each merge whose pull request passed. If it fails, the selection missed a path: correct `scripts/ci-select.sh`.
-4. The table of section 6 is the only list of the solvers in the docs. CI (`scripts/ci-select.sh` and `.github/workflows/ci.yml`) and `scripts/install.sh` have the other lists of the solvers, because they must install each tool. Reason: the list was in 5 places in this file and again in `README.md`, and each new solver changed all of them. `crates/fh/src/daemon/agent.md` keeps 1 how-to section for each solver, because the chat cannot read this file. These sections are not a list of the solvers. Exit test: a new solver adds 1 row to the table and changes no other list of the solvers, except the solver lists in `scripts/ci-select.sh`, `.github/workflows/ci.yml` and `scripts/install.sh`.
+3. CI installs no solver for now, and the validation cases run by hand with `fh validate` (section 7). Reason: the solver installs download from a slow Ubuntu mirror, and 4 runs on main stopped at the 65-minute limit on 2026-10-26. Exit test: each CI run ends in less than its time limit.
+4. The table of section 6 is the only list of the solvers in the docs. `scripts/install.sh` has the other list of the solvers, because it must install each tool. Reason: the list was in 5 places in this file and again in `README.md`, and each new solver changed all of them. `crates/fh/src/daemon/agent.md` keeps 1 how-to section for each solver, because the chat cannot read this file. These sections are not a list of the solvers. Exit test: a new solver adds 1 row to the table and changes no other list of the solvers, except the solver list in `scripts/install.sh`.
 5. 1 rule of discretization error for all analysis types (section 7). Reason: each analysis type had its own rule, thus a new analysis type needed a new rule. Exit test: each case states its discretization error from 2 meshes or time steps, or why it cannot.
 6. The limits of section 6.1 apply to each solver process that `fh run` starts. Reason: the text named only `ccx`, but each solver already uses the same mechanism. Exit test: each solver module starts its programs only through `supervise`.

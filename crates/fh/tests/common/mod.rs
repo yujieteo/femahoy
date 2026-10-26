@@ -34,7 +34,7 @@ pub fn script(path: &Path, text: &str) -> PathBuf {
 }
 
 /// `ccx` (`FH_CCX`, else `ccx` on PATH) when it starts. Else `None` with a message, and the test
-/// does not solve. With `FH_REQUIRE_CCX=1`, as in CI, a missing ccx fails the test.
+/// does not solve. With `FH_REQUIRE_CCX=1`, a missing ccx fails the test.
 pub fn ccx_solver() -> Option<PathBuf> {
     let ccx = PathBuf::from(std::env::var_os("FH_CCX").unwrap_or_else(|| "ccx".into()));
     let found = Command::new(&ccx).arg("-v").output().is_ok();
@@ -49,7 +49,7 @@ pub fn ccx_solver() -> Option<PathBuf> {
 }
 
 /// `openfoam` (`FH_OPENFOAM`, else `openfoam` on PATH) when it starts. Else `None` with a
-/// message, and the test does not solve. With `FH_REQUIRE_OPENFOAM=1`, as in CI, a missing
+/// message, and the test does not solve. With `FH_REQUIRE_OPENFOAM=1`, a missing
 /// OpenFOAM fails the test.
 pub fn openfoam_solver() -> Option<PathBuf> {
     let exe = PathBuf::from(std::env::var_os("FH_OPENFOAM").unwrap_or_else(|| "openfoam".into()));
@@ -65,7 +65,7 @@ pub fn openfoam_solver() -> Option<PathBuf> {
 }
 
 /// `getdp` (`FH_GETDP`, else `getdp` on PATH) when it starts. Else `None` with a message, and
-/// the test does not solve. With `FH_REQUIRE_GETDP=1`, as in CI, a missing GetDP fails the test.
+/// the test does not solve. With `FH_REQUIRE_GETDP=1`, a missing GetDP fails the test.
 pub fn getdp_solver() -> Option<PathBuf> {
     let exe = PathBuf::from(std::env::var_os("FH_GETDP").unwrap_or_else(|| "getdp".into()));
     let found = Command::new(&exe).arg("-version").output().is_ok();
@@ -80,7 +80,7 @@ pub fn getdp_solver() -> Option<PathBuf> {
 }
 
 /// The Python of PyChrono (`FH_PYCHRONO`, else `python3` on PATH) when it imports PyChrono. Else
-/// `None` with a message, and the test does not solve. With `FH_REQUIRE_PYCHRONO=1`, as in CI, a
+/// `None` with a message, and the test does not solve. With `FH_REQUIRE_PYCHRONO=1`, a
 /// missing PyChrono fails the test.
 pub fn pychrono_solver() -> Option<PathBuf> {
     python_with("FH_PYCHRONO", "pychrono", "PyChrono")
@@ -113,7 +113,7 @@ fn python_with(var: &str, module: &str, name: &str) -> Option<PathBuf> {
 }
 
 /// `ccx_preCICE` (`FH_CCX_PRECICE`, else `ccx_preCICE` on PATH) when it starts. Else `None` with
-/// a message, and the test does not solve. With `FH_REQUIRE_PRECICE=1`, as in CI, a missing
+/// a message, and the test does not solve. With `FH_REQUIRE_PRECICE=1`, a missing
 /// `ccx_preCICE` fails the test.
 pub fn precice_solver() -> Option<PathBuf> {
     let exe =
@@ -130,7 +130,7 @@ pub fn precice_solver() -> Option<PathBuf> {
 }
 
 /// `lmp` (`FH_LAMMPS`, else `lmp` on PATH) when it starts. Else `None` with a message, and the
-/// test does not solve. With `FH_REQUIRE_LAMMPS=1`, as in CI, a missing LAMMPS fails the test.
+/// test does not solve. With `FH_REQUIRE_LAMMPS=1`, a missing LAMMPS fails the test.
 pub fn lammps_solver() -> Option<PathBuf> {
     let exe = PathBuf::from(std::env::var_os("FH_LAMMPS").unwrap_or_else(|| "lmp".into()));
     let found = Command::new(&exe).arg("-h").output().is_ok();
@@ -145,7 +145,7 @@ pub fn lammps_solver() -> Option<PathBuf> {
 }
 
 /// The Python of openEMS (`FH_OPENEMS`, else `python3` on PATH) when it imports openEMS. Else
-/// `None` with a message, and the test does not solve. With `FH_REQUIRE_OPENEMS=1`, as in CI, a
+/// `None` with a message, and the test does not solve. With `FH_REQUIRE_OPENEMS=1`, a
 /// missing openEMS fails the test.
 pub fn openems_solver() -> Option<PathBuf> {
     let exe = PathBuf::from(std::env::var_os("FH_OPENEMS").unwrap_or_else(|| "python3".into()));
