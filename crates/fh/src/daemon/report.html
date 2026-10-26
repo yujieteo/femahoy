@@ -120,9 +120,12 @@ if (controls.has("sections")) {
 if (controls.has("layout") && hasRuns) {
   $("layout-control").hidden = false;
   $("layout-control").addEventListener("change", (e) => {
-    const top = text.scrollTop;
+    // The text reflows to the new width, so keep the first element that starts in view at its offset.
+    const top = () => text.getBoundingClientRect().top;
+    const anchor = [...text.querySelectorAll("*")].find((e) => e.getClientRects().length && e.getBoundingClientRect().top >= top() - 1);
+    const offset = anchor?.getBoundingClientRect().top - top();
     document.body.classList.toggle("text-mode", e.target.value === "text");
-    text.scrollTop = top;
+    if (anchor) text.scrollTop += anchor.getBoundingClientRect().top - top() - offset;
     window.dispatchEvent(new Event("resize"));
   });
   hints.push("<kbd>Alt T</kbd> Text", "<kbd>Alt V</kbd> Split");
