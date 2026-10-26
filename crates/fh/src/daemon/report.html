@@ -96,7 +96,7 @@ window.fetch = async (request) => {
 // The values control uses the source rows, never rounded SVG coordinates.
 function curveControls(all = false) {
   document.querySelectorAll('.curve [data-control="values"]').forEach((control) => {
-    const policy = control.closest('[data-curve-controls]')?.dataset.curveControls;
+    const policy = control.closest('[data-controls]')?.dataset.controls;
     control.hidden = !all && policy !== undefined && !policy.split(',').map(s => s.trim()).includes('values');
     control.querySelector('input').dispatchEvent(new Event('input'));
   });

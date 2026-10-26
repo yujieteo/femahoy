@@ -632,7 +632,11 @@ fn results_panel(
         v.probe = None;
     }
     if shows(Control::Scale) {
-        scale_controls(ui, r, v);
+        readout(
+            ui,
+            "Deformation",
+            &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
+        );
     }
     if shows(Control::Range) {
         ui.label("Colour range");
@@ -654,7 +658,8 @@ fn results_panel(
     if shows(Control::Probe) {
         let same =
             v.step == before.step && v.scale == before.scale && v.deformed == before.deformed;
-        probe_controls(ui, r, v, drawn.filter(|_| same));
+        let scale_shown = shows(Control::Scale) || shows(Control::Deformation);
+        probe_controls(ui, r, v, drawn.filter(|_| same), scale_shown);
     } else {
         v.probe_mode = false;
         v.probe = None;
@@ -672,28 +677,16 @@ fn results_panel(
     *v != before
 }
 
-/// Compact scale readout and the existing scale actions.
-fn scale_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState) {
-    readout(
-        ui,
-        "Deformation",
-        &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
-    );
-    let auto = results::auto_scale(r);
-    let items = [
-        ("1×", v.deformed && v.scale == 1.0, "true scale"),
-        ("Auto", v.deformed && v.scale == auto, "automatic scale"),
-    ];
-    if let Some(i) = segmented(ui, &items) {
-        v.deformed = true;
-        v.scale = if i == 0 { 1.0 } else { auto };
-        v.probe = None;
-    }
-}
-
 /// The probe controls. `drawn` has the positions of the drawn mesh, or is `None` when the
-/// drawn mesh is not yet the mesh of `v`.
-fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, drawn: Option<&[[f32; 3]]>) {
+/// drawn mesh is not yet the mesh of `v`. The probe shows the deformation scale when
+/// `scale_shown` is false.
+fn probe_controls(
+    ui: &mut egui::Ui,
+    r: &Results,
+    v: &mut ViewState,
+    drawn: Option<&[[f32; 3]]>,
+    scale_shown: bool,
+) {
     ui.checkbox(&mut v.probe_mode, "Probe surface")
         .on_hover_text("click the model to probe, Escape clears");
     let Some(field) = v.field.as_deref().and_then(|n| v.current(r).field(n)) else {
@@ -774,11 +767,13 @@ fn probe_controls(ui: &mut egui::Ui, r: &Results, v: &mut ViewState, drawn: Opti
         } else {
             ui.label(format!("{} is hidden: no surface marker.", p.label));
         }
-        readout(
-            ui,
-            "Deformation",
-            &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
-        );
+        if !scale_shown {
+            readout(
+                ui,
+                "Deformation",
+                &format!("×{}", if v.deformed { v.scale } else { 0.0 }),
+            );
+        }
     }
 }
 
