@@ -317,7 +317,7 @@ T = t sqrt(2 g / a) [1],model,measured
 - The header line is the x quantity, then the name of each series (at most 8). Give each quantity its unit in `[ ]`, and `[1]` when it has no unit. An empty cell has no value.
 - `points NAME: SOURCE` shows the series NAME as points, with its source under the plot. Use it for the reference values. The other series are lines.
 - `log` makes the x axis, the y axis or both (`x y`) logarithmic. `title` and `note` are optional.
-- `gaps: break` makes an empty cell break the line of its series. Use it for absent samples, for example an absent residual. Without it, a line joins the values of its series across empty cells.
+- `gaps: break` makes an empty cell break the line of its series. Use it for absent samples, for example an absent residual. A sample between 2 empty cells shows as a point. Without it, a line joins the values of its series across empty cells.
 - Write the file with an `fh-python` script from the tables of the solver. A case can also write it, for example `system/front.awk` of the validation case `dam-break-vof`.
 
 `fh fit MODEL CURVE.csv [--series NAME] [-o FIT.csv]` fits a model to 1 series by least squares. It prints the parameters with their units, R^2, the largest residual and the range of the points. Use the parameters only in that range. `-o` writes the curve with the fit as a new series: show it with `--curve FIT.csv`.
