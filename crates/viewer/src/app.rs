@@ -17,9 +17,9 @@ use eframe::egui_wgpu;
 use crate::camera::{self, Camera};
 use crate::gpu::{FrameParams, MeshCallback, MeshGpu};
 use crate::mesh::{Bounds, RenderMesh};
-use crate::preview::{COLORS, Kind, Preview};
-use crate::results::{self, BANDS, Results};
-use crate::view::{self, Contour, Control, Geometry, Mark, Panel, View, ViewState, face_vertices};
+use crate::preview::{Kind, Preview, COLORS};
+use crate::results::{self, Results, BANDS};
+use crate::view::{self, face_vertices, Contour, Control, Geometry, Mark, Panel, View, ViewState};
 use crate::widgets::{self, hex, legend, readout, rgb, segmented, swatch, text_row};
 
 /// The text of the viewport when no run is open.
@@ -685,6 +685,7 @@ fn preview_panel(ui: &mut egui::Ui, p: &Preview, labels: &mut bool) {
 /// The supports and loads on top of the model: with `outline`, the outline of the faces of
 /// each set, then an arrow for each load and a label for each set. `positions` are the
 /// positions of the mesh of the preview as drawn, for example deformed.
+#[allow(clippy::too_many_arguments)]
 fn loads_overlay(
     painter: &egui::Painter,
     rect: egui::Rect,

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use eframe::egui;
 
-use crate::results::{self, BAND_COLORS, BANDS, Location};
+use crate::results::{self, Location, BANDS, BAND_COLORS};
 use crate::ui::{self, Colors};
 use crate::view;
 

@@ -65,7 +65,10 @@ pub fn install(
     let view = canvas.parent_element().ok_or("no model area")?;
     let model = view.parent_element().ok_or("no model view")?;
     // eframe puts its hidden text input after the canvas with no name, so VoiceOver reads "text field".
-    if let Some(input) = canvas.next_element_sibling().filter(|e| e.tag_name() == "INPUT") {
+    if let Some(input) = canvas
+        .next_element_sibling()
+        .filter(|e| e.tag_name() == "INPUT")
+    {
         let name = canvas.get_attribute("aria-label").unwrap_or_default();
         input.set_attribute("aria-label", &format!("Text entry for {name}"))?;
     }
@@ -197,7 +200,11 @@ pub fn update(canvas_id: &str, controls: &[Control], all: bool, direction: &str)
 pub fn text_scale() -> f32 {
     let size = web_sys::window().and_then(|window| {
         let body = window.document()?.body()?;
-        let size = window.get_computed_style(&body).ok()??.get_property_value("font-size").ok()?;
+        let size = window
+            .get_computed_style(&body)
+            .ok()??
+            .get_property_value("font-size")
+            .ok()?;
         size.strip_suffix("px")?.parse::<f32>().ok()
     });
     size.map_or(1.0, |px| px / crate::ui::BODY)
