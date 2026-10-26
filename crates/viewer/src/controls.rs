@@ -64,6 +64,11 @@ pub fn install(
     let doc = canvas.owner_document().ok_or("no document")?;
     let view = canvas.parent_element().ok_or("no model area")?;
     let model = view.parent_element().ok_or("no model view")?;
+    // eframe puts its hidden text input after the canvas with no name, so VoiceOver reads "text field".
+    if let Some(input) = canvas.next_element_sibling().filter(|e| e.tag_name() == "INPUT") {
+        let name = canvas.get_attribute("aria-label").unwrap_or_default();
+        input.set_attribute("aria-label", &format!("Text entry for {name}"))?;
+    }
     let toolbar = doc.create_element("section")?;
     toolbar.set_id(&format!("{}-camera-controls", canvas.id()));
     toolbar.set_attribute("aria-label", "Camera controls")?;
