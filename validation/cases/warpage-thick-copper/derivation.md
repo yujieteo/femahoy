@@ -97,7 +97,7 @@ The script writes the material sets, symmetry sets, `ORIGIN` and `END`.
 
 Reason: The audit mesh removes flat tetrahedra from the copper layer and needs fewer nodes.
 `fh validate` on the Mac gives -0.02709912 mm, a difference of -3.22 % from the measured value.
-The C3D10 study above records the former mesh. The new result differs from the former case by less than 0.05 %.
+The C3D10 study above records the former mesh. Its STEP file, `slice.step`, and the script `scripts/cad/thick_copper_slice.py` are in the git history before this change. The new result differs from the former case by less than 0.05 %.
 
 ## Choice of the case
 

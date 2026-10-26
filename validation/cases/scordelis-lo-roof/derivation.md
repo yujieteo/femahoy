@@ -52,6 +52,7 @@ The mesh has 1825 nodes and 576 S8R elements.
 `job.inp` includes `part.inp` and keeps the original material, constraints and gravity load.
 
 Reason: The mapped audit mesh converges with 1825 nodes. The former S6 mesh needs 6033 nodes and gives -301.535 mm.
+The former S6 inputs, `part.py` and `part.step`, are in the git history before this change.
 
 ## Mesh convergence
 

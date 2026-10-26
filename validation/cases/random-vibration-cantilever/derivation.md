@@ -104,7 +104,7 @@ It is 1.9 % lower than the modal sum. The modal sum also has the base accelerati
 | Base motion | `*BASE MOTION, DOF=3, TYPE=ACCELERATION, AMPLITUDE=PSD` on `FIXED` |
 | Output | `*NODE PRINT` of `U` for `TIP`, the 37 nodes of the face x = 100 mm. `*NODE FILE, FREQUENCY=0` stops the field output of step 1 in step 2 |
 
-`ccx` puts the frequency points in the intervals between 20 Hz, each natural frequency in the band (419.3 Hz and 832.1 Hz) and 2000 Hz: 301 points.
+`ccx` puts the frequency points in the intervals between 20 Hz, each natural frequency in the band (419.1 Hz and 831.9 Hz) and 2000 Hz: 301 points.
 At each point it prints the real part and the imaginary part of `U`. With the amplitude sqrt(W), |U(f)|^2 is the PSD of the displacement.
 `fh` integrates (2 π f)^4 |U|^2 over the points with the trapezoid rule and writes the RMS acceleration of each node to `ccx/rms.txt`.
 The check `a_tip_rms` is the mean of `A3` over the nodes of `TIP`. The former 57 values differ by less than 0.002 %.
@@ -113,16 +113,16 @@ The step-1 output has the effective modal mass of each mode in z. It agrees with
 
 | Mode of the solid | f (Hz) | Beam f (Hz) | Fraction of the mass in z | Beam G_r^2 |
 |---:|---:|---:|---:|---:|
-| 1 | 419.32 | 417.76 | 0.6143 | 0.6131 |
-| 3 | 2599.9 | 2618.0 | 0.1900 | 0.1883 |
-| 6 | 7162.2 | 7330.6 | 0.0659 | 0.0647 |
+| 1 | 419.12 | 417.76 | 0.6150 | 0.6131 |
+| 3 | 2596.8 | 2618.0 | 0.1902 | 0.1883 |
+| 6 | 7145.6 | 7330.6 | 0.0659 | 0.0647 |
 
-Mode 2 (832.1 Hz) bends the beam in y. The base motion in z does not move it.
+Mode 2 (831.9 Hz) bends the beam in y. The base motion in z does not move it.
 
 ## Frequency points
 
 The trapezoid rule needs points that are close at each resonance. The half-power width of mode 1 is 2 zeta f_1 = 16.8 Hz.
-The values below use the check mesh, 10 modes and bias 1. h is the spacing of the points near mode 1.
+The values below use the former C3D10 check mesh, 10 modes and bias 1. h is the spacing of the points near mode 1.
 
 | Points in each interval | h (Hz) | h / (zeta f_1) | A_rms (mm/s2) | Change to 201 points |
 |---:|---:|---:|---:|---:|
@@ -150,7 +150,7 @@ The meshes come from `fh mesh part.step --size H -o mesh.inp --face FIXED=x:0 --
 The times are the times of `ccx` 2.23 on a shared Mac with 10 cores.
 The value goes down as the mesh becomes finer, to about +0.02 %. That is the difference between the solid and the beam theory: shear, rotary inertia and the Poisson effect.
 
-With the check mesh and 101 points, 5 modes give +0.146 % and 20 modes give +0.074 %.
+With the former C3D10 check mesh and 101 points, 5 modes give +0.146 % and 20 modes give +0.074 %.
 
 ## Tolerance
 
@@ -169,7 +169,7 @@ The tolerance is `rel_tol = 0.005` and `abs_tol = 0`.
 
 | Check | Model | Reference | Difference | Tolerance | Part of the tolerance |
 |---|---:|---:|---:|---:|---:|
-| `a_tip_rms` | 401236.1 | 400925.4 | +310.7 | 2004.6 | 15 % |
+| `a_tip_rms` | 401161.7 | 400925.4 | +236.3 | 2004.6 | 12 % |
 
 The tolerance stops these errors. Each line is a change of `job.inp`, solved with `fh validate`, or a hand calculation:
 

@@ -1,7 +1,7 @@
 # The RMS acceleration of the tip of a cantilever on a shaker: a flat base acceleration PSD of
 # 0.04 g^2/Hz from 20 to 2000 Hz in z and a damping ratio of 0.02 in each mode. The reference
 # is the modal sum of the beam theory (40 modes, Blevins 1979, Table 8-1) over the band:
-# 40.883 g. Miles (1954) with mode 1 only gives 1.9 % less. This solid is 0.08 % higher. See
+# 40.883 g. Miles (1954) with mode 1 only gives 1.9 % less. This solid is 0.06 % higher. See
 # derivation.md.
 rel_tol = 0.005
 abs_tol = 0.0

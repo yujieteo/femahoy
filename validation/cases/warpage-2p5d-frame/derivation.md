@@ -92,6 +92,7 @@ The solver time is the run time that `fh run` prints. It changes with the load o
 | 0.5 | 164228 | 109531 | 0.0045 | -0.145454 | -0.162 | -10.2 | 71.1 |
 
 The former C3D10 warpage is 8.8% below the measured value. This is within the 13% tolerance.
+The former STEP script, `scripts/cad/package_2p5d.py`, is in the git history before this change.
 The minimum scaled Jacobian is low, because `fh mesh` has one size for the full part. Thus the thin layers (0.04 to 0.1 mm) get flat tetrahedra. All Jacobians are positive.
 
 ## Other results
