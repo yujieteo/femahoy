@@ -1,6 +1,6 @@
 # Scordelis-Lo roof with S8R shells: derivation
 
-This case checks the mapped `S8R` shell, `*SHELL SECTION` and `ccx`.
+This case checks the mapped `S8R` shell, the `S6` shell of `fh mesh --shell`, `*SHELL SECTION` and `ccx`.
 The roof is a cylinder shell with a published deflection.
 
 ## Source
@@ -52,7 +52,26 @@ The mesh has 1825 nodes and 576 S8R elements.
 `job.inp` includes `part.inp` and keeps the original material, constraints and gravity load.
 
 Reason: The mapped audit mesh converges with 1825 nodes. The former S6 mesh needs 6033 nodes and gives -301.535 mm.
-The former S6 inputs, `part.py` and `part.step`, are in the git history before this change.
+
+## S6 check of the shell path
+
+`fh mesh --shell` writes `S6` elements, and the chat uses this path for a curved surface.
+Reason: no other case solves an `S6` mesh with `ccx` against a reference.
+
+`s6.inp` is the former mesh of the case. These commands made it from `part.py` and `part.step`:
+```
+fh-python part.py
+fh mesh part.step --shell --size 1250 -o part.inp \
+  --nodes END0=x:0 --nodes END1=x:50000 \
+  --nodes TIP=point:25000,16069.69024216,19151.11107797
+```
+The former `part.py`, `part.step` and `part.inp` are in the git history before this change.
+In `s6.inp`, each node and element number is 100000 higher, each set name has the suffix `_S6`, and y is 40000 mm higher.
+Thus the 2 roofs share no node, and the 3D view shows them apart. The move in y does not change the load or the constraints.
+`job.inp` gives `ALL_S6` the same section, constraints and gravity load as the S8R roof.
+
+The mesh has 6033 nodes and 2948 S6 elements. The check `tip_deflection_z_s6` reads uz at `TIP_S6`.
+`ccx` gives -301.535 mm, -0.28 % from the reference. The former S6 study gave -6.4 % at 5000 mm, -1.1 % at 2500 mm and -0.2 % at 625 mm.
 
 ## Mesh convergence
 
@@ -70,5 +89,6 @@ The reference in `check.toml` is -302.4 mm. The case differs from the reference 
 
 ## Tolerance
 
-The tolerance stays at 1 percent. The published value has 4 digits.
+The tolerance stays at 1 percent for both checks. The published value has 4 digits.
 The mapped mesh study gives a smaller error than the former S6 study.
+The S6 check keeps its former tolerance: its mesh error is 0.3 percent, and the margin is for a change of mesh or solver version.

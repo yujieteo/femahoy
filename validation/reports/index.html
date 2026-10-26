@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-682b54a2e633c86b8bcf7458cbf8d325' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-9c722a393082ec640f423c58fe4aaf67' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -154,8 +154,8 @@ output { margin-left: var(--space-2); }
 <tr><td><a href="naca23012-flap.html">naca23012-flap</a></td><td>pass</td><td>9.80 MB</td><td>69e0c94</td></tr>
 <tr><td><a href="optics-mie-cylinder.html">optics-mie-cylinder</a></td><td>pass</td><td>0.88 MB</td><td>69e0c94</td></tr>
 <tr><td><a href="plasticity-sphere.html">plasticity-sphere</a></td><td>pass</td><td>0.13 MB</td><td>69e0c94</td></tr>
-<tr><td><a href="random-vibration-cantilever.html">random-vibration-cantilever</a></td><td>pass</td><td>0.83 MB</td><td>ac7f349</td></tr>
-<tr><td><a href="scordelis-lo-roof.html">scordelis-lo-roof</a></td><td>pass</td><td>0.14 MB</td><td>ac7f349</td></tr>
+<tr><td><a href="random-vibration-cantilever.html">random-vibration-cantilever</a></td><td>pass</td><td>0.83 MB</td><td>1222af8-dirty</td></tr>
+<tr><td><a href="scordelis-lo-roof.html">scordelis-lo-roof</a></td><td>pass</td><td>0.14 MB</td><td>1222af8-dirty</td></tr>
 <tr><td><a href="shape-hole-biaxial.html">shape-hole-biaxial</a></td><td>pass</td><td>0.90 MB</td><td>69e0c94</td></tr>
 <tr><td><a href="slider-crank.html">slider-crank</a></td><td>pass</td><td>0.22 MB</td><td>69e0c94</td></tr>
 <tr><td><a href="submodel-kirsch-hole.html">submodel-kirsch-hole</a></td><td>pass</td><td>0.32 MB</td><td>4ef91c8</td></tr>
@@ -175,7 +175,7 @@ output { margin-left: var(--space-2); }
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="682b54a2e633c86b8bcf7458cbf8d325">
+<script type="module" nonce="9c722a393082ec640f423c58fe4aaf67">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.

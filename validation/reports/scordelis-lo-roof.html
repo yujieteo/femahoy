@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-93e27c2ed2208792f53734a8472a2313' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-c15c0b2bc4a8bb6dd20c5557e28d4094' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -132,14 +132,15 @@ output { margin-left: var(--space-2); }
 <p>The S8R shell model gives the deflection of the middle of the free edge within 0.16 % of the published value. The model gives uz = -301.92 mm at TIP, and MacNeal and Harder (1985) give -302.4 mm. The difference is 0.48 mm, 16 % of the tolerance of 1 %.</p>
 <figure class="curve"><figcaption>The deflection of the middle of the free edge against the mesh</figcaption><svg viewBox="0 0 640 360" role="img" aria-label="The deflection of the middle of the free edge against the mesh"><g class="grid"><line x1="72.0" y1="12" x2="72.0" y2="308.0"/><line x1="238.2" y1="12" x2="238.2" y2="308.0"/><line x1="457.8" y1="12" x2="457.8" y2="308.0"/><line x1="624.0" y1="12" x2="624.0" y2="308.0"/><line x1="72" y1="308.0" x2="624.0" y2="308.0"/><line x1="72" y1="248.8" x2="624.0" y2="248.8"/><line x1="72" y1="189.6" x2="624.0" y2="189.6"/><line x1="72" y1="130.4" x2="624.0" y2="130.4"/><line x1="72" y1="71.2" x2="624.0" y2="71.2"/><line x1="72" y1="12.0" x2="624.0" y2="12.0"/></g><rect class="frame" x="72" y="12" width="552" height="296"/><text x="72.0" y="324.0" text-anchor="middle">10</text><text x="238.2" y="324.0" text-anchor="middle">20</text><text x="457.8" y="324.0" text-anchor="middle">50</text><text x="624.0" y="324.0" text-anchor="middle">100</text><text x="66.0" y="312.0" text-anchor="end">-302.4</text><text x="66.0" y="252.8" text-anchor="end">-302.3</text><text x="66.0" y="193.6" text-anchor="end">-302.2</text><text x="66.0" y="134.4" text-anchor="end">-302.1</text><text x="66.0" y="75.2" text-anchor="end">-302</text><text x="66.0" y="16.0" text-anchor="end">-301.9</text><text class="label" x="348.0" y="354" text-anchor="middle">elements along each side N [1]</text><text class="label" transform="translate(14 160.0) rotate(-90)" text-anchor="middle">uz at TIP [mm]</text><polyline style="stroke:var(--s1)" points="184.7,45.7 281.9,25.6 350.8,24.4"/><circle style="fill:var(--s2)" cx="184.7" cy="308.0" r="4"><title>MacNeal and Harder: 16, -302.4</title></circle><circle style="fill:var(--s2)" cx="281.9" cy="308.0" r="4"><title>MacNeal and Harder: 24, -302.4</title></circle><circle style="fill:var(--s2)" cx="350.8" cy="308.0" r="4"><title>MacNeal and Harder: 32, -302.4</title></circle></svg><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li><li><i class="point" style="background:var(--s2)"></i>MacNeal and Harder</li></ul><p>MacNeal and Harder: MacNeal and Harder (1985), the Scordelis-Lo roof, 0.3024 in the units of the paper</p><p>S8R shells. The value at N = 24, the mesh of the case, comes from this run. The other meshes come from the table of derivation.md, &quot;Mesh convergence&quot;.</p></figure>
 
+<p>The run also solves a second roof, the former S6 mesh of <code>fh mesh --shell</code>, 40000 mm away in y. It gives uz = -301.54 mm at TIP_S6, 0.3 % from the published value. This checks the S6 shell path (see "S6 check of the shell path").</p>
 <p>The mapped mesh is converged. The 16 x 16 mesh gives -0.15 %, and the 32 x 32 mesh gives -0.16 % (see "Mesh convergence"). The case mesh of 24 x 24 is 0.001 % from the 32 x 32 mesh.</p>
 
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.01 and abs_tol = 0.0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
-<table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>tip_deflection_z</code></td><td style="text-align:right">-301.923</td><td style="text-align:right">-302.4</td><td style="text-align:right">3.024</td><td style="text-align:right">2.548</td></tr></tbody></table>
+<table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>tip_deflection_z</code></td><td style="text-align:right">-301.923</td><td style="text-align:right">-302.4</td><td style="text-align:right">3.024</td><td style="text-align:right">2.548</td></tr><tr><td><code>tip_deflection_z_s6</code></td><td style="text-align:right">-301.535</td><td style="text-align:right">-302.4</td><td style="text-align:right">3.024</td><td style="text-align:right">2.159</td></tr></tbody></table>
 <p><code>job.inp</code> writes no field (no <code>*NODE FILE</code> and no <code>*EL FILE</code>), so this report has no 3D view of it.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-26, femahoy ac7f349.</p>
-<p>This case checks the mapped <code>S8R</code> shell, <code>*SHELL SECTION</code> and <code>ccx</code>.
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-26, femahoy 1222af8-dirty.</p>
+<p>This case checks the mapped <code>S8R</code> shell, the <code>S6</code> shell of <code>fh mesh --shell</code>, <code>*SHELL SECTION</code> and <code>ccx</code>.
 The roof is a cylinder shell with a published deflection.</p>
 <h2>Source</h2>
 <p>MacNeal, R.H. and Harder, R.L., &quot;A proposed standard set of problems to test finite element
@@ -167,8 +168,21 @@ Two circular arcs share the crown. <code>Extrude</code>, <code>Layers</code> and
 The middle nodes stay on the cylinder.
 The mesh has 1825 nodes and 576 S8R elements.
 <code>job.inp</code> includes <code>part.inp</code> and keeps the original material, constraints and gravity load.</p>
-<p>Reason: The mapped audit mesh converges with 1825 nodes. The former S6 mesh needs 6033 nodes and gives -301.535 mm.
-The former S6 inputs, <code>part.py</code> and <code>part.step</code>, are in the git history before this change.</p>
+<p>Reason: The mapped audit mesh converges with 1825 nodes. The former S6 mesh needs 6033 nodes and gives -301.535 mm.</p>
+<h2>S6 check of the shell path</h2>
+<p><code>fh mesh --shell</code> writes <code>S6</code> elements, and the chat uses this path for a curved surface.
+Reason: no other case solves an <code>S6</code> mesh with <code>ccx</code> against a reference.</p>
+<p><code>s6.inp</code> is the former mesh of the case. These commands made it from <code>part.py</code> and <code>part.step</code>:</p>
+<pre><code>fh-python part.py
+fh mesh part.step --shell --size 1250 -o part.inp \
+  --nodes END0=x:0 --nodes END1=x:50000 \
+  --nodes TIP=point:25000,16069.69024216,19151.11107797</code></pre>
+<p>The former <code>part.py</code>, <code>part.step</code> and <code>part.inp</code> are in the git history before this change.
+In <code>s6.inp</code>, each node and element number is 100000 higher, each set name has the suffix <code>_S6</code>, and y is 40000 mm higher.
+Thus the 2 roofs share no node, and the 3D view shows them apart. The move in y does not change the load or the constraints.
+<code>job.inp</code> gives <code>ALL_S6</code> the same section, constraints and gravity load as the S8R roof.</p>
+<p>The mesh has 6033 nodes and 2948 S6 elements. The check <code>tip_deflection_z_s6</code> reads uz at <code>TIP_S6</code>.
+<code>ccx</code> gives -301.535 mm, -0.28 % from the reference. The former S6 study gave -6.4 % at 5000 mm, -1.1 % at 2500 mm and -0.2 % at 625 mm.</p>
 <h2>Mesh convergence</h2>
 <p>Run <code>python3 mesh.py N</code> for each even count N, then run <code>fh validate</code> on a copy of this case.
 These results use gmsh 4.15.2 and CalculiX 2.23 on the Mac.</p>
@@ -176,14 +190,15 @@ These results use gmsh 4.15.2 and CalculiX 2.23 on the Mac.</p>
 <p>The 24 x 24 result differs from the 32 x 32 result by 0.001 %.
 The reference in <code>check.toml</code> is -302.4 mm. The case differs from the reference by -0.158 %.</p>
 <h2>Tolerance</h2>
-<p>The tolerance stays at 1 percent. The published value has 4 digits.
-The mapped mesh study gives a smaller error than the former S6 study.</p></article>
+<p>The tolerance stays at 1 percent for both checks. The published value has 4 digits.
+The mapped mesh study gives a smaller error than the former S6 study.
+The S6 check keeps its former tolerance: its mesh error is 0.3 percent, and the margin is for a change of mesh or solver version.</p></article>
 <main id="model">
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden></select><label id="all" class="trail"><input type="checkbox"> Show all controls</label></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
 
-<script type="module" nonce="93e27c2ed2208792f53734a8472a2313">
+<script type="module" nonce="c15c0b2bc4a8bb6dd20c5557e28d4094">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.

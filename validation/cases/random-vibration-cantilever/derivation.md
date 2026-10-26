@@ -160,7 +160,7 @@ The tolerance is `rel_tol = 0.005` and `abs_tol = 0`.
 |---|---|---:|
 | The reference | the integral and the sum of 40 modes converge to 1e-6 | 0 |
 | Solid and beam theory | the trend of the mesh study | +0.02 % |
-| Mesh error of the check mesh | 3.3 mm against 1.25 mm | +0.04 % |
+| Mesh error | The former C3D10 check mesh, 3.3 mm against 1.25 mm. The mapped mesh is closer to the 1.25 mm value, so this budget stays conservative | +0.04 % |
 | Frequency points | 101 against 201 points | +0.001 % |
 | Modes | 10 against 20 modes | +0.003 % |
 | Another mesh of the same size | The former free mesh varies with the gmsh version. The mapped mesh fixes the grid. The original budget stays conservative. | +0.12 % or less |
@@ -188,7 +188,7 @@ The tolerance stops these errors. Each line is a change of `job.inp`, solved wit
 - The stress: `ccx` prints no stress to `job.dat` in a steady state step.
 - A PSD that is not flat: `ccx` interpolates the amplitude linearly between its points. The flat PSD of the check has no interpolation error.
 
-On a Mac with 10 cores, `fh run` of the case took 3.5 s.
+On a Mac with 10 cores, `fh run` of the case with the former C3D10 mesh took 3.5 s.
 
 ## Mapped mesh
 

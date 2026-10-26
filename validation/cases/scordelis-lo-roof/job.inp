@@ -1,11 +1,15 @@
 ** units: SI-mm
 *INCLUDE, INPUT=part.inp
+** The second roof: the former S6 mesh of fh mesh --shell, 40000 mm away in y, with no shared node.
+*INCLUDE, INPUT=s6.inp
 *MATERIAL, NAME=CONCRETE
 *ELASTIC
 432.0, 0.0
 *DENSITY
 3.6e-7
 *SHELL SECTION, ELSET=ALL, MATERIAL=CONCRETE
+250.0
+*SHELL SECTION, ELSET=ALL_S6, MATERIAL=CONCRETE
 250.0
 *STEP
 *STATIC
@@ -15,9 +19,15 @@
 END0, 2, 3
 END1, 2, 3
 TIP, 1, 1
+END0_S6, 2, 3
+END1_S6, 2, 3
+TIP_S6, 1, 1
 ** Self weight: density x 1 mm/s2 x 250 mm = 9.0E-5 MPa of the shell area, in -z.
 *DLOAD
 ALL, GRAV, 1.0, 0.0, 0.0, -1.0
+ALL_S6, GRAV, 1.0, 0.0, 0.0, -1.0
 *NODE PRINT, NSET=TIP
+U
+*NODE PRINT, NSET=TIP_S6
 U
 *END STEP
