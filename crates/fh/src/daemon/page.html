@@ -128,11 +128,11 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <details id="runs">
       <summary>Runs <span id="selected-run"></span></summary>
       <label data-control="run-search">Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
+      <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare meshes</label>
       <div id="run-list" aria-label="Runs"></div>
     </details>
     <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
     <button type="button" id="report" data-control="files" hidden>Open report</button>
-    <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare meshes</label>
     <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link views</label>
     <button type="button" id="close-compare" hidden>Close comparison</button>
   </header>
@@ -369,7 +369,6 @@ $("compare").onchange = () => {
     if (shown) view?.open(shown);
   }
   renderRuns();
-  if (on) runs.open = true;
 };
 $("close-compare").onclick = () => { $("compare").checked = false; $("compare").onchange(); };
 $("linked").onchange = () => { if (viewB) view.link(viewB, $("linked").checked); };
