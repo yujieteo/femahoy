@@ -88,6 +88,8 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   /* svh: in iOS Safari 100vh is the height with no toolbars, so the toolbars cover the bottom
      of the model (the legend and the status bar). */
   #model { flex: none; height: 100svh; }
+  /* With no model to show, the empty view only fills the rest of the screen below the chat. */
+  #model[data-empty] { flex: 1; height: auto; }
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
 }
 
@@ -216,10 +218,12 @@ for (const control of document.querySelectorAll("[data-control]")) {
 }
 
 let shown = query.get("run");
+$("model").toggleAttribute("data-empty", !shown);
 
 // Show the results of a run, and keep the run in the page address for a reload.
 function openRun(run) {
   shown = run;
+  $("model").removeAttribute("data-empty");
   select();
   query.set("run", run);
   history.replaceState(null, "", "?" + query);
@@ -573,6 +577,7 @@ function entry(kind, text, fresh) {
       const open = () => {
         if ($("compare").checked) $("close-compare").click();
         shown = null;
+        $("model").removeAttribute("data-empty");
         hideFiles();
         select();
         if (view) view.show(preview, title);
