@@ -1,6 +1,6 @@
 [package]
 name = "fh-fem"
-description = "The built-in finite element solver of femahoy: box grid, sparse solvers, heat conduction"
+description = "The built-in finite element solver of femahoy: box grid, sparse solvers, heat conduction, linear elasticity"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true

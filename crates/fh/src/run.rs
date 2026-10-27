@@ -26,7 +26,7 @@
 //! - `fh run CASE` gives openEMS the case folder (`openems.py`, see `fh::openems`). The Python of
 //!   openEMS is `$FH_OPENEMS`, else `python3` on `PATH`.
 //! - `fh run CASE` solves the grid case folder (`grid.toml`, see `fh::grid`) with the built-in
-//!   heat conduction solver of femahoy, in the process of `fh`.
+//!   heat conduction and linear stress solver of femahoy, in the process of `fh`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` sets the time limit of the run.
 //!
