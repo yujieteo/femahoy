@@ -6,7 +6,6 @@
 //! "Show all controls" to `Viewer::all`.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -57,28 +56,48 @@ fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|_| format!("{path}: not UTF-8 text"))
 }
 
+/// True while the load that asked is still the last load of its viewer.
+type Live = Rc<dyn Fn() -> bool>;
+
+/// The text of a load that a later load replaced. The viewer never shows it.
+const REPLACED: &str = "replaced by a later load";
+
+/// Give the browser a frame: a timer of 0 ms ends this task, so the page can draw and take input.
+async fn frame() {
+    let wait = js_sys::Promise::new(&mut |done, _| {
+        if let Some(w) = web_sys::window() {
+            let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&done, 0);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(wait).await;
+}
+
 /// Fetch the result files of a run and read them, with the supports and loads of its input and
-/// the view `view` (the text of [`view::View::parse`]).
-async fn load_run(token: &str, run: &str, view: &str) -> Result<Content, String> {
+/// the view `view` (the text of [`view::View::parse`]). Each step is fetched and read in its
+/// own task, so that a step of a large run does not stop the page for all the steps. When
+/// `live` becomes false, the load stops before its next fetch or read.
+async fn load_run(token: &str, run: &str, view: &str, live: Live) -> Result<Content, String> {
     let view = view::View::parse(view).map_err(|e| format!("Run {run}: the view: {e}"))?;
     let base = format!("/api/v1/runs/{run}/files");
     let pvd_path = format!("{base}/{RESULTS_FILE}");
     let pvd = text(get(token, &pvd_path).await?, &pvd_path)?;
-    let entries = fh_core::vtu::read_pvd(&pvd).map_err(|e| format!("{RESULTS_FILE}: {e}"))?;
-    let mut files = HashMap::new();
-    for e in &entries {
-        if !results::is_plain_file_name(&e.file) {
-            continue;
+    let mut loader =
+        results::Loader::new(RESULTS_FILE, &pvd).map_err(|e| format!("Run {run}: {e}"))?;
+    while let Some(file) = loader.next_file() {
+        let path = format!("{base}/{file}");
+        let bytes = get(token, &path).await;
+        frame().await;
+        if !live() {
+            return Err(REPLACED.into());
         }
-        let path = format!("{base}/{}", e.file);
-        files.insert(e.file.clone(), get(token, &path).await);
+        loader.add(bytes).map_err(|e| format!("Run {run}: {e}"))?;
+        frame().await;
+        if !live() {
+            return Err(REPLACED.into());
+        }
     }
-    let r = results::load(RESULTS_FILE, &pvd, |f| {
-        files.remove(f).unwrap_or_else(|| Err("not fetched".into()))
-    })
-    .map_err(|e| format!("Run {run}: {e}"))?;
     let loads = model(token, &format!("/api/v1/runs/{run}/input"), run).await;
-    Ok(Content::Results(Box::new(r), loads, view))
+    Ok(Content::Results(Box::new(loader.finish()), loads, view))
 }
 
 /// Fetch an input file from the daemon path `path` and read its supports and loads.
@@ -106,8 +125,8 @@ impl Viewer {
     pub fn open(&self, run: String, view: Option<String>) {
         self.ask(|r| r.mesh = Some(false));
         let token = self.token.clone();
-        self.load("Loading the results...", async move {
-            load_run(&token, &run, view.as_deref().unwrap_or("")).await
+        self.load("Loading the results...", move |live| async move {
+            load_run(&token, &run, view.as_deref().unwrap_or(""), live).await
         });
     }
 
@@ -115,8 +134,8 @@ impl Viewer {
     pub fn mesh(&self, run: String) {
         self.ask(|r| r.mesh = Some(true));
         let token = self.token.clone();
-        self.load("Loading the mesh...", async move {
-            load_run(&token, &run, view::MESH_VIEW).await
+        self.load("Loading the mesh...", move |live| async move {
+            load_run(&token, &run, view::MESH_VIEW, live).await
         });
     }
 
@@ -143,7 +162,7 @@ impl Viewer {
     /// Show the model of a preview with its supports and loads, before the solve.
     pub fn show(&self, preview: String, name: String) {
         let token = self.token.clone();
-        self.load("Loading the model...", async move {
+        self.load("Loading the model...", move |_| async move {
             let path = format!("/api/v1/previews/{preview}");
             model(&token, &path, &name).await.map(Content::Preview)
         });
@@ -168,10 +187,10 @@ impl Viewer {
         self.ctx.request_repaint();
     }
 
-    fn load(
+    fn load<W: std::future::Future<Output = Result<Content, String>> + 'static>(
         &self,
         loading: &str,
-        work: impl std::future::Future<Output = Result<Content, String>> + 'static,
+        work: impl FnOnce(Live) -> W + 'static,
     ) {
         let n = self.opened.get() + 1;
         self.opened.set(n);
@@ -200,7 +219,11 @@ impl Viewer {
             if opened.get() != n {
                 return;
             }
-            let content = work.await;
+            let live: Live = {
+                let opened = opened.clone();
+                Rc::new(move || opened.get() == n)
+            };
+            let content = work(live).await;
             if opened.get() == n {
                 fill(&slot, &ctx, content.unwrap_or_else(Content::Failed));
             }

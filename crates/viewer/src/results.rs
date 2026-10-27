@@ -247,37 +247,79 @@ pub fn is_plain_file_name(name: &str) -> bool {
 }
 
 /// Read the results of a run. `pvd` is the text of `results.pvd`. `read` gives the bytes of a
-/// file that `results.pvd` names. Each step must have as many points as the first step. A step
-/// with other cells than the step before it gets its own mesh. A step with no displacement field
-/// `U` (a heat transfer step) has a displacement of zero. When the points of a step are not the
-/// points of the first step, the displacement of each node adds its move.
+/// file that `results.pvd` names. See [`Loader`] for the checks of each step.
 pub fn load(
     pvd_name: &str,
     pvd: &str,
     mut read: impl FnMut(&str) -> Result<Vec<u8>, String>,
 ) -> Result<Results, String> {
-    let entries = match read_pvd(pvd) {
-        Ok(e) => e,
-        Err(e) => return fail(pvd_name, e),
-    };
-    if entries.is_empty() {
-        return fail(pvd_name, "the collection names no step file");
+    let mut loader = Loader::new(pvd_name, pvd)?;
+    while let Some(file) = loader.next_file() {
+        let file = file.to_owned();
+        loader.add(read(&file))?;
     }
-    let mut first: Option<Vec<[f64; 3]>> = None;
-    // The cells and the cell types of the last mesh.
-    let mut last: Option<(Vec<Vec<u32>>, Vec<u8>)> = None;
-    let mut meshes = Vec::new();
-    let mut steps = Vec::with_capacity(entries.len());
-    let mut moves = false;
-    for entry in entries {
-        let file = entry.file.as_str();
-        if !is_plain_file_name(file) {
+    Ok(loader.finish())
+}
+
+/// Reads the results of a run 1 step at a time, so that the page can fetch a step, read it
+/// and give the browser a frame before the next step. Each step must have as many points as
+/// the first step. A step with other cells than the step before it gets its own mesh. A step
+/// with no displacement field `U` (a heat transfer step) has a displacement of zero. When the
+/// points of a step are not the points of the first step, the displacement of each node adds
+/// its move.
+pub struct Loader {
+    units: String,
+    multibody: bool,
+    entries: Vec<fh_core::vtu::PvdEntry>,
+    first: Option<Vec<[f64; 3]>>,
+    /// The cells and the cell types of the last mesh.
+    last: Option<(Vec<Vec<u32>>, Vec<u8>)>,
+    meshes: Vec<RenderMesh>,
+    steps: Vec<Step>,
+    moves: bool,
+}
+
+impl Loader {
+    /// Read `pvd`, the text of the collection `pvd_name`.
+    pub fn new(pvd_name: &str, pvd: &str) -> Result<Loader, String> {
+        let entries = match read_pvd(pvd) {
+            Ok(e) => e,
+            Err(e) => return fail(pvd_name, e),
+        };
+        if entries.is_empty() {
+            return fail(pvd_name, "the collection names no step file");
+        }
+        if let Some(e) = entries.iter().find(|e| !is_plain_file_name(&e.file)) {
             return fail(
                 pvd_name,
-                format!("step file {file} is not in the run folder"),
+                format!("step file {} is not in the run folder", e.file),
             );
         }
-        let bytes = match read(file) {
+        let steps = Vec::with_capacity(entries.len());
+        Ok(Loader {
+            units: pvd_units(pvd),
+            multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
+            entries,
+            first: None,
+            last: None,
+            meshes: Vec::new(),
+            steps,
+            moves: false,
+        })
+    }
+
+    /// The file of the next step, or `None` when each step is read.
+    pub fn next_file(&self) -> Option<&str> {
+        self.entries.get(self.steps.len()).map(|e| e.file.as_str())
+    }
+
+    /// Read the bytes of the file of the next step.
+    pub fn add(&mut self, bytes: Result<Vec<u8>, String>) -> Result<(), String> {
+        let Some(entry) = self.entries.get(self.steps.len()) else {
+            return Err("each step is already read".into());
+        };
+        let file = entry.file.as_str();
+        let bytes = match bytes {
             Ok(b) => b,
             Err(e) => return fail(file, e),
         };
@@ -289,10 +331,13 @@ pub fn load(
         if grid.points.is_empty() || grid.cells.is_empty() {
             return fail(file, "the grid has no point or no cell");
         }
-        if first.as_ref().is_some_and(|f| f.len() != grid.points.len()) {
+        if (self.first.as_ref()).is_some_and(|f| f.len() != grid.points.len()) {
             return fail(
                 file,
-                format!("the points are not the points of {}", steps_file(&steps)),
+                format!(
+                    "the points are not the points of {}",
+                    steps_file(&self.steps)
+                ),
             );
         }
         if grid.points.iter().flatten().any(|c| !c.is_finite()) {
@@ -300,7 +345,8 @@ pub fn load(
         }
         // The mesh, the displacement and then the fields, so that a phone browser does not
         // hold the work data of the mesh and a second copy of the fields at the same time.
-        let same = (last.as_ref()).is_some_and(|(c, t)| *c == grid.cells && *t == grid.cell_types);
+        let same =
+            (self.last.as_ref()).is_some_and(|(c, t)| *c == grid.cells && *t == grid.cell_types);
         if !same {
             let mesh = mesh::build_grid(&grid);
             if mesh.triangles.is_empty() {
@@ -312,15 +358,15 @@ pub fn load(
                     ),
                 );
             }
-            meshes.push(mesh);
+            self.meshes.push(mesh);
         }
         let mut displacement = match grid.point_field("U") {
             None => vec![[0.0; 3]; grid.points.len()],
             Some(u) if u.components == 3 => u.values.as_chunks::<3>().0.to_vec(),
             Some(_) => return fail(file, "the displacement field U must have 3 components"),
         };
-        if let Some(f) = first.as_ref().filter(|f| **f != grid.points) {
-            moves = true;
+        if let Some(f) = self.first.as_ref().filter(|f| **f != grid.points) {
+            self.moves = true;
             for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(f) {
                 for k in 0..3 {
                     u[k] += p[k] - p0[k];
@@ -329,26 +375,31 @@ pub fn load(
         }
         let fields = fields_of(&mut grid, file)?;
         if !same {
-            last = Some((grid.cells, grid.cell_types));
+            self.last = Some((grid.cells, grid.cell_types));
         }
-        steps.push(Step {
+        self.steps.push(Step {
             time: entry.time,
             file: entry.file.clone(),
-            mesh: meshes.len() - 1,
+            mesh: self.meshes.len() - 1,
             displacement,
             fields,
         });
-        if first.is_none() {
-            first = Some(grid.points);
+        if self.first.is_none() {
+            self.first = Some(grid.points);
+        }
+        Ok(())
+    }
+
+    /// The results, after each step is read.
+    pub fn finish(self) -> Results {
+        Results {
+            units: self.units,
+            multibody: self.multibody,
+            meshes: self.meshes,
+            steps: self.steps,
+            moves: self.moves,
         }
     }
-    Ok(Results {
-        units: pvd_units(pvd),
-        multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
-        meshes,
-        steps,
-        moves,
-    })
 }
 
 fn steps_file(steps: &[Step]) -> &str {

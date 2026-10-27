@@ -72,14 +72,32 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 .row .keys { flex: 1 1 12em; }
 #stop { margin-left: auto; }
 
-#model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+#model { position: relative; display: flex; flex: 1; flex-direction: column; min-width: 0; }
+/* The controls are 1 layer that floats over the model. A list that opens covers the model and
+   does not push it down, so the model keeps its size and its place. With no run open there is
+   no model to cover, and the list is the view. */
+#model:not([data-empty]) > .toolbar {
+  position: absolute; z-index: 2; top: 0; left: 0; right: 0; align-items: flex-start; pointer-events: none;
+}
+#model:not([data-empty]) > .toolbar > * { pointer-events: auto; }
+#model:not([data-empty]) > .toolbar > :is(details, button, label, p) {
+  max-width: 100%; padding-inline: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+}
+#model:not([data-empty]) > .toolbar > details > summary { margin: 0; padding: 0; }
+#model:not([data-empty]) > .toolbar > details[open] { flex-basis: auto; width: min(560px, 100%); padding-bottom: var(--space-2); }
+/* The camera controls of the viewer float below this row, at the top left of the model. */
+#pair { --fh-camera-top: calc(var(--target) + 2 * var(--space-2) + var(--space-2)); }
+/* On a desktop the results panel of the viewer is at the right of the model: the row stops before it.
+   A comparison of 2 meshes has no results panel. */
+@media (min-width: 901px) { #model:not([data-empty]):not(:has(#compare:checked)) > .toolbar { right: 300px; } }
 /* Only on a phone is the chat out of view, and there the 3D view takes the drag gestures. */
 #to-chat { display: none; }
 #runs { min-width: 0; font-weight: 500; }
 /* Runs and Files are navigation, as is Open report: the same size and colour as a button. */
 #model > .toolbar > details > summary { font-size: var(--body); color: var(--text); }
-/* An open list takes a full header row. Else the other summaries go to its side, at its vertical centre. */
-#model > .toolbar > details[open] { flex-basis: 100%; }
+/* With no run open, an open list takes a full header row. Else the other summaries go to its side, at its vertical centre. */
+#model[data-empty] > .toolbar > details[open] { flex-basis: 100%; }
 /* The search field fills the rest of its row, as an iOS search field does. */
 [data-control="run-search"] { display: flex; align-items: center; gap: var(--space-2); }
 #run-search { flex: 1; min-width: 0; }
@@ -91,7 +109,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 .run-row { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--line); padding-bottom: var(--space-2); }
 .run-row > div { flex: 1 1 12em; min-width: 0; }
 /* With the 3 compare buttons, the buttons go on 1 row below the name. */
-.run-row:has(button + button) > div { flex-basis: 100%; }
+.run-row:has(button + button + button) > div { flex-basis: 100%; }
 .run-row p { margin: 0; overflow-wrap: anywhere; }
 /* The folder of the run uses 1 line. When it is too long, its start changes to an ellipsis, so the folder name stays. */
 .run-row .run-path { direction: rtl; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -99,17 +117,26 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 .run-row:has([aria-current]) p:first-child { font-weight: 600; }
 .run-row:has([aria-current]) p:first-child::before { content: "\2713  " / ""; color: var(--accent); }
 #pair { display: flex; flex: 1; min-height: 0; }
-#pair > section { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+#pair > section { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; }
+/* With linked cameras, the camera controls of A move both models, so B shows none. */
+body.linked #fh-b-camera-controls { display: none; }
 #view, #view-b { position: relative; flex: 1; min-height: 0; }
 #fh-b { position: absolute; inset: 0; width: 100%; height: 100%; }
 #pair-b { border-left: 1px solid var(--line); }
 #comparison-note, #label-a, #label-b { margin: 0; padding: var(--space-1) var(--space-4); overflow-wrap: anywhere; }
+/* The labels of A and B float over their models, below the camera controls, so the 2 models keep their height. */
+#label-a, #label-b {
+  position: absolute; z-index: 1; left: var(--space-2); bottom: calc(var(--space-4) + 24px); max-width: calc(100% - 2 * var(--space-2));
+  padding: var(--space-1) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
+}
+/* A result that the agent opened while the model is out of view (a phone with a long chat). */
+#new-result { position: fixed; z-index: 3; left: 50%; bottom: calc(var(--target) + 6 * var(--space-4)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 2 * var(--space-4)); box-shadow: 0 4px 16px rgb(0 0 0 / 0.3); }
 @media (max-width: 900px) { #chat { width: 320px; } #pair { flex-direction: column; } }
 /* A phone, also in landscape: the chat is above the model, and the page scrolls. */
 @media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
   body { flex-direction: column; overflow: auto; height: auto; min-height: 100%; }
   /* A chat with messages fills the screen, as in iOS Messages. The model is 1 screen below it,
-     and a tap on Open or "Show the results of" scrolls to it. */
+     and a tap on Open (in Runs or in the chat) scrolls to it. */
   #chat { width: 100%; height: 100svh; border-right: 0; border-bottom: 1px solid var(--line); }
   /* Before the first message the chat is only as high as its text, so the model starts higher. */
   #chat:has(#empty) { height: auto; min-height: 0; }
@@ -130,8 +157,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   #pair-b { border-left: 0; border-top: 1px solid var(--line); }
   body:not(:has(#empty)) #to-chat { display: block; }
   /* Runs, Files and Open report stay on 1 row: the file name gets shorter, from its end, so its
-     start and the full run ID stay readable. */
-  #runs { flex: 1 1 0; }
+     start and the full run ID stay readable. The row stops before the camera menu of the viewer. */
+  #model:not([data-empty]) > .toolbar { right: calc(var(--target) + var(--space-2)); padding-inline: var(--space-2); }
+  #runs { flex: 1 1 0; min-width: 0; }
   #selected-run { display: flex; min-width: 0; white-space: nowrap; }
   #selected-run > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 }
@@ -143,6 +171,9 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 @media (pointer: coarse) and (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
   :root { --fh-flow: 1; }
   #model:not([data-empty]), body:has(#empty) #model:not([data-empty]) { flex: none; height: calc(75svh + var(--fh-panel, 0px)); }
+  /* With the results panel hidden, the model is the full screen. */
+  :root[data-fh-results="hidden"] body #model:not([data-empty]),
+  :root[data-fh-results="hidden"] body:has(#empty) #model:not([data-empty]) { height: 100svh; }
 }
 
 #view { position: relative; flex: 1; min-height: 0; }
@@ -162,6 +193,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
   </div>
   <p id="error" hidden></p>
   <button type="button" id="rerun" data-control="prepare-rerun" hidden>Prepare rerun</button>
+  <button type="button" id="new-result" class="primary" hidden></button>
   <form id="composer">
     <textarea id="input" rows="1" placeholder="A message for the agent" aria-label="A message for the agent"></textarea>
     <div class="row">
@@ -181,15 +213,15 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <details id="runs">
       <summary>Runs <span id="selected-run"></span></summary>
       <label data-control="run-search">Search runs <input type="search" id="run-search" aria-label="Search run IDs and source paths"></label>
-      <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare meshes</label>
+      <label data-control="mesh-compare"><input type="checkbox" id="compare">Compare runs</label>
       <div id="run-list" aria-label="Runs"></div>
     </details>
     <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
     <button type="button" id="report" data-control="files" hidden>Open report</button>
-    <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link views</label>
+    <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link cameras</label>
+    <p id="comparison-note" class="note" hidden>Undeformed meshes only. No convergence result.</p>
     <button type="button" id="close-compare" class="trail" hidden>Done</button>
   </header>
-  <p id="comparison-note" class="note" hidden>Undeformed meshes only. No convergence result.</p>
   <div id="pair">
     <section><p id="label-a" hidden></p><p id="count-a" class="spoken" aria-live="polite"></p>
       <div id="view"><canvas id="fh" aria-label="The 3D model view" tabindex="0"></canvas><p id="msg">Loading the viewer...</p></div>
@@ -274,15 +306,18 @@ for (const control of document.querySelectorAll("[data-control]")) {
 let shown = query.get("run");
 $("model").toggleAttribute("data-empty", !shown);
 
-// Show the results of a run, and keep the run in the page address for a reload.
-// The Runs list closes, so on a phone the model gets its full height.
-function openRun(run) {
+// Show the results of a run, and keep the run in the page address for a reload. Each run is a
+// new entry of the browser history, so Back shows the run before. The Runs list closes, so on a
+// phone the model gets its full height.
+function openRun(run, push = true) {
+  const before = shown;
   shown = run;
   runs.open = false;
   $("model").removeAttribute("data-empty");
   select();
   query.set("run", run);
-  history.replaceState(null, "", "?" + query);
+  if (push && before && before !== run) history.pushState(null, "", "?" + query);
+  else history.replaceState(null, "", "?" + query);
   if (view) {
     if ($("compare").checked) { compareSide("a", run); }
     else view.open(run);
@@ -296,6 +331,25 @@ function reveal() {
   if (model.getBoundingClientRect().top > 0) model.scrollIntoView({ block: "start" });
 }
 $("to-chat").onclick = () => $("chat").scrollIntoView({ block: "start" });
+addEventListener("popstate", () => {
+  const run = new URLSearchParams(location.search).get("run");
+  if (run && run !== shown) {
+    if ($("compare").checked) $("close-compare").click();
+    openRun(run, false);
+  }
+});
+
+// On a phone with a long chat the model is below the chat. A result that the agent opens there
+// shows a button over the chat, and a tap on it scrolls to the model.
+const phone = matchMedia("(max-width: 700px), (pointer: coarse) and (max-height: 500px)");
+function announce(run) {
+  if (!phone.matches || $("model").getBoundingClientRect().top < innerHeight * 0.75) return;
+  $("new-result").textContent = "New result: " + runLabel(run) + " \u2193";
+  $("new-result").hidden = false;
+}
+$("new-result").onclick = () => { $("new-result").hidden = true; reveal(); };
+new IntersectionObserver((seen) => { if (seen.some((e) => e.isIntersecting)) $("new-result").hidden = true; }, { threshold: 0.25 })
+  .observe($("view"));
 function openRunAndShow(run) {
   openRun(run);
   reveal();
@@ -312,7 +366,8 @@ let listing = null;
 
 async function listRuns() {
   foundRuns = (await reply("/api/v1/runs")).items.reverse().map(split);
-  for (const [run, path] of foundRuns) names[run] = path.split("/").pop() || path;
+  // The name of a run: the folder and the file of its input, as in a report.
+  for (const [run, path] of foundRuns) names[run] = path.split("/").slice(-2).join("/") || path;
   $("compare").closest("label").hidden = foundRuns.length < 2;
   select();
 }
@@ -341,6 +396,11 @@ function renderRuns() {
     };
     const open = button("Open", () => openRunAndShow(run));
     if (run === shown) open.setAttribute("aria-current", "true");
+    // Compare this run with the open run: the open run is A, this run is B.
+    if (shown && run !== shown && !$("compare").checked && controls?.has("mesh-compare") !== false && foundRuns.length > 1) {
+      const b = button("Compare", () => compareWith(run));
+      b.setAttribute("aria-label", "Compare " + runLabel(run) + " with the open run");
+    }
     if ($("compare").checked) {
       button("Use as A", () => { runs.open = false; compareSide("a", run); reveal(); });
       button("Use as B", () => { runs.open = false; compareSide("b", run); reveal(); });
@@ -440,7 +500,7 @@ async function compareSide(side, run) {
     $("label-a").textContent = "A · " + runLabel(run);
     view.mesh(run);
   } else {
-    if (!compareA) { showError("Choose mesh A first."); return; }
+    if (!compareA) { showError("Choose run A first."); return; }
     compareB = run;
     $("pair-b").hidden = false;
     $("label-b").textContent = "B · " + runLabel(run);
@@ -451,12 +511,23 @@ async function compareSide(side, run) {
   }
   if (viewB) view.link(viewB, $("linked").checked);
 }
+// Compare 2 runs from the run row: the open run is A and `run` is B.
+async function compareWith(run) {
+  const a = shown;
+  runs.open = false;
+  $("compare").checked = true;
+  $("compare").onchange();
+  await compareSide("a", a);
+  await compareSide("b", run);
+  reveal();
+}
 $("compare").onchange = () => {
   comparisonVersion++;
   const on = $("compare").checked;
   $("comparison-note").hidden = $("link-control").hidden = $("close-compare").hidden = $("label-a").hidden = !on;
   $("selected-run").hidden = on;
-  if (on) { compareA = null; compareB = null; $("label-a").textContent = "Choose mesh A from Runs"; }
+  document.body.classList.toggle("linked", on && $("linked").checked);
+  if (on) { compareA = null; compareB = null; $("label-a").textContent = "Choose run A in Runs"; }
   if (!on) {
     if (viewB) view.link(viewB, false);
     $("pair-b").hidden = true;
@@ -465,7 +536,10 @@ $("compare").onchange = () => {
   renderRuns();
 };
 $("close-compare").onclick = () => { $("compare").checked = false; $("compare").onchange(); };
-$("linked").onchange = () => { if (viewB) view.link(viewB, $("linked").checked); };
+$("linked").onchange = () => {
+  document.body.classList.toggle("linked", $("linked").checked);
+  if (viewB) view.link(viewB, $("linked").checked);
+};
 setInterval(() => {
   const update = (id, text) => { if ($(id).textContent !== text) $(id).textContent = text; };
   if (view) update("count-a", ($("compare").checked ? "A: " : "") + view.status());
@@ -662,13 +736,15 @@ function entry(kind, text, fresh) {
     case "setup":
       return failure("Set up Claude Code", text);
     case "open": {
-      const b = el("button", "open", "Show the results of ");
+      const b = el("button", "open", "Open ");
       b.append(runName(text));
       b.type = "button";
       b.addEventListener("click", () => openRunAndShow(text));
       if (fresh) {
-        if (!$("compare").checked) openRun(text);
-        listRuns().catch((e) => showError(e.message));
+        const open = !$("compare").checked;
+        if (open) openRun(text);
+        // After the list of runs, the button can name the run with its source.
+        listRuns().then(() => { if (open) announce(text); }).catch((e) => showError(e.message));
       }
       return b;
     }
