@@ -1,0 +1,33 @@
+# A coaxial cable of perfect conductors (radii 0.5 mm and 1.75 mm, relative permittivity 2.25),
+# against the exact C, L, Z0 and effective permittivity (derivation.md). Tolerance budget: at
+# max_cell 4e-5 m the largest error of the 4 checks is 2.2e-4 of the value (L); C and Z0 are
+# within 1.1e-4. The errors come from the polygons of the circles and from the linear triangles,
+# and fall at second order (3 meshes, derivation.md). The effective permittivity is exact to the
+# precision of the arithmetic in a single dielectric. The tolerance 5e-4 holds the largest error
+# with a margin of a factor of 2.
+rel_tol = 5e-4
+abs_tol = 0.0
+
+[c]
+value = 9.99176495361e-11
+case = "coax"
+file = "line.txt"
+column = "C1_1"
+
+[l]
+value = 2.50552593835e-7
+case = "coax"
+file = "line.txt"
+column = "L1_1"
+
+[z0]
+value = 50.0758519761
+case = "coax"
+file = "line.txt"
+column = "z0_re"
+
+[eps_eff]
+value = 2.25
+case = "coax"
+file = "line.txt"
+column = "eps_eff1"

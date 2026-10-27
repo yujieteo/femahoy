@@ -1,0 +1,32 @@
+# A coaxial cable of perfect conductors with a PTFE-like dielectric: the inner conductor is the
+# signal and the outer tube is the reference (../derivation.md).
+units = "SI-m"
+
+[grid]
+max_cell = 4e-5
+
+[material.dielectric]
+relative_permittivity = 2.25
+
+[material.pec]
+perfect_conductor = true
+
+[part.inner]
+material = "pec"
+priority = 1
+circle = [0.0, 0.0, 0.5e-3]
+
+[part.dielectric]
+material = "dielectric"
+circle = [0.0, 0.0, 1.75e-3]
+
+[part.outer]
+material = "pec"
+circle = [0.0, 0.0, 2.0e-3]
+holes = [[0.0, 0.0, 1.75e-3]]
+
+[line]
+signals = ["inner"]
+references = ["outer"]
+frequencies = [1e9]
+length = 0.1

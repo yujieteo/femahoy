@@ -33,14 +33,18 @@ fn a_solver_error_is_a_case_that_cannot_run() {
     );
 }
 
-/// The cases of the built-in grid solver need no solver program, so they run in each test run.
+/// The cases of the built-in grid and line solvers need no solver program, so they run in each
+/// test run.
 #[test]
 fn the_grid_cases_pass() {
     let all = fh::validation::load_all(
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases"),
     )
     .unwrap();
-    let grid: Vec<&Case> = all.iter().filter(|c| c.id.starts_with("grid-")).collect();
+    let grid: Vec<&Case> = all
+        .iter()
+        .filter(|c| c.id.starts_with("grid-") || c.id.starts_with("line-"))
+        .collect();
     assert!(!grid.is_empty());
     for case in grid {
         let r = run_case_with(case, &fh::validation::Subprocess::default());

@@ -13,9 +13,15 @@ use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_TETRA};
 
 /// The text of an error about a key that the solver does not have.
 const CLASS: &str = "The built-in grid solver solves linear heat conduction in boxes and in \
-    prisms of polygons and circles along 1 axis, and linear static thermo-elasticity in boxes. \
-    For other curved or sloped shapes, contact, radiation, plasticity, large deformation, \
-    vibration or temperature-dependent materials, use gmsh and CalculiX (fh guide grid)";
+    prisms of polygons and circles along 1 axis, linear static thermo-elasticity in boxes, and \
+    with a [line] table the per-length parameters of a transmission line. For other curved or \
+    sloped shapes, contact, radiation, plasticity, large deformation, vibration or \
+    temperature-dependent materials, use gmsh and CalculiX (fh guide grid)";
+
+/// True when the case `text` is a transmission line: it has a `[line]` table (`crate::line`).
+pub fn is_line(text: &str) -> bool {
+    Document::parse(text).is_ok_and(|d| d.contains_key("line"))
+}
 
 /// The model of a grid case.
 #[derive(Debug, Clone, PartialEq)]
@@ -599,7 +605,11 @@ fn one_or_three(
 }
 
 /// The footprint of a part from `polygon` or `circle`, and `holes`, or `None` for a box.
-fn footprint(item: &dyn TableLike, where_: &str, axis: usize) -> Result<Option<Footprint>, String> {
+pub(crate) fn footprint(
+    item: &dyn TableLike,
+    where_: &str,
+    axis: usize,
+) -> Result<Option<Footprint>, String> {
     let plane = {
         let a = ["x", "y", "z"];
         format!("{} and {}", a[(axis + 1) % 3], a[(axis + 2) % 3])
@@ -664,13 +674,23 @@ fn polygon_of(item: &Item) -> Option<Outline> {
 
 /// An error for each key of `table` that is not in `keys`.
 fn only(table: &dyn TableLike, where_: &str, keys: &[&str]) -> Result<(), String> {
+    only_in(table, where_, keys, CLASS)
+}
+
+/// An error for each key of `table` that is not in `keys`, with the text `class`.
+pub(crate) fn only_in(
+    table: &dyn TableLike,
+    where_: &str,
+    keys: &[&str],
+    class: &str,
+) -> Result<(), String> {
     match table.iter().find(|(k, _)| !keys.contains(k)) {
-        Some((key, _)) => Err(format!("{where_}: unknown key `{key}`. {CLASS}")),
+        Some((key, _)) => Err(format!("{where_}: unknown key `{key}`. {class}")),
         None => Ok(()),
     }
 }
 
-fn table<'a>(top: &'a dyn TableLike, key: &str) -> Result<&'a dyn TableLike, String> {
+pub(crate) fn table<'a>(top: &'a dyn TableLike, key: &str) -> Result<&'a dyn TableLike, String> {
     top.get(key)
         .ok_or_else(|| format!("missing table [{key}]"))?
         .as_table_like()
@@ -678,7 +698,7 @@ fn table<'a>(top: &'a dyn TableLike, key: &str) -> Result<&'a dyn TableLike, Str
 }
 
 /// The tables `[key.NAME]`, in the order of the file.
-fn named<'a>(
+pub(crate) fn named<'a>(
     top: &'a dyn TableLike,
     key: &str,
 ) -> Result<Vec<(&'a str, &'a dyn TableLike)>, String> {
@@ -698,7 +718,7 @@ fn named<'a>(
         .collect()
 }
 
-fn string(table: &dyn TableLike, key: &str, where_: &str) -> Result<String, String> {
+pub(crate) fn string(table: &dyn TableLike, key: &str, where_: &str) -> Result<String, String> {
     table
         .get(key)
         .ok_or_else(|| format!("{where_}: missing key `{key}`"))?
@@ -708,7 +728,7 @@ fn string(table: &dyn TableLike, key: &str, where_: &str) -> Result<String, Stri
 }
 
 /// A string or a list of strings.
-fn strings(item: &Item, where_: &str) -> Result<Vec<String>, String> {
+pub(crate) fn strings(item: &Item, where_: &str) -> Result<Vec<String>, String> {
     if let Some(s) = item.as_str() {
         return Ok(vec![s.to_owned()]);
     }
@@ -717,14 +737,14 @@ fn strings(item: &Item, where_: &str) -> Result<Vec<String>, String> {
         .ok_or_else(|| format!("{where_}: expected a string or a list of strings"))
 }
 
-fn as_number(item: &Item) -> Option<f64> {
+pub(crate) fn as_number(item: &Item) -> Option<f64> {
     item.as_float()
         .or_else(|| item.as_integer().map(|i| i as f64))
         .filter(|v| v.is_finite())
 }
 
 /// A list of finite numbers.
-fn numbers(item: &Item) -> Option<Vec<f64>> {
+pub(crate) fn numbers(item: &Item) -> Option<Vec<f64>> {
     item.as_array()?
         .iter()
         .map(|v| {
@@ -735,7 +755,11 @@ fn numbers(item: &Item) -> Option<Vec<f64>> {
         .collect()
 }
 
-fn optional(table: &dyn TableLike, key: &str, where_: &str) -> Result<Option<f64>, String> {
+pub(crate) fn optional(
+    table: &dyn TableLike,
+    key: &str,
+    where_: &str,
+) -> Result<Option<f64>, String> {
     match table.get(key) {
         None => Ok(None),
         Some(item) => as_number(item)
@@ -744,7 +768,7 @@ fn optional(table: &dyn TableLike, key: &str, where_: &str) -> Result<Option<f64
     }
 }
 
-fn number(table: &dyn TableLike, key: &str, where_: &str) -> Result<f64, String> {
+pub(crate) fn number(table: &dyn TableLike, key: &str, where_: &str) -> Result<f64, String> {
     optional(table, key, where_)?.ok_or_else(|| format!("{where_}: missing key `{key}`"))
 }
 

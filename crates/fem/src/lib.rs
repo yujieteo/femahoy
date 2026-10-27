@@ -9,6 +9,11 @@
 //!   ordering, the symbolic analysis of the factor and the numeric real Cholesky factor. The
 //!   ordering and the symbolic analysis use only the pattern, so another numeric factor (for
 //!   example a complex LDL^T) can use them.
+//! - `complex`, `ldlt`: complex numbers and dense complex matrices, and the complex symmetric
+//!   LDL^T factor on the ordering and the symbolic analysis of the real Cholesky factor.
+//! - `line`, `mtl`: the per-length R, L, G and C of a transmission line from its cross-section
+//!   (electrostatic and magneto-quasi-static solves on the triangle mesh), and the chain matrix,
+//!   the S matrix, the modes and the Touchstone text of a multiconductor line.
 //! - `multigrid`: conjugate gradients with a geometric multigrid preconditioner on the grid, for
 //!   1 or 3 unknowns at each point.
 //! - `solve`: the choice between the direct solver and PCG.
@@ -22,11 +27,15 @@
 #![allow(clippy::neg_cmp_op_on_partial_ord, clippy::needless_range_loop)]
 
 pub mod cholesky;
+pub mod complex;
 pub mod elastic;
 pub mod grid;
 pub mod heat;
 pub mod hex;
+pub mod ldlt;
+pub mod line;
 pub mod mesh2d;
+pub mod mtl;
 pub mod multigrid;
 pub mod order;
 pub mod predicates;

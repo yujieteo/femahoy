@@ -1,0 +1,35 @@
+# 2 copper bars side by side, 1 mm apart, in a square box of air with magnetic walls. Bar a is
+# the signal and bar b the return (the reference). At 100 kHz the skin effect and the proximity
+# effect push the current to the near faces of the bars (../derivation.md).
+units = "SI-m"
+
+[grid]
+max_cell = 1e-3
+max_growth = 1.1
+
+[material.air]
+
+[material.copper]
+electric_conductivity = 5.8e7
+
+[part.air]
+material = "air"
+x = [-20e-3, 20e-3]
+y = [-20e-3, 20e-3]
+
+[part.a]
+material = "copper"
+priority = 1
+x = [-2.5e-3, -0.5e-3]
+y = [-0.5e-3, 0.5e-3]
+
+[part.b]
+material = "copper"
+priority = 1
+x = [0.5e-3, 2.5e-3]
+y = [-0.5e-3, 0.5e-3]
+
+[line]
+signals = ["a"]
+references = ["b"]
+frequencies = [1e3, 1e4, 1e5]

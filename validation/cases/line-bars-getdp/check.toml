@@ -1,0 +1,21 @@
+# 2 copper bars 2 mm x 1 mm, 1 mm apart, 1 A out in 1 and back in the other, at 100 kHz (the
+# thickness is 4.8 skin depths), against GetDP 4.0 on a gmsh mesh of the same problem (getdp/,
+# H = 6.25 um: 46,801 nodes). See derivation.md. Tolerance budget, from mesh studies of both
+# solvers: the built-in solver at max_cell 1e-3 m and max_growth 1.1 is 2.7e-3 above the
+# reference in R (the outline segments of a quarter of the skin depth: with an eighth it is
+# 1.0e-3 above) and 0.7e-3 below in L (the mesh of the air). The reference changes by 2.0e-4 in R
+# and 1.0e-4 in L on its last refinement. The tolerance 5e-3 holds the largest sum, 2.9e-3.
+rel_tol = 5e-3
+abs_tol = 0.0
+
+[r]
+value = 4.865727173e-2
+case = "bars"
+file = "line.txt"
+column = "R1_1"
+
+[l]
+value = 4.870218310e-7
+case = "bars"
+file = "line.txt"
+column = "L1_1"
