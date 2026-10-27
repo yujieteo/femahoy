@@ -608,10 +608,10 @@ function finishAction(d, state, time) {
 }
 setInterval(() => waiting.forEach(updateAction), 1000);
 function result(d, kind, text) {
-  finishAction(d, kind === "fail" ? "Failed" : "Done", eventTime || Date.now());
+  finishAction(d, { fail: "Failed", blocked: "Blocked" }[kind] || "Done", eventTime || Date.now());
   identity = null;
   d.classList.toggle("failed", kind === "fail");
-  d.open ||= kind === "fail";
+  d.open ||= kind !== "out";
   if (text) d.append(el("pre", kind, text));
 }
 
@@ -627,8 +627,9 @@ function entry(kind, text, fresh) {
       return el("p", "say", text);
     case "cmd": {
       const d = command("$", text, text.length > 48 || text.includes("\n"));
+      d.dataset.now = "$ " + text.split("\n")[0];
       waiting.push(d);
-      status("now", "$ " + text.split("\n")[0]);
+      status("now", d.dataset.now);
       return d;
     }
     case "tool": {
@@ -636,14 +637,18 @@ function entry(kind, text, fresh) {
       const code = d.querySelector("code");
       code.className = "tail";
       code.textContent = "\u200E" + code.textContent + "\u200E";
+      d.dataset.now = text;
       waiting.push(d);
       status("now", text);
       return d;
     }
     case "out":
-    case "fail": {
+    case "fail":
+    case "blocked": {
       const index = identity ? waiting.findIndex(d => d.dataset.toolId === identity[0]) : waiting.findIndex(d => !d.dataset.toolId);
       const d = index < 0 ? null : waiting.splice(index, 1)[0];
+      // Now shows only a command that still runs.
+      status("now", waiting.at(-1)?.dataset.now || "");
       if (shown && fresh) loadFiles(shown);
       if (d) return result(d, kind, text);
       if (kind === "fail") return failure("Error", text);
