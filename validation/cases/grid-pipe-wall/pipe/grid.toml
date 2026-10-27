@@ -1,0 +1,43 @@
+# A plastic pipe with hot water inside and air outside: a thick cylinder wall. The wall is a
+# circle with a round hole, extruded along z, so the solver meshes it with tetrahedra. The ends
+# are adiabatic, so the temperature depends only on the radius (../derivation.md).
+units = "SI-m"
+
+[grid]
+max_cell = 0.002
+
+[material.pvc]
+conductivity = 0.2
+
+[part.pipe]
+material = "pvc"
+circle = [0.0, 0.0, 0.08]
+holes = [[0.0, 0.0, 0.05]]
+z = [0.0, 0.002]
+
+[face.water]
+circle = [0.0, 0.0, 0.05]
+
+[face.air]
+circle = [0.0, 0.0, 0.08]
+
+[[load]]
+temperature = 80.0
+face = "water"
+
+[[load]]
+convection = 10.0
+sink = 20.0
+face = "air"
+
+[step]
+type = "steady"
+
+[probe.middle]
+point = [0.065, 0.0, 0.001]
+
+[probe.middle_45]
+point = [0.0459619407771256, 0.0459619407771256, 0.001]
+
+[probe.outer]
+point = [0.08, 0.0, 0.001]

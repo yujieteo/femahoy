@@ -1,0 +1,50 @@
+# A steel plate with a round hole and a copper pad on its top. A heat source in the pad, the
+# wall of the hole at 20 C (a cooled bolt or pipe), the other faces adiabatic. The plate is a
+# rectangle with a circle hole and the pad is a box, so the solver meshes them with tetrahedra.
+# The reference is a CalculiX solve of the same problem with C3D10 elements on a gmsh mesh
+# (../ccx/). See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.002
+
+[material.steel]
+conductivity = 50.0
+
+[material.copper]
+conductivity = 400.0
+
+[part.plate]
+material = "steel"
+polygon = [[0.0, 0.0], [0.1, 0.0], [0.1, 0.06], [0.0, 0.06]]
+holes = [[0.03, 0.03, 0.01]]
+z = [0.0, 0.01]
+
+[part.pad]
+material = "copper"
+x = [0.06, 0.09]
+y = [0.02, 0.04]
+z = [0.01, 0.02]
+
+[face.hole]
+circle = [0.03, 0.03, 0.01]
+
+[[load]]
+temperature = 20.0
+face = "hole"
+
+[[load]]
+source = 2e6
+part = "pad"
+
+[step]
+type = "steady"
+
+[probe.pad_corner]
+point = [0.09, 0.04, 0.02]
+
+[probe.plate_far]
+point = [0.1, 0.0, 0.0]
+
+[probe.plate_near]
+point = [0.0, 0.06, 0.01]
