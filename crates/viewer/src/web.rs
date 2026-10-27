@@ -10,33 +10,40 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use eframe::egui;
+use js_sys::Uint8Array;
 use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen_futures::JsFuture;
+use web_sys::{AbortController, AbortSignal};
 
 use crate::app::{Content, Request, RequestSlot, ViewerApp};
 use crate::{preview, results, view, RESULTS_FILE};
 
-/// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer.
-async fn get(token: &str, path: &str) -> Result<Vec<u8>, String> {
+/// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer. An
+/// abort of `signal` stops the download.
+async fn get(token: &str, path: &str, signal: &AbortSignal) -> Result<Uint8Array, String> {
     let window = web_sys::window().ok_or("no window")?;
-    let request = web_sys::Request::new_with_str(path).map_err(|e| format!("{path}: {e:?}"))?;
+    let init = web_sys::RequestInit::new();
+    init.set_signal(Some(signal));
+    let request = web_sys::Request::new_with_str_and_init(path, &init)
+        .map_err(|e| format!("{path}: {e:?}"))?;
     request
         .headers()
         .set("Authorization", &format!("Bearer {token}"))
         .map_err(|e| format!("{path}: {e:?}"))?;
-    let answer = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+    let answer = JsFuture::from(window.fetch_with_request(&request))
         .await
         .map_err(|e| format!("{path}: the daemon does not answer ({e:?})"))?;
     let response: web_sys::Response = answer.dyn_into().map_err(|_| "not a response")?;
-    let buffer = wasm_bindgen_futures::JsFuture::from(
+    let buffer = JsFuture::from(
         response
             .array_buffer()
             .map_err(|e| format!("{path}: {e:?}"))?,
     )
     .await
     .map_err(|e| format!("{path}: {e:?}"))?;
-    let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+    let bytes = Uint8Array::new(&buffer);
     if !response.ok() {
-        let text = String::from_utf8_lossy(&bytes);
+        let text = String::from_utf8_lossy(&bytes.to_vec()).into_owned();
         let field = |key: &str| {
             text.lines()
                 .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
@@ -52,57 +59,200 @@ async fn get(token: &str, path: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn text(bytes: Vec<u8>, path: &str) -> Result<String, String> {
-    String::from_utf8(bytes).map_err(|_| format!("{path}: not UTF-8 text"))
+fn text(bytes: Uint8Array, path: &str) -> Result<String, String> {
+    String::from_utf8(bytes.to_vec()).map_err(|_| format!("{path}: not UTF-8 text"))
 }
-
-/// True while the load that asked is still the last load of its viewer.
-type Live = Rc<dyn Fn() -> bool>;
 
 /// The text of a load that a later load replaced. The viewer never shows it.
 const REPLACED: &str = "replaced by a later load";
 
-/// Give the browser a frame: a timer of 0 ms ends this task, so the page can draw and take input.
-async fn frame() {
-    let wait = js_sys::Promise::new(&mut |done, _| {
-        if let Some(w) = web_sys::window() {
-            let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&done, 0);
+/// The daemon path of the viewer script. A report answers it from its own files.
+const SCRIPT_PATH: &str = "/viewer/fh_viewer.js";
+
+/// The script of the worker that reads the steps of a run with [`StepReader`]. Its first
+/// message has the text of the viewer script, the compiled viewer and the text of `results.pvd`.
+/// The worker imports the script from its own blob. Reason: a report from `file://` has an
+/// opaque origin, so a worker cannot import a blob of the page, and a module worker does not
+/// start. Each next
+/// message has the bytes of the next step, or the error of its fetch. Each message gets 1
+/// answer: the read step in `ok` and the file of the next step in `next`, or an `error`.
+const STEP_WORKER: &str = r#"
+let reader;
+onmessage = async ({ data }) => {
+  try {
+    if (data.script) {
+      const viewer = await import(URL.createObjectURL(new Blob([data.script], { type: "text/javascript" })));
+      await viewer.default({ module_or_path: data.module });
+      reader = new viewer.StepReader(data.pvd);
+      postMessage({ next: reader.next() });
+    } else {
+      const ok = reader.add(data.bytes ?? new Uint8Array(), data.error);
+      postMessage({ ok, next: reader.next() }, [ok.buffer]);
+    }
+  } catch (e) {
+    postMessage({ error: e instanceof Error ? e.message : String(e) });
+  }
+};
+"#;
+
+thread_local! {
+    /// The blob URL of [`STEP_WORKER`]. Each load starts a worker from it.
+    static STEP_WORKER_URL: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Reads the steps of a run in the worker of [`load_run`], with [`results::Loader`]. Only that
+/// worker uses it.
+#[wasm_bindgen]
+pub struct StepReader(results::Loader);
+
+#[wasm_bindgen]
+impl StepReader {
+    #[wasm_bindgen(constructor)]
+    pub fn new(pvd: &str) -> Result<StepReader, String> {
+        results::Loader::new(RESULTS_FILE, pvd).map(StepReader)
+    }
+
+    /// The file of the next step, or none when each step is read.
+    pub fn next(&self) -> Option<String> {
+        self.0.next_file().map(str::to_owned)
+    }
+
+    /// Read the next step from its `bytes`, or from the `error` of its fetch.
+    pub fn add(&mut self, bytes: Vec<u8>, error: Option<String>) -> Result<Vec<u8>, String> {
+        self.0.add_and_send(error.map_or(Ok(bytes), Err))
+    }
+}
+
+/// The worker of 1 load. It stops when it is dropped, also in the middle of a step.
+struct StepWorker(web_sys::Worker);
+
+impl Drop for StepWorker {
+    fn drop(&mut self) {
+        self.0.terminate();
+    }
+}
+
+impl StepWorker {
+    fn start() -> Result<StepWorker, String> {
+        let url = STEP_WORKER_URL.with(|u| -> Result<String, JsValue> {
+            if let Some(url) = u.borrow().as_ref() {
+                return Ok(url.clone());
+            }
+            let kind = web_sys::BlobPropertyBag::new();
+            kind.set_type("text/javascript");
+            let parts = js_sys::Array::of1(&STEP_WORKER.into());
+            let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &kind)?;
+            let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+            *u.borrow_mut() = Some(url.clone());
+            Ok(url)
+        });
+        url.and_then(|url| web_sys::Worker::new(&url))
+            .map(StepWorker)
+            .map_err(|e| format!("the step reader does not start ({e:?})"))
+    }
+
+    /// Send `message` with the buffers `transfer`, and wait for its answer. An abort of
+    /// `signal` stops the wait.
+    async fn ask(
+        &self,
+        message: &js_sys::Object,
+        transfer: &js_sys::Array,
+        signal: &AbortSignal,
+    ) -> Result<JsValue, String> {
+        let answer = js_sys::Promise::new(&mut |done, fail| {
+            self.0.set_onmessage(Some(&done));
+            self.0.set_onerror(Some(&fail));
+            signal.set_onabort(Some(&fail));
+        });
+        self.0
+            .post_message_with_transfer(message, transfer)
+            .map_err(|e| format!("the step reader: {e:?}"))?;
+        let event = JsFuture::from(answer).await;
+        signal.set_onabort(None);
+        if signal.aborted() {
+            return Err(REPLACED.into());
         }
-    });
-    let _ = wasm_bindgen_futures::JsFuture::from(wait).await;
+        let field = |v: &JsValue, key: &str| js_sys::Reflect::get(v, &key.into()).ok();
+        let data = event
+            .and_then(|e| js_sys::Reflect::get(&e, &"data".into()))
+            .map_err(|e| {
+                let message = field(&e, "message").and_then(|m| m.as_string());
+                format!("the step reader stopped: {}", message.unwrap_or_default())
+            })?;
+        match field(&data, "error").and_then(|e| e.as_string()) {
+            Some(e) => Err(e),
+            None => Ok(data),
+        }
+    }
 }
 
 /// Fetch the result files of a run and read them, with the supports and loads of its input and
-/// the view `view` (the text of [`view::View::parse`]). Each step is fetched and read in its
-/// own task, so that a step of a large run does not stop the page for all the steps. When
-/// `live` becomes false, the load stops before its next fetch or read.
-async fn load_run(token: &str, run: &str, view: &str, live: Live) -> Result<Content, String> {
+/// the view `view` (the text of [`view::View::parse`]). A worker reads each step, so that a
+/// large step does not stop the page. An abort of `signal` stops the download and the worker.
+async fn load_run(
+    token: &str,
+    run: &str,
+    view: &str,
+    signal: &AbortSignal,
+) -> Result<Content, String> {
     let view = view::View::parse(view).map_err(|e| format!("Run {run}: the view: {e}"))?;
     let base = format!("/api/v1/runs/{run}/files");
     let pvd_path = format!("{base}/{RESULTS_FILE}");
-    let pvd = text(get(token, &pvd_path).await?, &pvd_path)?;
-    let mut loader =
-        results::Loader::new(RESULTS_FILE, &pvd).map_err(|e| format!("Run {run}: {e}"))?;
-    while let Some(file) = loader.next_file() {
+    let pvd = text(get(token, &pvd_path, signal).await?, &pvd_path)?;
+    let script = text(get(token, SCRIPT_PATH, signal).await?, SCRIPT_PATH)?;
+    let worker = StepWorker::start().map_err(|e| format!("Run {run}: {e}"))?;
+    let set = |m: &js_sys::Object, key: &str, value: &JsValue| {
+        let _ = js_sys::Reflect::set(m, &key.into(), value);
+    };
+    let first = js_sys::Object::new();
+    set(&first, "script", &script.into());
+    set(&first, "module", &wasm_bindgen::module());
+    set(&first, "pvd", &pvd.into());
+    let mut answer = worker.ask(&first, &js_sys::Array::new(), signal).await;
+    let mut results = results::Results::default();
+    loop {
+        let reply = answer.map_err(|e| format!("Run {run}: {e}"))?;
+        if let Some(ok) = js_sys::Reflect::get(&reply, &"ok".into())
+            .ok()
+            .and_then(|ok| ok.dyn_into::<Uint8Array>().ok())
+        {
+            results
+                .receive(&ok.to_vec())
+                .map_err(|e| format!("Run {run}: {e}"))?;
+        }
+        let Some(file) = js_sys::Reflect::get(&reply, &"next".into())
+            .ok()
+            .and_then(|n| n.as_string())
+        else {
+            break;
+        };
         let path = format!("{base}/{file}");
-        let bytes = get(token, &path).await;
-        frame().await;
-        if !live() {
+        let (message, transfer) = (js_sys::Object::new(), js_sys::Array::new());
+        match get(token, &path, signal).await {
+            Ok(bytes) => {
+                transfer.push(&bytes.buffer());
+                set(&message, "bytes", &bytes);
+            }
+            Err(e) => set(&message, "error", &e.into()),
+        }
+        if signal.aborted() {
             return Err(REPLACED.into());
         }
-        loader.add(bytes).map_err(|e| format!("Run {run}: {e}"))?;
-        frame().await;
-        if !live() {
-            return Err(REPLACED.into());
-        }
+        answer = worker.ask(&message, &transfer, signal).await;
     }
-    let loads = model(token, &format!("/api/v1/runs/{run}/input"), run).await;
-    Ok(Content::Results(Box::new(loader.finish()), loads, view))
+    drop(worker);
+    let loads = model(token, &format!("/api/v1/runs/{run}/input"), run, signal).await;
+    Ok(Content::Results(Box::new(results), loads, view))
 }
 
 /// Fetch an input file from the daemon path `path` and read its supports and loads.
-async fn model(token: &str, path: &str, name: &str) -> Result<Box<preview::Preview>, String> {
-    let input = text(get(token, path).await?, path)?;
+async fn model(
+    token: &str,
+    path: &str,
+    name: &str,
+    signal: &AbortSignal,
+) -> Result<Box<preview::Preview>, String> {
+    let input = text(get(token, path, signal).await?, path)?;
     let mut p = preview::build(&fh_core::inp::parse(&input), &fh_core::inp::units(&input));
     p.title = name.to_owned();
     Ok(Box::new(p))
@@ -114,8 +264,9 @@ pub struct Viewer {
     token: String,
     slot: RequestSlot,
     ctx: egui::Context,
-    /// The number of the last `open`. A load that a later `open` replaced shows nothing.
-    opened: Rc<Cell<u64>>,
+    /// The abort of the last load. A later load aborts it, so the replaced load stops and shows
+    /// nothing.
+    abort: RefCell<Option<AbortController>>,
 }
 
 #[wasm_bindgen]
@@ -125,8 +276,8 @@ impl Viewer {
     pub fn open(&self, run: String, view: Option<String>) {
         self.ask(|r| r.mesh = Some(false));
         let token = self.token.clone();
-        self.load("Loading the results...", move |live| async move {
-            load_run(&token, &run, view.as_deref().unwrap_or(""), live).await
+        self.load("Loading the results...", move |signal| async move {
+            load_run(&token, &run, view.as_deref().unwrap_or(""), &signal).await
         });
     }
 
@@ -134,8 +285,8 @@ impl Viewer {
     pub fn mesh(&self, run: String) {
         self.ask(|r| r.mesh = Some(true));
         let token = self.token.clone();
-        self.load("Loading the mesh...", move |live| async move {
-            load_run(&token, &run, view::MESH_VIEW, live).await
+        self.load("Loading the mesh...", move |signal| async move {
+            load_run(&token, &run, view::MESH_VIEW, &signal).await
         });
     }
 
@@ -162,9 +313,11 @@ impl Viewer {
     /// Show the model of a preview with its supports and loads, before the solve.
     pub fn show(&self, preview: String, name: String) {
         let token = self.token.clone();
-        self.load("Loading the model...", move |_| async move {
+        self.load("Loading the model...", move |signal| async move {
             let path = format!("/api/v1/previews/{preview}");
-            model(&token, &path, &name).await.map(Content::Preview)
+            model(&token, &path, &name, &signal)
+                .await
+                .map(Content::Preview)
         });
     }
 
@@ -190,10 +343,8 @@ impl Viewer {
     fn load<W: std::future::Future<Output = Result<Content, String>> + 'static>(
         &self,
         loading: &str,
-        work: impl FnOnce(Live) -> W + 'static,
+        work: impl FnOnce(AbortSignal) -> W + 'static,
     ) {
-        let n = self.opened.get() + 1;
-        self.opened.set(n);
         let fill = |slot: &RequestSlot, ctx: &egui::Context, content| {
             if let Ok(mut s) = slot.lock() {
                 s.content = Some(content);
@@ -202,29 +353,33 @@ impl Viewer {
         };
         // A step that the page asked for before this load is for the run before.
         self.ask(|r| r.step = None);
+        let controller = AbortController::new();
+        if let Some(replaced) = self.abort.replace(controller.as_ref().ok().cloned()) {
+            replaced.abort();
+        }
+        let signal = match controller {
+            Ok(c) => c.signal(),
+            Err(e) => return fill(&self.slot, &self.ctx, Content::Failed(format!("{e:?}"))),
+        };
         fill(&self.slot, &self.ctx, Content::Text(loading.into()));
-        let (slot, ctx, opened) = (self.slot.clone(), self.ctx.clone(), self.opened.clone());
+        let (slot, ctx) = (self.slot.clone(), self.ctx.clone());
         wasm_bindgen_futures::spawn_local(async move {
             // Start the fetch only after a frame took the text and freed the shown model.
             // Reason: on localhost the fetch and the parse end before the next frame, and the
             // page then holds two A320 models.
-            while opened.get() == n && slot.lock().is_ok_and(|s| s.content.is_some()) {
+            while !signal.aborted() && slot.lock().is_ok_and(|s| s.content.is_some()) {
                 let wait = js_sys::Promise::new(&mut |done, _| {
                     if let Some(w) = web_sys::window() {
                         let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&done, 16);
                     }
                 });
-                let _ = wasm_bindgen_futures::JsFuture::from(wait).await;
+                let _ = JsFuture::from(wait).await;
             }
-            if opened.get() != n {
+            if signal.aborted() {
                 return;
             }
-            let live: Live = {
-                let opened = opened.clone();
-                Rc::new(move || opened.get() == n)
-            };
-            let content = work(live).await;
-            if opened.get() == n {
+            let content = work(signal.clone()).await;
+            if !signal.aborted() {
                 fill(&slot, &ctx, content.unwrap_or_else(Content::Failed));
             }
         });
@@ -274,6 +429,6 @@ pub async fn start(canvas: web_sys::HtmlCanvasElement, token: String) -> Result<
         token,
         slot,
         ctx,
-        opened: Rc::default(),
+        abort: RefCell::default(),
     })
 }

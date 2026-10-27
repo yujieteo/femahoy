@@ -93,7 +93,7 @@ impl Step {
 }
 
 /// All the steps of one run.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Results {
     /// The unit system of the run (`SI-mm`, `SI-m` or `unspecified`).
     pub units: String,
@@ -277,6 +277,8 @@ pub struct Loader {
     meshes: Vec<RenderMesh>,
     steps: Vec<Step>,
     moves: bool,
+    /// The number of meshes that [`Loader::add_and_send`] sent.
+    sent: usize,
 }
 
 impl Loader {
@@ -305,6 +307,7 @@ impl Loader {
             meshes: Vec::new(),
             steps,
             moves: false,
+            sent: 0,
         })
     }
 
@@ -390,6 +393,52 @@ impl Loader {
         Ok(())
     }
 
+    /// Read the next step like [`Loader::add`] and give it, with its mesh when the mesh is new,
+    /// as the bytes of [`Results::receive`]. The worker of the page reads the steps with this,
+    /// so that a large step does not stop the page. The loader then keeps only what it needs to
+    /// check the next steps, so [`Loader::finish`] has no step data after this.
+    pub fn add_and_send(&mut self, bytes: Result<Vec<u8>, String>) -> Result<Vec<u8>, String> {
+        self.add(bytes)?;
+        let mut out = Vec::new();
+        put_text(&mut out, &self.units);
+        u8::from(self.multibody).put(&mut out);
+        u8::from(self.moves).put(&mut out);
+        let mesh = self.meshes.get_mut(self.sent).map(std::mem::take);
+        self.sent = self.meshes.len();
+        u8::from(mesh.is_some()).put(&mut out);
+        if let Some(m) = mesh {
+            put_list(&mut out, &m.positions);
+            put_list(&mut out, &m.source_node);
+            put_list(&mut out, &m.triangles);
+            put_list(&mut out, &m.triangle_cell);
+            put_list(&mut out, &m.edges);
+            put_list(&mut out, &m.feature_edges);
+            for n in [m.node_count, m.element_count, m.skipped_elements] {
+                (n as u64).put(&mut out);
+            }
+            u8::from(m.bounds.is_some()).put(&mut out);
+            if let Some(b) = m.bounds {
+                b.min.put(&mut out);
+                b.max.put(&mut out);
+            }
+        }
+        let step = self.steps.last_mut().ok_or("no step is read")?;
+        step.time.put(&mut out);
+        put_text(&mut out, &step.file);
+        (step.mesh as u64).put(&mut out);
+        put_list(&mut out, &std::mem::take(&mut step.displacement));
+        let fields = std::mem::take(&mut step.fields);
+        (fields.len() as u64).put(&mut out);
+        for f in fields {
+            put_text(&mut out, &f.name);
+            (f.quantity as u8).put(&mut out);
+            (f.location as u8).put(&mut out);
+            u8::from(f.component).put(&mut out);
+            put_list(&mut out, &f.values);
+        }
+        Ok(out)
+    }
+
     /// The results, after each step is read.
     pub fn finish(self) -> Results {
         Results {
@@ -399,6 +448,144 @@ impl Loader {
             steps: self.steps,
             moves: self.moves,
         }
+    }
+}
+
+impl Results {
+    /// Add the step that [`Loader::add_and_send`] gave as `bytes`.
+    pub fn receive(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let mut r = Received(bytes);
+        self.units = r.text()?;
+        self.multibody = r.get::<u8>()? != 0;
+        self.moves = r.get::<u8>()? != 0;
+        if r.get::<u8>()? != 0 {
+            self.meshes.push(RenderMesh {
+                positions: r.list()?,
+                source_node: r.list()?,
+                triangles: r.list()?,
+                triangle_cell: r.list()?,
+                edges: r.list()?,
+                feature_edges: r.list()?,
+                node_count: r.get::<u64>()? as usize,
+                element_count: r.get::<u64>()? as usize,
+                skipped_elements: r.get::<u64>()? as usize,
+                bounds: match r.get::<u8>()? {
+                    0 => None,
+                    _ => Some(mesh::Bounds {
+                        min: r.get()?,
+                        max: r.get()?,
+                    }),
+                },
+            });
+        }
+        let time = r.get()?;
+        let file = r.text()?;
+        let mesh = r.get::<u64>()? as usize;
+        let displacement = r.list()?;
+        let mut fields = Vec::new();
+        for _ in 0..r.get::<u64>()? {
+            fields.push(ScalarField {
+                name: r.text()?,
+                quantity: *[
+                    Quantity::Displacement,
+                    Quantity::Force,
+                    Quantity::Stress,
+                    Quantity::Other,
+                ]
+                .get(usize::from(r.get::<u8>()?))
+                .ok_or(BAD_STEP)?,
+                location: *[Location::Point, Location::Cell]
+                    .get(usize::from(r.get::<u8>()?))
+                    .ok_or(BAD_STEP)?,
+                component: r.get::<u8>()? != 0,
+                values: r.list()?,
+            });
+        }
+        if mesh >= self.meshes.len() || !r.0.is_empty() {
+            return Err(BAD_STEP.into());
+        }
+        self.steps.push(Step {
+            time,
+            file,
+            mesh,
+            displacement,
+            fields,
+        });
+        Ok(())
+    }
+}
+
+/// The error of [`Results::receive`] for bytes that [`Loader::add_and_send`] did not write.
+const BAD_STEP: &str = "the step data from the worker is not complete";
+
+/// A number that [`Loader::add_and_send`] writes as its little-endian bytes.
+trait Plain: Sized {
+    const SIZE: usize;
+    fn put(&self, out: &mut Vec<u8>);
+    fn get(bytes: &[u8]) -> Self;
+}
+
+macro_rules! plain {
+    ($($t:ty),*) => {$(
+        impl Plain for $t {
+            const SIZE: usize = size_of::<$t>();
+            fn put(&self, out: &mut Vec<u8>) {
+                out.extend_from_slice(&self.to_le_bytes());
+            }
+            fn get(bytes: &[u8]) -> Self {
+                let mut b = [0; size_of::<$t>()];
+                b.copy_from_slice(bytes);
+                <$t>::from_le_bytes(b)
+            }
+        }
+    )*};
+}
+plain!(u8, u32, u64, f32, f64);
+
+impl<T: Plain, const N: usize> Plain for [T; N] {
+    const SIZE: usize = T::SIZE * N;
+    fn put(&self, out: &mut Vec<u8>) {
+        self.iter().for_each(|v| v.put(out));
+    }
+    fn get(bytes: &[u8]) -> Self {
+        std::array::from_fn(|i| T::get(&bytes[i * T::SIZE..][..T::SIZE]))
+    }
+}
+
+fn put_list<T: Plain>(out: &mut Vec<u8>, values: &[T]) {
+    (values.len() as u64).put(out);
+    values.iter().for_each(|v| v.put(out));
+}
+
+fn put_text(out: &mut Vec<u8>, text: &str) {
+    put_list(out, text.as_bytes());
+}
+
+/// The bytes of [`Loader::add_and_send`] that [`Results::receive`] did not read yet.
+struct Received<'a>(&'a [u8]);
+
+impl<'a> Received<'a> {
+    fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
+        if n > self.0.len() {
+            return Err(BAD_STEP.into());
+        }
+        let (taken, rest) = self.0.split_at(n);
+        self.0 = rest;
+        Ok(taken)
+    }
+
+    fn get<T: Plain>(&mut self) -> Result<T, String> {
+        Ok(T::get(self.take(T::SIZE)?))
+    }
+
+    fn list<T: Plain>(&mut self) -> Result<Vec<T>, String> {
+        let n = usize::try_from(self.get::<u64>()?).map_err(|_| BAD_STEP)?;
+        let bytes = self.take(n.checked_mul(T::SIZE).ok_or(BAD_STEP)?)?;
+        Ok(bytes.chunks_exact(T::SIZE).map(T::get).collect())
+    }
+
+    fn text(&mut self) -> Result<String, String> {
+        String::from_utf8(self.list()?).map_err(|_| BAD_STEP.into())
     }
 }
 
@@ -751,6 +938,44 @@ mod tests {
         assert_eq!(
             deformed_positions(&r.meshes[0], step, 0.0),
             r.meshes[0].positions
+        );
+    }
+
+    /// The steps that the worker of the page sends give the results that `load` gives, also
+    /// for points that move. A fetch error keeps the text of `load`, and a cut message fails.
+    #[test]
+    fn sent_steps_are_the_loaded_results() {
+        let mut first = Vec::new();
+        for dir in [fixture_dir(), fixture_dir().join("../particles-2step")] {
+            let pvd = std::fs::read_to_string(dir.join(crate::RESULTS_FILE)).unwrap();
+            let mut loader = Loader::new(crate::RESULTS_FILE, &pvd).unwrap();
+            let mut received = Results::default();
+            while let Some(file) = loader.next_file() {
+                let bytes = std::fs::read(dir.join(file)).map_err(|e| e.to_string());
+                let sent = loader.add_and_send(bytes).unwrap();
+                received.receive(&sent).unwrap();
+                if first.is_empty() {
+                    first = sent;
+                }
+            }
+            assert_eq!(
+                received,
+                crate::load_run(&dir).unwrap(),
+                "{}",
+                dir.display()
+            );
+        }
+        for cut in [0, 1, first.len() / 2, first.len() - 1] {
+            assert_eq!(
+                Results::default().receive(&first[..cut]),
+                Err(BAD_STEP.into())
+            );
+        }
+        let pvd = r#"<VTKFile type="Collection"><Collection><DataSet timestep="1" file="a.vtu"/></Collection></VTKFile>"#;
+        let mut loader = Loader::new(crate::RESULTS_FILE, pvd).unwrap();
+        assert_eq!(
+            loader.add_and_send(Err("HTTP 404: no such file".into())),
+            Err("a.vtu: HTTP 404: no such file".into())
         );
     }
 

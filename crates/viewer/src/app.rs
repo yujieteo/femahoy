@@ -123,6 +123,9 @@ pub struct ViewerApp {
     flow_height: f32,
     /// The person hid the results panel. A floating button Results shows it again.
     results_hidden: bool,
+    /// This viewer set `data-fh-results="hidden"` on the page. Only a viewer that shows a
+    /// results panel writes it, so the mesh-only view B of a comparison never clears it.
+    wrote_hidden: bool,
 }
 
 impl ViewerApp {
@@ -133,6 +136,7 @@ impl ViewerApp {
             results_height: None,
             flow_height: 0.0,
             results_hidden: false,
+            wrote_hidden: false,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
@@ -1241,7 +1245,10 @@ impl eframe::App for ViewerApp {
                     }
                 });
         }
-        crate::controls::set_results_hidden(results && self.results_hidden);
+        if results || self.wrote_hidden {
+            self.wrote_hidden = results && self.results_hidden;
+            crate::controls::set_results_hidden(self.wrote_hidden);
+        }
         if let Some(shown) =
             (self.shown.as_mut()).filter(|_| !self.mesh_only && !self.results_hidden)
         {
