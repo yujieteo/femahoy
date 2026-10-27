@@ -1,0 +1,79 @@
+# The unit cell of an aluminium-polymer laminate against the exact layer theory (derivation.md).
+# Tolerance budget: in each layer the exact fluctuation of each load case is linear in z, and
+# the cells hold a linear field exactly. Thus the discretization error is 0, and max_cell 0.25
+# and 0.125 give the same values to 1e-10. The tolerance is the precision of the direct solve
+# and of the 10 digits of the table, with a factor of 1e4 of margin.
+rel_tol = 1e-6
+abs_tol = 0.0
+
+[kxx]
+value = 60.175
+case = "cell"
+file = "homogenized.txt"
+column = "kxx"
+
+[kzz]
+value = 0.3569516331
+case = "cell"
+file = "homogenized.txt"
+column = "kzz"
+
+[c11]
+value = 28629.36401
+case = "cell"
+file = "homogenized.txt"
+column = "c11"
+
+[c12]
+value = 11318.1512
+case = "cell"
+file = "homogenized.txt"
+column = "c12"
+
+[c13]
+value = 4522.533011
+case = "cell"
+file = "homogenized.txt"
+column = "c13"
+
+[c33]
+value = 7840.818918
+case = "cell"
+file = "homogenized.txt"
+column = "c33"
+
+[c44]
+value = 1525.78578
+case = "cell"
+file = "homogenized.txt"
+column = "c44"
+
+[c66]
+value = 8655.606407
+case = "cell"
+file = "homogenized.txt"
+column = "c66"
+
+[alphaxx]
+value = 2.758369723e-05
+case = "cell"
+file = "homogenized.txt"
+column = "alphaxx"
+
+[alphazz]
+value = 9.094133916e-05
+case = "cell"
+file = "homogenized.txt"
+column = "alphazz"
+
+[density]
+value = 1.65e-09
+case = "cell"
+file = "homogenized.txt"
+column = "density"
+
+[specific_heat]
+value = 1205454545
+case = "cell"
+file = "homogenized.txt"
+column = "specific_heat"

@@ -369,6 +369,7 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Solution, String>
             max_growth: model.max_growth,
         },
         &surface,
+        false,
     )?;
     let Flat { mesh, covers, .. } = flat;
     let np = mesh.points.len();

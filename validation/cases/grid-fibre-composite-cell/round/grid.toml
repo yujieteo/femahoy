@@ -1,0 +1,31 @@
+# The unit cell of a square array of round carbon fibres along z in epoxy, volume fraction 0.5.
+# The conductivity across the fibres is compared with the formula of Rayleigh (1892) with the
+# lattice sums of Perrins, McKenzie and McPhedran (1979). See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.02
+max_growth = 1.2
+min_cells = 1
+
+[material.epoxy]
+conductivity = 0.2
+
+[material.carbon]
+conductivity = 10.0
+
+[part.matrix]
+material = "epoxy"
+x = [0.0, 1.0]
+y = [0.0, 1.0]
+z = [0.0, 0.05]
+
+# The radius gives a volume fraction of 0.5: sqrt(0.5 / pi).
+[part.fibre]
+material = "carbon"
+circle = [0.5, 0.5, 0.3989422804014327]
+z = [0.0, 0.05]
+priority = 1
+
+[step]
+type = "homogenize"

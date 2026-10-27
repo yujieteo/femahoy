@@ -19,6 +19,10 @@
 //!    joins 2 segments that meet at an angle below 60 degrees is left, so a small input angle
 //!    does not make the refinement go on for ever.
 //!
+//! 6. A periodic mesh (`periodic_mesh`): each vertex on a segment on 1 side of the bounding box
+//!    gets a partner at the same place on the opposite side, by a split of the piece there, and
+//!    the refinement runs again, until the 2 sides match.
+//!
 //! The size field is graded: an input point has the length of its shortest segment, and the size
 //! grows by the factor `max_growth` - 1 times the distance from each vertex, up to `max_size`.
 //!
@@ -86,6 +90,34 @@ pub fn mesh(
     size: Size,
     classify: &dyn Fn([f64; 2]) -> u32,
 ) -> Result<Mesh2, String> {
+    build(points, segments, size, classify, false)
+}
+
+/// The mesh of `mesh`, periodic across the bounding box of the points: each vertex on a segment
+/// on 1 side of the box has a vertex at the same place on the opposite side, so copies of the
+/// mesh side by side share their vertices. An error tells that the segments on 2 opposite sides
+/// do not cover the same ranges.
+pub fn periodic_mesh(
+    points: &[[f64; 2]],
+    segments: &[[u32; 2]],
+    size: Size,
+    classify: &dyn Fn([f64; 2]) -> u32,
+) -> Result<Mesh2, String> {
+    build(points, segments, size, classify, true)
+}
+
+/// A periodic mesh that needs more rounds of `match_sides` and refinement than this is refused.
+/// Reason: each round adds only the partners of the points of the last refinement, so a round
+/// adds fewer points than the one before it. The unit cells of the tests need 1 to 3 rounds.
+const PERIODIC_ROUNDS: usize = 50;
+
+fn build(
+    points: &[[f64; 2]],
+    segments: &[[u32; 2]],
+    size: Size,
+    classify: &dyn Fn([f64; 2]) -> u32,
+    periodic: bool,
+) -> Result<Mesh2, String> {
     if !(size.max_size > 0.0 && size.max_size.is_finite()) {
         return Err("the largest cell size must be a number above 0".into());
     }
@@ -112,6 +144,19 @@ pub fn mesh(
     t.recover()?;
     t.label_regions(classify);
     t.refine()?;
+    if periodic {
+        let mut rounds = 0;
+        while t.match_sides()? > 0 {
+            rounds += 1;
+            if rounds > PERIODIC_ROUNDS {
+                return Err(format!(
+                    "the periodic 2D mesh did not settle in {PERIODIC_ROUNDS} rounds: use a \
+                     larger max_cell or a larger max_growth"
+                ));
+            }
+            t.refine()?;
+        }
+    }
     Ok(t.output())
 }
 
@@ -1072,6 +1117,86 @@ impl Triangulation {
                 }
             }
         }
+    }
+
+    /// The pieces of the segments on the line `u[d] = at`: the 2 ends and the piece.
+    fn pieces_on(&self, d: usize, at: f64, tol: f64) -> Vec<(u32, u32, u32)> {
+        let mut out = Vec::new();
+        for tri in &self.tris {
+            for i in 0..3 {
+                let (a, b) = (tri.v[(i + 1) % 3], tri.v[(i + 2) % 3]);
+                let on = |v: u32| (self.p(v)[d] - at).abs() <= tol;
+                if tri.seg[i] != NONE && a < b && on(a) && on(b) {
+                    out.push((a, b, tri.seg[i]));
+                }
+            }
+        }
+        out
+    }
+
+    /// Give each vertex on a piece on 1 side of the bounding box of the input points a partner
+    /// at the same place on the opposite side: split the piece there. Return the number of new
+    /// vertices. An error tells that the pieces on 2 opposite sides do not cover the same range.
+    fn match_sides(&mut self) -> Result<usize, String> {
+        let mut lo = [f64::INFINITY; 2];
+        let mut hi = [f64::NEG_INFINITY; 2];
+        for p in &self.pts[..self.inputs] {
+            for d in 0..2 {
+                lo[d] = lo[d].min(p[d]);
+                hi[d] = hi[d].max(p[d]);
+            }
+        }
+        let tol = 1e-9 * dist(lo, hi).max(f64::MIN_POSITIVE);
+        let mut added = 0;
+        for d in 0..2 {
+            let o = 1 - d;
+            let length = |t: &Triangulation, list: &[(u32, u32, u32)]| -> f64 {
+                list.iter()
+                    .map(|&(a, b, _)| (t.p(a)[o] - t.p(b)[o]).abs())
+                    .sum()
+            };
+            let (low, high) = (self.pieces_on(d, lo[d], tol), self.pieces_on(d, hi[d], tol));
+            if (length(self, &low) - length(self, &high)).abs() > 1e-6 * (hi[o] - lo[o]) {
+                return Err(format!(
+                    "the outlines on the 2 sides {u} = {} and {u} = {} of the cell do not match: \
+                     the parts must touch the 2 sides along the same ranges, so that copies of \
+                     the cell side by side fill the space",
+                    lo[d],
+                    hi[d],
+                    u = ["a", "b"][d]
+                ));
+            }
+            for (from, to) in [(lo[d], hi[d]), (hi[d], lo[d])] {
+                let src = self.pieces_on(d, from, tol);
+                let mut dst = self.pieces_on(d, to, tol);
+                let mut want: Vec<f64> = src
+                    .iter()
+                    .flat_map(|&(a, b, _)| [self.p(a)[o], self.p(b)[o]])
+                    .collect();
+                want.sort_by(f64::total_cmp);
+                want.dedup_by(|a, b| (*a - *b).abs() <= tol);
+                for c in want {
+                    let inside = dst.iter().position(|&(a, b, _)| {
+                        let (pa, pb) = (self.p(a)[o], self.p(b)[o]);
+                        pa.min(pb) + tol < c && c < pa.max(pb) - tol
+                    });
+                    let Some(k) = inside else { continue };
+                    let (a, b, piece) = dst[k];
+                    let mut m = [0.0; 2];
+                    m[d] = self.p(a)[d];
+                    m[o] = c;
+                    let (t, i) = self
+                        .find_edge(a, b)
+                        .expect("a piece of a segment is an edge");
+                    let v = self.add_point(m, self.size_at(m, &[a, b]), piece)?;
+                    self.split_edge(t, i, v);
+                    dst[k] = (a, v, piece);
+                    dst.push((v, b, piece));
+                    added += 1;
+                }
+            }
+        }
+        Ok(added)
     }
 
     /// The triangles with a label, on the points that they use.

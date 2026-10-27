@@ -161,7 +161,7 @@ fn the_extruded_mesh_is_conforming_and_has_the_volume_of_the_parts() {
         2,
         [0.2, 0.5],
     );
-    let m = mesh(&[plate, lid], 2, spacing(0.2), usize::MAX, "").unwrap();
+    let m = mesh(&[plate, lid], 2, spacing(0.2), usize::MAX, "", false).unwrap();
     let mut volume = [0.0; 2];
     for (t, tet) in m.tets.iter().enumerate() {
         let v = tet_volume(tet.map(|i| m.points[i as usize]));
@@ -442,6 +442,7 @@ fn a_box_over_part_of_a_face_keeps_the_triangles_whose_centroid_is_in_it() {
         spacing(0.25),
         usize::MAX,
         "",
+        false,
     )
     .unwrap();
     let (mut centroid_in, mut corners_in) = (0.0, 0.0);

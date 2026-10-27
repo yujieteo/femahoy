@@ -1,9 +1,10 @@
-# Heat conduction, stress and transmission lines with the built-in grid solver
+# Heat conduction, stress, unit cells and transmission lines with the built-in grid solver
 
 Use the built-in grid solver first for:
 
 - linear heat conduction, steady or transient, in parts that are boxes, or prisms of a polygon or a circle (with holes) along 1 axis. Examples: layers and laminates, plates with holes, pipes, fins, and extruded sections.
 - linear static stress in parts that are boxes and deformation, with isotropic or orthotropic materials, from supports, pressures, forces, gravity and a temperature change (a uniform temperature, or the steady heat solve of the same case).
+- the homogenized (effective) material of a periodic unit cell: the conductivity, the stiffness and the expansion of a composite, a laminate, a lattice, a foam or a woven or stacked structure that repeats in x, y and z (`type = "homogenize"`, see "Unit cells" below).
 
 It needs no CAD, no mesh and no CalculiX, and a model of 100,000 unknowns solves in about 1 to 5 s. Write `CASE/grid.toml` and solve it with `fh run CASE`.
 
@@ -33,6 +34,7 @@ Use CAD, `fh mesh` and CalculiX when the model has a curved or sloped face that 
 7. `[step]`:
    - `type = "steady"`.
    - `type = "transient"` with `end`, `dt`, `initial` (the temperature at time 0) and `output_every` (the number of time steps between 2 outputs, 1 by default). The transient step is backward Euler: give at least 10 steps over the time that the result needs.
+   - `type = "homogenize"`: the effective material of a periodic unit cell (see "Unit cells").
    - `type = "static"`, with `reference_temperature` (the temperature with no thermal strain) for a thermal load. The thermal load is `temperature` (the same temperature at each point), or the heat loads of the case: then the solver first solves the steady temperature, and the stress uses it. The stress does not change the temperature.
 8. `[probe.NAME]`: `point = [x, y, z]`. The probe gives the values at that point.
 9. `[surface.NAME]`, static step only: `face`, a face set whose faces all have 1 normal direction. The result gives the shape of the surface after the deformation.
@@ -67,6 +69,23 @@ Static step: the displacement `U`, the stress `S` and the strain `E` (xx, yy, zz
 A model of boxes only is solved on a box grid: each face of a part is on a plane of the grid, so a box of any size is exact. When a part is a polygon or a circle, the solver makes a quality triangle mesh of all footprints, extrudes it through the planes of the axis, and cuts each prism into 3 tetrahedra. The points of a circle are on the circle, with segments of at most `max_cell` and at least 16 segments. The solver of a mesh of tetrahedra is direct, and it refuses a mesh of more than 400,000 points: use a larger `max_cell` or `max_growth`. Linear tetrahedra need about 2 times smaller cells than the box grid for the same accuracy.
 
 Do a mesh study with 2 values of `max_cell`. Near the edge of a part that touches a larger part, the temperature and the stress converge slowly, because the heat flux and the stress are singular there. Put the probes for a check away from those edges. The cells have no shear locking: 2 cells through a thin layer give its bending to about 1.5 %, also when the cells are much longer than thick.
+
+## Unit cells
+
+Use `[step] type = "homogenize"` to get the effective material of a structure that repeats a unit cell in x, y and z, for example a fibre composite, a laminate, a particle composite, a lattice or a foam of boxes, or the layers and vias of a board. Then use that material in a larger model, in place of the detail.
+
+- The cell is the box around all parts. The parts on 2 opposite sides of the cell must match: copies of the cell side by side fill the space. The solver refuses a cell whose opposite sides do not match, and the message names a point with no partner. Space with no part is void, for example the pores of a foam.
+- The case has no `face`, `load`, `probe`, `surface` or `symmetry`. The sides of the cell are periodic.
+- Each material of a part needs `conductivity` for the effective conductivity, and `youngs_modulus` and `poisson_ratio` (or the 9 orthotropic constants) for the effective stiffness and expansion. Give `expansion` for the expansion, and `density` and `specific_heat` for their means.
+- The parts are boxes, or for the conductivity only, prisms of polygons and circles along `axis` (for example round fibres along z). The stiffness of a cell with a polygon or a circle part is refused: give the fibre as boxes, for example a square of the same area, or use CalculiX.
+- The solver is direct, and the log tells the cost of its factor. A box cell of 20,000 points takes about 2 s for the conductivity and 90 s for the stiffness, and a cell of 5,000 points 1 s for the stiffness. The solver refuses a factor of more than 3e11 flops (about 3 minutes).
+
+`fh run` writes:
+
+- `grid/homogenized.txt`: 1 row with `fraction.NAME` (the volume fraction of each material), `kxx` `kyy` `kzz` `kyz` `kxz` `kxy` (the conductivity tensor), `c11` ... `c66` (the stiffness tensor, upper triangle, in the order xx, yy, zz, yz, xz, xy with the engineering shear strains), `ex` `ey` `ez` `nuxy` `nuxz` `nuyz` `gxy` `gxz` `gyz` (the engineering constants of the compliance), `alphaxx` ... `alphaxy` (the expansion), `density` and `specific_heat`.
+- `grid/material.toml`: the table `[material.homogenized]` for the `grid.toml` of a larger model, with `conductivity`, `youngs_modulus`, `poisson_ratio`, `shear_modulus`, `expansion`, `density` and `specific_heat`. Its axes are the x, y and z of the cell. A `grid.toml` material is orthotropic in x, y and z: when the cell couples 2 axes (a term above 1e-4 of the largest), that property is not in the file, and the log has a warning.
+
+The conductivity uses 3 solves with a unit mean gradient, the stiffness 6 solves with a unit mean strain, and the expansion 1 solve with a unit temperature change, each with a periodic fluctuation. A box cell holds a laminate exactly. For round fibres on tetrahedra in a cell of side 1, `max_cell = 0.04` gave the conductivity across the fibres to 0.08 % and `max_cell = 0.02` to 0.02 %. Do a mesh study with 2 values of `max_cell`.
 
 ## Transmission lines
 

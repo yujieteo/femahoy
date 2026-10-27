@@ -6,6 +6,7 @@ use fh_fem::elastic::{self, Surface, Thermal};
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{Cell, FaceSet, Frame, Load, Material, Mesh, Model, Probe, Step};
 use fh_fem::hex::Orthotropic;
+use fh_fem::homog;
 use fh_fem::prism::{Footprint, Outline};
 use toml_edit::{Document, Item, TableLike};
 
@@ -13,8 +14,8 @@ use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_TETRA};
 
 /// The text of an error about a key that the solver does not have.
 const CLASS: &str = "The built-in grid solver solves linear heat conduction in boxes and in \
-    prisms of polygons and circles along 1 axis, linear static thermo-elasticity in boxes, and \
-    with a [line] table the per-length parameters of a transmission line. For other curved or \
+    prisms of polygons and circles along 1 axis, linear static thermo-elasticity in boxes, the \
+    homogenized material of a periodic unit cell, and with a [line] table the per-length parameters of a transmission line. For other curved or \
     sloped shapes, contact, radiation, plasticity, large deformation, vibration or \
     temperature-dependent materials, use gmsh and CalculiX (fh guide grid)";
 
@@ -30,6 +31,8 @@ pub enum Case {
     Heat(Model),
     /// A linear static stress, with the temperature of a steady heat solve or a uniform one.
     Elastic(elastic::Model),
+    /// The homogenized material of a periodic unit cell.
+    Homogenize(homog::Model),
 }
 
 /// The keys of a material that a static step reads.
@@ -59,12 +62,24 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
     }
     let step = table(top, "step")?;
     let kind = string(step, "type", "[step]")?;
-    if !["steady", "transient", "static"].contains(&kind.as_str()) {
+    if !["steady", "transient", "static", "homogenize"].contains(&kind.as_str()) {
         return Err(format!(
-            "[step]: `type` must be steady, transient or static, not {kind}. {CLASS}"
+            "[step]: `type` must be steady, transient, static or homogenize, not {kind}. {CLASS}"
         ));
     }
     let is_static = kind == "static";
+    let is_cell = kind == "homogenize";
+    if is_cell {
+        only(step, "[step]", &["type"])?;
+        for key in ["face", "load", "probe", "surface"] {
+            if top.contains_key(key) {
+                return Err(format!(
+                    "a homogenize step has no `{key}`: the unit cell has periodic conditions on \
+                     its 6 sides, and the result is its effective material"
+                ));
+            }
+        }
+    }
     let grid = table(top, "grid")?;
     only(
         grid,
@@ -104,6 +119,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
     let mut materials = Vec::new();
     let mut conductive = Vec::new();
     let mut elastic = Vec::new();
+    let mut cell_materials = Vec::new();
     for (name, item) in named(top, "material")? {
         let where_ = format!("[material.{name}]");
         only(
@@ -136,14 +152,24 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
         let capacity = match (density, heat) {
             (Some(r), Some(c)) => r * c,
             (None, None) => 0.0,
-            // A static step uses the density alone, for gravity.
-            (Some(_), None) if is_static => 0.0,
+            // A static step uses the density alone, for gravity, and a unit cell for its mean.
+            (Some(_), None) if is_static || is_cell => 0.0,
             _ => {
                 return Err(format!(
                     "{where_}: give both density and specific_heat, or neither"
                 ))
             }
         };
+        if is_cell {
+            cell_materials.push(homog::Material {
+                name: name.to_owned(),
+                conductivity,
+                elastic: None,
+                expansion: [0.0; 3],
+                density,
+                specific_heat: heat,
+            });
+        }
         conductive.push(conductivity.is_some());
         materials.push(Material {
             name: name.to_owned(),
@@ -422,6 +448,29 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
         "surface",
         |s| &s.name,
     )?;
+    if is_cell {
+        if symmetry.iter().any(|&s| s) {
+            return Err(
+                "[grid]: a homogenize step has no `symmetry`: give the whole unit cell".into(),
+            );
+        }
+        for (m, e) in cell_materials.iter_mut().zip(&elastic) {
+            let where_ = format!("[material.{}]", m.name);
+            if e.youngs.is_some() || e.poisson.is_some() || e.shear.is_some() {
+                m.elastic = Some(orthotropic(e, &where_)?);
+            }
+            m.expansion = expansion(e, &where_)?;
+        }
+        return Ok((
+            Case::Homogenize(homog::Model {
+                parts,
+                materials: cell_materials,
+                spacing,
+                axis,
+            }),
+            units,
+        ));
+    }
     let missing = |what: &str| {
         conductive
             .iter()
@@ -519,39 +568,10 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
         .zip(elastic)
         .map(|(m, e)| {
             let where_ = format!("[material.{}]", m.name);
-            let three = |v: &Option<Vec<f64>>, key: &str| -> Result<[f64; 3], String> {
-                match v.as_deref() {
-                    Some(&[a]) => Ok([a; 3]),
-                    Some(&[a, b, c]) => Ok([a, b, c]),
-                    _ => Err(format!("{where_}: missing key `{key}`")),
-                }
-            };
-            let elastic = match (&e.youngs, &e.poisson, &e.shear) {
-                (Some(y), Some(p), None) if y.len() == 1 && p.len() == 1 => {
-                    Orthotropic::isotropic(y[0], p[0])
-                }
-                (Some(y), Some(p), Some(g)) if y.len() == 3 && p.len() == 3 && g.len() == 3 => {
-                    Orthotropic {
-                        e: [y[0], y[1], y[2]],
-                        nu: [p[0], p[1], p[2]],
-                        g: [g[0], g[1], g[2]],
-                    }
-                }
-                _ => {
-                    return Err(format!(
-                        "{where_}: give youngs_modulus and poisson_ratio as 1 number each \
-                         (isotropic), or youngs_modulus (x, y, z), poisson_ratio (xy, xz, yz) \
-                         and shear_modulus (xy, xz, yz) as 3 numbers each (orthotropic)"
-                    ))
-                }
-            };
             Ok(elastic::Material {
                 name: m.name.clone(),
-                elastic,
-                expansion: match e.expansion {
-                    None => [0.0; 3],
-                    Some(_) => three(&e.expansion, "expansion")?,
-                },
+                elastic: orthotropic(&e, &where_)?,
+                expansion: expansion(&e, &where_)?,
                 density: e.density,
             })
         })
@@ -695,6 +715,37 @@ pub(crate) fn table<'a>(top: &'a dyn TableLike, key: &str) -> Result<&'a dyn Tab
         .ok_or_else(|| format!("missing table [{key}]"))?
         .as_table_like()
         .ok_or_else(|| format!("`{key}` must be a table [{key}]"))
+}
+
+/// The elastic constants of a material: isotropic or orthotropic.
+fn orthotropic(e: &Elastic, where_: &str) -> Result<Orthotropic, String> {
+    match (&e.youngs, &e.poisson, &e.shear) {
+        (Some(y), Some(p), None) if y.len() == 1 && p.len() == 1 => {
+            Ok(Orthotropic::isotropic(y[0], p[0]))
+        }
+        (Some(y), Some(p), Some(g)) if y.len() == 3 && p.len() == 3 && g.len() == 3 => {
+            Ok(Orthotropic {
+                e: [y[0], y[1], y[2]],
+                nu: [p[0], p[1], p[2]],
+                g: [g[0], g[1], g[2]],
+            })
+        }
+        _ => Err(format!(
+            "{where_}: give youngs_modulus and poisson_ratio as 1 number each (isotropic), or \
+             youngs_modulus (x, y, z), poisson_ratio (xy, xz, yz) and shear_modulus (xy, xz, yz) \
+             as 3 numbers each (orthotropic)"
+        )),
+    }
+}
+
+/// The expansion coefficient of a material along x, y and z, 0 when it has none.
+fn expansion(e: &Elastic, where_: &str) -> Result<[f64; 3], String> {
+    match e.expansion.as_deref() {
+        None => Ok([0.0; 3]),
+        Some(&[a]) => Ok([a; 3]),
+        Some(&[a, b, c]) => Ok([a, b, c]),
+        _ => Err(format!("{where_}: missing key `expansion`")),
+    }
 }
 
 /// The tables `[key.NAME]`, in the order of the file.
@@ -857,6 +908,58 @@ mod tests {
     }
 
     /// Each wrong input of a static step gives an error that names the key.
+    #[test]
+    fn the_reader_reads_a_unit_cell() {
+        let cell = r#"
+units = "SI-mm"
+[grid]
+max_cell = 0.5
+[material.a]
+conductivity = 2.0
+youngs_modulus = 70e3
+poisson_ratio = 0.3
+expansion = 23e-6
+density = 2.7e-9
+[material.b]
+conductivity = [1.0, 1.0, 3.0]
+youngs_modulus = 3e3
+poisson_ratio = 0.4
+[part.a]
+material = "a"
+x = [0.0, 1.0]
+y = [0.0, 1.0]
+z = [0.0, 0.5]
+[part.b]
+material = "b"
+x = [0.0, 1.0]
+y = [0.0, 1.0]
+z = [0.5, 1.0]
+[step]
+type = "homogenize"
+"#;
+        let Ok((Case::Homogenize(m), _)) = read(cell) else {
+            panic!("a unit cell");
+        };
+        assert_eq!(m.materials[0].expansion, [23e-6; 3]);
+        assert_eq!(m.materials[0].density, Some(2.7e-9));
+        assert_eq!(m.materials[1].conductivity, Some([1.0, 1.0, 3.0]));
+        assert!(m.materials[1].elastic.is_some());
+        for (text, key) in [
+            (cell.replace("[step]", "[face.all]\n\n[step]"), "no `face`"),
+            (
+                cell.replace("max_cell = 0.5", "max_cell = 0.5\nsymmetry = [\"x\"]"),
+                "symmetry",
+            ),
+            (
+                cell.replace("type = \"homogenize\"", "type = \"homogenize\"\nend = 1.0"),
+                "end",
+            ),
+        ] {
+            let e = read(&text).unwrap_err();
+            assert!(e.contains(key), "{key}: {e}");
+        }
+    }
+
     #[test]
     fn the_reader_refuses_a_wrong_static_step() {
         for (text, key) in [
