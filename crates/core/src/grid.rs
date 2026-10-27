@@ -1247,7 +1247,7 @@ pub fn touchstone_head(ports: usize) -> String {
     )
 }
 
-/// The lines of `frame` in a Touchstone file: a comment with the port impedances, then the
+/// The lines of `frame` in a Touchstone file: a comment with the mode impedances, then the
 /// frequency and the S-matrix at 50 ohm (the order S11 S21 S12 S22 for 2 ports, else row by row
 /// with at most 4 values on a line).
 pub fn touchstone_rows(frame: &em::Frame) -> String {
@@ -1258,7 +1258,7 @@ pub fn touchstone_rows(frame: &em::Frame) -> String {
         a: renormalize(&frame.s, &impedances, TOUCHSTONE_OHM),
     };
     format!(
-        "! port impedances {}\n{}",
+        "! mode impedances (ohm) {}\n{}",
         z.join(" "),
         mtl::touchstone_row(frame.frequency, &s)
     )
@@ -1628,6 +1628,30 @@ type = "homogenize"
         let same = renormalize(&s50, &[50.0, 50.0], 50.0);
         for (a, b) in same.iter().zip(&s50) {
             assert!((*a - *b).abs() < 1e-14);
+        }
+    }
+
+    /// Reason: scikit-rf 2.2.0 reads a comment that starts with "! port impedance" as the HFSS
+    /// impedance block of complex pairs, and then refuses to open the file.
+    #[test]
+    fn the_touchstone_comments_have_no_hfss_port_impedance_keyword() {
+        let frame = em::Frame {
+            frequency: 1e10,
+            fields: Vec::new(),
+            s: vec![C64::ZERO, C64::from(1.0), C64::from(1.0), C64::ZERO],
+            ports: vec![
+                em::PortWave {
+                    beta: 100.0,
+                    impedance: 499.0
+                };
+                2
+            ],
+            q: None,
+        };
+        let text = touchstone_head(2) + &touchstone_rows(&frame);
+        for line in text.lines().filter(|l| l.starts_with('!')) {
+            let words = line[1..].trim_start().to_lowercase();
+            assert!(!words.starts_with("port impedance"), "{line}");
         }
     }
 }
