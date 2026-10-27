@@ -40,6 +40,7 @@ A report has no fixed form. It shows the conclusion of its results so that the p
   - `sections`: a menu of the `h2` sections. Use it for a long report with `h2` sections.
   - `layout`: Text gives the text the full width, and Split shows the text and the model view. Use it when a report needs both wide text and a model view.
   - `identity`: a caption of the active run. Use it when the reader must identify or compare runs.
+  - `solve`: the button "Solve grid.toml", which solves a `grid.toml` case in the report. Use it when the reader must change and solve the case.
 - Mesh trend: use `<div data-mesh-trend>` with one `section` per metric and analysis condition. Give each section an `h3`, a curve mark, and a compact table of cells, result, and change. Derive the curve and table from the same rows. Name the iteration count. Keep check runs separate. Put the full evidence table in `details` with a `summary`. Do not claim convergence from 2 points.
 - Marks: `data-marks` puts a dot with a text on the model, at a point that the conclusion names, for example the front of a flow or the point of the highest stress.
 
