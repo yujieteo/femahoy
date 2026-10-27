@@ -1,0 +1,26 @@
+# A steel plate with a cooled round hole and a heated copper pad, against CalculiX 2.23 with
+# C3D10 elements on a gmsh mesh of the same problem (ccx/, H = 1 mm: 424,717 nodes). See
+# derivation.md. Tolerance budget, from 3 meshes of each solver: the error of the built-in solver
+# at max_cell 2 mm is at most 0.34 C, and the error of the CalculiX reference is at most 0.06 C,
+# both at the corner of the pad (the edge where the pad meets the plate is singular, so both
+# converge slowly there). The tolerance 0.5 C holds their sum, 0.40 C.
+rel_tol = 0.0
+abs_tol = 0.5
+
+[pad_corner]
+value = 35.88840
+case = "plate"
+file = "probes.txt"
+column = "pad_corner"
+
+[plate_far]
+value = 34.25052
+case = "plate"
+file = "probes.txt"
+column = "plate_far"
+
+[plate_near]
+value = 20.90766
+case = "plate"
+file = "probes.txt"
+column = "plate_near"

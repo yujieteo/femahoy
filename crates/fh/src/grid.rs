@@ -1,8 +1,9 @@
 //! The built-in heat conduction solver of femahoy on a box grid, in the process of `fh`.
 //!
-//! A grid case is a folder with `grid.toml`: the parts as boxes, the materials, the named face
-//! sets, the loads, the step and the probes (see `fh guide grid`). [`run_with`] reads it, solves
-//! it with the crate `fh-fem` and writes (the reader and the result grid are in `fh_core::grid`,
+//! A grid case is a folder with `grid.toml`: the parts as boxes or as prisms of a polygon or a
+//! circle with holes, the materials, the named face sets, the loads, the step and the probes
+//! (see `fh guide grid`). A model of boxes is solved on the box grid; a model with a prism part
+//! on a mesh of tetrahedra. [`run_with`] reads it, solves it with the crate `fh-fem` and writes (the reader and the result grid are in `fh_core::grid`,
 //! which the browser solve of the viewer also uses):
 //!
 //! - `step-N.vtu` and `results.pvd` in the run folder: the temperature `NT` at each point, the
