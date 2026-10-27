@@ -15,9 +15,9 @@
 //! read, or a turn with no `result`. A stop ends the agent and its processes. The next
 //! message then starts a new agent that continues the session (`--resume`).
 //!
-//! The agent gets the instructions of `agent.md`, the state folder of the daemon in
-//! `FH_STATE` (so `fh run` writes its runs where this daemon reads them) and the folder of
-//! `fh` first on `PATH`. It ignores the personal Claude Code setup of the person: the user
+//! The agent gets the instructions of `agent.md` with the index of the guides (`fh guide`), the
+//! state folder of the daemon in `FH_STATE` (so `fh run` writes its runs where this daemon
+//! reads them) and the folder of `fh` first on `PATH`. It ignores the personal Claude Code setup of the person: the user
 //! settings with their hooks and plugins, `~/.claude/CLAUDE.md`, the MCP servers and the
 //! claude.ai connectors. It loads no setting source at all, because Claude Code reads the
 //! settings and the `CLAUDE.md` files of each folder above `STATE/chat` as project files, also
@@ -48,7 +48,7 @@ use super::json::{quote, Json};
 use super::message::{bad, fail, Failure, Message};
 use super::store::Store;
 
-/// The instructions of the agent.
+/// The instructions of the agent. They end with the heading of the index of the guides.
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
 const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,\
@@ -557,6 +557,7 @@ fn agent_path() -> std::ffi::OsString {
 
 /// The agent command with its arguments and its environment.
 fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Command {
+    let instructions = format!("{INSTRUCTIONS}\n{}", crate::guide::index());
     let mut cmd = Command::new(program);
     // The messages go on stdin, so that no text of the person is read as an option.
     cmd.args(["-p", "--input-format", "stream-json"])
@@ -564,7 +565,7 @@ fn agent_command(program: &str, state_dir: &Path, session: Option<&str>) -> Comm
         .args([
             "--replay-user-messages",
             "--append-system-prompt",
-            INSTRUCTIONS,
+            &instructions,
             // No setting source and no MCP server: the personal setup stays out (module text).
             "--setting-sources",
             "",
