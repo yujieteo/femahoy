@@ -496,9 +496,10 @@ fn entries(event: &Json) -> Vec<(String, String)> {
                     add("identity", id.to_owned());
                 }
                 // The texts of Claude Code for a command that it denies.
-                let denied = ["requires approval", "require approval", "can't be checked"]
-                    .iter()
-                    .any(|t| text.contains(t));
+                let denied = !text.starts_with("Exit code")
+                    && ["requires approval", "require approval", "can't be checked"]
+                        .iter()
+                        .any(|t| text.contains(t));
                 match (error, denied) {
                     (true, true) => add("blocked", BLOCKED.to_owned()),
                     (true, false) => add("fail", text),
@@ -676,7 +677,13 @@ mod tests {
                 "{text}"
             );
         }
-        let event = Json::parse(r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a","is_error":true,"content":"Exit code 1"}]}}"#).unwrap();
-        assert_eq!(entries(&event)[1], ("fail".into(), "Exit code 1".into()));
+        for text in ["Exit code 1", "Exit code 1\\nmesh.py: this step requires approval"] {
+            let event = Json::parse(&format!(
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"a","is_error":true,"content":"{text}"}}]}}}}"#
+            ))
+            .unwrap();
+            let text = text.replace("\\n", "\n");
+            assert_eq!(entries(&event)[1], ("fail".into(), text.clone()), "{text}");
+        }
     }
 }
