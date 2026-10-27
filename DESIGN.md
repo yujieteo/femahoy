@@ -90,6 +90,7 @@ The instructions in agent.md hold no reason, because the agent reads them on eac
 - Mesh trend (`data-mesh-trend`): the flap mesh table exceeded its text panel by 155 pixels.
 - The viewer controls `range`, `probe` and `scale`: the column, heat-fin and crack runs exposed ambiguous colours, local values and deformation factors.
 - The `values` control of a curve: heat-fin and frequency curves require exact values from each series, without values from rounded plot coordinates.
+- Solve time estimate, with no `--timeout`: in the b787-crash chat the agent timed only a 16-element model and gave no estimate. The implicit dynamic solve of 2400 increments needed about 7 s for each increment, about 4.7 hours. Its 2-hour `--timeout` would stop it at about 0.05 s of 0.12 s. For almost 2 hours the chat showed no progress, and the owner thought that the meshing was stuck.
 
 ---
 
