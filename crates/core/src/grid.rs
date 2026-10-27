@@ -342,8 +342,11 @@ fn footprint(item: &dyn TableLike, where_: &str, axis: usize) -> Result<Option<F
         (Some(_), Some(_)) => {
             return Err(format!("{where_}: give a polygon or a circle, not both"));
         }
-        (Some(p), None) => outline_of(p, where_, &plane)?,
-        (None, Some(c)) => outline_of(c, where_, &plane)?,
+        (Some(p), None) => polygon_of(p)
+            .ok_or_else(|| format!("{where_}: a polygon is 3 or more corners [[{plane}], ...]"))?,
+        (None, Some(c)) => circle_of(c).ok_or_else(|| {
+            format!("{where_}: a circle is 3 numbers [{plane} of the centre, radius]")
+        })?,
     };
     let holes = match item.get("holes") {
         None => Vec::new(),
@@ -351,37 +354,40 @@ fn footprint(item: &dyn TableLike, where_: &str, axis: usize) -> Result<Option<F
             .as_array()
             .ok_or_else(|| format!("{where_}: `holes` must be a list of polygons and circles"))?
             .iter()
-            .map(|v| outline_of(&Item::Value(v.clone()), where_, &plane))
+            .map(|v| {
+                let v = Item::Value(v.clone());
+                circle_of(&v).or_else(|| polygon_of(&v)).ok_or_else(|| {
+                    format!(
+                        "{where_}: a hole is a circle of 3 numbers [{plane} of the centre, \
+                         radius] or a polygon of 3 or more corners [[{plane}], ...]"
+                    )
+                })
+            })
             .collect::<Result<_, _>>()?,
     };
     Ok(Some(Footprint { outline, holes }))
 }
 
-/// A circle `[c1, c2, r]` or a polygon `[[a1, a2], [b1, b2], ...]` in the plane `plane`.
-fn outline_of(item: &Item, where_: &str, plane: &str) -> Result<Outline, String> {
-    if let Some(v) = numbers(item) {
-        if v.len() == 3 {
-            return Ok(Outline::Circle {
-                centre: [v[0], v[1]],
-                radius: v[2],
-            });
-        }
-    }
-    let corners: Option<Vec<[f64; 2]>> = item.as_array().and_then(|a| {
-        a.iter()
-            .map(|c| {
-                let v = numbers(&Item::Value(c.clone()))?;
-                (v.len() == 2).then(|| [v[0], v[1]])
-            })
-            .collect()
-    });
-    match corners {
-        Some(c) if c.len() >= 3 => Ok(Outline::Polygon(c)),
-        _ => Err(format!(
-            "{where_}: a circle is 3 numbers [{plane} of the centre, radius], and a polygon is \
-             3 or more corners [[{plane}], ...]"
-        )),
-    }
+/// A circle `[c1, c2, r]`.
+fn circle_of(item: &Item) -> Option<Outline> {
+    let v = numbers(item)?;
+    (v.len() == 3).then(|| Outline::Circle {
+        centre: [v[0], v[1]],
+        radius: v[2],
+    })
+}
+
+/// A polygon `[[a1, a2], [b1, b2], ...]` of 3 or more corners.
+fn polygon_of(item: &Item) -> Option<Outline> {
+    let corners: Vec<[f64; 2]> = item
+        .as_array()?
+        .iter()
+        .map(|c| {
+            let v = numbers(&Item::Value(c.clone()))?;
+            (v.len() == 2).then(|| [v[0], v[1]])
+        })
+        .collect::<Option<_>>()?;
+    (corners.len() >= 3).then_some(Outline::Polygon(corners))
 }
 
 /// An error for each key of `table` that is not in `keys`.
@@ -583,7 +589,17 @@ mod tests {
         let both = PLATE.replace("holes = ", "circle = [0.0, 0.0, 1.0]\nholes = ");
         assert!(read(&both).unwrap_err().contains("not both"));
         let bad = PLATE.replace("[[0.03, 0.03, 0.01]]", "[[0.03, 0.03]]");
-        assert!(read(&bad).unwrap_err().contains("a circle is 3 numbers"));
+        assert!(read(&bad)
+            .unwrap_err()
+            .contains("a hole is a circle of 3 numbers"));
+        let e = read(&PLATE.replace(
+            "polygon = [[0.0, 0.0], [0.1, 0.0], [0.1, 0.06], [0.0, 0.06]]",
+            "polygon = [0.05, 0.03, 0.04]",
+        ))
+        .unwrap_err();
+        assert!(e.contains("a polygon is 3 or more corners"), "{e}");
+        let e = read(&PLATE.replace("polygon = ", "circle = ")).unwrap_err();
+        assert!(e.contains("a circle is 3 numbers"), "{e}");
         let sym = PLATE.replace("[grid]", "[grid]\nsymmetry = [\"x\"]");
         let (model, _) = read(&sym).unwrap();
         struct Quiet;

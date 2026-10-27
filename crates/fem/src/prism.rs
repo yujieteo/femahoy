@@ -156,8 +156,15 @@ fn volume(p: [[f64; 3]; 4]) -> f64 {
 /// An outline and its holes, as polygons.
 type Ring2 = (Vec<[f64; 2]>, Vec<Vec<[f64; 2]>>);
 
-/// The mesh of `parts` (each with a footprint, or a box) extruded along `axis`.
-pub fn mesh(parts: &[Part], axis: usize, spacing: Spacing) -> Result<TetMesh, String> {
+/// The mesh of `parts` (each with a footprint, or a box) extruded along `axis`. It stops with
+/// the error `refusal` when the mesh gets more than `max_points` points.
+pub fn mesh(
+    parts: &[Part],
+    axis: usize,
+    spacing: Spacing,
+    max_points: usize,
+    refusal: &str,
+) -> Result<TetMesh, String> {
     if parts.is_empty() {
         return Err("the model has no part".into());
     }
@@ -341,6 +348,9 @@ pub fn mesh(parts: &[Part], axis: usize, spacing: Spacing) -> Result<TetMesh, St
                     *slot = pts.len() as u32;
                     let uv = flat.points[tri[c % 3] as usize];
                     pts.push(point(axis, uv, planes[k + c / 3]));
+                    if pts.len() > max_points {
+                        return Err(refusal.into());
+                    }
                 }
                 node[c] = *slot;
             }

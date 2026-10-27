@@ -216,10 +216,12 @@ pub struct Summary {
     pub warnings: Vec<String>,
 }
 
-/// The most points of a grid, and the memory that they need, for the error of a larger grid.
+/// The most points of a grid and of a mesh of tetrahedra, and the memory that they need, for the
+/// error of a larger model.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limit {
     pub points: usize,
+    pub tet_points: usize,
     pub memory: &'static str,
 }
 
@@ -228,6 +230,7 @@ pub struct Limit {
 /// need about 7.5 GB, half of the RAM of a 16 GB laptop.
 pub const LAPTOP: Limit = Limit {
     points: 4_000_000,
+    tet_points: MAX_TET_POINTS,
     memory: "the memory of a laptop",
 };
 
@@ -660,20 +663,23 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
                 .into(),
         );
     }
-    let tm = prism::mesh(&model.parts, model.axis, model.spacing)?;
-    if tm.points.len() > limit.points.min(MAX_TET_POINTS) {
-        let why = if limit.points < MAX_TET_POINTS {
-            format!("{} solves", limit.memory)
-        } else {
-            "the direct solver solves in a few minutes".to_string()
-        };
-        return Err(format!(
-            "the mesh has {} points, more than {}, the most that {why}: use a larger max_cell or \
-             a larger max_growth",
-            tm.points.len(),
-            limit.points.min(MAX_TET_POINTS)
-        ));
-    }
+    let why = if limit.tet_points < MAX_TET_POINTS {
+        format!("{} solves", limit.memory)
+    } else {
+        "the direct solver solves in a few minutes".to_string()
+    };
+    let refusal = format!(
+        "the mesh has more than {} points, the most that {why}: use a larger max_cell or a larger \
+         max_growth",
+        limit.tet_points
+    );
+    let tm = prism::mesh(
+        &model.parts,
+        model.axis,
+        model.spacing,
+        limit.tet_points,
+        &refusal,
+    )?;
     let n = tm.points.len();
     let mesh = Mesh {
         points: tm.points.clone(),
@@ -822,10 +828,8 @@ fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
                 continue;
             }
             if let Some((blo, bhi)) = set.region {
-                if !p
-                    .iter()
-                    .all(|q| (0..3).all(|d| q[d] >= blo[d] - t && q[d] <= bhi[d] + t))
-                {
+                let c: [f64; 3] = std::array::from_fn(|d| (p[0][d] + p[1][d] + p[2][d]) / 3.0);
+                if !(0..3).all(|d| c[d] >= blo[d] - t && c[d] <= bhi[d] + t) {
                     continue;
                 }
             }

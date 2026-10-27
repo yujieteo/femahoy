@@ -159,7 +159,7 @@ These limits apply to each solver process that `fh run` starts, with the same me
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops. One mechanism for all solvers keeps the limits the same for each solver.
 
-The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a grid of more than 4,000,000 points before it makes the matrix. Reason: a solve of 1,009,057 points used 1.9 GB. It refuses a mesh of tetrahedra of more than 400,000 points. Reason: its direct solve of 336,141 points took 97 s. In the browser the person stops the solve with a button, which ends its worker, and the limit is 1,000,000 points. Reason: wasm32 addresses at most 4 GiB, and a solve of 1,030,301 points grew the memory of the worker to 2.1 GiB.
+The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a grid of more than 4,000,000 points before it makes the matrix. Reason: a solve of 1,009,057 points used 1.9 GB. It refuses a mesh of tetrahedra of more than 400,000 points. Reason: its direct solve of 336,141 points took 97 s. In the browser the person stops the solve with a button, which ends its worker, and the limit is 1,000,000 points, or 100,000 points of a mesh of tetrahedra. Reason: wasm32 addresses at most 4 GiB, and a solve of 1,030,301 points grew the memory of the worker to 2.1 GiB. The tetrahedra limit has the ratio of the box grid limits (1,000,000 / 4,000,000) to the native limit.
 
 ### 6.2 Results
 

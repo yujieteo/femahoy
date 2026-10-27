@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 
 use fh_fem::grid::{Part, Spacing};
-use fh_fem::heat::{solve, Events, FaceSet, Frame, Load, Material, Mesh, Model, Probe, Step};
+use fh_fem::heat::{
+    solve, solve_within, Events, FaceSet, Frame, Limit, Load, Material, Mesh, Model, Probe, Step,
+};
 use fh_fem::prism::{mesh, split_prism, Footprint, Outline};
 
 #[derive(Default)]
@@ -159,7 +161,7 @@ fn the_extruded_mesh_is_conforming_and_has_the_volume_of_the_parts() {
         2,
         [0.2, 0.5],
     );
-    let m = mesh(&[plate, lid], 2, spacing(0.2)).unwrap();
+    let m = mesh(&[plate, lid], 2, spacing(0.2), usize::MAX, "").unwrap();
     let mut volume = [0.0; 2];
     for (t, tet) in m.tets.iter().enumerate() {
         let v = tet_volume(tet.map(|i| m.points[i as usize]));
@@ -417,5 +419,113 @@ fn a_transient_on_tetrahedra_keeps_the_energy_balance() {
         "{} {}",
         last.probes[0],
         steady.frames[0].probes[0]
+    );
+}
+
+/// A box over part of a face keeps the triangles whose centroid is in the box, as the box grid
+/// keeps the faces whose centre is in it: the flux on the patch puts in the flux times the area
+/// of those triangles.
+#[test]
+fn a_box_over_part_of_a_face_keeps_the_triangles_whose_centroid_is_in_it() {
+    let plate = shaped(
+        "plate",
+        0,
+        Outline::Polygon(vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]),
+        vec![],
+        2,
+        [0.0, 0.2],
+    );
+    let (lo, hi) = ([-1.0, -1.0, 0.2], [0.37, 2.0, 0.2]);
+    let m = mesh(std::slice::from_ref(&plate), 2, spacing(0.25), usize::MAX, "").unwrap();
+    let (mut centroid_in, mut corners_in) = (0.0, 0.0);
+    for f in &m.faces {
+        let p = f.nodes.map(|i| m.points[i as usize]);
+        if p.iter().any(|q| (q[2] - 0.2).abs() > 1e-12) {
+            continue;
+        }
+        let area = 0.5
+            * ((p[1][0] - p[0][0]) * (p[2][1] - p[0][1])
+                - (p[2][0] - p[0][0]) * (p[1][1] - p[0][1]))
+                .abs();
+        if (p[0][0] + p[1][0] + p[2][0]) / 3.0 <= hi[0] {
+            centroid_in += area;
+        }
+        if p.iter().all(|q| q[0] <= hi[0]) {
+            corners_in += area;
+        }
+    }
+    assert!(corners_in < centroid_in, "{corners_in} {centroid_in}");
+    let model = Model {
+        parts: vec![plate],
+        materials: vec![material(1.0)],
+        spacing: spacing(0.25),
+        axis: 2,
+        symmetry: [false; 3],
+        faces: vec![
+            FaceSet {
+                region: Some((lo, hi)),
+                ..faces("patch")
+            },
+            FaceSet {
+                region: Some(([-1.0, -1.0, 0.0], [2.0, 2.0, 0.0])),
+                ..faces("bottom")
+            },
+        ],
+        loads: vec![
+            Load::Flux {
+                faces: 0,
+                value: 1.0,
+            },
+            Load::Temperature {
+                faces: 1,
+                value: 0.0,
+            },
+        ],
+        step: Step::Steady,
+        probes: vec![],
+        method: None,
+    };
+    let mut r = Record::default();
+    solve(&model, &mut r).unwrap();
+    let flux = r.frames[0].energy.flux;
+    assert!((flux - centroid_in).abs() < 1e-12, "{flux} {centroid_in}");
+}
+
+/// A mesh of tetrahedra with more points than the limit is refused with the limit, the memory
+/// and the way to a smaller mesh.
+#[test]
+fn a_mesh_over_the_tet_limit_is_refused() {
+    let disk = shaped(
+        "disk",
+        0,
+        Outline::Circle {
+            centre: [0.0, 0.0],
+            radius: 1.0,
+        },
+        vec![],
+        2,
+        [0.0, 0.2],
+    );
+    let model = Model {
+        parts: vec![disk],
+        materials: vec![material(1.0)],
+        spacing: spacing(0.25),
+        axis: 2,
+        symmetry: [false; 3],
+        faces: vec![],
+        loads: vec![],
+        step: Step::Steady,
+        probes: vec![],
+        method: None,
+    };
+    let limit = Limit {
+        points: 1_000_000,
+        tet_points: 10,
+        memory: "a small memory",
+    };
+    let e = solve_within(&model, limit, &mut Record::default()).unwrap_err();
+    assert!(
+        e.contains("more than 10 points") && e.contains("a small memory") && e.contains("max_cell"),
+        "{e}"
     );
 }
