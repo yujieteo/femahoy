@@ -4,10 +4,14 @@
 //! probe table (`fh_core::grid`), so the same case gives the same probes. A case with a `[line]`
 //! table is a transmission line (`fh_core::line`): its answer is the table of `grid/line.txt`.
 
-use fh_core::grid::{frame_grid, is_line, probe_head, probe_row, read, Case};
+use fh_core::grid::{
+    em_frame_grid, frame_grid, is_line, modes_row, probe_head, probe_row, read, sparams_head,
+    sparams_row, Case, MODES_HEAD,
+};
 use fh_core::line;
 use fh_core::vtu::PvdEntry;
-use fh_fem::heat::{self, Events, Frame, Limit, Mesh, Model};
+use fh_fem::em;
+use fh_fem::heat::{self, Events, Frame, Limit, Mesh};
 
 use crate::results::Loader;
 
@@ -18,20 +22,28 @@ use crate::results::Loader;
 /// same ratio to the native limit (1,000,000 / 4,000,000 of 400,000). Reason: the native direct
 /// solve of 336,141 points used 2.7 GB, so 400,000 points do not fit in the worker, and there is
 /// no measurement of the direct solve in wasm32.
-pub const BROWSER: Limit = Limit {
-    points: 1_000_000,
-    tet_points: 100_000,
-    memory: "the 4 GiB memory of wasm32 in a browser",
+pub const BROWSER: Limits = Limits {
+    heat: Limit {
+        points: 1_000_000,
+        tet_points: 100_000,
+        memory: MEMORY,
+    },
+    em: em::Limit {
+        points: 40_000,
+        memory: MEMORY,
+        direct: 25_000,
+    },
 };
 
-/// The heat model of the case `text` and its unit system. The browser solves heat steps only, so
-/// a static or a homogenize step gets an error that names `fh run`.
-pub fn read_heat(text: &str) -> Result<(Model, String), String> {
+/// The case `text` that the browser solves (heat or electromagnetics) and its unit system. A
+/// static or a homogenize step gets an error that names `fh run`.
+pub fn read_case(text: &str) -> Result<(Case, String), String> {
     match read(text)? {
-        (Case::Heat(model), units) => Ok((model, units)),
         (Case::Elastic(_) | Case::Homogenize(_), _) => Err("the browser solves only heat steps \
-             (steady or transient). Solve a static or a homogenize step with fh run"
+             (steady or transient) and electromagnetic steps (frequency or modes). Solve a static \
+             or a homogenize step with fh run"
             .into()),
+        case => Ok(case),
     }
 }
 
@@ -41,19 +53,38 @@ pub fn read_heat(text: &str) -> Result<(Model, String), String> {
 /// measurement of the line solve in wasm32.
 pub const BROWSER_LINE_POINTS: usize = 250_000;
 
+const MEMORY: &str = "the 4 GiB memory of wasm32 in a browser";
+
+/// The largest models of a solve: heat, and electromagnetics. Reason for the electromagnetic
+/// limits: natively, the direct factor of a mesh of 31,415 points has 84,931,624 complex entries
+/// (1.4 GB), so 25,000 points use about 1 GB of the 4 GiB of wasm32. The iterative solve of
+/// 39,818 points used 1.16 GB. There is no measurement in wasm32.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Limits {
+    pub heat: Limit,
+    pub em: em::Limit,
+}
+
 /// Solve the case `text` (the text of `grid.toml`). `on_line` gets each line of progress and
 /// each warning, and `on_step` the lists of each output. The answer is the probe table, the
-/// same text as `grid/probes.txt` of `fh run`.
+/// same text as `grid/probes.txt` of `fh run`; for electromagnetics, the S-parameter table
+/// (`grid/sparams.txt`) or the mode table (`grid/modes.txt`).
 pub fn solve(
     text: &str,
-    limit: Limit,
+    limits: Limits,
     on_line: &mut dyn FnMut(&str),
     on_step: &mut dyn FnMut(Vec<Vec<u8>>),
 ) -> Result<String, String> {
     if is_line(text) {
         return solve_line(text, on_line, on_step);
     }
-    let (model, units) = read_heat(text).map_err(|e| format!("grid.toml: {e}"))?;
+    let (case, units) = read_case(text).map_err(|e| format!("grid.toml: {e}"))?;
+    let model = match case {
+        Case::Em(model) => return solve_em(&model, &units, limits.em, on_line, on_step),
+        Case::Heat(model) => model,
+        Case::Elastic(_) | Case::Homogenize(_) => unreachable!("read_case refuses them"),
+    };
+    let limit = limits.heat;
     let mut out = Output {
         mesh: None,
         loader: Loader::stream(&units),
@@ -119,6 +150,89 @@ fn solve_line(
     };
     on_step(loader.push_and_send(entry, line::solution_grid(&solution))?);
     Ok(line::table_text(&model, &solution))
+}
+
+/// Solve an electromagnetic case.
+fn solve_em(
+    model: &em::Model,
+    units: &str,
+    limit: em::Limit,
+    on_line: &mut dyn FnMut(&str),
+    on_step: &mut dyn FnMut(Vec<Vec<u8>>),
+) -> Result<String, String> {
+    let modes = matches!(model.step, em::Step::Modes { .. });
+    let mut out = EmOutput {
+        mesh: None,
+        loader: Loader::stream(units),
+        table: if modes {
+            MODES_HEAD.to_owned()
+        } else {
+            sparams_head(model.ports.len())
+        },
+        count: 0,
+        on_line,
+        on_step,
+    };
+    let summary = em::solve_within(model, limit, &mut out).map_err(|e| {
+        if e.contains(limit.memory) {
+            format!(
+                "{e}, or solve the case with fh run (up to {} points)",
+                em::LAPTOP.points
+            )
+        } else {
+            e
+        }
+    })?;
+    (out.on_line)(&format!(
+        "{} cells, {} points, {} unknowns",
+        summary.cells, summary.points, summary.unknowns
+    ));
+    for w in &summary.warnings {
+        (out.on_line)(&format!("warning: {w}"));
+    }
+    Ok(out.table)
+}
+
+struct EmOutput<'a> {
+    mesh: Option<Mesh>,
+    loader: Loader,
+    table: String,
+    count: usize,
+    on_line: &'a mut dyn FnMut(&str),
+    on_step: &'a mut dyn FnMut(Vec<Vec<u8>>),
+}
+
+impl em::Events for EmOutput<'_> {
+    fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
+        self.mesh = Some(mesh.clone());
+        Ok(())
+    }
+
+    fn progress(&mut self, text: &str) {
+        (self.on_line)(text);
+    }
+
+    fn frame(&mut self, frame: &em::Frame) -> Result<(), String> {
+        self.count += 1;
+        if frame.q.is_some() {
+            self.table.push_str(&modes_row(self.count, frame));
+        } else {
+            self.table.push_str(&sparams_row(frame));
+        }
+        if frame.fields.is_empty() {
+            return Ok(());
+        }
+        let mesh = self.mesh.as_ref().ok_or("the mesh comes before a frame")?;
+        let entry = PvdEntry {
+            time: frame.frequency,
+            file: format!("step-{}", self.count),
+        };
+        let lists = self
+            .loader
+            .push_and_send(entry, em_frame_grid(mesh, frame))?;
+        (self.on_step)(lists);
+        Ok(())
+    }
 }
 
 struct Output<'a> {
@@ -189,10 +303,12 @@ mod tests {
         assert_eq!(results.units, "SI-m");
         assert!(results.steps[0].field("NT").is_some());
         assert!(lines.iter().any(|l| l.contains("unknowns")), "{lines:?}");
-        let small = Limit {
-            points: 10,
-            tet_points: BROWSER.tet_points,
-            memory: BROWSER.memory,
+        let small = Limits {
+            heat: Limit {
+                points: 10,
+                ..BROWSER.heat
+            },
+            em: BROWSER.em,
         };
         let e = solve(WALL, small, &mut |_| {}, &mut |_| {}).unwrap_err();
         assert!(
@@ -208,5 +324,23 @@ mod tests {
             include_str!("../../../validation/cases/grid-constrained-block/block/grid.toml");
         let e = solve(BLOCK, BROWSER, &mut |_| {}, &mut |_| panic!("no output")).unwrap_err();
         assert!(e.contains("heat steps") && e.contains("fh run"), "{e}");
+    }
+
+    const GUIDE: &str =
+        include_str!("../../../validation/cases/grid-waveguide-te10/guide/grid.toml");
+
+    /// An electromagnetic case gives the S-parameter table and the field of each port.
+    #[test]
+    fn the_page_gets_the_s_parameters_and_the_fields_of_a_waveguide() {
+        let mut results = Results::default();
+        let table = solve(GUIDE, BROWSER, &mut |_| {}, &mut |s| {
+            results.receive(&s[..]).unwrap()
+        })
+        .unwrap();
+        assert!(table.starts_with("# frequency S11_re"), "{table}");
+        assert_eq!(table.lines().count(), 2, "{table}");
+        assert_eq!(results.steps.len(), 1);
+        assert!(results.steps[0].field("E1_mag").is_some());
+        assert!(results.steps[0].field("E2_re magnitude").is_some());
     }
 }

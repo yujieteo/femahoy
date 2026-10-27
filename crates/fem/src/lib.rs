@@ -9,8 +9,9 @@
 //!   ordering, the symbolic analysis of the factor and the numeric real Cholesky factor. The
 //!   ordering and the symbolic analysis use only the pattern, so another numeric factor (for
 //!   example a complex LDL^T) can use them.
-//! - `complex`, `ldlt`: complex numbers and dense complex matrices, and the complex symmetric
-//!   LDL^T factor on the ordering and the symbolic analysis of the real Cholesky factor.
+//! - `complex`, `ldlt`: complex numbers and small dense complex matrices, and the complex
+//!   symmetric sparse LDL^T factor on the ordering and the symbolic analysis of the real Cholesky
+//!   factor.
 //! - `line`, `mtl`: the per-length R, L, G and C of a transmission line from its cross-section
 //!   (electrostatic and magneto-quasi-static solves on the triangle mesh), and the chain matrix,
 //!   the S matrix, the modes and the Touchstone text of a multiconductor line.
@@ -22,6 +23,10 @@
 //! - `hex`: the 8-node hex with incompatible modes for elasticity, and the orthotropic material.
 //! - `elastic`: linear static thermo-elasticity on the grid.
 //! - `homog`: the effective conductivity, stiffness and expansion of a periodic unit cell.
+//! - `em`: frequency-domain electromagnetics with edge elements on the extruded mesh: wave
+//!   ports and S-parameters over a frequency sweep, walls, absorbing layers, resonant modes.
+//! - `hx`: GMRES with the nodal auxiliary space preconditioner, the iterative solver of `em` for
+//!   a model too large for the direct factor.
 
 // `!(a > b)` is also true for NaN, so the checks of the input and of each pivot use it. The
 // numeric loops index several arrays with 1 index, as the formulas of the sources do.
@@ -30,10 +35,12 @@
 pub mod cholesky;
 pub mod complex;
 pub mod elastic;
+pub mod em;
 pub mod grid;
 pub mod heat;
 pub mod hex;
 pub mod homog;
+pub mod hx;
 pub mod ldlt;
 pub mod line;
 pub mod mesh2d;

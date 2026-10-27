@@ -1,0 +1,14 @@
+# A rectangular cavity with copper walls, against the exact TE101 frequency (derivation.md).
+# Tolerance budget: at max_cell 2 mm the error of the frequency is 1.4e-4 of the value. It comes
+# from the edge elements and falls at second order (3 meshes, derivation.md). The exact value
+# includes the shift f / (2 Q) of the surface reactance of the walls, 3.2e-5 of the value. The
+# tolerance 3e-4 holds the error with a margin of a factor of 2.1. The Q of the mode (-0.41 % at
+# max_cell 2 mm) has its check in crates/fem/tests/em.rs, because its error needs a wider band.
+rel_tol = 3e-4
+abs_tol = 0.0
+
+[frequency]
+value = 8.884604442e9
+case = "cavity"
+file = "modes.txt"
+column = "frequency"

@@ -1,18 +1,23 @@
-//! The built-in heat conduction, linear elasticity and transmission line solvers of femahoy, in
-//! the process of `fh`.
+//! The built-in solvers of femahoy (heat conduction, linear elasticity, unit cells, transmission
+//! lines and frequency-domain electromagnetics), in the process of `fh`.
 //!
 //! A grid case is a folder with `grid.toml`: the parts as boxes or as prisms of a polygon or a
 //! circle with holes, the materials, the named face sets, the loads, the step, the probes and the
-//! surfaces (see `fh guide grid`). A model of boxes is solved on the box grid, and a heat model
-//! with a prism part on a mesh of tetrahedra. [`run_with`] reads it, solves it with the crate
-//! `fh-fem` and writes, for a heat step (steady or transient), with the reader and the result
-//! grid of `fh_core::grid`, which the browser solve of the viewer also uses:
+//! surfaces (see `fh guide grid`). A model of boxes is solved on the box grid; a heat model with
+//! a prism part, and each electromagnetic model, on a mesh of tetrahedra. [`run_with`] reads it,
+//! solves it with the crate `fh-fem` and writes, for a heat step (steady or transient), with the
+//! reader and the result grid of `fh_core::grid`, which the browser solve of the viewer also uses:
 //!
-//! - `step-N.vtu` and `results.pvd` in the run folder: the temperature `NT` at each point, the
-//!   heat flux `HFL` and the part number `part` of each cell, at each output time;
+//! - `step-N.vtu` and `results.pvd` in the run folder: for heat, the temperature `NT` at each
+//!   point, the heat flux `HFL` and the part number `part` of each cell, at each output time;
+//!   for electromagnetics, E of each port excitation (or of each mode) at each cell, with the
+//!   frequency as the time;
 //! - `<run-dir>/grid/probes.txt`: the time and the temperature at each probe, 1 row for each
 //!   output time;
 //! - `<run-dir>/grid/energy.txt`: the heat flows of the energy balance at each output time;
+//! - `<run-dir>/grid/sparams.txt`, `ports.txt` and `sparams.sNp`: the S-parameters, the
+//!   propagation constant and the impedance of each port, and the Touchstone file, 1 row for
+//!   each frequency; `<run-dir>/grid/modes.txt`: the frequency and Q of each mode;
 //! - `<run-dir>/grid/log.txt`: the lines of progress and the warnings.
 //!
 //! For a static step:
@@ -53,10 +58,14 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use fh_core::grid::{frame_grid, is_line, probe_head, probe_row, read, Case};
+use fh_core::grid::{
+    em_frame_grid, frame_grid, is_line, modes_row, ports_head, ports_row, probe_head, probe_row,
+    read, sparams_head, sparams_row, touchstone_head, touchstone_rows, Case, MODES_HEAD,
+};
 use fh_core::line;
 use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry, VTK_HEXAHEDRON, VTK_TETRA};
 use fh_fem::elastic::{self, Solution};
+use fh_fem::em;
 use fh_fem::heat::{self, Cell, Events, Frame, Mesh};
 use fh_fem::homog::{self, diagonal, engineering, orthotropic, Effective, COUPLING};
 
@@ -71,6 +80,9 @@ pub const PROBES: &str = "probes.txt";
 pub const ENERGY: &str = "energy.txt";
 /// The table of the per-length parameters of a line case.
 pub const LINE: &str = "line.txt";
+pub const SPARAMS: &str = "sparams.txt";
+pub const PORTS: &str = "ports.txt";
+pub const MODES: &str = "modes.txt";
 
 pub const SURFACES: &str = "surfaces.txt";
 pub const REACTIONS: &str = "reactions.txt";
@@ -102,10 +114,16 @@ pub fn run_with(
     if is_line(&text) {
         return run_line(case, &file, &text, run_dir, timeout, cancel, on_line);
     }
-    let (model, units) = read(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    let (case_model, units) = read(&text).map_err(|e| format!("{}: {e}", file.display()))?;
     let run_dir = prepare_run_dir(run_dir, &file)?;
     let work = run_dir.join(WORK);
     crate::getdp::copy_case(case, &work, false)?;
+    let model = match case_model {
+        Case::Em(model) => {
+            return run_em(&model, &units, &run_dir, timeout, cancel, on_line);
+        }
+        model => model,
+    };
     let mut out = Output {
         dir: run_dir.clone(),
         mesh: None,
@@ -159,22 +177,9 @@ pub fn run_with(
                 warnings,
             ))
         }),
+        Case::Em(_) => unreachable!("run_em solves an electromagnetic case"),
     };
-    let (summary, warnings) = match result {
-        Ok(s) => s,
-        Err(e)
-            if e == "cancelled"
-                && !cancel.is_cancelled()
-                && out.end.is_some_and(|end| Instant::now() >= end) =>
-        {
-            return Err(format!(
-                "the time limit {} s stopped the solve",
-                timeout.map_or(0.0, |t| t.as_secs_f64())
-            ))
-        }
-        Err(e) if cancel.is_cancelled() => return Err(format!("{}: {e}", crate::ccx::CANCELLED)),
-        Err(e) => return Err(e),
-    };
+    let (summary, warnings) = stopped(result, cancel, out.end, timeout)?;
     out.line(&summary);
     for w in &warnings {
         out.line(&format!("warning: {w}"));
@@ -192,7 +197,35 @@ pub fn run_with(
         write(name, text)?;
     }
     write("log.txt", &out.log)?;
-    let pvd = write_pvd(&out.entries, &units, false);
+    finish_pvd(&run_dir, &out.entries, &units)
+}
+
+/// The summary of a solve, or the error of a solve that a cancel or the time limit stopped.
+fn stopped<T>(
+    result: Result<T, String>,
+    cancel: &CancelToken,
+    end: Option<Instant>,
+    timeout: Option<Duration>,
+) -> Result<T, String> {
+    match result {
+        Ok(s) => Ok(s),
+        Err(e)
+            if e == "cancelled"
+                && !cancel.is_cancelled()
+                && end.is_some_and(|end| Instant::now() >= end) =>
+        {
+            Err(format!(
+                "the time limit {} s stopped the solve",
+                timeout.map_or(0.0, |t| t.as_secs_f64())
+            ))
+        }
+        Err(e) if cancel.is_cancelled() => Err(format!("{}: {e}", crate::ccx::CANCELLED)),
+        Err(e) => Err(e),
+    }
+}
+
+fn finish_pvd(run_dir: &Path, entries: &[PvdEntry], units: &str) -> Result<(), String> {
+    let pvd = write_pvd(entries, units, false);
     let tmp = run_dir.join(format!("{PVD_FILE}.tmp"));
     fs::write(&tmp, pvd)
         .and_then(|()| fs::rename(&tmp, run_dir.join(PVD_FILE)))
@@ -240,21 +273,8 @@ fn run_line(
         cancel,
         end: timeout.map(|t| Instant::now() + t),
     };
-    let solution = match fh_fem::line::solve(&model, &mut out) {
-        Ok(s) => s,
-        Err(e)
-            if e == "cancelled"
-                && !cancel.is_cancelled()
-                && out.end.is_some_and(|end| Instant::now() >= end) =>
-        {
-            return Err(format!(
-                "the time limit {} s stopped the solve",
-                timeout.map_or(0.0, |t| t.as_secs_f64())
-            ))
-        }
-        Err(e) if cancel.is_cancelled() => return Err(format!("{}: {e}", crate::ccx::CANCELLED)),
-        Err(e) => return Err(e),
-    };
+    let result = fh_fem::line::solve(&model, &mut out);
+    let solution = stopped(result, cancel, out.end, timeout)?;
     for w in &solution.warnings {
         out.line(&format!("warning: {w}"));
     }
@@ -280,6 +300,139 @@ fn run_line(
     fs::write(&tmp, write_pvd(&entries, "SI-m", false))
         .and_then(|()| fs::rename(&tmp, run_dir.join(PVD_FILE)))
         .map_err(|e| format!("{PVD_FILE}: {e}"))
+}
+
+/// Write the grid `grid` as the next `step-N.vtu` of the run folder `dir`.
+fn write_step(
+    dir: &Path,
+    entries: &mut Vec<PvdEntry>,
+    time: f64,
+    grid: &VtuGrid,
+) -> Result<(), String> {
+    let file = format!("step-{}.vtu", entries.len() + 1);
+    let tmp = dir.join(format!("{file}.tmp"));
+    fs::write(&tmp, write_vtu(grid)?)
+        .and_then(|()| fs::rename(&tmp, dir.join(&file)))
+        .map_err(|e| format!("{file}: {e}"))?;
+    entries.push(PvdEntry { time, file });
+    Ok(())
+}
+
+/// Solve an electromagnetic case and write its tables and fields.
+fn run_em(
+    model: &em::Model,
+    units: &str,
+    run_dir: &Path,
+    timeout: Option<Duration>,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<(), String> {
+    let work = run_dir.join(WORK);
+    let ports = model.ports.len();
+    let mut out = EmOutput {
+        dir: run_dir.to_path_buf(),
+        mesh: None,
+        entries: Vec::new(),
+        sparams: sparams_head(ports),
+        ports: ports_head(ports),
+        touchstone: touchstone_head(ports),
+        modes: MODES_HEAD.to_owned(),
+        count: 0,
+        log: String::new(),
+        on_line,
+        cancel,
+        end: timeout.map(|t| Instant::now() + t),
+    };
+    let result = em::solve(model, &mut out);
+    let summary = stopped(result, cancel, out.end, timeout)?;
+    out.line(&format!(
+        "{} cells, {} points, {} unknowns",
+        summary.cells, summary.points, summary.unknowns
+    ));
+    for w in &summary.warnings {
+        out.line(&format!("warning: {w}"));
+    }
+    let write = |name: &str, text: &str| {
+        fs::write(work.join(name), text).map_err(|e| format!("{name}: {e}"))
+    };
+    match model.step {
+        em::Step::Frequency { .. } => {
+            write(SPARAMS, &out.sparams)?;
+            write(PORTS, &out.ports)?;
+            write(&format!("sparams.s{ports}p"), &out.touchstone)?;
+        }
+        em::Step::Modes { .. } => write(MODES, &out.modes)?,
+    }
+    write("log.txt", &out.log)?;
+    finish_pvd(run_dir, &out.entries, units)
+}
+
+/// The writer of the results of an electromagnetic solve while it runs.
+struct EmOutput<'a> {
+    dir: std::path::PathBuf,
+    mesh: Option<Mesh>,
+    entries: Vec<PvdEntry>,
+    sparams: String,
+    ports: String,
+    touchstone: String,
+    modes: String,
+    /// The frames so far.
+    count: usize,
+    log: String,
+    on_line: &'a mut dyn FnMut(&str),
+    cancel: &'a CancelToken,
+    end: Option<Instant>,
+}
+
+impl EmOutput<'_> {
+    fn line(&mut self, text: &str) {
+        self.log.push_str(text);
+        self.log.push('\n');
+        (self.on_line)(text);
+    }
+}
+
+impl em::Events for EmOutput<'_> {
+    fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled() || self.end.is_some_and(|end| Instant::now() >= end)
+    }
+
+    fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
+        self.mesh = Some(mesh.clone());
+        Ok(())
+    }
+
+    fn progress(&mut self, text: &str) {
+        self.line(text);
+    }
+
+    fn frame(&mut self, frame: &em::Frame) -> Result<(), String> {
+        self.count += 1;
+        if frame.q.is_some() {
+            self.modes.push_str(&modes_row(self.count, frame));
+            self.line(&format!(
+                "mode {}: {:.6e} Hz, Q {:.4e}",
+                self.count,
+                frame.frequency,
+                frame.q.unwrap_or(f64::INFINITY)
+            ));
+        } else {
+            self.sparams.push_str(&sparams_row(frame));
+            self.ports.push_str(&ports_row(frame));
+            self.touchstone.push_str(&touchstone_rows(frame));
+            let n = frame.ports.len();
+            let s: Vec<String> = (0..n)
+                .map(|i| format!("|S{}1| {:.4}", i + 1, frame.s[i * n].abs()))
+                .collect();
+            self.line(&format!("{:.6e} Hz: {}", frame.frequency, s.join(", ")));
+        }
+        if !frame.fields.is_empty() {
+            let mesh = self.mesh.as_ref().expect("the mesh comes before a frame");
+            let grid = em_frame_grid(mesh, frame);
+            write_step(&self.dir, &mut self.entries, frame.frequency, &grid)?;
+        }
+        Ok(())
+    }
 }
 
 /// The writer of the results while the solve runs.
@@ -337,18 +490,7 @@ impl Output<'_> {
             point_data,
             cell_data,
         };
-        self.step(time, &grid)
-    }
-
-    /// Write `step-N.vtu` with `grid`, at `time`.
-    fn step(&mut self, time: f64, grid: &VtuGrid) -> Result<(), String> {
-        let file = format!("step-{}.vtu", self.entries.len() + 1);
-        let tmp = self.dir.join(format!("{file}.tmp"));
-        fs::write(&tmp, write_vtu(grid)?)
-            .and_then(|()| fs::rename(&tmp, self.dir.join(&file)))
-            .map_err(|e| format!("{file}: {e}"))?;
-        self.entries.push(PvdEntry { time, file });
-        Ok(())
+        write_step(&self.dir, &mut self.entries, time, &grid)
     }
 }
 
@@ -382,7 +524,7 @@ impl Events for Output<'_> {
     fn frame(&mut self, frame: &Frame) -> Result<(), String> {
         let mesh = self.mesh.as_ref().expect("the mesh comes before a frame");
         let grid = frame_grid(mesh, frame);
-        self.step(frame.time, &grid)?;
+        write_step(&self.dir, &mut self.entries, frame.time, &grid)?;
         self.probes.push_str(&probe_row(frame));
         let e = frame.energy;
         let row: Vec<String> = [

@@ -1,0 +1,25 @@
+# A coaxial line with a TEM port at each end, against the exact impedance and wave
+# (derivation.md). Tolerance budget: at max_cell 0.5 mm the errors are -2.6e-3 of the impedance,
+# 1.6e-3 of the phase of S21 (0.27 degrees) and 1.7e-6 of |S21|. They come from the polygons of
+# the 2 circles and from the elements, and fall with the cell (3 meshes, derivation.md). The
+# tolerance 5e-3 holds the largest error with a margin of a factor of 1.9.
+rel_tol = 5e-3
+abs_tol = 0.0
+
+[impedance]
+value = 34.461857
+case = "coax"
+file = "ports.txt"
+column = "impedance_1"
+
+[s21_mag]
+value = 1.0
+case = "coax"
+file = "sparams.txt"
+column = "S21_mag"
+
+[s21_deg]
+value = -174.016907
+case = "coax"
+file = "sparams.txt"
+column = "S21_deg"

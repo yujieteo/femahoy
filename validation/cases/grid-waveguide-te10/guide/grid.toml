@@ -1,0 +1,37 @@
+# A WR-90 rectangular waveguide, 30 mm long, with a TE10 wave port at each end. The walls are
+# perfect conductors (the default wall). At 10 GHz only TE10 propagates (../derivation.md).
+units = "SI-mm"
+
+[grid]
+max_cell = 2.0
+
+[material.air]
+permittivity = 1.0
+
+[part.guide]
+material = "air"
+x = [0.0, 22.86]
+y = [0.0, 10.16]
+z = [0.0, 30.0]
+
+[face.in]
+side = ["z-"]
+
+[face.out]
+side = ["z+"]
+
+[[load]]
+port = 1
+face = "in"
+mode = "te10"
+
+[[load]]
+port = 2
+face = "out"
+mode = "te10"
+
+[step]
+type = "frequency"
+start = 10e9
+stop = 10e9
+points = 1

@@ -1,0 +1,26 @@
+# A WR-90 waveguide with a TE10 port at each end, against the exact TE10 wave (derivation.md).
+# Tolerance budget: at max_cell 2 mm the errors are 1.6e-4 in |S21|, 0.046 degrees in the phase
+# of S21 and 0.0062 in |S11| (the exact |S11| is 0). The errors come from the edge elements and
+# fall at second order (3 meshes, derivation.md). The pass rule is |error| <= rel_tol |value| +
+# abs_tol. abs_tol 0.012 holds |S11| with a margin of a factor of 1.9. rel_tol 1e-3 gives the
+# phase 0.1 degrees, a margin of a factor of 2.2.
+rel_tol = 1e-3
+abs_tol = 0.012
+
+[s21_mag]
+value = 1.0
+case = "guide"
+file = "sparams.txt"
+column = "S21_mag"
+
+[s21_deg]
+value = 88.008473
+case = "guide"
+file = "sparams.txt"
+column = "S21_deg"
+
+[s11_mag]
+value = 0.0
+case = "guide"
+file = "sparams.txt"
+column = "S11_mag"

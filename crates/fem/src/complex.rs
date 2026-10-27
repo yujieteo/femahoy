@@ -1,11 +1,15 @@
 //! A complex number of 2 `f64`, and the dense complex matrix algebra of the transmission line
-//! model: the product, the LU solve with partial pivots, the exponential and the eigenvalues.
+//! model and of the Rayleigh-Ritz step of the 3D mode solver: the product, the LU solve with
+//! partial pivots, the exponential, the eigenvalues and an eigenvector by inverse iteration. The
+//! crate has no dependency, so it has its own type.
 //!
 //! Sources: G. H. Golub and C. F. Van Loan, Matrix Computations, 4th ed., 2013, section 3.4
 //! (Gaussian elimination with partial pivots), section 7.4 (the Householder reduction to
 //! Hessenberg form), section 7.5 (the shifted QR iteration, Wilkinson shift and deflation) and
 //! section 9.3 (the [q/q] Pade approximant of the exponential after scaling to a norm of 1/2 or
-//! less, then the squarings).
+//! less, then the squarings) and section 7.6.1 (inverse iteration); the square root with the
+//! branch cut on the negative real axis, as in W. H. Press et al., Numerical Recipes, 3rd ed.,
+//! 2007, section 5.5.
 
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -18,6 +22,8 @@ pub struct C64 {
 impl C64 {
     pub const ZERO: C64 = C64 { re: 0.0, im: 0.0 };
     pub const ONE: C64 = C64 { re: 1.0, im: 0.0 };
+    /// The imaginary unit j.
+    pub const J: C64 = C64 { re: 0.0, im: 1.0 };
 
     pub const fn new(re: f64, im: f64) -> C64 {
         C64 { re, im }
@@ -31,15 +37,38 @@ impl C64 {
         C64::new(self.re, -self.im)
     }
 
-    /// The square root with a real part of 0 or more.
+    /// |z|^2.
+    pub fn norm2(self) -> f64 {
+        self.re * self.re + self.im * self.im
+    }
+
+    /// The argument in (-pi, pi].
+    pub fn arg(self) -> f64 {
+        self.im.atan2(self.re)
+    }
+
+    /// exp(j t).
+    pub fn cis(t: f64) -> C64 {
+        C64::new(t.cos(), t.sin())
+    }
+
+    /// The square root with a real part of 0 or more. The form with no difference of 2 near
+    /// values keeps a small imaginary part (a small loss) to the precision of the arithmetic.
     pub fn sqrt(self) -> C64 {
         let r = self.abs();
         if r == 0.0 {
             return C64::ZERO;
         }
-        let re = ((r + self.re) / 2.0).sqrt();
-        let im = ((r - self.re) / 2.0).sqrt();
-        C64::new(re, if self.im < 0.0 { -im } else { im })
+        let a = ((r + self.re.abs()) / 2.0).sqrt();
+        if self.re >= 0.0 {
+            C64::new(a, self.im / (2.0 * a))
+        } else {
+            C64::new(self.im.abs() / (2.0 * a), a.copysign(self.im))
+        }
+    }
+
+    pub fn is_finite(self) -> bool {
+        self.re.is_finite() && self.im.is_finite()
     }
 
     pub fn scale(self, s: f64) -> C64 {
@@ -77,6 +106,13 @@ impl Mul for C64 {
     }
 }
 
+impl Mul<f64> for C64 {
+    type Output = C64;
+    fn mul(self, o: f64) -> C64 {
+        self.scale(o)
+    }
+}
+
 impl Div for C64 {
     type Output = C64;
     fn div(self, o: C64) -> C64 {
@@ -90,6 +126,13 @@ impl Div for C64 {
             let d = o.re * r + o.im;
             C64::new((self.re * r + self.im) / d, (self.im * r - self.re) / d)
         }
+    }
+}
+
+impl Div<f64> for C64 {
+    type Output = C64;
+    fn div(self, o: f64) -> C64 {
+        C64::new(self.re / o, self.im / o)
     }
 }
 
@@ -116,6 +159,16 @@ impl MulAssign for C64 {
     fn mul_assign(&mut self, o: C64) {
         *self = *self * o;
     }
+}
+
+/// The sum of a[i] b[i], with no conjugate: the bilinear form of a complex symmetric matrix.
+pub fn dot(a: &[C64], b: &[C64]) -> C64 {
+    a.iter().zip(b).fold(C64::ZERO, |s, (x, y)| s + *x * *y)
+}
+
+/// The Euclidean norm.
+pub fn norm(a: &[C64]) -> f64 {
+    a.iter().map(|x| x.norm2()).sum::<f64>().sqrt()
 }
 
 /// A dense square complex matrix, row by row.
@@ -415,6 +468,34 @@ impl Matrix {
         }
         values
     }
+    /// An eigenvector for the eigenvalue `theta`, by inverse iteration, with a norm of 1.
+    pub fn eigenvector(&self, theta: C64) -> Vec<C64> {
+        let n = self.n;
+        let scale = self
+            .a
+            .iter()
+            .map(|v| v.abs())
+            .fold(0.0, f64::max)
+            .max(theta.abs());
+        // A shift a little off theta keeps A - shift I invertible.
+        let shift = theta + C64::new(1e-10 * scale, 1e-10 * scale);
+        let mut m = self.clone();
+        for i in 0..n {
+            m.a[i * n + i] -= shift;
+        }
+        let mut y = Matrix::zeros(n);
+        for i in 0..n {
+            y.a[i * n] = C64::new(1.0 + 0.1 * i as f64, 0.3 * (i as f64).sin());
+        }
+        for _ in 0..3 {
+            let Ok(next) = m.solve(&y) else {
+                break;
+            };
+            let s = norm(&next.a);
+            y = next.scale(1.0 / s);
+        }
+        (0..n).map(|i| y.a[i * n]).collect()
+    }
 }
 
 #[cfg(test)]
@@ -484,6 +565,72 @@ mod tests {
                 let want = if i == j { C64::ONE } else { C64::ZERO };
                 assert!((id.at(i, j) - want).abs() < 1e-12);
             }
+        }
+    }
+
+    #[test]
+    fn the_square_root_and_the_quotient_invert_the_product() {
+        for z in [
+            C64::new(3.0, 4.0),
+            C64::new(-3.0, 4.0),
+            C64::new(-3.0, -4.0),
+            C64::new(0.0, -2.0),
+            C64::new(-1.0, 0.0),
+        ] {
+            let s = z.sqrt();
+            assert!(s.re >= 0.0);
+            assert!((s * s - z).abs() < 1e-14 * z.abs(), "{z:?}");
+            let w = C64::new(0.5, -7.0);
+            assert!(((z * w) / w - z).abs() < 1e-14 * z.abs());
+        }
+    }
+
+    #[test]
+    fn the_eigenvalues_and_eigenvectors_of_a_triangular_similarity_are_found() {
+        // A = S T S^-1 with T upper triangular: the eigenvalues are the diagonal of T.
+        let n = 6;
+        let diag = [
+            C64::new(1.0, 0.5),
+            C64::new(-2.0, 0.0),
+            C64::new(3.0, -1.0),
+            C64::new(0.1, 0.0),
+            C64::new(5.0, 2.0),
+            C64::new(-0.7, 0.3),
+        ];
+        let mut t = Matrix::zeros(n);
+        for i in 0..n {
+            t.set(i, i, diag[i]);
+            for j in i + 1..n {
+                t.set(i, j, C64::new((i + 2 * j) as f64 * 0.1, 0.2));
+            }
+        }
+        let s = Matrix {
+            n,
+            a: (0..n * n)
+                .map(|k| {
+                    C64::new(
+                        if k % (n + 1) == 0 { 2.0 } else { 0.0 } + (k as f64 * 0.7).sin() * 0.3,
+                        (k as f64).cos() * 0.1,
+                    )
+                })
+                .collect(),
+        };
+        let a = s.mul(&t).mul(&s.solve(&Matrix::identity(n)).unwrap());
+        let mut got = a.eigenvalues();
+        for d in diag {
+            let k = (0..got.len())
+                .min_by(|&i, &j| (got[i] - d).abs().total_cmp(&(got[j] - d).abs()))
+                .unwrap();
+            assert!((got[k] - d).abs() < 1e-10, "{d:?} in {got:?}");
+            let v = a.eigenvector(got[k]);
+            let r = (0..n)
+                .map(|i| {
+                    let av = (0..n).fold(C64::ZERO, |acc, j| acc + a.at(i, j) * v[j]);
+                    (av - got[k] * v[i]).abs()
+                })
+                .fold(0.0, f64::max);
+            assert!(r < 1e-8, "residual {r}");
+            got.remove(k);
         }
     }
 }

@@ -4,6 +4,8 @@
 //! (CSR storage) and T. Davis, Direct Methods for Sparse Linear Systems, SIAM 2006, chapter 2
 //! (the sparse matrix product of Gustavson).
 
+use crate::complex::C64;
+
 /// A square sparse matrix. Row `i` holds the columns `idx[ptr[i]..ptr[i + 1]]`, sorted, with the
 /// values `val` at the same places.
 #[derive(Debug, Clone, PartialEq)]
@@ -141,6 +143,55 @@ fn sort_row(idx: &mut [u32], val: &mut [f64]) {
     for (k, (j, v)) in pairs.into_iter().enumerate() {
         idx[k] = j;
         val[k] = v;
+    }
+}
+
+/// A square complex symmetric sparse matrix: the pattern of a [`Csr`] with complex values. The
+/// pattern holds no real values.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Zcsr {
+    pub pattern: Csr,
+    pub val: Vec<C64>,
+}
+
+impl Zcsr {
+    /// The matrix of the pattern `pattern` with all values 0.
+    pub fn zeros(mut pattern: Csr) -> Zcsr {
+        pattern.val = Vec::new();
+        let val = vec![C64::ZERO; pattern.idx.len()];
+        Zcsr { pattern, val }
+    }
+
+    pub fn n(&self) -> usize {
+        self.pattern.n
+    }
+
+    /// Add the dense element matrix `ke` (row-major, `nodes.len()` square) at the rows and
+    /// columns `nodes`. Each pair must be in the pattern.
+    pub fn add_element(&mut self, nodes: &[u32], ke: &[C64]) {
+        let p = &self.pattern;
+        let m = nodes.len();
+        for (a, &i) in nodes.iter().enumerate() {
+            let row = &p.idx[p.ptr[i as usize]..p.ptr[i as usize + 1]];
+            for (b, &j) in nodes.iter().enumerate() {
+                let k = row
+                    .binary_search(&j)
+                    .expect("the pattern holds each element pair");
+                self.val[p.ptr[i as usize] + k] += ke[a * m + b];
+            }
+        }
+    }
+
+    /// y = A x.
+    pub fn mul(&self, x: &[C64], y: &mut [C64]) {
+        let p = &self.pattern;
+        for (i, yi) in y.iter_mut().enumerate().take(p.n) {
+            let mut s = C64::ZERO;
+            for k in p.ptr[i]..p.ptr[i + 1] {
+                s += self.val[k] * x[p.idx[k] as usize];
+            }
+            *yi = s;
+        }
     }
 }
 

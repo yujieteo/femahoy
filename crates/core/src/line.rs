@@ -7,7 +7,7 @@ use fh_fem::line::{Conduction, Material, Model, Solution};
 use fh_fem::mtl;
 use toml_edit::{Document, TableLike};
 
-use crate::grid::{footprint, named, number, numbers, only_in, optional, string, strings, table};
+use crate::grid::{footprint, named, number, numbers, only, optional, string, strings, table};
 use crate::vtu::{Field, Grid, VTK_TRIANGLE};
 
 /// The text of an error about an input out of the class of the line solver.
@@ -20,7 +20,7 @@ const CLASS: &str = "The built-in line solver gives the quasi-TEM per-length R, 
 pub fn read(text: &str) -> Result<Model, String> {
     let doc = Document::parse(text).map_err(|e| e.message().to_owned())?;
     let top: &dyn TableLike = doc.as_table();
-    only_in(
+    only(
         top,
         "the top",
         &["units", "grid", "material", "part", "line"],
@@ -33,13 +33,13 @@ pub fn read(text: &str) -> Result<Model, String> {
         ));
     }
     let grid = table(top, "grid")?;
-    only_in(grid, "[grid]", &["max_cell", "max_growth"], CLASS)?;
+    only(grid, "[grid]", &["max_cell", "max_growth"], CLASS)?;
     let max_cell = number(grid, "max_cell", "[grid]")?;
     let max_growth = optional(grid, "max_growth", "[grid]")?.unwrap_or(1.3);
     let mut materials = Vec::new();
     for (name, item) in named(top, "material")? {
         let where_ = format!("[material.{name}]");
-        only_in(
+        only(
             item,
             &where_,
             &[
@@ -88,7 +88,7 @@ pub fn read(text: &str) -> Result<Model, String> {
     let mut parts = Vec::new();
     for (name, item) in named(top, "part")? {
         let where_ = format!("[part.{name}]");
-        only_in(
+        only(
             item,
             &where_,
             &[
@@ -139,7 +139,7 @@ pub fn read(text: &str) -> Result<Model, String> {
         });
     }
     let line = table(top, "line")?;
-    only_in(
+    only(
         line,
         "[line]",
         &[

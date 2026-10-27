@@ -1,0 +1,31 @@
+# A WR-90 waveguide with a PTFE section, against the exact answer of transmission line theory
+# (derivation.md). Tolerance budget: at max_cell 1.5 mm the largest error of the 4 parts of S11
+# and S21 is 0.0064 (the imaginary part of S21). The errors come from the edge elements and
+# fall at second order (3 meshes, derivation.md). The tolerance 0.012 holds the largest error
+# with a margin of a factor of 1.9.
+rel_tol = 0.0
+abs_tol = 0.012
+
+[s11_re]
+value = 0.075518
+case = "guide"
+file = "sparams.txt"
+column = "S11_re"
+
+[s11_im]
+value = -0.187732
+case = "guide"
+file = "sparams.txt"
+column = "S11_im"
+
+[s21_re]
+value = 0.908557
+case = "guide"
+file = "sparams.txt"
+column = "S21_re"
+
+[s21_im]
+value = 0.365483
+case = "guide"
+file = "sparams.txt"
+column = "S21_im"

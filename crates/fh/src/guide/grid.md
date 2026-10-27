@@ -1,10 +1,11 @@
-# Heat conduction, stress, unit cells and transmission lines with the built-in grid solver
+# Heat conduction, stress, unit cells, transmission lines and electromagnetics with the built-in grid solver
 
 Use the built-in grid solver first for:
 
 - linear heat conduction, steady or transient, in parts that are boxes, or prisms of a polygon or a circle (with holes) along 1 axis. Examples: layers and laminates, plates with holes, pipes, fins, and extruded sections.
 - linear static stress in parts that are boxes and deformation, with isotropic or orthotropic materials, from supports, pressures, forces, gravity and a temperature change (a uniform temperature, or the steady heat solve of the same case).
 - the homogenized (effective) material of a periodic unit cell: the conductivity, the stiffness and the expansion of a composite, a laminate, a lattice, a foam or a woven or stacked structure that repeats in x, y and z (`type = "homogenize"`, see "Unit cells" below).
+- linear frequency-domain electromagnetics in the same shapes: the S-parameters of waveguides, transmission lines, steps, vias, filters and transitions with wave ports, and the resonant frequencies and Q of cavities. It needs no gmsh and no GetDP. See "Electromagnetics" below.
 
 It needs no CAD, no mesh and no CalculiX, and a model of 100,000 unknowns solves in about 1 to 5 s. Write `CASE/grid.toml` and solve it with `fh run CASE`.
 
@@ -43,7 +44,7 @@ The solver refuses a model that can move as a rigid body, and the message names 
 
 A static step with flat cells uses the direct solver up to a factor of 2.5e8 entries (2 GB), and multigrid above it. Multigrid can stop with no result on very flat cells. Then put more cells through the thin layer (a smaller `max_cell` or a larger `min_cells`), or make the model smaller.
 
-The person can also solve the `grid.toml` of a heat step in the browser, with no `fh run`: the button "Solve grid.toml" of the page of `fh serve` and of a report solves the file in the page and shows the progress, the fields and the probe table. It gives the same probes as `fh run`. The browser solves up to 1,000,000 points on a box grid and 100,000 on a mesh of tetrahedra (the 4 GiB memory of wasm32), `fh run` up to 4,000,000 and 400,000. The browser does not solve a static step. Use `fh run` for it. Give the person the case folder when they want to change and solve the case themselves.
+The person can also solve the `grid.toml` of a heat or an electromagnetic step in the browser, with no `fh run`: the button "Solve grid.toml" of the page of `fh serve` and of a report solves the file in the page and shows the progress, the fields and the probe table. It gives the same probes as `fh run`. The browser solves up to 1,000,000 points on a box grid and 100,000 on a mesh of tetrahedra (the 4 GiB memory of wasm32), `fh run` up to 4,000,000 and 400,000. The browser does not solve a static step. Use `fh run` for it. Give the person the case folder when they want to change and solve the case themselves.
 
 ## Results
 
@@ -89,7 +90,7 @@ The conductivity uses 3 solves with a unit mean gradient, the stiffness 6 solves
 
 ## Transmission lines
 
-Use the built-in line solver first for the cross-section of a transmission line with linear materials, for example a coaxial cable, a microstrip, a stripline, a twisted pair seen as 2 round wires, a busbar pair or a cable bundle. It gives the quasi-TEM per-length matrices R, L, G and C of the signal conductors at each frequency, the modes, and the S-parameters of a length of line. It needs no gmsh and no GetDP. A `grid.toml` with a `[line]` table is a line case. Use GetDP (`fh guide electromagnetics`) for each other electromagnetic problem, for example a 3D field, a time history, a nonlinear material, a coil or a motor. The line solver refuses those inputs with a message that names GetDP.
+Use the built-in line solver first for the cross-section of a transmission line with linear materials, for example a coaxial cable, a microstrip, a stripline, a twisted pair seen as 2 round wires, a busbar pair or a cable bundle. It gives the quasi-TEM per-length matrices R, L, G and C of the signal conductors at each frequency, the modes, and the S-parameters of a length of line. It needs no gmsh and no GetDP. A `grid.toml` with a `[line]` table is a line case. For the 3D field of a waveguide, a line of finite length, a via or a cavity, use the section "Electromagnetics". Use GetDP (`fh guide electromagnetics`) for each other electromagnetic problem, for example a time history, a nonlinear material, a coil or a motor. The line solver refuses those inputs with a message that names GetDP.
 
 The physics: C and G come from an electrostatic solve with a complex permittivity (the loss tangent). R and L come from a magneto-quasi-static solve of A_z with the eddy currents in each conductor, so the skin effect and the proximity effect are in R and L. The solver makes the segments on the outline of each conductor 0.25 skin depth long at the highest frequency. The S-parameters come from the chain matrix exp([0 Z; Y 0] length) of the per-length Z = R + j omega L and Y = G + j omega C.
 
@@ -102,3 +103,24 @@ The physics: C and G come from an electrostatic solve with a complex permittivit
 `fh run` writes `grid/line.txt`: the signal of each number, then 1 line for each frequency with R, L, G and C (N x N each, in ohm/m, H/m, S/m and F/m), `eps_eff` and `loss` (dB/m) of each mode, and for 1 signal `z0_re` and `z0_im` (ohm). With `length`, `grid/line.sNp` is the Touchstone file of the 2N ports: ports 1 to N are the near ends of the signals, ports N+1 to 2N the far ends. The page shows the potential `V1`, `V2`, ... of each signal at 1 V and the current density `J1`, `J2`, ... at the highest frequency. `fh run` solves up to 1,000,000 points, the browser up to 250,000.
 
 Do a mesh study with 2 values of `max_cell`. A sharp corner of a conductor makes a singular field: C, L and Z0 converge, but slower than near a round face.
+
+## Electromagnetics
+
+A `grid.toml` with `[step] type = "frequency"` or `"modes"` is an electromagnetic case. The solver finds the electric field E with first-order edge elements on a mesh of tetrahedra (also for a model of boxes only), with the time factor exp(jωt). Use GetDP (`fh guide electromagnetics`) for eddy currents, magnetostatics, the time domain, nonlinear materials, and curved or sloped shapes that are not prisms along the axis. The solver refuses those inputs with a message that names GetDP.
+
+1. Top: `units = "SI-mm"` or `"SI-m"` gives the unit of the lengths only. A frequency is in Hz, a conductivity in S/m, an impedance in ohm, and beta in rad/m.
+2. `[grid]`: `max_cell`, `max_growth`, `min_cells` and `axis`, as for heat. No `symmetry`: use a magnetic or an electric wall on the plane of symmetry. Give at least 10 cells in each wavelength in each material at the highest frequency. The solver warns below 8.
+3. `[material.NAME]`: `permittivity` (relative, 1 by default), `loss_tangent`, `permeability` (relative, 1 by default) and `conductivity` (S/m, a loss in the volume). Or `perfect_conductor = true` alone: a part of this material has no mesh, and its faces are electric walls. Use it for a signal conductor or a via.
+4. `[part.NAME]`: as for heat. `pml = true` makes the part an absorbing layer (a perfectly matched layer): a box on the outside of the model, about 1 wavelength thick, with at least 8 cells through it. It absorbs along each axis on which it is outside the box of the other parts. Its outer faces stay electric walls.
+5. `[face.NAME]`: as for heat. A side selects all outer faces with that normal, also the face of a step: add `parts` or `box` to keep only the end of 1 guide.
+6. `[[load]]`: each outer face is an electric wall (a perfect conductor, n × E = 0) by default.
+   - `wall = "magnetic"` with `face`: n × H = 0. Use it on a plane of symmetry that E is parallel to. A TE10 port needs electric walls on all 4 sides: model the full width of a waveguide with a TE10 port.
+   - `wall = "conductor"` with `face` and `conductivity`: a good conductor with the surface impedance of its skin depth. Use it when the conductor is thicker than 3 skin depths.
+   - `port = N` with `face` and `mode`: a wave port. Number the ports 1, 2, 3 ... `mode = "te10"` is the TE10 mode of a flat rectangular face of 1 material. `mode = "tem"` with `signal` (the face set of the signal conductor) is the quasi-TEM mode of a line, from 2 electrostatic solves on the port face: a coaxial line, a stripline, or a microstrip in a box. The ground of a TEM port is the electric wall around the face. `deembed` (a length, 0 by default) moves the reference plane of the port into the model by that length.
+7. `[step]`: `type = "frequency"` with `start`, `stop` (Hz), `points` and `output_every` (the fields of each Nth frequency). Or `type = "modes"` with `near` (Hz) and `count`: the `count` resonant modes nearest to `near`, of a model with no port. A mode with losses (a conductor wall, a conductivity, a loss tangent) has a Q.
+
+A case has no probes. In the run folder, `grid/sparams.txt` has the frequency and `Sij_re`, `Sij_im`, `Sij_mag` and `Sij_deg` of each pair of ports. `grid/ports.txt` has `beta_k` and `impedance_k` of each port: the wave impedance of TE10, or the line impedance Z0 of TEM. `grid/sparams.sNp` is the Touchstone file. The `sparams.txt` S-parameters are generalized: each port is normalized to the impedance of its own mode. The Touchstone file has the same S-parameters renormalized to 50 ohm at each port, at each frequency. The comment line before each frequency gives the impedances of the modes. The wave impedance of a TE10 port changes with the frequency, so its 50-ohm data is a convention. `grid/modes.txt` has the frequency and Q of each mode. The page shows `E{k}_mag`, `E{k}_re` and `E{k}_im` (the field of the excitation of port k), or `E_mag`, `E_re` and `E_im` of each mode, with the frequency as the time.
+
+The solver of a frequency sweep is direct up to 40,000 points, and GMRES with an auxiliary space preconditioner up to 100,000 points. The browser solves up to 25,000 points with the direct solver and 40,000 with GMRES (the 4 GiB memory of wasm32). A mode solve is always direct. A direct solve of 40,000 points takes about 1 minute and 2 GB, and each port is 1 more solve with the same factor. Each port is 1 GMRES solve. The GMRES iterations grow with the length of the model in wavelengths: each port of a WR-90 guide 60 mm long with 88,479 points took about 340 iterations and 5 minutes of CPU at 10 GHz. A line between 2 conductors (a coaxial line, a stripline) needs many more GMRES iterations than a waveguide.
+
+Do a mesh study with 2 values of `max_cell`. The S-parameters converge at second order. Near the edge of a step or a conductor, the field is singular, and the result converges more slowly.
