@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-701b4e9c710862dea6d5ef93d9c47314' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-a0c46f23d188b4d6be4cf2a267c001fb' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -180,6 +180,18 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
 }
 /* A phone in landscape: at 360 px the report header uses 4 rows, half of the height. At 50% it uses 2 rows. */
 @media (min-width: 801px) and (max-height: 500px) { #report { width: 50%; } }
+/* A touch screen phone: the page scrolls. The text is first, then the model, then the results
+   panel of the viewer in the page flow (--fh-flow), as on the page of fh serve. The viewer gives
+   the panel height in --fh-panel, so the canvas is that much taller, and a swipe outside the
+   model scrolls the page. The model and its header use 75% of the screen, so a swipe on the
+   top of the panel below it scrolls the page. */
+@media (pointer: coarse) and (max-width: 800px), (pointer: coarse) and (max-height: 500px) {
+  :root { --fh-flow: 1; }
+  body { display: block; height: auto; overflow: visible; }
+  #report { width: 100%; }
+  article { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+  #model { height: calc(75svh + var(--fh-panel, 0px)); }
+}
 .curve { margin: 2rem 0; }
 .curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
@@ -240,7 +252,7 @@ output { margin-left: var(--space-2); }
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.04 and abs_tol = 0.0015 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>cd_a0</code></td><td>Not specified</td><td style="text-align:right">0.00912613</td><td style="text-align:right">0.00809</td><td style="text-align:right">+0.00103613 (+12.8075 %)</td><td style="text-align:right">0.001824</td><td style="text-align:right">0.0007875</td></tr><tr><td><code>cl_a4</code></td><td>Not specified</td><td style="text-align:right">0.444944</td><td style="text-align:right">0.4316</td><td style="text-align:right">+0.0133436 (+3.09166 %)</td><td style="text-align:right">0.01876</td><td style="text-align:right">0.00542</td></tr><tr><td><code>cd_a4</code></td><td>Not specified</td><td style="text-align:right">0.0095001</td><td style="text-align:right">0.00823</td><td style="text-align:right">+0.0012701 (+15.4325 %)</td><td style="text-align:right">0.001829</td><td style="text-align:right">0.0005591</td></tr><tr><td><code>cl_a10</code></td><td>Not specified</td><td style="text-align:right">1.08233</td><td style="text-align:right">1.0707</td><td style="text-align:right">+0.0116254 (+1.08578 %)</td><td style="text-align:right">0.04433</td><td style="text-align:right">0.0327</td></tr><tr><td><code>cd_a10</code></td><td>Not specified</td><td style="text-align:right">0.01303</td><td style="text-align:right">0.01201</td><td style="text-align:right">+0.00102005 (+8.49332 %)</td><td style="text-align:right">0.00198</td><td style="text-align:right">0.0009604</td></tr></tbody></table>
 <p>Only the steps that the text opens of each run are in this report, to keep the file small.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6097524.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy b73cc12.</p>
 <p>This case checks the CFD path: an OpenFOAM case through <code>fh validate</code>, <code>simpleFoam</code> with the Spalart-Allmaras (SA) model, and the force coefficients of <code>forceCoeffs</code>.
 It is the plain NACA 0012 airfoil, before a case with a flap.</p>
 <h2>Sources</h2>
@@ -282,9 +294,9 @@ A larger difference shows a fault in the setup or in <code>fh</code>, not a prop
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000005" data-run="run-000005">naca0012-ladson/a-0.05 · run-000005</option><option value="run-000006" data-run="run-000006">naca0012-ladson/a4.04 · run-000006</option><option value="run-000007" data-run="run-000007">naca0012-ladson/a10.12 · run-000007</option></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="701b4e9c710862dea6d5ef93d9c47314"></script>
+<script src="viewer.js" nonce="a0c46f23d188b4d6be4cf2a267c001fb"></script>
 
-<script type="module" nonce="701b4e9c710862dea6d5ef93d9c47314">
+<script type="module" nonce="a0c46f23d188b4d6be4cf2a267c001fb">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
@@ -518,6 +530,10 @@ const text = document.querySelector("article");
 // No marker means every report control. A marker shows only the controls that it names.
 const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "sections,layout,identity").split(","));
 const hasRuns = runs.options.length > 0;
+// The text scrolls in its own box. On a phone the page scrolls: the top of the view is then the
+// top of the screen.
+const scroller = () => (getComputedStyle(text).overflowY === "visible" ? document.scrollingElement : text);
+const textTop = () => (scroller() === text ? text.getBoundingClientRect().top : 0);
 const hints = [];
 if (controls.has("sections")) {
   const headings = [...text.querySelectorAll("h2")];
@@ -526,20 +542,22 @@ if (controls.has("sections")) {
     headings.forEach((h, i) => $("sections").add(new Option(h.textContent, i)));
     $("sections").addEventListener("change", () => {
       const heading = headings[$("sections").value];
-      text.scrollTop += heading.getBoundingClientRect().top - text.getBoundingClientRect().top;
+      scroller().scrollTop += heading.getBoundingClientRect().top - textTop();
       heading.tabIndex = -1;
       heading.focus({ preventScroll: true });
     });
     // The menu shows the section at the top of the text, so a choice of any other section jumps.
     // At the end of the text, a chosen section in view stays: a short last section cannot reach the top.
     const current = () => {
-      const box = text.getBoundingClientRect();
+      const box = scroller();
+      const top = textTop();
       const chosen = headings[$("sections").selectedIndex]?.getBoundingClientRect().top;
-      if (text.scrollTop + text.clientHeight >= text.scrollHeight - 1 && chosen >= box.top && chosen < box.bottom) return;
+      if (box.scrollTop + box.clientHeight >= box.scrollHeight - 1 && chosen >= top && chosen < top + box.clientHeight) return;
       // Above the first heading (the top padding of the text, or an introduction), the menu shows the first section.
-      $("sections").selectedIndex = Math.max(0, headings.findLastIndex((h) => h.getBoundingClientRect().top <= box.top + 1));
+      $("sections").selectedIndex = Math.max(0, headings.findLastIndex((h) => h.getBoundingClientRect().top <= top + 1));
     };
     text.addEventListener("scroll", current, { passive: true });
+    window.addEventListener("scroll", current, { passive: true });
     current();
     hints.push("<kbd>Alt S</kbd> Section");
   }
@@ -548,11 +566,11 @@ if (controls.has("layout") && hasRuns) {
   $("layout-control").hidden = false;
   $("layout-control").addEventListener("change", (e) => {
     // The text reflows to the new width, so keep the first element that starts in view at its offset.
-    const top = () => text.getBoundingClientRect().top;
+    const top = textTop;
     const anchor = [...text.querySelectorAll("*")].find((e) => e.getClientRects().length && e.getBoundingClientRect().top >= top() - 1);
     const offset = anchor?.getBoundingClientRect().top - top();
     document.body.classList.toggle("text-mode", e.target.value === "text");
-    if (anchor) text.scrollTop += anchor.getBoundingClientRect().top - top() - offset;
+    if (anchor) scroller().scrollTop += anchor.getBoundingClientRect().top - top() - offset;
     window.dispatchEvent(new Event("resize"));
   });
   hints.push("<kbd>Alt T</kbd> Text", "<kbd>Alt V</kbd> Split");
@@ -705,7 +723,11 @@ async function start() {
     for (const area of [bar, text]) {
       area.addEventListener("click", (e) => {
         const target = e.target.closest("[data-run]");
-        if (target && !(target instanceof HTMLOptionElement || target instanceof HTMLInputElement)) open(target);
+        if (!target || target instanceof HTMLOptionElement || target instanceof HTMLInputElement || !open(target)) return;
+        // A link such as `href="#"` must not jump the page after the run opens.
+        if (target instanceof HTMLAnchorElement) e.preventDefault();
+        // On a phone the model is below the text, so a tap that shows a run scrolls the model into view.
+        if ($("model").getBoundingClientRect().top > innerHeight / 2) $("model").scrollIntoView({ block: "start" });
       });
       area.addEventListener("change", (e) => {
         const target = e.target instanceof HTMLSelectElement ? e.target.selectedOptions[0] : e.target;

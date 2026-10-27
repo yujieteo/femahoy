@@ -3,12 +3,12 @@ acoustics-pulsating-sphere	pass		1185000	1326e05
 bar-pressure	pass		140762	1326e05
 birth-death-column	pass		167648	1326e05
 buckling-column	pass		139799	1326e05
-cavity-devahldavis	pass		2756648	6097524
-cht-heated-channel	pass		703828	6097524
+cavity-devahldavis	pass		2758161	b73cc12
+cht-heated-channel	pass		705341	b73cc12
 contact-cattaneo	pass		1042224	1326e05
 contact-hertz	pass		142113	1326e05
 dam-break-martin-moyce	pass		2360697	1326e05
-dam-break-vof	pass		4315742	6097524
+dam-break-vof	pass		4317255	b73cc12
 dipole-king-middleton	pass		299314	1326e05
 dynamics-bar-step	pass		144081	1326e05
 fit-nist-pontius	pass		163518	1326e05
@@ -17,7 +17,7 @@ frequency-cantilever	pass		145592	1326e05
 heat-fin	pass		208355	1326e05
 hyperelastic-tube	pass		4381564	1326e05
 laminate-pagano	pass		638376	1326e05
-naca0012-ladson	pass		9379906	6097524
+naca0012-ladson	pass		9381419	b73cc12
 naca23012-flap	pass		9803835	69e0c94
 optics-mie-cylinder	pass		899251	1326e05
 plasticity-sphere	pass		149491	1326e05
@@ -33,4 +33,4 @@ topology-mbb-beam-cad	pass		518833	1326e05
 turek-hron-fsi1	pass		639053	1082d23
 warpage-2p5d-frame	pass		470103	1326e05
 warpage-thick-copper	pass		148832	1326e05
-wedge-oblique-shock	pass		1378725	6097524
+wedge-oblique-shock	pass		1380238	b73cc12
