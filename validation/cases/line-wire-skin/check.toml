@@ -1,0 +1,15 @@
+# The resistance per length of a round copper wire (radius 1 mm) at 1 MHz, where the radius is 15
+# skin depths, against the Bessel function answer (derivation.md). Tolerance budget: the error is
+# 1.9e-3 of the value. It comes from the segments of the outline of the wire, a quarter of the
+# skin depth long (the constant SKIN of fh-fem): the error falls as the square of the segment
+# length (4.4e-2, 1.1e-2, 4.6e-3 and 1.9e-3 at 1, 1/2, 0.35 and 1/4 skin depth), and max_cell
+# changes it by less than 1e-8 (3 meshes, derivation.md). The tolerance 4e-3 holds the error with
+# a margin of a factor of 2.
+rel_tol = 4e-3
+abs_tol = 0.0
+
+[r_1mhz]
+value = 4.29286576531e-2
+case = "wire"
+file = "line.txt"
+column = "R1_1"

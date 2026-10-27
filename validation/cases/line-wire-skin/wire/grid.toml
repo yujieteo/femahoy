@@ -1,0 +1,27 @@
+# A round copper wire of radius 1 mm in the middle of a square box of perfect conductor walls
+# (the return path). The skin effect raises the resistance of the wire with the frequency
+# (../derivation.md).
+units = "SI-m"
+
+[grid]
+max_cell = 1e-3
+
+[material.air]
+
+[material.copper]
+electric_conductivity = 5.8e7
+
+[part.wire]
+material = "copper"
+priority = 1
+circle = [0.0, 0.0, 1e-3]
+
+[part.air]
+material = "air"
+x = [-10e-3, 10e-3]
+y = [-10e-3, 10e-3]
+
+[line]
+signals = ["wire"]
+electric_walls = ["x-", "x+", "y-", "y+"]
+frequencies = [1e3, 1e4, 1e5, 1e6]
