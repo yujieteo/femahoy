@@ -239,10 +239,7 @@ fn walk(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 }
 
 #[test]
-fn guide_prints_a_guide_or_the_list_of_the_guides() {
-    let list = fh(&["guide"]);
-    assert!(list.status.success());
-    assert!(text(list.stdout).contains("- cfd: CFD with OpenFOAM\n"));
+fn guide_prints_a_guide_or_the_list_of_the_guides_for_an_unknown_name() {
     let cfd = fh(&["guide", "cfd"]);
     assert!(cfd.status.success());
     assert!(text(cfd.stdout).starts_with("# CFD with OpenFOAM\n"));

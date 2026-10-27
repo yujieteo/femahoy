@@ -52,15 +52,14 @@ pub fn index() -> String {
         .collect()
 }
 
-/// `fh guide NAME` prints the guide NAME. `fh guide` prints the index.
+/// `fh guide NAME` prints the guide NAME.
 pub fn command(args: &[String]) -> Result<ExitCode, String> {
     match args {
-        [] => print!("{}", index()),
         [name] => match GUIDES.iter().find(|(n, _)| n == name) {
             Some((_, text)) => print!("{text}"),
             None => return Err(format!("no guide {name}. The guides:\n{}", index())),
         },
-        _ => return Err("usage: fh guide [NAME]".into()),
+        _ => return Err("usage: fh guide NAME".into()),
     }
     Ok(ExitCode::SUCCESS)
 }
