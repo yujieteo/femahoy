@@ -75,7 +75,8 @@ const SCRIPT_PATH: &str = "/viewer/fh_viewer.js";
 /// opaque origin, so a worker cannot import a blob of the page, and a module worker does not
 /// start. Each next
 /// message has the bytes of the next step, or the error of its fetch. Each message gets 1
-/// answer: the read step in `ok` and the file of the next step in `next`, or an `error`.
+/// answer: the byte lists of the read step in `ok`, with each buffer transferred, and the file
+/// of the next step in `next`, or an `error`.
 const STEP_WORKER: &str = r#"
 let reader;
 onmessage = async ({ data }) => {
@@ -87,7 +88,7 @@ onmessage = async ({ data }) => {
       postMessage({ next: reader.next() });
     } else {
       const ok = reader.add(data.bytes ?? new Uint8Array(), data.error);
-      postMessage({ ok, next: reader.next() }, [ok.buffer]);
+      postMessage({ ok, next: reader.next() }, ok.map((list) => list.buffer));
     }
   } catch (e) {
     postMessage({ error: e instanceof Error ? e.message : String(e) });
@@ -118,8 +119,21 @@ impl StepReader {
     }
 
     /// Read the next step from its `bytes`, or from the `error` of its fetch.
-    pub fn add(&mut self, bytes: Vec<u8>, error: Option<String>) -> Result<Vec<u8>, String> {
-        self.0.add_and_send(error.map_or(Ok(bytes), Err))
+    pub fn add(&mut self, bytes: Vec<u8>, error: Option<String>) -> Result<js_sys::Array, String> {
+        let lists = self.0.add_and_send(error.map_or(Ok(bytes), Err))?;
+        Ok(lists.iter().map(|l| Uint8Array::from(&l[..])).collect())
+    }
+}
+
+/// The byte lists of a step that the worker transferred.
+impl results::Lists for js_sys::Array {
+    fn size(&self, i: usize) -> Option<usize> {
+        let list = self.get(i as u32).dyn_into::<Uint8Array>().ok()?;
+        Some(list.length() as usize)
+    }
+
+    fn copy(&self, i: usize, out: &mut [u8]) {
+        Uint8Array::new(&self.get(i as u32)).copy_to(out);
     }
 }
 
@@ -214,10 +228,10 @@ async fn load_run(
         let reply = answer.map_err(|e| format!("Run {run}: {e}"))?;
         if let Some(ok) = js_sys::Reflect::get(&reply, &"ok".into())
             .ok()
-            .and_then(|ok| ok.dyn_into::<Uint8Array>().ok())
+            .and_then(|ok| ok.dyn_into::<js_sys::Array>().ok())
         {
             results
-                .receive(&ok.to_vec())
+                .receive(&ok)
                 .map_err(|e| format!("Run {run}: {e}"))?;
         }
         let Some(file) = js_sys::Reflect::get(&reply, &"next".into())

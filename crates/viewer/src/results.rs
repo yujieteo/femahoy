@@ -4,6 +4,7 @@
 //! Plain functions with no GPU or file types. The caller gives the file bytes to `load`. The
 //! browser fetches them from the daemon, and the tests read them from disk.
 
+use bytemuck::Pod;
 use fh_core::vtu::{read_pvd, read_vtu, Grid};
 
 use crate::mesh::{self, RenderMesh};
@@ -394,18 +395,18 @@ impl Loader {
     }
 
     /// Read the next step like [`Loader::add`] and give it, with its mesh when the mesh is new,
-    /// as the bytes of [`Results::receive`]. The worker of the page reads the steps with this,
+    /// as the lists of [`Results::receive`]. The worker of the page reads the steps with this,
     /// so that a large step does not stop the page. The loader then keeps only what it needs to
     /// check the next steps, so [`Loader::finish`] has no step data after this.
-    pub fn add_and_send(&mut self, bytes: Result<Vec<u8>, String>) -> Result<Vec<u8>, String> {
+    pub fn add_and_send(&mut self, bytes: Result<Vec<u8>, String>) -> Result<Vec<Vec<u8>>, String> {
         self.add(bytes)?;
-        let mut out = Vec::new();
+        let mut out = vec![Vec::new()];
         put_text(&mut out, &self.units);
-        u8::from(self.multibody).put(&mut out);
-        u8::from(self.moves).put(&mut out);
+        put(&mut out, u8::from(self.multibody));
+        put(&mut out, u8::from(self.moves));
         let mesh = self.meshes.get_mut(self.sent).map(std::mem::take);
         self.sent = self.meshes.len();
-        u8::from(mesh.is_some()).put(&mut out);
+        put(&mut out, u8::from(mesh.is_some()));
         if let Some(m) = mesh {
             put_list(&mut out, &m.positions);
             put_list(&mut out, &m.source_node);
@@ -414,26 +415,26 @@ impl Loader {
             put_list(&mut out, &m.edges);
             put_list(&mut out, &m.feature_edges);
             for n in [m.node_count, m.element_count, m.skipped_elements] {
-                (n as u64).put(&mut out);
+                put(&mut out, n as u64);
             }
-            u8::from(m.bounds.is_some()).put(&mut out);
+            put(&mut out, u8::from(m.bounds.is_some()));
             if let Some(b) = m.bounds {
-                b.min.put(&mut out);
-                b.max.put(&mut out);
+                put(&mut out, b.min);
+                put(&mut out, b.max);
             }
         }
         let step = self.steps.last_mut().ok_or("no step is read")?;
-        step.time.put(&mut out);
+        put(&mut out, step.time);
         put_text(&mut out, &step.file);
-        (step.mesh as u64).put(&mut out);
+        put(&mut out, step.mesh as u64);
         put_list(&mut out, &std::mem::take(&mut step.displacement));
         let fields = std::mem::take(&mut step.fields);
-        (fields.len() as u64).put(&mut out);
+        put(&mut out, fields.len() as u64);
         for f in fields {
             put_text(&mut out, &f.name);
-            (f.quantity as u8).put(&mut out);
-            (f.location as u8).put(&mut out);
-            u8::from(f.component).put(&mut out);
+            put(&mut out, f.quantity as u8);
+            put(&mut out, f.location as u8);
+            put(&mut out, u8::from(f.component));
             put_list(&mut out, &f.values);
         }
         Ok(out)
@@ -452,9 +453,16 @@ impl Loader {
 }
 
 impl Results {
-    /// Add the step that [`Loader::add_and_send`] gave as `bytes`.
-    pub fn receive(&mut self, bytes: &[u8]) -> Result<(), String> {
-        let mut r = Received(bytes);
+    /// Add the step that [`Loader::add_and_send`] gave as `lists`. Each list of numbers is a
+    /// copy of its bytes, with no work for each element, so that a large step does not stop
+    /// the page.
+    pub fn receive<L: Lists + ?Sized>(&mut self, lists: &L) -> Result<(), String> {
+        let head = list::<u8, _>(lists, 0)?;
+        let mut r = Received {
+            head: &head,
+            lists,
+            next: 1,
+        };
         self.units = r.text()?;
         self.multibody = r.get::<u8>()? != 0;
         self.moves = r.get::<u8>()? != 0;
@@ -501,7 +509,7 @@ impl Results {
                 values: r.list()?,
             });
         }
-        if mesh >= self.meshes.len() || !r.0.is_empty() {
+        if mesh >= self.meshes.len() || !r.head.is_empty() {
             return Err(BAD_STEP.into());
         }
         self.steps.push(Step {
@@ -515,77 +523,81 @@ impl Results {
     }
 }
 
-/// The error of [`Results::receive`] for bytes that [`Loader::add_and_send`] did not write.
+/// The error of [`Results::receive`] for lists that [`Loader::add_and_send`] did not write.
 const BAD_STEP: &str = "the step data from the worker is not complete";
 
-/// A number that [`Loader::add_and_send`] writes as its little-endian bytes.
-trait Plain: Sized {
-    const SIZE: usize;
-    fn put(&self, out: &mut Vec<u8>);
-    fn get(bytes: &[u8]) -> Self;
+/// The byte lists of 1 step from [`Loader::add_and_send`]: the small values first, then each
+/// list of numbers. The page gives the buffers that the worker transferred.
+pub trait Lists {
+    /// The number of bytes of list `i`, or `None` when there is no list `i`.
+    fn size(&self, i: usize) -> Option<usize>;
+    /// Copy the bytes of list `i` into `out`, which has [`Lists::size`] bytes.
+    fn copy(&self, i: usize, out: &mut [u8]);
 }
 
-macro_rules! plain {
-    ($($t:ty),*) => {$(
-        impl Plain for $t {
-            const SIZE: usize = size_of::<$t>();
-            fn put(&self, out: &mut Vec<u8>) {
-                out.extend_from_slice(&self.to_le_bytes());
-            }
-            fn get(bytes: &[u8]) -> Self {
-                let mut b = [0; size_of::<$t>()];
-                b.copy_from_slice(bytes);
-                <$t>::from_le_bytes(b)
-            }
-        }
-    )*};
-}
-plain!(u8, u32, u64, f32, f64);
-
-impl<T: Plain, const N: usize> Plain for [T; N] {
-    const SIZE: usize = T::SIZE * N;
-    fn put(&self, out: &mut Vec<u8>) {
-        self.iter().for_each(|v| v.put(out));
+impl Lists for [Vec<u8>] {
+    fn size(&self, i: usize) -> Option<usize> {
+        self.get(i).map(Vec::len)
     }
-    fn get(bytes: &[u8]) -> Self {
-        std::array::from_fn(|i| T::get(&bytes[i * T::SIZE..][..T::SIZE]))
+
+    fn copy(&self, i: usize, out: &mut [u8]) {
+        out.copy_from_slice(&self[i]);
     }
 }
 
-fn put_list<T: Plain>(out: &mut Vec<u8>, values: &[T]) {
-    (values.len() as u64).put(out);
-    values.iter().for_each(|v| v.put(out));
+/// List `i` of `lists` as values of `T`.
+fn list<T: Pod, L: Lists + ?Sized>(lists: &L, i: usize) -> Result<Vec<T>, String> {
+    let size = lists.size(i).ok_or(BAD_STEP)?;
+    if size % size_of::<T>() != 0 {
+        return Err(BAD_STEP.into());
+    }
+    let mut values = vec![T::zeroed(); size / size_of::<T>()];
+    lists.copy(i, bytemuck::cast_slice_mut(&mut values));
+    Ok(values)
 }
 
-fn put_text(out: &mut Vec<u8>, text: &str) {
-    put_list(out, text.as_bytes());
+fn put<T: Pod>(out: &mut [Vec<u8>], value: T) {
+    out[0].extend_from_slice(bytemuck::bytes_of(&value));
 }
 
-/// The bytes of [`Loader::add_and_send`] that [`Results::receive`] did not read yet.
-struct Received<'a>(&'a [u8]);
+fn put_list<T: Pod>(out: &mut Vec<Vec<u8>>, values: &[T]) {
+    out.push(bytemuck::cast_slice(values).to_vec());
+}
 
-impl<'a> Received<'a> {
-    fn take(&mut self, n: usize) -> Result<&'a [u8], String> {
-        if n > self.0.len() {
+fn put_text(out: &mut [Vec<u8>], text: &str) {
+    put(out, text.len() as u64);
+    out[0].extend_from_slice(text.as_bytes());
+}
+
+/// The lists of [`Loader::add_and_send`] that [`Results::receive`] did not read yet.
+struct Received<'a, L: ?Sized> {
+    head: &'a [u8],
+    lists: &'a L,
+    next: usize,
+}
+
+impl<L: Lists + ?Sized> Received<'_, L> {
+    fn take(&mut self, n: usize) -> Result<&[u8], String> {
+        if n > self.head.len() {
             return Err(BAD_STEP.into());
         }
-        let (taken, rest) = self.0.split_at(n);
-        self.0 = rest;
+        let (taken, rest) = self.head.split_at(n);
+        self.head = rest;
         Ok(taken)
     }
 
-    fn get<T: Plain>(&mut self) -> Result<T, String> {
-        Ok(T::get(self.take(T::SIZE)?))
+    fn get<T: Pod>(&mut self) -> Result<T, String> {
+        Ok(bytemuck::pod_read_unaligned(self.take(size_of::<T>())?))
     }
 
-    fn list<T: Plain>(&mut self) -> Result<Vec<T>, String> {
-        let n = usize::try_from(self.get::<u64>()?).map_err(|_| BAD_STEP)?;
-        let bytes = self.take(n.checked_mul(T::SIZE).ok_or(BAD_STEP)?)?;
-        Ok(bytes.chunks_exact(T::SIZE).map(T::get).collect())
+    fn list<T: Pod>(&mut self) -> Result<Vec<T>, String> {
+        self.next += 1;
+        list(self.lists, self.next - 1)
     }
 
     fn text(&mut self) -> Result<String, String> {
-        String::from_utf8(self.list()?).map_err(|_| BAD_STEP.into())
+        let n = usize::try_from(self.get::<u64>()?).map_err(|_| BAD_STEP)?;
+        String::from_utf8(self.take(n)?.to_vec()).map_err(|_| BAD_STEP.into())
     }
 }
 
@@ -953,7 +965,7 @@ mod tests {
             while let Some(file) = loader.next_file() {
                 let bytes = std::fs::read(dir.join(file)).map_err(|e| e.to_string());
                 let sent = loader.add_and_send(bytes).unwrap();
-                received.receive(&sent).unwrap();
+                received.receive(&sent[..]).unwrap();
                 if first.is_empty() {
                     first = sent;
                 }
@@ -965,12 +977,18 @@ mod tests {
                 dir.display()
             );
         }
-        for cut in [0, 1, first.len() / 2, first.len() - 1] {
+        for cut in [0, 1, first[0].len() / 2, first[0].len() - 1] {
+            let mut cut_head = first.clone();
+            cut_head[0].truncate(cut);
             assert_eq!(
-                Results::default().receive(&first[..cut]),
+                Results::default().receive(&cut_head[..]),
                 Err(BAD_STEP.into())
             );
         }
+        assert_eq!(
+            Results::default().receive(&first[..first.len() - 1]),
+            Err(BAD_STEP.into())
+        );
         let pvd = r#"<VTKFile type="Collection"><Collection><DataSet timestep="1" file="a.vtu"/></Collection></VTKFile>"#;
         let mut loader = Loader::new(crate::RESULTS_FILE, pvd).unwrap();
         assert_eq!(
