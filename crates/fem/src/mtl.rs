@@ -131,35 +131,42 @@ pub fn touchstone(f: &[f64], s: &[Matrix], z_ref: f64, comments: &[String]) -> S
     }
     out.push_str(&format!("# Hz S RI R {z_ref}\n"));
     for (freq, m) in f.iter().zip(s) {
-        let p = m.n;
-        let pair = |v: C64| format!(" {:.12e} {:.12e}", v.re, v.im);
-        if p == 2 {
-            // The 2-port order is S11 S21 S12 S22 on 1 line.
-            out.push_str(&format!("{freq:.12e}"));
-            for (i, j) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
-                out.push_str(&pair(m.at(i, j)));
-            }
-            out.push('\n');
-            continue;
+        out.push_str(&touchstone_row(*freq, m));
+    }
+    out
+}
+
+/// The Touchstone 1.1 lines of the S matrix `m` at the frequency `freq` (Hz).
+pub fn touchstone_row(freq: f64, m: &Matrix) -> String {
+    let mut out = String::new();
+    let p = m.n;
+    let pair = |v: C64| format!(" {:.12e} {:.12e}", v.re, v.im);
+    if p == 2 {
+        // The 2-port order is S11 S21 S12 S22 on 1 line.
+        out.push_str(&format!("{freq:.12e}"));
+        for (i, j) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+            out.push_str(&pair(m.at(i, j)));
         }
-        // Each row of the matrix, at most 4 pairs on a line.
-        for i in 0..p {
-            let mut line = if i == 0 {
-                format!("{freq:.12e}")
-            } else {
-                String::new()
-            };
-            for j in 0..p {
-                if j > 0 && j % 4 == 0 {
-                    out.push_str(line.trim_end());
-                    out.push('\n');
-                    line = String::new();
-                }
-                line.push_str(&pair(m.at(i, j)));
+        out.push('\n');
+        return out;
+    }
+    // Each row of the matrix, at most 4 pairs on a line.
+    for i in 0..p {
+        let mut line = if i == 0 {
+            format!("{freq:.12e}")
+        } else {
+            String::new()
+        };
+        for j in 0..p {
+            if j > 0 && j % 4 == 0 {
+                out.push_str(line.trim_end());
+                out.push('\n');
+                line = String::new();
             }
-            out.push_str(&line);
-            out.push('\n');
+            line.push_str(&pair(m.at(i, j)));
         }
+        out.push_str(&line);
+        out.push('\n');
     }
     out
 }
