@@ -24,6 +24,7 @@
 //! | `GET /` | | the page of the daemon (HTML): the chat, the list of the runs and the wasm viewer |
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
 //! | `GET /api/v1/runs` | | one item `<run> <input>` for each run that has results |
+//! | `GET /api/v1/solves` | | one item `<run> <elapsed s> <solved fraction> <time left s> <folder>` for each solve that runs now, with `-` for no fraction (`store` module) |
 //! | `GET /api/v1/runs/<r>/input` | | the text of the copy of the input that the run solves, with its `*INCLUDE` files (bytes). No bytes for an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep or openEMS case |
 //! | `GET /api/v1/runs/<r>/files/<name>` | | a file of the run folder (bytes) |
 //! | `GET /api/v1/runs/<r>/artifacts` | | retained input and result files, and the registered report |
@@ -55,7 +56,7 @@ use std::time::{Duration, Instant};
 
 use super::chat::Chat;
 use super::message::{bad, fail, Failure, Message};
-use super::store::Store;
+use super::store::{self, Store};
 
 const MAX_HEAD: usize = 16 << 10;
 const MAX_HEADERS: usize = 64;
@@ -356,6 +357,20 @@ fn viewer_file(viewer: Option<&Path>, name: &str) -> Result<Reply, Failure> {
     Ok(Reply::Bytes(kind, bytes))
 }
 
+/// A solve that runs as `<run> <elapsed s> <solved fraction> <time left s> <folder>`. A
+/// solve with no fraction has `-` for the fraction and the time left. The time left assumes
+/// that the rest of the solve goes at the mean rate so far.
+fn solve_item(s: &store::Solve) -> String {
+    let (fraction, left) = match s.fraction.filter(|f| *f > 0.0) {
+        Some(f) => (
+            format!("{f:.4}"),
+            format!("{:.0}", s.elapsed * (1.0 - f) / f),
+        ),
+        None => ("-".into(), "-".into()),
+    };
+    format!("{} {:.0} {fraction} {left} {}", s.run, s.elapsed, s.folder)
+}
+
 fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
     if req.is_page() {
         return Ok(Reply::Page(
@@ -384,6 +399,9 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
                 .iter()
                 .map(|(run, input)| format!("{run} {input}"))
                 .collect();
+        }
+        ("GET", ["", "api", "v1", "solves"]) => {
+            m.items = store.solves().iter().map(solve_item).collect();
         }
         ("GET", ["", "api", "v1", "runs", r, "artifacts"]) => {
             m.items = store.files(r)?;

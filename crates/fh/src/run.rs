@@ -46,7 +46,7 @@ use std::time::{Duration, Instant};
 
 use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::chrono::{self, Chrono};
-use fh::daemon::{default_state_dir, new_preview, new_run};
+use fh::daemon::{default_state_dir, new_preview, new_run, start_solve};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
 use fh::lammps::{self, Lammps};
@@ -321,6 +321,21 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
         Err(e) => return Ok(fail(FAILED, &format!("the run folder failed: {e}"))),
     };
     println!("fh run: {} solves {}", run.id, file.display());
+    // The page shows the solve while it runs, with the solved fraction of a CalculiX solve.
+    let periods = match solver {
+        Solver::Ccx => fh_core::inp::flatten(&run.input)
+            .ok()
+            .and_then(|flat| {
+                let steps = fh_core::inp::parse(&flat.text).steps;
+                steps.iter().map(|s| s.period).collect::<Option<Vec<f64>>>()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    let _solving = match start_solve(&run, &periods) {
+        Ok(solving) => solving,
+        Err(e) => return Ok(fail(FAILED, &e)),
+    };
     let cancel = CancelToken::new();
     signal::install();
     let flag = cancel.clone();

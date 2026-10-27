@@ -57,8 +57,11 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 - Rejects any request whose `Origin` is not the daemon's own page.
 - Serves the page and the wasm viewer itself. On macOS it then opens the user's browser at that page. On other systems it only prints the address.
 - The browser never holds an API key.
+- Shows each solve that runs now, also when the turn of the agent has ended: the run, the folder, the elapsed time and, for CalculiX, the solved fraction from `job.sta` and the time left. `fh run` writes and locks a `solving` file of the run. The lock ends when `fh run` ends, also at SIGKILL, so a killed solve does not show.
 
 Reason: a web page on another origin must not use the daemon, and a key in the browser can leak.
+
+Reason of the solve list: an agent started 4 CalculiX solves in the background and ended its turn. The page showed the agent idle while 2 solves ran for 1 h 40 min more, and the person thought that the job was done.
 
 ### 4.2 Clients
 

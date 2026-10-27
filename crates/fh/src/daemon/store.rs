@@ -16,6 +16,9 @@
 //! <state>/runs/<run>/out/             run folder of the solver. `results.pvd` is the last
 //!                                     file that a run writes, so a run has results when it lists
 //!                                     a step
+//! <state>/runs/<run>/solving          the start time of a solve that runs, and the step periods
+//!                                     of a CalculiX input. `fh run` locks it during the solve and
+//!                                     removes it at the end
 //! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
 //! <state>/previews/<n>/title          the name of the model in the page
 //! ```
@@ -25,9 +28,10 @@
 //! name and renamed, so the daemon never sees a partial preview. The daemon only reads these
 //! folders, so any number of daemons can use one state folder.
 
-use std::fs;
-use std::io::ErrorKind;
+use std::fs::{self, File, TryLockError};
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::ccx::{input_text, result_frames, stage_input, INPUT_FILE};
 use crate::{foam, getdp, precice, topology, Solver};
@@ -40,6 +44,7 @@ const SOURCE_FILE: &str = "source";
 const TITLE_FILE: &str = "title";
 const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
+const SOLVING_FILE: &str = "solving";
 
 /// A run ID: `run-` and 6 or more digits. Run IDs count up in each state folder.
 fn valid_run(id: &str) -> bool {
@@ -131,6 +136,78 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
     })
 }
 
+/// The seconds since 1970.
+fn now() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0.0, |d| d.as_secs_f64())
+}
+
+/// The `solving` file of a run while `fh run` solves it. The drop removes the file.
+pub struct Solving {
+    path: PathBuf,
+    // The lock ends when the file closes.
+    _file: File,
+}
+
+impl Drop for Solving {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+/// Write and lock the `solving` file of `run`. `periods` are the time periods of the steps of
+/// a CalculiX input, or empty.
+pub fn start_solve(run: &Run, periods: &[f64]) -> Result<Solving, String> {
+    let dir = run.out.parent().expect("a run folder holds out");
+    let err = |e| format!("solve record: {e}");
+    // Lock the file before the rename, so the daemon never sees it with no lock.
+    let hidden = dir.join(format!(".{SOLVING_FILE}-{}", std::process::id()));
+    let mut file = File::create(&hidden).map_err(err)?;
+    file.lock().map_err(err)?;
+    let periods: Vec<String> = periods.iter().map(f64::to_string).collect();
+    write!(file, "started={}\nperiods={}\n", now(), periods.join(" ")).map_err(err)?;
+    let path = dir.join(SOLVING_FILE);
+    fs::rename(&hidden, &path).map_err(err)?;
+    Ok(Solving { path, _file: file })
+}
+
+/// The solved fraction of a CalculiX solve: the step and the step time of the last line of
+/// `job.sta` with the time period of each step.
+fn solved_fraction(periods: &[f64], sta: &str) -> Option<f64> {
+    let line = sta.lines().rev().find_map(|l| {
+        let f: Vec<&str> = l.split_whitespace().collect();
+        let step = f.first()?.parse::<usize>().ok()?;
+        f.get(1)?.parse::<u64>().ok()?;
+        Some((step, f.get(5)?.parse::<f64>().ok()?))
+    });
+    let (step, time) = line?;
+    let period = *periods.get(step.checked_sub(1)?)?;
+    let total: f64 = periods.iter().sum();
+    let done: f64 = periods[..step - 1].iter().sum::<f64>() + time.clamp(0.0, period);
+    Some(done / total)
+}
+
+/// The last `n` bytes of a file, as text.
+fn tail(path: &Path, n: u64) -> Option<String> {
+    let mut file = File::open(path).ok()?;
+    let length = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(length.saturating_sub(n))).ok()?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).ok()?;
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// A solve that runs now.
+pub(crate) struct Solve {
+    pub run: String,
+    /// The folder of the input file, or the case folder.
+    pub folder: String,
+    pub elapsed: f64,
+    /// The solved fraction of a CalculiX solve, from 0 to 1.
+    pub fraction: Option<f64>,
+}
+
 /// Copy the input file and its `*INCLUDE` files with no run, so that the page shows the model
 /// with its supports and loads before the solve. `title` is the name of the model in the
 /// page. The answer is the preview number.
@@ -212,6 +289,54 @@ impl Store {
                 (run, input.unwrap_or_default())
             })
             .collect())
+    }
+
+    /// The solves that run now, in run order. A `solving` file with no lock is not a solve.
+    pub(crate) fn solves(&self) -> Vec<Solve> {
+        let dir = self.dir.join(RUNS_DIR);
+        let entries = fs::read_dir(&dir).into_iter().flatten().flatten();
+        let mut names: Vec<String> = entries
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| valid_run(n) && dir.join(n).join(SOLVING_FILE).is_file())
+            .collect();
+        names.sort();
+        names
+            .into_iter()
+            .filter_map(|run| {
+                let path = dir.join(&run);
+                let mut file = File::open(path.join(SOLVING_FILE)).ok()?;
+                match file.try_lock_shared() {
+                    Err(TryLockError::WouldBlock) => {}
+                    _ => return None,
+                }
+                let mut text = String::new();
+                file.read_to_string(&mut text).ok()?;
+                let field = |k: &str| {
+                    let prefix = format!("{k}=");
+                    text.lines()
+                        .find_map(|l| l.strip_prefix(&prefix).map(str::to_owned))
+                };
+                let started: f64 = field("started")?.parse().ok()?;
+                let periods: Vec<f64> = field("periods")?
+                    .split_whitespace()
+                    .filter_map(|p| p.parse().ok())
+                    .collect();
+                let sta = path.join(OUT_DIR).join("ccx").join("job.sta");
+                let fraction = tail(&sta, 4096).and_then(|t| solved_fraction(&periods, &t));
+                let source = PathBuf::from(fs::read_to_string(path.join(SOURCE_FILE)).ok()?);
+                let folder = if source.is_dir() {
+                    source
+                } else {
+                    source.parent().map(Path::to_owned).unwrap_or(source)
+                };
+                Some(Solve {
+                    run,
+                    folder: folder.display().to_string(),
+                    elapsed: (now() - started).max(0.0),
+                    fraction,
+                })
+            })
+            .collect()
     }
 
     /// List only retained files of this run. Never accept a workspace path from the page.
@@ -390,5 +515,30 @@ impl Store {
             ErrorKind::NotFound => fail(404, format!("run {run} has no file {name}")),
             _ => fail(500, format!("{name}: {e}")),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::solved_fraction;
+
+    #[test]
+    fn the_fraction_counts_the_earlier_steps() {
+        let sta = " SUMMARY OF JOB INFORMATION\n  STEP      INC     ATT  ITRS     TOT TIME     \
+                   STEP TIME      INC TIME\n     1          4     1     2  0.100000E+01  \
+                   0.100000E+01  0.125000E+00\n     2          3     1     2  0.100300E+01  \
+                   0.300000E-02  0.100000E-02\n";
+        let f = solved_fraction(&[1.0, 0.012], sta).unwrap();
+        assert!((f - 1.003 / 1.012).abs() < 1e-12, "{f}");
+        assert_eq!(solved_fraction(&[], sta), None, "no periods");
+        assert_eq!(
+            solved_fraction(&[1.0], sta),
+            None,
+            "a step that the input has not"
+        );
+        assert_eq!(
+            solved_fraction(&[1.0], " SUMMARY OF JOB INFORMATION\n"),
+            None
+        );
     }
 }

@@ -54,6 +54,11 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #busy::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.2; } }
 #clock { margin-left: auto; font-variant-numeric: tabular-nums; }
+#solves { display: grid; gap: 2px; margin: 0 var(--space-3) var(--space-2); padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius); font-size: var(--small); color: var(--muted); }
+#solves p { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); min-width: 0; margin: 0; }
+#solves p::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--text); animation: pulse 1.2s ease-in-out infinite; }
+#solves span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+#solves .time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 #error { margin: 0 var(--space-4) var(--space-2); font-size: var(--small); color: var(--error); overflow-wrap: anywhere; }
 #composer { margin: 0 var(--space-3) var(--space-3); padding: 10px 6px 6px var(--space-4); border: 1px solid var(--line); border-radius: 24px; background: var(--raised); }
 #input {
@@ -160,6 +165,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
     <p id="busy">The agent works<span id="clock"></span></p>
     <p id="now" hidden><b>Now</b><code></code></p>
   </div>
+  <div id="solves" aria-label="Solves that run" hidden></div>
   <p id="error" hidden></p>
   <button type="button" id="rerun" data-control="prepare-rerun" hidden>Prepare rerun</button>
   <form id="composer">
@@ -746,6 +752,37 @@ async function read() {
   timer = setTimeout(read, running ? 1000 : 5000);
 }
 
+// A time as `40 s`, `12 min` or `1 h 42 min`.
+function duration(s) {
+  if (s < 60) return Math.floor(s) + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min";
+  return Math.floor(s / 3600) + " h " + Math.floor((s % 3600) / 60) + " min";
+}
+
+// Each solve that runs now, each 10 seconds: the run, the folder, the elapsed time and, for
+// CalculiX, the solved fraction and the time left. It shows also when the turn of the agent
+// has ended, so a solve that runs never looks like a finished job.
+async function readSolves() {
+  try {
+    const { items } = await reply("/api/v1/solves");
+    $("solves").replaceChildren(...items.map((item) => {
+      const [run, elapsed, fraction, left, ...rest] = item.split(" ");
+      const folder = rest.join(" ");
+      const name = el("span", "", "Solve " + run + " · " + (folder.split("/").pop() || folder));
+      name.title = folder;
+      let time = "runs " + duration(Number(elapsed));
+      if (fraction !== "-") time += " · " + Math.floor(100 * fraction) + " % · about " + duration(Number(left)) + " left";
+      const p = el("p", "", "");
+      p.append(name, el("span", "time", time));
+      return p;
+    }));
+    $("solves").hidden = !items.length;
+  } catch (e) {
+    showError(e.message);
+  }
+  setTimeout(readSolves, 10000);
+}
+
 // Send the message to the agent, also while it works.
 async function ask() {
   const text = input.value.trim();
@@ -800,6 +837,7 @@ $("rerun").addEventListener("click", () => {
     : "Prepare a new run from the previous retained input. Preserve the previous result. Confirm the input and result target before the solve.");
 });
 read();
+readSolves();
 // With no run open, the model area is empty, so the page opens Runs.
 listRuns().then(() => { if (!shown && foundRuns.length) $("runs").open = true; }).catch((e) => showError(e.message));
 startViewer();

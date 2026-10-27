@@ -5,13 +5,13 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use fh::daemon::{new_preview, new_run, Daemon, Options};
 
 mod common;
-use common::{ccx_solver, p, root};
+use common::{ccx_solver, p, root, script};
 
 struct Lab {
     dir: PathBuf,
@@ -118,6 +118,7 @@ fn every_route_needs_the_token_and_the_own_origin_and_host() {
         ("POST", "/api/v1/chat"),
         ("POST", "/api/v1/chat/stop"),
         ("GET", "/api/v1/runs"),
+        ("GET", "/api/v1/solves"),
         ("GET", "/api/v1/runs/run-000001/input"),
         ("GET", "/api/v1/runs/run-000001/files/results.pvd"),
         ("GET", "/api/v1/previews/1"),
@@ -321,6 +322,59 @@ fn a_topology_run_copies_the_include_files_of_its_job() {
     let auth = [("Authorization", bearer.as_str())];
     let input = lab.get(&format!("/api/v1/runs/{}/input", run.id), &auth);
     assert_eq!((input.status, input.text()), (200, format!("{mesh}{rest}")));
+}
+
+/// The page shows each solve that runs, with the solved fraction of `job.sta`, from the start of
+/// `fh run`. A solve that `fh run` stopped, or that a signal killed, is not in the list.
+#[test]
+fn the_page_shows_each_solve_that_runs() {
+    let lab = Lab::new("solves");
+    // A fake ccx that solved 1/4 of the step of bar-pressure (period 1.0), then waits.
+    let ccx = script(
+        &lab.dir.join("ccx"),
+        "#!/bin/sh\nprintf '  STEP INC ATT ITRS TOT TIME STEP TIME INC TIME\\n\
+         1 1 1 2 0.25 0.25 0.25\\n' > job.sta\nexec sleep 300\n",
+    );
+    let input = root().join("validation/cases/bar-pressure/job.inp");
+    let folder = input.parent().unwrap().canonicalize().unwrap();
+    let bearer = lab.bearer();
+    let solves = || {
+        lab.get("/api/v1/solves", &[("Authorization", &bearer)])
+            .text()
+    };
+    for signal in ["-TERM", "-KILL"] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fh"))
+            .args(["run", p(&input)])
+            .env("FH_STATE", lab.state())
+            .env("FH_CCX", &ccx)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let end = Instant::now() + Duration::from_secs(30);
+        let item = loop {
+            if let Some(item) = solves().lines().find(|l| l.contains(" 0.2500 ")) {
+                break item.to_owned();
+            }
+            assert!(
+                Instant::now() < end,
+                "no solve with a fraction: {}",
+                solves()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        let fields: Vec<&str> = item.splitn(5, ' ').collect();
+        assert!(fields[0].starts_with("run-"), "{item}");
+        assert!(fields[1].parse::<u64>().is_ok(), "elapsed: {item}");
+        assert!(fields[3].parse::<u64>().is_ok(), "time left: {item}");
+        assert_eq!(fields[4], p(&folder), "{item}");
+        let killed = Command::new("kill")
+            .args([signal, &child.id().to_string()])
+            .status();
+        assert!(killed.unwrap().success());
+        child.wait().unwrap();
+        assert_eq!(solves().trim(), "", "after {signal}");
+    }
 }
 
 /// The solve of a case that asks for no field (no `*NODE FILE`, no `*EL FILE`) ends with code 0
