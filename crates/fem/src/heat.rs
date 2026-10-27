@@ -114,6 +114,8 @@ pub enum Cell {
     Hex8,
     /// A 4-node tetrahedron with a positive volume, in the order of a VTK tetra.
     Tet4,
+    /// A 10-node tetrahedron with straight edges, in the order of a VTK quadratic tetra.
+    Tet10,
 }
 
 impl Cell {
@@ -121,6 +123,7 @@ impl Cell {
         match self {
             Cell::Hex8 => 8,
             Cell::Tet4 => 4,
+            Cell::Tet10 => 10,
         }
     }
 }
@@ -805,6 +808,55 @@ fn locate_tet(tm: &TetMesh, x: [f64; 3]) -> Option<Vec<(u32, f64)>> {
     (worst >= -1e-9).then(|| tm.tets[e].iter().copied().zip(w).collect())
 }
 
+/// The faces of each face set of the model on the tetrahedral mesh.
+fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
+    let used: Vec<bool> = model
+        .faces
+        .iter()
+        .map(|set| {
+            model.loads.iter().any(|l| match l {
+                Load::Temperature { faces, .. }
+                | Load::Flux { faces, .. }
+                | Load::Convection { faces, .. } => model.faces[*faces].name == set.name,
+                Load::Source { .. } => false,
+            })
+        })
+        .collect();
+    let sets = select_tet_faces(&model.faces, &used, tm)?;
+    Ok(sets
+        .iter()
+        .map(|list| {
+            list.iter()
+                .map(|&k| {
+                    let f = &tm.faces[k];
+                    let (_, area) = face_normal(f.nodes.map(|i| tm.points[i as usize]));
+                    let m = area / 12.0;
+                    Facet {
+                        nodes: [f.nodes[0], f.nodes[1], f.nodes[2], 0],
+                        count: 3,
+                        area,
+                        mass: vec![2.0 * m, m, m, m, 2.0 * m, m, m, m, 2.0 * m],
+                    }
+                })
+                .collect()
+        })
+        .collect())
+}
+
+/// The unit normal of the triangle `p` (counterclockwise from the side it points to) and its
+/// area.
+pub(crate) fn face_normal(p: [[f64; 3]; 3]) -> ([f64; 3], f64) {
+    let u: [f64; 3] = std::array::from_fn(|d| p[1][d] - p[0][d]);
+    let w: [f64; 3] = std::array::from_fn(|d| p[2][d] - p[0][d]);
+    let n = [
+        u[1] * w[2] - u[2] * w[1],
+        u[2] * w[0] - u[0] * w[2],
+        u[0] * w[1] - u[1] * w[0],
+    ];
+    let twice = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    (n.map(|v| v / twice), 0.5 * twice)
+}
+
 /// The size of the bounding box of the points times 1e-9: the tolerance of a face selection.
 pub(crate) fn face_tol(points: &[[f64; 3]]) -> f64 {
     let mut lo = [f64::INFINITY; 3];
@@ -823,15 +875,7 @@ pub(crate) fn face_tol(points: &[[f64; 3]]) -> f64 {
 /// `face_tol`.
 pub(crate) fn selects(set: &FaceSet, tm: &TetMesh, f: &BoundaryFace, t: f64) -> Option<f64> {
     let p = f.nodes.map(|i| tm.points[i as usize]);
-    let u: [f64; 3] = std::array::from_fn(|d| p[1][d] - p[0][d]);
-    let w: [f64; 3] = std::array::from_fn(|d| p[2][d] - p[0][d]);
-    let n = [
-        u[1] * w[2] - u[2] * w[1],
-        u[2] * w[0] - u[0] * w[2],
-        u[0] * w[1] - u[1] * w[0],
-    ];
-    let twice = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-    let unit = n.map(|v| v / twice);
+    let (unit, area) = face_normal(p);
     if !set.sides.is_empty()
         && !set.sides.iter().any(|s| {
             let sign = if s.positive { 1.0 } else { -1.0 };
@@ -861,34 +905,26 @@ pub(crate) fn selects(set: &FaceSet, tm: &TetMesh, f: &BoundaryFace, t: f64) -> 
             return None;
         }
     }
-    Some(0.5 * twice)
+    Some(area)
 }
 
-/// The faces of each face set of the model on the tetrahedral mesh.
-fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
+/// The faces of `tm.faces` (their indices) of each face set `sets`. `used` marks the face sets
+/// that a load uses: each must select a face.
+pub(crate) fn select_tet_faces(
+    sets: &[FaceSet],
+    used: &[bool],
+    tm: &TetMesh,
+) -> Result<Vec<Vec<usize>>, String> {
     let t = face_tol(&tm.points);
     let mut out = Vec::new();
-    for set in &model.faces {
+    for (set, used) in sets.iter().zip(used) {
         let mut list = Vec::new();
-        for f in &tm.faces {
-            let Some(area) = selects(set, tm, f, t) else {
-                continue;
-            };
-            let m = area / 12.0;
-            list.push(Facet {
-                nodes: [f.nodes[0], f.nodes[1], f.nodes[2], 0],
-                count: 3,
-                area,
-                mass: vec![2.0 * m, m, m, m, 2.0 * m, m, m, m, 2.0 * m],
-            });
+        for (k, f) in tm.faces.iter().enumerate() {
+            if selects(set, tm, f, t).is_some() {
+                list.push(k);
+            }
         }
-        let used = model.loads.iter().any(|l| match l {
-            Load::Temperature { faces, .. }
-            | Load::Flux { faces, .. }
-            | Load::Convection { faces, .. } => model.faces[*faces].name == set.name,
-            Load::Source { .. } => false,
-        });
-        if used && list.is_empty() {
+        if *used && list.is_empty() {
             return Err(format!(
                 "face set {} selects no face of the model: a face of the model has no part beyond it",
                 set.name

@@ -21,7 +21,10 @@
 //! - `heat`: steady and transient heat conduction on 8-node hex elements on the grid, or on
 //!   4-node tetrahedra on the extruded mesh.
 //! - `hex`: the 8-node hex with incompatible modes for elasticity, and the orthotropic material.
-//! - `elastic`: linear static thermo-elasticity on the grid.
+//! - `elastic`: linear static thermo-elasticity on the grid, and `elastic_tet` on the extruded
+//!   mesh with 10-node tetrahedra (`tet10`).
+//! - `pmultigrid`: the p-multigrid preconditioner of the 10-node tetrahedra, with the linear
+//!   tetrahedra as the coarse level.
 //! - `homog`: the effective conductivity, stiffness and expansion of a periodic unit cell.
 //! - `em`: frequency-domain electromagnetics with edge elements on the extruded mesh: wave
 //!   ports and S-parameters over a frequency sweep, walls, absorbing layers, resonant modes.
@@ -35,6 +38,7 @@
 pub mod cholesky;
 pub mod complex;
 pub mod elastic;
+pub mod elastic_tet;
 pub mod em;
 pub mod grid;
 pub mod heat;
@@ -47,8 +51,10 @@ pub mod mesh2d;
 pub mod mtl;
 pub mod multigrid;
 pub mod order;
+pub mod pmultigrid;
 pub mod predicates;
 pub mod prism;
 pub mod solve;
 pub mod sparse;
 pub mod symbolic;
+pub mod tet10;

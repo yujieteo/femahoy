@@ -1,0 +1,78 @@
+# A quarter of a wide plate with a round hole, under a uniform tension of 100 MPa along x. The
+# reference is the Kirsch solution: 3 times the tension at the top of the hole, and −1 times at
+# its side. The quarter is a polygon with the arc of the hole as 16 straight segments, and the 2
+# cut planes are planes of symmetry. See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 4.0
+
+[material.plate]
+youngs_modulus = 200e3
+poisson_ratio = 0.0
+
+[part.plate]
+material = "plate"
+polygon = [
+    [1.0, 0.0],
+    [40.0, 0.0],
+    [40.0, 40.0],
+    [0.0, 40.0],
+    [0.0, 1.0],
+    [0.09801714033, 0.995184726672],
+    [0.195090322016, 0.980785280403],
+    [0.290284677254, 0.956940335732],
+    [0.382683432365, 0.923879532511],
+    [0.471396736826, 0.881921264348],
+    [0.55557023302, 0.831469612303],
+    [0.634393284164, 0.773010453363],
+    [0.707106781187, 0.707106781187],
+    [0.773010453363, 0.634393284164],
+    [0.831469612303, 0.55557023302],
+    [0.881921264348, 0.471396736826],
+    [0.923879532511, 0.382683432365],
+    [0.956940335732, 0.290284677254],
+    [0.980785280403, 0.195090322016],
+    [0.995184726672, 0.09801714033],
+]
+z = [0.0, 1.0]
+
+[face.x_cut]
+side = "x-"
+
+[face.y_cut]
+side = "y-"
+
+[face.bottom]
+side = "z-"
+
+[face.end]
+side = "x+"
+
+[[load]]
+ux = 0.0
+face = "x_cut"
+
+[[load]]
+uy = 0.0
+face = "y_cut"
+
+[[load]]
+uz = 0.0
+face = "bottom"
+
+[[load]]
+traction = [100.0, 0.0, 0.0]
+face = "end"
+
+[step]
+type = "static"
+
+[probe.top]
+point = [0.0, 1.0, 0.5]
+
+[probe.side]
+point = [1.0, 0.0, 0.5]
+
+[probe.far]
+point = [0.0, 40.0, 0.5]

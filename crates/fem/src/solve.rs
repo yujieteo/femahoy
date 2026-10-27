@@ -1,12 +1,14 @@
 //! The linear solver of a model: the sparse Cholesky factor for a small model, and conjugate
-//! gradients with the multigrid preconditioner for a large model on the box grid. A model on a
-//! tetrahedral mesh has no grid levels, so its solver is direct. The solver is made once and
-//! solves many right sides, for example each time step of a transient solve.
+//! gradients with the multigrid preconditioner for a large model on the box grid, or with the
+//! p-multigrid preconditioner for a large model of quadratic tetrahedra. A model of linear
+//! tetrahedra has no coarse level, so its solver is direct. The solver is made once and solves
+//! many right sides, for example each time step of a transient solve.
 
 use crate::cholesky::Cholesky;
 use crate::multigrid::{pcg, Cells, Level, Multigrid};
 use crate::order::nested_dissection;
-use crate::sparse::Csr;
+use crate::pmultigrid::PMultigrid;
+use crate::sparse::{Csr, Rect};
 use crate::symbolic::Symbolic;
 
 /// Up to this many unknowns, a solver for 1 right side is direct. Reason: the ignored test
@@ -50,6 +52,7 @@ pub enum Method {
 enum Inner {
     Direct(Csr, Cholesky),
     Multigrid(Csr, Multigrid),
+    PMultigrid(Csr, PMultigrid),
 }
 
 pub struct Solver {
@@ -63,6 +66,14 @@ pub enum Unknowns {
     Grid(Level),
     /// The coordinates of each unknown of a mesh with no grid: only the direct solver solves.
     Points(Vec<[f64; 3]>),
+    /// The coordinates of each unknown of a mesh of quadratic tetrahedra, the prolongation from
+    /// the linear tetrahedra, and the coordinates of each coarse unknown: the direct solver and
+    /// p-multigrid can solve.
+    Quadratic {
+        points: Vec<[f64; 3]>,
+        p: Rect,
+        coarse: Vec<[f64; 3]>,
+    },
 }
 
 /// The work of 1 solve.
@@ -87,6 +98,40 @@ impl Solver {
     ) -> Result<Solver, String> {
         let level = match unknowns {
             Unknowns::Grid(level) => level,
+            Unknowns::Quadratic { points, p, coarse } => {
+                let symbolic = || Symbolic::analyse(&a, &nested_dissection(&a, &points));
+                let sym = match (method, crossover) {
+                    (Some(Method::Direct), _) => Some(symbolic()),
+                    (Some(Method::Multigrid), _) => None,
+                    (None, Crossover::Unknowns(n)) => (a.n <= n).then(symbolic),
+                    (
+                        None,
+                        Crossover::Flops {
+                            flops,
+                            entries,
+                            flat,
+                        },
+                    ) => {
+                        let sym = symbolic();
+                        (sym.entries() <= entries && (flat || sym.flops() <= flops * a.n as f64))
+                            .then_some(sym)
+                    }
+                };
+                let inner = match sym {
+                    Some(sym) => {
+                        let chol = Cholesky::factor(&sym, &a)?;
+                        Inner::Direct(a, chol)
+                    }
+                    None => {
+                        let mg = PMultigrid::new(&a, p, &coarse)?;
+                        Inner::PMultigrid(a, mg)
+                    }
+                };
+                return Ok(Solver {
+                    inner,
+                    max_iter: PCG_MAX_ITER,
+                });
+            }
             Unknowns::Points(xyz) => {
                 if method == Some(Method::Multigrid) {
                     return Err(
@@ -151,7 +196,7 @@ impl Solver {
     pub fn method(&self) -> Method {
         match self.inner {
             Inner::Direct(..) => Method::Direct,
-            Inner::Multigrid(..) => Method::Multigrid,
+            Inner::Multigrid(..) | Inner::PMultigrid(..) => Method::Multigrid,
         }
     }
 
@@ -182,6 +227,21 @@ impl Solver {
                     b,
                     x,
                     &|r, z| mg.apply(r, z),
+                    PCG_TOL,
+                    self.max_iter,
+                    cancelled,
+                )?;
+                Ok(Stats {
+                    iterations: c.iterations,
+                    residual: c.residual,
+                })
+            }
+            Inner::PMultigrid(a, mg) => {
+                let c = pcg(
+                    a,
+                    b,
+                    x,
+                    &|r, z| mg.apply(a, r, z),
                     PCG_TOL,
                     self.max_iter,
                     cancelled,

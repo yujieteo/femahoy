@@ -1,0 +1,53 @@
+# The steel plate with a round hole and the copper pad of grid-plate-hole-ccx, heated from 20 C
+# to 120 C. The 2 metals expand by different amounts, so the plate and the pad bend. The wall of
+# the hole holds the 3 displacement components (a bolt). The reference is a CalculiX solve of the same problem with C3D10
+# elements on a gmsh mesh (../ccx/). See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.004
+
+[material.steel]
+youngs_modulus = 200e9
+poisson_ratio = 0.3
+expansion = 12e-6
+
+[material.copper]
+youngs_modulus = 110e9
+poisson_ratio = 0.34
+expansion = 17e-6
+
+[part.plate]
+material = "steel"
+polygon = [[0.0, 0.0], [0.1, 0.0], [0.1, 0.06], [0.0, 0.06]]
+holes = [[0.03, 0.03, 0.01]]
+z = [0.0, 0.01]
+
+[part.pad]
+material = "copper"
+x = [0.06, 0.09]
+y = [0.02, 0.04]
+z = [0.01, 0.02]
+
+[face.hole]
+circle = [0.03, 0.03, 0.01]
+
+[[load]]
+ux = 0.0
+uy = 0.0
+uz = 0.0
+face = "hole"
+
+[step]
+type = "static"
+reference_temperature = 20.0
+temperature = 120.0
+
+[probe.pad_corner]
+point = [0.09, 0.04, 0.02]
+
+[probe.plate_far]
+point = [0.1, 0.0, 0.0]
+
+[probe.plate_near]
+point = [0.0, 0.06, 0.01]

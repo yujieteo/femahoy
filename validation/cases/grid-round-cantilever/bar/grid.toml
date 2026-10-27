@@ -1,0 +1,46 @@
+# A steel bar of round section along x, clamped at x = 0, with a shear traction of 1 MPa on its
+# free end. The reference is the Timoshenko beam. The section is the polygon of 64 points that
+# the solver makes of the circle, and the reference uses its area and its moment of inertia.
+# See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 5.0
+axis = "x"
+
+[material.steel]
+youngs_modulus = 210e3
+poisson_ratio = 0.3
+
+[part.bar]
+material = "steel"
+circle = [0.0, 0.0, 5.0]
+x = [0.0, 100.0]
+
+[face.root]
+side = "x-"
+
+[face.tip]
+side = "x+"
+
+[[load]]
+ux = 0.0
+uy = 0.0
+uz = 0.0
+face = "root"
+
+[[load]]
+traction = [0.0, 0.0, -1.0]
+face = "tip"
+
+[step]
+type = "static"
+
+[probe.tip]
+point = [100.0, 0.0, 0.0]
+
+[probe.middle_top]
+point = [50.0, 0.0, 5.0]
+
+[probe.middle_bottom]
+point = [50.0, 0.0, -5.0]

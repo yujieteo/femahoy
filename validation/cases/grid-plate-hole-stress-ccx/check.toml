@@ -1,0 +1,50 @@
+# The steel plate with a hole and the copper pad of grid-plate-hole-ccx, heated by 100 C, against
+# CalculiX 2.23 with C3D10 elements on a gmsh mesh of the same problem (ccx/, H = 1 mm: 424,717
+# nodes). See derivation.md.
+# Tolerance budget, from 3 meshes of each solver: the error of the grid solver at max_cell 4 mm
+# is at most 0.5 % (pad_corner.uz), and the error of the CalculiX reference is at most 0.4 %
+# (pad_corner.uz). Their sum is 0.9 %. The tolerance is 1 %.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[pad_corner_ux]
+value = 7.918296e-05
+case = "plate"
+file = "probes.txt"
+column = "pad_corner.ux"
+
+[pad_corner_uy]
+value = 1.756393e-05
+case = "plate"
+file = "probes.txt"
+column = "pad_corner.uy"
+
+[pad_corner_uz]
+value = 1.693667e-05
+case = "plate"
+file = "probes.txt"
+column = "pad_corner.uz"
+
+[plate_far_ux]
+value = 7.748045e-05
+case = "plate"
+file = "probes.txt"
+column = "plate_far.ux"
+
+[plate_far_uy]
+value = -3.603389e-05
+case = "plate"
+file = "probes.txt"
+column = "plate_far.uy"
+
+[plate_near_ux]
+value = -3.302946e-05
+case = "plate"
+file = "probes.txt"
+column = "plate_near.ux"
+
+[plate_near_uy]
+value = 3.247890e-05
+case = "plate"
+file = "probes.txt"
+column = "plate_near.uy"

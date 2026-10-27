@@ -1,0 +1,20 @@
+# A wide plate with a round hole under a uniform tension of 100 MPa, against the Kirsch solution
+# (derivation.md).
+# Tolerance budget for top.sxx and side.syy: the 16 straight segments of the quarter hole give
+# +0.4 % at the top and −0.4 % at the side (the arc study), the finite width of the plate gives
+# +0.2 % (the width study), and the discretization error at max_cell 4 mm is below 0.01 % (the
+# mesh study). Their sum is 0.6 %. The tolerance 1 % holds the sum.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[top_sxx]
+value = 300.0
+case = "plate"
+file = "probes.txt"
+column = "top.sxx"
+
+[side_syy]
+value = -100.0
+case = "plate"
+file = "probes.txt"
+column = "side.syy"

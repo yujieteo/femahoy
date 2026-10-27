@@ -13,13 +13,13 @@ use fh_fem::mtl;
 use fh_fem::prism::{Footprint, Outline};
 use toml_edit::{Document, Item, TableLike};
 
-use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_TETRA};
+use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_TETRA};
 
 /// The text of an error about a key that the heat, stress and unit cell solver does not have.
-const CLASS: &str = "The built-in grid solver solves linear heat conduction, and linear \
-    frequency-domain electromagnetics (`[step] type = \"frequency\"` or `\"modes\"`), in boxes \
-    and in prisms of polygons and circles along 1 axis, linear static thermo-elasticity in boxes, \
-    the homogenized material of a periodic unit cell, and with a [line] table the per-length \
+const CLASS: &str = "The built-in grid solver solves linear heat conduction, linear static \
+    thermo-elasticity and linear frequency-domain electromagnetics (`[step] type = \"frequency\"` \
+    or `\"modes\"`), in boxes and in prisms of polygons and circles along 1 axis, the \
+    homogenized material of a periodic unit cell, and with a [line] table the per-length \
     parameters of a transmission line. For other curved or sloped shapes, contact, radiation, plasticity, large deformation, vibration or \
     temperature-dependent materials, use gmsh and CalculiX (fh guide grid)";
 
@@ -533,6 +533,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             parts,
             materials,
             spacing,
+            axis,
             symmetry,
             faces,
             loads: forces,
@@ -1099,13 +1100,19 @@ pub(crate) fn number(table: &dyn TableLike, key: &str, where_: &str) -> Result<f
     optional(table, key, where_)?.ok_or_else(|| format!("{where_}: missing key `{key}`"))
 }
 
+/// The VTK cell type of the cells of a mesh.
+pub fn vtk_type(kind: Cell) -> u8 {
+    match kind {
+        Cell::Hex8 => VTK_HEXAHEDRON,
+        Cell::Tet4 => VTK_TETRA,
+        Cell::Tet10 => VTK_QUADRATIC_TETRA,
+    }
+}
+
 /// The result grid of `frame`: the temperature `NT` at each point, and the heat flux `HFL` and
 /// the part number `part` (from 1) of each cell.
 pub fn frame_grid(mesh: &Mesh, frame: &Frame) -> Grid {
-    let kind = match mesh.kind {
-        Cell::Hex8 => VTK_HEXAHEDRON,
-        Cell::Tet4 => VTK_TETRA,
-    };
+    let kind = vtk_type(mesh.kind);
     Grid {
         points: mesh.points.clone(),
         cell_types: vec![kind; mesh.len()],

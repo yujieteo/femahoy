@@ -1,0 +1,59 @@
+# A thick tube with open ends under an internal pressure of 100 MPa. The reference is the Lamé
+# solution. The tube is a circle with a circle hole, so the solver meshes it with 10-node
+# tetrahedra. The bottom holds uz, and 3 point supports stop the rigid motion in the plane
+# x y: they take no force, because the solution is symmetric. See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 2.5
+
+[material.steel]
+youngs_modulus = 210e3
+poisson_ratio = 0.3
+
+[part.tube]
+material = "steel"
+circle = [0.0, 0.0, 20.0]
+holes = [[0.0, 0.0, 10.0]]
+z = [0.0, 2.0]
+
+[face.inner]
+circle = [0.0, 0.0, 10.0]
+
+[face.bottom]
+side = "z-"
+
+[[load]]
+pressure = 100.0
+face = "inner"
+
+[[load]]
+uz = 0.0
+face = "bottom"
+
+[[load]]
+uy = 0.0
+point = [20.0, 0.0, 0.0]
+
+[[load]]
+uy = 0.0
+point = [-20.0, 0.0, 0.0]
+
+[[load]]
+ux = 0.0
+point = [0.0, 20.0, 0.0]
+
+[step]
+type = "static"
+
+[probe.inner]
+point = [10.0, 0.0, 1.0]
+
+[probe.wall]
+point = [10.5, 0.0, 1.0]
+
+[probe.middle]
+point = [0.0, 15.0, 1.0]
+
+[probe.outer]
+point = [0.0, 20.0, 1.0]

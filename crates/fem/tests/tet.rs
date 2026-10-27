@@ -292,7 +292,9 @@ fn a_linear_field_is_exact_on_tetrahedra_along_each_axis() {
 }
 
 /// The ring r1 < r < r2 with T1 at r1 and T2 at r2: T = T1 + (T2 - T1) ln(r / r1) / ln(r2 / r1).
-/// The largest error at the points falls by about 4 when max_cell halves (second order).
+/// The largest error at the points falls by about 4 when max_cell halves (second order). Both
+/// values of max_cell give each circle more than the fewest segments (64), so the circles get
+/// finer with the cells.
 #[test]
 fn a_thick_cylinder_wall_converges_to_the_analytic_answer() {
     let (r1, r2) = (1.0, 2.0);
@@ -352,7 +354,7 @@ fn a_thick_cylinder_wall_converges_to_the_analytic_answer() {
             })
             .fold(0.0, f64::max)
     };
-    let (e1, e2) = (err(0.2), err(0.1));
+    let (e1, e2) = (err(0.1), err(0.05));
     assert!(e2 < 0.25 && e2 < e1 / 3.0, "{e1} {e2}");
 }
 
