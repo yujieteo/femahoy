@@ -1,0 +1,55 @@
+# A strip of 2 bonded layers, heated by 100 C with no support. The layers expand by different
+# amounts, so the strip bends. The reference is the curvature of Timoshenko (1925). See
+# ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 1.0
+min_cells = 2
+symmetry = ["x", "y"]
+
+[material.a]
+youngs_modulus = 200e3
+poisson_ratio = 0.3
+expansion = 12e-6
+
+[material.b]
+youngs_modulus = 100e3
+poisson_ratio = 0.3
+expansion = 20e-6
+
+[part.bottom]
+material = "a"
+x = [-50.0, 50.0]
+y = [-5.0, 5.0]
+z = [0.0, 0.5]
+
+[part.top]
+material = "b"
+x = [-50.0, 50.0]
+y = [-5.0, 5.0]
+z = [0.5, 1.0]
+
+# The face at the centre of the bottom holds the strip in z. The load has no net force, so the
+# reaction is 0.
+[face.centre]
+side = "z-"
+box = [-1.0, -1.0, 0.0, 1.0, 1.0, 0.0]
+
+[face.top]
+side = "z+"
+
+[[load]]
+uz = 0.0
+face = "centre"
+
+[step]
+type = "static"
+reference_temperature = 20.0
+temperature = 120.0
+
+[surface.top]
+face = "top"
+
+[probe.end]
+point = [50.0, 0.0, 1.0]

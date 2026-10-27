@@ -169,6 +169,18 @@ impl Symbolic {
             .sum()
     }
 
+    /// The floating point operations of the numeric factor: (rows below and on the diagonal)^2
+    /// for each column.
+    pub fn flops(&self) -> f64 {
+        (0..self.supernodes())
+            .map(|s| {
+                let k = self.start[s + 1] - self.start[s];
+                let m = self.rows_ptr[s + 1] - self.rows_ptr[s];
+                (0..k).map(|j| ((m - j) as f64).powi(2)).sum::<f64>()
+            })
+            .sum()
+    }
+
     /// The number of entries of the largest frontal matrix (the rows of a supernode, squared).
     pub fn largest_front(&self) -> u64 {
         (0..self.supernodes())

@@ -3,9 +3,9 @@
 //! the lists of [`results::Results::receive`]. `fh run` uses the same reader, result grid and
 //! probe table (`fh_core::grid`), so the same case gives the same probes.
 
-use fh_core::grid::{frame_grid, probe_head, probe_row, read};
+use fh_core::grid::{frame_grid, probe_head, probe_row, read, Case};
 use fh_core::vtu::PvdEntry;
-use fh_fem::heat::{self, Events, Frame, Limit, Mesh};
+use fh_fem::heat::{self, Events, Frame, Limit, Mesh, Model};
 
 use crate::results::Loader;
 
@@ -18,6 +18,17 @@ pub const BROWSER: Limit = Limit {
     memory: "the 4 GiB memory of wasm32 in a browser",
 };
 
+/// The heat model of the case `text` and its unit system. The browser solves heat steps only, so
+/// a static step gets an error that names `fh run`.
+pub fn read_heat(text: &str) -> Result<(Model, String), String> {
+    match read(text)? {
+        (Case::Heat(model), units) => Ok((model, units)),
+        (Case::Elastic(_), _) => Err("the browser solves only heat steps (steady or \
+             transient). Solve a static step with fh run"
+            .into()),
+    }
+}
+
 /// Solve the case `text` (the text of `grid.toml`). `on_line` gets each line of progress and
 /// each warning, and `on_step` the lists of each output. The answer is the probe table, the
 /// same text as `grid/probes.txt` of `fh run`.
@@ -27,7 +38,7 @@ pub fn solve(
     on_line: &mut dyn FnMut(&str),
     on_step: &mut dyn FnMut(Vec<Vec<u8>>),
 ) -> Result<String, String> {
-    let (model, units) = read(text).map_err(|e| format!("grid.toml: {e}"))?;
+    let (model, units) = read_heat(text).map_err(|e| format!("grid.toml: {e}"))?;
     let mut out = Output {
         mesh: None,
         loader: Loader::stream(&units),
@@ -117,5 +128,14 @@ mod tests {
             e.contains("more than 10 points") && e.contains("wasm32") && e.contains("fh run"),
             "{e}"
         );
+    }
+
+    /// A static step gets an error that names fh run, not a solve.
+    #[test]
+    fn a_static_step_is_refused_with_fh_run_in_the_text() {
+        const BLOCK: &str =
+            include_str!("../../../validation/cases/grid-constrained-block/block/grid.toml");
+        let e = solve(BLOCK, BROWSER, &mut |_| {}, &mut |_| panic!("no output")).unwrap_err();
+        assert!(e.contains("heat steps") && e.contains("fh run"), "{e}");
     }
 }

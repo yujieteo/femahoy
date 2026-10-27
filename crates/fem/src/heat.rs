@@ -22,7 +22,7 @@
 
 use crate::grid::{tol, Face, Grid, Part, Side, Spacing, VOID};
 use crate::multigrid::Level;
-use crate::solve::{Method, Solver};
+use crate::solve::{Crossover, Method, Solver, STEADY_DIRECT_LIMIT, TRANSIENT_DIRECT_LIMIT};
 use crate::sparse::Csr;
 
 /// A material. `conductivity` is the value along x, y and z.
@@ -200,7 +200,35 @@ pub fn solve_within(
 ) -> Result<Summary, String> {
     check(model)?;
     let mut warnings = Vec::new();
-    let (grid, faces, mids) = build_grid(model)?;
+    let used: Vec<bool> = model
+        .faces
+        .iter()
+        .enumerate()
+        .map(|(f, _)| {
+            model.loads.iter().any(|l| match l {
+                Load::Temperature { faces, .. }
+                | Load::Flux { faces, .. }
+                | Load::Convection { faces, .. } => *faces == f,
+                Load::Source { .. } => false,
+            })
+        })
+        .collect();
+    let mut source = vec![0.0f64; model.parts.len()];
+    for l in &model.loads {
+        if let Load::Source { part, value } = l {
+            source[*part] += value;
+        }
+    }
+    let keys: Vec<Vec<u64>> = source.iter().map(|q| vec![q.to_bits()]).collect();
+    let (grid, faces, mids) = build_grid(
+        &model.parts,
+        model.spacing,
+        model.symmetry,
+        &model.faces,
+        &used,
+        &keys,
+        "the materials or the heat sources of the parts",
+    )?;
     if mids.iter().any(Option::is_some) {
         let names: Vec<String> = (0..3)
             .filter_map(|d| mids[d].map(|m| format!("{} = {m}", ["x", "y", "z"][d])))
@@ -211,46 +239,14 @@ pub fn solve_within(
             names.join(" and ")
         ));
     }
-    // The points of the cells of the parts.
-    let dims = grid.dims();
-    let mut number = vec![u32::MAX; (dims[0] + 1) * (dims[1] + 1) * (dims[2] + 1)];
-    let mut ijk: Vec<[u32; 3]> = Vec::new();
-    let mut cells: Vec<[u32; 8]> = Vec::new();
-    let mut cell_of: Vec<usize> = Vec::new();
-    for cell in 0..grid.part.len() {
-        if grid.part[cell] == VOID {
-            continue;
-        }
-        let corners = grid.corners(cell);
-        let mut nodes = [0u32; 8];
-        for (c, p) in corners.iter().enumerate() {
-            let slot = &mut number[grid.point_index(*p)];
-            if *slot == u32::MAX {
-                *slot = ijk.len() as u32;
-                ijk.push([p[0] as u32, p[1] as u32, p[2] as u32]);
-                if ijk.len() > limit.points {
-                    return Err(format!(
-                        "the grid has more than {} points, the most that {} solves: use a \
-                         larger max_cell or a larger max_growth",
-                        limit.points, limit.memory
-                    ));
-                }
-            }
-            nodes[c] = *slot;
-        }
-        cells.push(nodes);
-        cell_of.push(cell);
-    }
+    let Numbering {
+        mesh,
+        ijk,
+        cell_of,
+        number,
+    } = number(&grid, limit)?;
     let n = ijk.len();
-    let points: Vec<[f64; 3]> = ijk
-        .iter()
-        .map(|p| grid.point([p[0] as usize, p[1] as usize, p[2] as usize]))
-        .collect();
-    let mesh = Mesh {
-        points,
-        cells,
-        part: cell_of.iter().map(|&c| grid.part[c]).collect(),
-    };
+    let dims = grid.dims();
     events.mesh(&mesh)?;
     events.progress(&format!(
         "grid {} x {} x {} planes, {} cells, {} points",
@@ -370,6 +366,7 @@ pub fn solve_within(
     let level = Level {
         planes: grid.planes.clone(),
         points: free.iter().map(|&i| ijk[i]).collect(),
+        comp: vec![0; free.len()],
     };
     let energy_of = |t: &[f64], previous: &[f64], dt: Option<f64>, kt: &[f64]| -> Energy {
         let mut e = Energy {
@@ -414,7 +411,13 @@ pub fn solve_within(
     match model.step {
         Step::Steady => {
             let a = k.submatrix(&free);
-            let solver = Solver::new(a, level, model.method, false)?;
+            let solver = Solver::new(
+                a,
+                level,
+                model.method,
+                Crossover::Unknowns(STEADY_DIRECT_LIMIT),
+                None,
+            )?;
             method = solver.method();
             events.progress(&format!("{} unknowns, {} solver", free.len(), name(method)));
             let rhs = reduced_rhs(&k, &load, &temperature, &free, None);
@@ -443,7 +446,13 @@ pub fn solve_within(
                 let d = a_full.find(i, i).expect("a diagonal");
                 a_full.val[d] += capacity[i] / dt;
             }
-            let solver = Solver::new(a_full.submatrix(&free), level, model.method, true)?;
+            let solver = Solver::new(
+                a_full.submatrix(&free),
+                level,
+                model.method,
+                Crossover::Unknowns(TRANSIENT_DIRECT_LIMIT),
+                None,
+            )?;
             method = solver.method();
             events.progress(&format!(
                 "{} unknowns, {} solver, {steps} time steps",
@@ -489,7 +498,67 @@ pub fn solve_within(
     })
 }
 
-fn name(method: Method) -> &'static str {
+/// The mesh of the cells of the parts of a grid, and the maps between the grid and the mesh.
+pub(crate) struct Numbering {
+    pub mesh: Mesh,
+    /// The grid point of each point of the mesh.
+    pub ijk: Vec<[u32; 3]>,
+    /// The grid cell of each cell of the mesh.
+    pub cell_of: Vec<usize>,
+    /// The mesh point of each grid point (`Grid::point_index`), or `u32::MAX`.
+    pub number: Vec<u32>,
+}
+
+/// Number the points of the cells of the parts. An error tells that the grid has more than
+/// `limit.points` points.
+pub(crate) fn number(grid: &Grid, limit: Limit) -> Result<Numbering, String> {
+    let dims = grid.dims();
+    let mut number = vec![u32::MAX; (dims[0] + 1) * (dims[1] + 1) * (dims[2] + 1)];
+    let mut ijk: Vec<[u32; 3]> = Vec::new();
+    let mut cells: Vec<[u32; 8]> = Vec::new();
+    let mut cell_of: Vec<usize> = Vec::new();
+    for cell in 0..grid.part.len() {
+        if grid.part[cell] == VOID {
+            continue;
+        }
+        let corners = grid.corners(cell);
+        let mut nodes = [0u32; 8];
+        for (c, p) in corners.iter().enumerate() {
+            let slot = &mut number[grid.point_index(*p)];
+            if *slot == u32::MAX {
+                *slot = ijk.len() as u32;
+                ijk.push([p[0] as u32, p[1] as u32, p[2] as u32]);
+                if ijk.len() > limit.points {
+                    return Err(format!(
+                        "the grid has more than {} points, the most that {} solves: use a \
+                         larger max_cell or a larger max_growth",
+                        limit.points, limit.memory
+                    ));
+                }
+            }
+            nodes[c] = *slot;
+        }
+        cells.push(nodes);
+        cell_of.push(cell);
+    }
+    let points: Vec<[f64; 3]> = ijk
+        .iter()
+        .map(|p| grid.point([p[0] as usize, p[1] as usize, p[2] as usize]))
+        .collect();
+    let mesh = Mesh {
+        points,
+        cells,
+        part: cell_of.iter().map(|&c| grid.part[c]).collect(),
+    };
+    Ok(Numbering {
+        mesh,
+        ijk,
+        cell_of,
+        number,
+    })
+}
+
+pub(crate) fn name(method: Method) -> &'static str {
     match method {
         Method::Direct => "direct (sparse Cholesky)",
         Method::Multigrid => "iterative (PCG with multigrid)",
@@ -498,7 +567,7 @@ fn name(method: Method) -> &'static str {
 
 /// The right side of the free unknowns: load - A T on the fixed points, with the capacity term
 /// of a transient step.
-fn reduced_rhs(
+pub(crate) fn reduced_rhs(
     a: &Csr,
     load: &[f64],
     t: &[f64],
@@ -611,34 +680,42 @@ fn probes(
         .probes
         .iter()
         .map(|p| {
-            let mut x = p.point;
-            for d in 0..3 {
-                if let Some(m) = mids[d] {
-                    if x[d] < m {
-                        x[d] = 2.0 * m - x[d];
-                    }
-                }
-            }
-            let (cell, l) = grid.locate(x).ok_or_else(|| {
-                format!(
-                    "probe {} at ({}, {}, {}) is in no part",
-                    p.name, p.point[0], p.point[1], p.point[2]
-                )
-            })?;
+            let (cell, l, _) = locate_probe(grid, mids, p)?;
             let corners = grid.corners(cell);
-            let mut v = 0.0;
-            for (c, corner) in corners.iter().enumerate() {
-                let [bx, by, bz] = [
-                    [0, 1, 1, 0, 0, 1, 1, 0][c],
-                    [0, 0, 1, 1, 0, 0, 1, 1][c],
-                    [0, 0, 0, 0, 1, 1, 1, 1][c],
-                ];
-                let w = |b: usize, f: f64| if b == 1 { f } else { 1.0 - f };
-                v += w(bx, l[0]) * w(by, l[1]) * w(bz, l[2]) * t[node_of(*corner)];
-            }
-            Ok(v)
+            let w = crate::hex::shape(l.map(|f| 2.0 * f - 1.0));
+            Ok(corners
+                .iter()
+                .zip(w)
+                .map(|(corner, w)| w * t[node_of(*corner)])
+                .sum())
         })
         .collect()
+}
+
+/// The cell of a probe, the local coordinates (0 to 1) of the probe in it, and the axes on which
+/// the probe is in the half that symmetry removed: it reads its mirror point.
+pub(crate) fn locate_probe(
+    grid: &Grid,
+    mids: &[Option<f64>; 3],
+    p: &Probe,
+) -> Result<(usize, [f64; 3], [bool; 3]), String> {
+    let mut x = p.point;
+    let mut mirrored = [false; 3];
+    for d in 0..3 {
+        if let Some(m) = mids[d] {
+            if x[d] < m {
+                x[d] = 2.0 * m - x[d];
+                mirrored[d] = true;
+            }
+        }
+    }
+    let (cell, l) = grid.locate(x).ok_or_else(|| {
+        format!(
+            "probe {} at ({}, {}, {}) is in no part",
+            p.name, p.point[0], p.point[1], p.point[2]
+        )
+    })?;
+    Ok((cell, l, mirrored))
 }
 
 /// The checks of the model that the grid does not need.
@@ -719,18 +796,24 @@ fn check(model: &Model) -> Result<(), String> {
 type FaceSets = Vec<Vec<Face>>;
 
 /// The grid, the faces of each face set and the middle plane of each axis of symmetry. With
-/// symmetry, the grid is the cut grid, and the checks of the mirror are on the full grid.
-fn build_grid(model: &Model) -> Result<(Grid, FaceSets, [Option<f64>; 3]), String> {
+/// symmetry, the grid is the cut grid, and the checks of the mirror are on the full grid: a cell
+/// and its mirror have the same material and the same `keys` of their parts (for example the
+/// heat source), and each face set mirrors. `used` marks the face sets that a load uses: each
+/// must select a face. `what` names the keys in the error of a model that does not mirror.
+pub(crate) fn build_grid(
+    parts: &[Part],
+    spacing: Spacing,
+    symmetry: [bool; 3],
+    face_sets: &[FaceSet],
+    used: &[bool],
+    keys: &[Vec<u64>],
+    what: &str,
+) -> Result<(Grid, FaceSets, [Option<f64>; 3]), String> {
     let mut mids = [None; 3];
     for d in 0..3 {
-        if model.symmetry[d] {
-            let lo = model
-                .parts
-                .iter()
-                .map(|p| p.lo[d])
-                .fold(f64::INFINITY, f64::min);
-            let hi = model
-                .parts
+        if symmetry[d] {
+            let lo = parts.iter().map(|p| p.lo[d]).fold(f64::INFINITY, f64::min);
+            let hi = parts
                 .iter()
                 .map(|p| p.hi[d])
                 .fold(f64::NEG_INFINITY, f64::max);
@@ -738,25 +821,14 @@ fn build_grid(model: &Model) -> Result<(Grid, FaceSets, [Option<f64>; 3]), Strin
         }
     }
     let extra: [Vec<f64>; 3] = std::array::from_fn(|d| mids[d].into_iter().collect());
-    let grid = Grid::build(
-        &model.parts,
-        model.spacing,
-        [&extra[0], &extra[1], &extra[2]],
-    )?;
+    let grid = Grid::build(parts, spacing, [&extra[0], &extra[1], &extra[2]])?;
     let all = grid.faces();
-    let faces: Vec<Vec<Face>> = model
-        .faces
+    let faces: Vec<Vec<Face>> = face_sets
         .iter()
         .map(|set| select(&grid, &all, set))
         .collect();
-    for (set, list) in model.faces.iter().zip(&faces) {
-        let used = model.loads.iter().any(|l| match l {
-            Load::Temperature { faces, .. }
-            | Load::Flux { faces, .. }
-            | Load::Convection { faces, .. } => model.faces[*faces].name == set.name,
-            Load::Source { .. } => false,
-        });
-        if used && list.is_empty() {
+    for ((set, list), used) in face_sets.iter().zip(&faces).zip(used) {
+        if *used && list.is_empty() {
             return Err(format!(
                 "face set {} selects no face of the model: a face of the model has no part beyond it",
                 set.name
@@ -776,21 +848,14 @@ fn build_grid(model: &Model) -> Result<(Grid, FaceSets, [Option<f64>; 3]), Strin
         if !grid.planes_mirror(d, mid) {
             return refuse("the grid planes".into());
         }
-        // A cell and its mirror have the same material and the same heat source.
-        let mut source = vec![0.0; model.parts.len()];
-        for l in &model.loads {
-            if let Load::Source { part, value } = l {
-                source[*part] += value;
-            }
-        }
-        let sign = |c: usize| -> Option<(usize, u64)> {
+        let sign = |c: usize| -> Option<(usize, &[u64])> {
             let p = grid.part[c] as usize;
-            (p != VOID as usize).then(|| (model.parts[p].material, source[p].to_bits()))
+            (p != VOID as usize).then(|| (parts[p].material, &keys[p][..]))
         };
         if (0..grid.part.len()).any(|c| sign(c) != sign(grid.mirror_cell(c, d))) {
-            return refuse("the materials or the heat sources of the parts".into());
+            return refuse(what.into());
         }
-        for (set, list) in model.faces.iter().zip(&faces) {
+        for (set, list) in face_sets.iter().zip(&faces) {
             let mut sorted = list.clone();
             sorted.sort_unstable();
             let mirrored = list.iter().all(|f| {

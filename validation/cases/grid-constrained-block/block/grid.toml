@@ -1,0 +1,50 @@
+# An orthotropic block held on all 6 faces by rollers and heated by 100 C. The strain is 0, so
+# the stress is -C alpha dT at each point. See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 2.5
+
+[material.fibre]
+youngs_modulus = [100e3, 50e3, 20e3]
+poisson_ratio = [0.3, 0.25, 0.2]
+shear_modulus = [20e3, 10e3, 8e3]
+expansion = [5e-6, 10e-6, 20e-6]
+
+[part.block]
+material = "fibre"
+x = [0.0, 10.0]
+y = [0.0, 8.0]
+z = [0.0, 6.0]
+
+[face.x]
+side = ["x-", "x+"]
+
+[face.y]
+side = ["y-", "y+"]
+
+[face.z]
+side = ["z-", "z+"]
+
+[[load]]
+ux = 0.0
+face = "x"
+
+[[load]]
+uy = 0.0
+face = "y"
+
+[[load]]
+uz = 0.0
+face = "z"
+
+[step]
+type = "static"
+reference_temperature = 20.0
+temperature = 120.0
+
+[probe.centre]
+point = [5.0, 4.0, 3.0]
+
+[probe.corner]
+point = [10.0, 8.0, 6.0]

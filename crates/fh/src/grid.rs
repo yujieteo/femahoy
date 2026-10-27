@@ -1,9 +1,11 @@
-//! The built-in heat conduction solver of femahoy on a box grid, in the process of `fh`.
+//! The built-in heat conduction and linear elasticity solver of femahoy on a box grid, in the
+//! process of `fh`.
 //!
 //! A grid case is a folder with `grid.toml`: the parts as boxes, the materials, the named face
-//! sets, the loads, the step and the probes (see `fh guide grid`). [`run_with`] reads it, solves
-//! it with the crate `fh-fem` and writes (the reader and the result grid are in `fh_core::grid`,
-//! which the browser solve of the viewer also uses):
+//! sets, the loads, the step, the probes and the surfaces (see `fh guide grid`). [`run_with`]
+//! reads it, solves it with the crate `fh-fem` and writes, for a heat step (steady or
+//! transient), with the reader and the result grid of `fh_core::grid`, which the browser solve
+//! of the viewer also uses:
 //!
 //! - `step-N.vtu` and `results.pvd` in the run folder: the temperature `NT` at each point, the
 //!   heat flux `HFL` and the part number `part` of each cell, at each output time;
@@ -12,6 +14,22 @@
 //! - `<run-dir>/grid/energy.txt`: the heat flows of the energy balance at each output time;
 //! - `<run-dir>/grid/log.txt`: the lines of progress and the warnings.
 //!
+//! For a static step:
+//!
+//! - `step-1.vtu` and `results.pvd`: the displacement `U`, the stress `S`, the strain `E`, the
+//!   von Mises stress `MISES` and the principal stresses `SP` at each point (the mean of the
+//!   cells around it), the temperature `NT` with a thermal load, and `part`;
+//! - `<run-dir>/grid/probes.txt`: 1 row with the columns `NAME.ux`, `NAME.uy`, `NAME.uz`,
+//!   `NAME.sxx` ... `NAME.sxz`, `NAME.mises` (and `NAME.t` with a thermal load) of each probe;
+//! - `<run-dir>/grid/surfaces.txt`: 1 row with the shape of each surface: `NAME.range`,
+//!   `NAME.flatness`, the curvatures (`NAME.kxx`, `NAME.kyy`, `NAME.kxy` for a z face), the
+//!   principal curvatures `NAME.k1` and `NAME.k2`, and `NAME.shape` (convex, concave or flat);
+//! - `<run-dir>/grid/reactions.txt`: 1 row with `NAME.fx`, `NAME.fy`, `NAME.fz` of each fixed
+//!   face set;
+//! - `<run-dir>/grid/stress.txt`: the largest von Mises stress of each part, its point, and
+//!   whether the point is singular, with the largest value away from the singular points;
+//! - `<run-dir>/grid/log.txt`.
+//!
 //! The solver is femahoy's own code, so it starts no program. A cancel and the time limit stop it
 //! between 2 iterations or time steps.
 
@@ -19,8 +37,9 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use fh_core::grid::{frame_grid, probe_head, probe_row, read};
-use fh_core::vtu::PvdEntry;
+use fh_core::grid::{frame_grid, probe_head, probe_row, read, Case};
+use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry, VTK_HEXAHEDRON};
+use fh_fem::elastic::{self, Solution};
 use fh_fem::heat::{self, Events, Frame, Mesh};
 
 use crate::ccx::{prepare_run_dir, CancelToken, PVD_FILE};
@@ -33,11 +52,14 @@ pub const WORK: &str = "grid";
 pub const PROBES: &str = "probes.txt";
 pub const ENERGY: &str = "energy.txt";
 
+pub const SURFACES: &str = "surfaces.txt";
+pub const REACTIONS: &str = "reactions.txt";
+pub const STRESS: &str = "stress.txt";
+
 /// True when `dir` is a grid case: it has `grid.toml`.
 pub fn is_case(dir: &Path) -> bool {
     dir.join(CASE_FILE).is_file()
 }
-
 /// Solve the case `case` in the folder `run_dir`.
 pub fn run(case: &Path, run_dir: &Path) -> Result<(), String> {
     run_with(case, run_dir, None, &CancelToken::new(), &mut |_| {})
@@ -62,15 +84,38 @@ pub fn run_with(
         dir: run_dir.clone(),
         mesh: None,
         entries: Vec::new(),
-        probes: probe_head(&model),
+        tables: Vec::new(),
+        probes: String::new(),
         energy: "# time source flux convection fixed stored imbalance\n".into(),
         log: String::new(),
         on_line,
         cancel,
         end: timeout.map(|t| Instant::now() + t),
     };
-    let result = heat::solve(&model, &mut out);
-    let summary = match result {
+    let result = match &model {
+        Case::Heat(model) => {
+            out.probes = probe_head(model);
+            heat::solve(model, &mut out).map(|s| {
+                (
+                    format!(
+                        "{} cells, {} points, {} unknowns, largest energy imbalance {:.1e}",
+                        s.cells, s.points, s.unknowns, s.imbalance
+                    ),
+                    s.warnings,
+                )
+            })
+        }
+        Case::Elastic(model) => elastic::solve(model, &mut Static(&mut out, model)).map(|s| {
+            (
+                format!(
+                    "{} cells, {} points, {} unknowns, force imbalance {:.1e}",
+                    s.cells, s.points, s.unknowns, s.imbalance
+                ),
+                s.warnings,
+            )
+        }),
+    };
+    let (summary, warnings) = match result {
         Ok(s) => s,
         Err(_) if !cancel.is_cancelled() && out.end.is_some_and(|end| Instant::now() >= end) => {
             return Err(format!(
@@ -81,18 +126,20 @@ pub fn run_with(
         Err(e) if cancel.is_cancelled() => return Err(format!("{}: {e}", crate::ccx::CANCELLED)),
         Err(e) => return Err(e),
     };
-    out.line(&format!(
-        "{} cells, {} points, {} unknowns, largest energy imbalance {:.1e}",
-        summary.cells, summary.points, summary.unknowns, summary.imbalance
-    ));
-    for w in &summary.warnings {
+    out.line(&summary);
+    for w in &warnings {
         out.line(&format!("warning: {w}"));
     }
     let write = |name: &str, text: &str| {
         fs::write(work.join(name), text).map_err(|e| format!("{name}: {e}"))
     };
     write(PROBES, &out.probes)?;
-    write(ENERGY, &out.energy)?;
+    if matches!(model, Case::Heat(_)) {
+        write(ENERGY, &out.energy)?;
+    }
+    for (name, text) in &out.tables {
+        write(name, text)?;
+    }
     write("log.txt", &out.log)?;
     let pvd = write_pvd(&out.entries, &units, false);
     let tmp = run_dir.join(format!("{PVD_FILE}.tmp"));
@@ -106,6 +153,8 @@ struct Output<'a> {
     dir: std::path::PathBuf,
     mesh: Option<Mesh>,
     entries: Vec<PvdEntry>,
+    /// The tables of a static step after `probes.txt`.
+    tables: Vec<(&'static str, String)>,
     probes: String,
     energy: String,
     log: String,
@@ -120,11 +169,63 @@ impl Output<'_> {
         self.log.push('\n');
         (self.on_line)(text);
     }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled() || self.end.is_some_and(|end| Instant::now() >= end)
+    }
+
+    /// Write `step-N.vtu` with the fields, at `time`.
+    fn vtu(
+        &mut self,
+        time: f64,
+        point_data: Vec<Field>,
+        cell_data: Vec<Field>,
+    ) -> Result<(), String> {
+        let mesh = self.mesh.as_ref().expect("the mesh comes before a result");
+        let mut cell_data = cell_data;
+        cell_data.push(Field::f64(
+            "part",
+            1,
+            mesh.part.iter().map(|&p| f64::from(p) + 1.0).collect(),
+        ));
+        let grid = VtuGrid {
+            points: mesh.points.clone(),
+            cell_types: vec![VTK_HEXAHEDRON; mesh.cells.len()],
+            cells: mesh.cells.iter().map(|c| c.to_vec()).collect(),
+            point_data,
+            cell_data,
+        };
+        self.step(time, &grid)
+    }
+
+    /// Write `step-N.vtu` with `grid`, at `time`.
+    fn step(&mut self, time: f64, grid: &VtuGrid) -> Result<(), String> {
+        let file = format!("step-{}.vtu", self.entries.len() + 1);
+        let tmp = self.dir.join(format!("{file}.tmp"));
+        fs::write(&tmp, write_vtu(grid)?)
+            .and_then(|()| fs::rename(&tmp, self.dir.join(&file)))
+            .map_err(|e| format!("{file}: {e}"))?;
+        self.entries.push(PvdEntry { time, file });
+        Ok(())
+    }
+}
+
+/// A header line and 1 row.
+fn row(columns: &[(String, String)]) -> String {
+    let (names, values): (Vec<&str>, Vec<&str>) = columns
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .unzip();
+    format!("# {}\n{}\n", names.join(" "), values.join(" "))
+}
+
+fn real(v: f64) -> String {
+    format!("{v:.10e}")
 }
 
 impl Events for Output<'_> {
     fn cancelled(&self) -> bool {
-        self.cancel.is_cancelled() || self.end.is_some_and(|end| Instant::now() >= end)
+        Output::cancelled(self)
     }
 
     fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
@@ -139,15 +240,7 @@ impl Events for Output<'_> {
     fn frame(&mut self, frame: &Frame) -> Result<(), String> {
         let mesh = self.mesh.as_ref().expect("the mesh comes before a frame");
         let grid = frame_grid(mesh, frame);
-        let file = format!("step-{}.vtu", self.entries.len() + 1);
-        let tmp = self.dir.join(format!("{file}.tmp"));
-        fs::write(&tmp, write_vtu(&grid)?)
-            .and_then(|()| fs::rename(&tmp, self.dir.join(&file)))
-            .map_err(|e| format!("{file}: {e}"))?;
-        self.entries.push(PvdEntry {
-            time: frame.time,
-            file,
-        });
+        self.step(frame.time, &grid)?;
         self.probes.push_str(&probe_row(frame));
         let e = frame.energy;
         let row: Vec<String> = [
@@ -159,11 +252,116 @@ impl Events for Output<'_> {
             e.stored,
             e.imbalance(),
         ]
-        .iter()
-        .map(|v| format!("{v:.10e}"))
+        .into_iter()
+        .map(real)
         .collect();
         self.energy.push_str(&row.join(" "));
         self.energy.push('\n');
+        Ok(())
+    }
+}
+
+/// The writer of a static step: the output and the model, for the names.
+struct Static<'a, 'b>(&'a mut Output<'b>, &'a elastic::Model);
+
+impl elastic::Events for Static<'_, '_> {
+    fn cancelled(&self) -> bool {
+        self.0.cancelled()
+    }
+
+    fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
+        self.0.mesh = Some(mesh.clone());
+        Ok(())
+    }
+
+    fn progress(&mut self, text: &str) {
+        self.0.line(text);
+    }
+
+    fn solution(&mut self, s: &Solution) -> Result<(), String> {
+        let model = self.1;
+        let flat = |v: &[[f64; 6]]| v.iter().flatten().copied().collect::<Vec<_>>();
+        let mut fields = vec![
+            Field::f64("U", 3, s.displacement.iter().flatten().copied().collect()),
+            Field::f64("S", 6, flat(&s.stress)),
+            Field::f64("E", 6, flat(&s.strain)),
+            Field::f64("MISES", 1, s.mises.clone()),
+            Field::f64("SP", 3, s.principal.iter().flatten().copied().collect()),
+        ];
+        if let Some(t) = &s.temperature {
+            fields.push(Field::f64("NT", 1, t.clone()));
+        }
+        self.0.vtu(1.0, fields, Vec::new())?;
+        let mut columns = Vec::new();
+        for (p, v) in model.probes.iter().zip(&s.probes) {
+            let names = [
+                "ux", "uy", "uz", "sxx", "syy", "szz", "sxy", "syz", "sxz", "mises",
+            ];
+            let values = v.displacement.iter().chain(&v.stress).chain([&v.mises]);
+            for (n, &x) in names.iter().zip(values) {
+                columns.push((format!("{}.{n}", p.name), real(x)));
+            }
+            if s.temperature.is_some() {
+                columns.push((format!("{}.t", p.name), real(v.temperature)));
+            }
+        }
+        self.0.probes = row(&columns);
+        let mut columns = Vec::new();
+        for shape in &s.surfaces {
+            let n = &shape.name;
+            let [a, b] = [[1, 2], [0, 2], [0, 1]][shape.axis].map(|d| ["x", "y", "z"][d]);
+            columns.push((format!("{n}.range"), real(shape.range)));
+            columns.push((format!("{n}.flatness"), real(shape.flatness)));
+            for (k, v) in [format!("{a}{a}"), format!("{b}{b}"), format!("{a}{b}")]
+                .iter()
+                .zip(shape.curvature)
+            {
+                columns.push((format!("{n}.k{k}"), real(v)));
+            }
+            columns.push((format!("{n}.k1"), real(shape.principal[0])));
+            columns.push((format!("{n}.k2"), real(shape.principal[1])));
+            columns.push((format!("{n}.shape"), shape.sign().to_owned()));
+        }
+        if !columns.is_empty() {
+            self.0.tables.push((SURFACES, row(&columns)));
+        }
+        let columns: Vec<_> = s
+            .reactions
+            .iter()
+            .flat_map(|r| {
+                ["fx", "fy", "fz"]
+                    .iter()
+                    .zip(r.force)
+                    .map(|(c, f)| (format!("{}.{c}", r.name), real(f)))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        self.0.tables.push((REACTIONS, row(&columns)));
+        let mut stress = String::from(
+            "# part mises x y z singular regular_mises regular_x regular_y regular_z\n",
+        );
+        for peak in &s.peaks {
+            let regular = peak.regular.map_or(
+                ["nan".to_owned(), "nan".into(), "nan".into(), "nan".into()],
+                |(m, p)| [real(m), real(p[0]), real(p[1]), real(p[2])],
+            );
+            let singular = match peak.singular {
+                None => "no",
+                Some(elastic::Singular::ReEntrant) => "re-entrant",
+                Some(elastic::Singular::MaterialEdge) => "material-edge",
+                Some(elastic::Singular::SupportEdge) => "support-edge",
+            };
+            stress.push_str(&format!(
+                "{} {} {} {} {} {singular} {}\n",
+                model.parts[peak.part].name,
+                real(peak.mises),
+                real(peak.point[0]),
+                real(peak.point[1]),
+                real(peak.point[2]),
+                regular.join(" ")
+            ));
+        }
+        self.0.tables.push((STRESS, stress));
         Ok(())
     }
 }

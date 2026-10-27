@@ -1,0 +1,64 @@
+# The plate and the heated block of grid-heated-block-ccx, with the thermal stress of the
+# steady temperature. The point at the centre of the bottom holds uz, so the plate is free to
+# bend. The reference is a CalculiX solve of the same problem (../ccx/mesh.py). See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.00125
+symmetry = ["x", "y"]
+
+[material.steel]
+conductivity = 50.0
+youngs_modulus = 200e9
+poisson_ratio = 0.3
+expansion = 12e-6
+
+[material.copper]
+conductivity = 400.0
+youngs_modulus = 110e9
+poisson_ratio = 0.34
+expansion = 17e-6
+
+[part.plate]
+material = "steel"
+x = [0.0, 0.1]
+y = [0.0, 0.1]
+z = [0.0, 0.01]
+
+[part.block]
+material = "copper"
+x = [0.035, 0.065]
+y = [0.035, 0.065]
+z = [0.01, 0.03]
+
+[face.bottom]
+side = "z-"
+
+[[load]]
+convection = 200.0
+sink = 20.0
+face = "bottom"
+
+[[load]]
+source = 2e6
+part = "block"
+
+[[load]]
+uz = 0.0
+point = [0.05, 0.05, 0.0]
+
+[step]
+type = "static"
+reference_temperature = 20.0
+
+[surface.bottom]
+face = "bottom"
+
+[probe.block_top]
+point = [0.05, 0.05, 0.03]
+
+[probe.plate_corner]
+point = [0.1, 0.1, 0.0]
+
+[probe.plate_edge]
+point = [0.1, 0.05, 0.0]

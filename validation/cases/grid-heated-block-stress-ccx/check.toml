@@ -1,0 +1,39 @@
+# The plate and the heated block with the thermal stress of the steady temperature, against
+# CalculiX 2.23 with C3D20 elements on the same problem (ccx/mesh.py with H = 1.25 mm: 68,497
+# nodes, a quarter model). See derivation.md.
+# Tolerance budget, from the extrapolation of 3 meshes of each solver: the singular edge where
+# the block meets the plate makes both solvers converge at first order. The largest error of
+# the grid solver at max_cell 1.25 mm is 1.8 % (plate_edge.uz), and the largest error of the
+# CalculiX reference is 1.1 % (plate_edge.uz). Their sum is 2.9 %. The tolerance is 3 %.
+rel_tol = 0.03
+abs_tol = 0.0
+
+[block_top_uz]
+value = 1.278438e-05
+case = "block"
+file = "probes.txt"
+column = "block_top.uz"
+
+[plate_corner_ux]
+value = 1.028590e-05
+case = "block"
+file = "probes.txt"
+column = "plate_corner.ux"
+
+[plate_corner_uz]
+value = -7.164007e-06
+case = "block"
+file = "probes.txt"
+column = "plate_corner.uz"
+
+[plate_edge_uz]
+value = -4.803123e-06
+case = "block"
+file = "probes.txt"
+column = "plate_edge.uz"
+
+[bottom_range]
+value = 7.164007e-06
+case = "block"
+file = "surfaces.txt"
+column = "bottom.range"

@@ -1,0 +1,42 @@
+# An orthotropic block held by rollers on all faces and heated by 100 C (derivation.md). The
+# exact strain is 0 and the exact stress is uniform. The hex8 cells hold a uniform strain
+# exactly, so the discretization error is 0. The tolerance is the precision of the direct solve
+# (about 1e-12 MPa), with a factor of 1e6 of margin.
+rel_tol = 0.0
+abs_tol = 1e-6
+
+[centre_sxx]
+value = -84.302009777
+case = "block"
+file = "probes.txt"
+column = "centre.sxx"
+
+[centre_syy]
+value = -72.650733297
+case = "block"
+file = "probes.txt"
+column = "centre.syy"
+
+[centre_szz]
+value = -50.027159153
+case = "block"
+file = "probes.txt"
+column = "centre.szz"
+
+[centre_sxy]
+value = 0.0
+case = "block"
+file = "probes.txt"
+column = "centre.sxy"
+
+[corner_szz]
+value = -50.027159153
+case = "block"
+file = "probes.txt"
+column = "corner.szz"
+
+[corner_ux]
+value = 0.0
+case = "block"
+file = "probes.txt"
+column = "corner.ux"

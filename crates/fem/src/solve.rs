@@ -3,7 +3,7 @@
 //! solves many right sides, for example each time step of a transient solve.
 
 use crate::cholesky::Cholesky;
-use crate::multigrid::{pcg, Level, Multigrid};
+use crate::multigrid::{pcg, Cells, Level, Multigrid};
 use crate::order::nested_dissection;
 use crate::sparse::Csr;
 use crate::symbolic::Symbolic;
@@ -19,6 +19,16 @@ pub const STEADY_DIRECT_LIMIT: usize = 3_000;
 /// 100 steps took 10.3 s direct against 15.2 s multigrid at 28,349 unknowns, and 36.2 s against
 /// 25.7 s at 61,749.
 pub const TRANSIENT_DIRECT_LIMIT: usize = 40_000;
+
+/// How a solver chooses its method when the model does not force one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Crossover {
+    /// Direct up to this many unknowns.
+    Unknowns(usize),
+    /// Direct when the factor costs up to this many flops for each unknown. The factor of a thin
+    /// model is cheap for its size, and multigrid converges slowly on its flat cells.
+    Flops(f64),
+}
 
 /// The relative residual of a PCG solve.
 pub const PCG_TOL: f64 = 1e-10;
@@ -51,32 +61,39 @@ pub struct Stats {
 
 impl Solver {
     /// The solver of `a` (symmetric positive definite) whose unknown `k` is the grid point
-    /// `level.points[k]`. `method` forces a method, else the size and `many` (the solver solves
-    /// many right sides) choose it.
-    pub fn new(a: Csr, level: Level, method: Option<Method>, many: bool) -> Result<Solver, String> {
-        let limit = if many {
-            TRANSIENT_DIRECT_LIMIT
-        } else {
-            STEADY_DIRECT_LIMIT
+    /// `level.points[k]`. `method` forces a method, else `crossover` chooses it. `cells` gives the
+    /// coarse matrices of a displacement to multigrid.
+    pub fn new(
+        a: Csr,
+        level: Level,
+        method: Option<Method>,
+        crossover: Crossover,
+        cells: Option<Cells>,
+    ) -> Result<Solver, String> {
+        let symbolic = |a: &Csr, level: &Level| {
+            let xyz: Vec<[f64; 3]> = level
+                .points
+                .iter()
+                .map(|p| std::array::from_fn(|d| level.planes[d][p[d] as usize]))
+                .collect();
+            Symbolic::analyse(a, &nested_dissection(a, &xyz))
         };
-        let method = method.unwrap_or(if a.n <= limit {
-            Method::Direct
-        } else {
-            Method::Multigrid
-        });
-        let inner = match method {
-            Method::Direct => {
-                let xyz: Vec<[f64; 3]> = level
-                    .points
-                    .iter()
-                    .map(|p| std::array::from_fn(|d| level.planes[d][p[d] as usize]))
-                    .collect();
-                let sym = Symbolic::analyse(&a, &nested_dissection(&a, &xyz));
+        let sym = match (method, crossover) {
+            (Some(Method::Direct), _) => Some(symbolic(&a, &level)),
+            (Some(Method::Multigrid), _) => None,
+            (None, Crossover::Unknowns(n)) => (a.n <= n).then(|| symbolic(&a, &level)),
+            (None, Crossover::Flops(f)) => {
+                let sym = symbolic(&a, &level);
+                (sym.flops() <= f * a.n as f64).then_some(sym)
+            }
+        };
+        let inner = match sym {
+            Some(sym) => {
                 let chol = Cholesky::factor(&sym, &a)?;
                 Inner::Direct(a, chol)
             }
-            Method::Multigrid => {
-                let mg = Multigrid::new(a.clone(), level)?;
+            None => {
+                let mg = Multigrid::new(a.clone(), level, cells)?;
                 Inner::Multigrid(a, mg)
             }
         };

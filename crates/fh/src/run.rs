@@ -86,7 +86,7 @@ Python of Meep.\n\
 CASE is also an openEMS case folder with openems.py. fh run starts python3 openems.py, with the \
 Python of openEMS.\n\
 CASE is also a grid case folder with grid.toml. fh run solves it with the built-in heat \
-conduction solver of femahoy, with no other program (fh guide grid).";
+conduction and linear stress solver of femahoy, with no other program (fh guide grid).";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -229,11 +229,16 @@ fn report(
         ),
         Solver::Grid => (
             format!(
-                "{0}/{1} (the temperature at each probe), {0}/{2} (the energy balance), \
-                 {0}/log.txt (the grid, the solver and the warnings)",
+                "{0}/{1} (the values at each probe), {0}/{2} (the energy balance of a heat \
+                 step), {0}/{3}, {0}/{4} and {0}/{5} (the surface shapes, the reactions and the \
+                 stress peaks of a static step), {0}/log.txt (the grid, the solver and the \
+                 warnings)",
                 out.join(grid::WORK).display(),
                 grid::PROBES,
-                grid::ENERGY
+                grid::ENERGY,
+                grid::SURFACES,
+                grid::REACTIONS,
+                grid::STRESS
             ),
             "",
         ),
