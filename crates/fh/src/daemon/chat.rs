@@ -61,6 +61,10 @@ const BASH_TIMEOUT_MS: &str = "86400000";
 const MAX_ENTRIES: usize = 12000;
 /// The most characters of one tool result in an entry.
 const MAX_RESULT: usize = 4000;
+/// The text of a `blocked` entry: a command that Claude Code denies because it is not in `TOOLS`.
+/// The agent gets the denial and continues with another way, so nothing waits for the person.
+const BLOCKED: &str =
+    "Blocked. femahoy runs only fh and fh-python commands. The agent continues another way.";
 
 #[derive(Default)]
 struct Log {
@@ -202,8 +206,10 @@ impl Chat {
     }
 
     fn push(&self, log: &mut Log, kind: &str, text: &str) {
-        if matches!(kind, "cmd" | "tool" | "out" | "fail" | "end" | "error")
-            || (kind == "note" && text == "stopped the agent")
+        if matches!(
+            kind,
+            "cmd" | "tool" | "out" | "fail" | "blocked" | "end" | "error"
+        ) || (kind == "note" && text == "stopped the agent")
         {
             self.push(log, "time", &now_ms().to_string());
         }
@@ -419,7 +425,7 @@ impl Chat {
 /// |---|---|
 /// | `system`, subtype `init` | `note`: the model and the folder |
 /// | `assistant` | `say` for a text, `cmd` for a `Bash` command, `tool` for another tool |
-/// | `user` | `out` for a tool result, `fail` for a tool error |
+/// | `user` | `out` for a tool result, `fail` for a tool error, `blocked` for a denied command |
 /// | `result` | `end`: the outcome, the wall time, the turns and the cost |
 ///
 /// `identity` gives the tool ID before a command or result when the event supplies it.
@@ -489,7 +495,16 @@ fn entries(event: &Json) -> Vec<(String, String)> {
                 if let Some(id) = block.text(&["tool_use_id"]) {
                     add("identity", id.to_owned());
                 }
-                add(if error { "fail" } else { "out" }, text);
+                // The texts of Claude Code for a command that it denies.
+                let denied = !text.starts_with("Exit code")
+                    && ["requires approval", "require approval", "can't be checked"]
+                        .iter()
+                        .any(|t| text.contains(t));
+                match (error, denied) {
+                    (true, true) => add("blocked", BLOCKED.to_owned()),
+                    (true, false) => add("fail", text),
+                    (false, _) => add("out", text),
+                }
             }
         }
         "result" => {
@@ -641,5 +656,37 @@ mod tests {
         let result = entries(&event);
         assert_eq!(result[0].1, "b");
         assert_eq!(result[1], ("out".into(), "second result".into()));
+    }
+
+    #[test]
+    fn a_denied_command_is_blocked_with_a_plain_message() {
+        let denials = [
+            "This command requires approval",
+            "This Bash command contains multiple operations. The following part requires approval: ccx -v 2>&1",
+            "sed command requires approval (contains potentially dangerous operations)",
+            "A nested command in this command can't be checked before it runs",
+        ];
+        for text in denials {
+            let event = Json::parse(&format!(
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"a","is_error":true,"content":"{text}"}}]}}}}"#
+            ))
+            .unwrap();
+            assert_eq!(
+                entries(&event)[1],
+                ("blocked".into(), BLOCKED.into()),
+                "{text}"
+            );
+        }
+        for text in [
+            "Exit code 1",
+            "Exit code 1\\nmesh.py: this step requires approval",
+        ] {
+            let event = Json::parse(&format!(
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"a","is_error":true,"content":"{text}"}}]}}}}"#
+            ))
+            .unwrap();
+            let text = text.replace("\\n", "\n");
+            assert_eq!(entries(&event)[1], ("fail".into(), text.clone()), "{text}");
+        }
     }
 }
