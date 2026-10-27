@@ -677,7 +677,10 @@ mod tests {
                 "{text}"
             );
         }
-        for text in ["Exit code 1", "Exit code 1\\nmesh.py: this step requires approval"] {
+        for text in [
+            "Exit code 1",
+            "Exit code 1\\nmesh.py: this step requires approval",
+        ] {
             let event = Json::parse(&format!(
                 r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"a","is_error":true,"content":"{text}"}}]}}}}"#
             ))
