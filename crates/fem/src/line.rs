@@ -238,6 +238,12 @@ fn check(model: &Model) -> Result<(), String> {
             return Err("the length of the line must be a finite number above 0".into());
         }
     }
+    if !(model.max_cell > 0.0 && model.max_cell.is_finite()) {
+        return Err("max_cell must be a finite number above 0".into());
+    }
+    if !(model.max_growth > 1.0 && model.max_growth.is_finite()) {
+        return Err("max_growth must be a finite number above 1".into());
+    }
     if !(model.reference_impedance > 0.0 && model.reference_impedance.is_finite()) {
         return Err("the reference impedance must be a finite number above 0".into());
     }
@@ -342,15 +348,16 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Solution, String>
         let m = &model.materials[part.material];
         if let Conduction::Finite(sigma) = m.conduction {
             surface[p] = (SKIN * skin_depth(f_max, m.permeability, sigma)).min(model.max_cell);
-            outline_points += perimeter(part) / surface[p];
         }
+        outline_points += perimeter(part) / surface[p].min(model.max_cell);
     }
     if outline_points > model.max_points as f64 / 4.0 {
         return Err(format!(
-            "the outlines of the conductors need about {outline_points:.0} points to resolve \
-             the skin depth at {f_max:e} Hz, and the mesh would have more than {} points. Use \
-             a lower highest frequency, a perfect conductor (no loss), or an electric wall in \
-             place of a large ground conductor",
+            "the outlines of the parts need about {outline_points:.0} points (segments of at \
+             most max_cell, and on each conductor with loss, of the skin depth at {f_max:e} \
+             Hz), and the mesh would have more than {} points. Use a larger max_cell, a lower \
+             highest frequency, a perfect conductor (no loss), or an electric wall in place of \
+             a large ground conductor",
             model.max_points
         ));
     }

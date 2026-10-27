@@ -84,7 +84,11 @@ pub fn run_with(
     let result = heat::solve(&model, &mut out);
     let summary = match result {
         Ok(s) => s,
-        Err(_) if !cancel.is_cancelled() && out.end.is_some_and(|end| Instant::now() >= end) => {
+        Err(e)
+            if e == "cancelled"
+                && !cancel.is_cancelled()
+                && out.end.is_some_and(|end| Instant::now() >= end) =>
+        {
             return Err(format!(
                 "the time limit {} s stopped the solve",
                 timeout.map_or(0.0, |t| t.as_secs_f64())
@@ -156,7 +160,11 @@ fn run_line(
     };
     let solution = match fh_fem::line::solve(&model, &mut out) {
         Ok(s) => s,
-        Err(_) if !cancel.is_cancelled() && out.end.is_some_and(|end| Instant::now() >= end) => {
+        Err(e)
+            if e == "cancelled"
+                && !cancel.is_cancelled()
+                && out.end.is_some_and(|end| Instant::now() >= end) =>
+        {
             return Err(format!(
                 "the time limit {} s stopped the solve",
                 timeout.map_or(0.0, |t| t.as_secs_f64())

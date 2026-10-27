@@ -236,6 +236,36 @@ fn a_wrong_line_is_refused() {
         .contains("above 0 Hz"));
 }
 
+/// A wrong cell size on a line of perfect conductors is refused before the mesher makes the
+/// outlines, also when the outlines would need too many points.
+#[test]
+fn a_wrong_cell_size_is_refused_before_the_mesh() {
+    let coax = |max_cell: f64| {
+        let mut m = model(
+            vec![
+                circle("inner", 1, 1, 0.5e-3, None),
+                circle("fill", 0, 0, 1.75e-3, None),
+                circle("outer", 1, 0, 2e-3, Some(1.75e-3)),
+            ],
+            vec![
+                material("ptfe", 2.25, Conduction::None),
+                material("pec", 1.0, Conduction::Perfect),
+            ],
+            max_cell,
+        );
+        m.references = vec![2];
+        m
+    };
+    let e = line::solve(&coax(0.0), &mut Quiet).unwrap_err();
+    assert!(e.contains("max_cell"), "{e}");
+    let mut m = coax(0.1e-3);
+    m.max_growth = 1.0;
+    let e = line::solve(&m, &mut Quiet).unwrap_err();
+    assert!(e.contains("max_growth"), "{e}");
+    let e = line::solve(&coax(1e-12), &mut Quiet).unwrap_err();
+    assert!(e.contains("outlines"), "{e}");
+}
+
 /// With 1 conductor the loss is R, so the Hammerstad factor multiplies R and leaves L.
 #[test]
 fn the_roughness_multiplies_the_resistance_of_a_single_conductor_by_the_hammerstad_factor() {
