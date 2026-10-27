@@ -218,8 +218,8 @@ pub struct Limit {
 /// size, because the iterative solver needs many more iterations on some models (872 against
 /// 122 on the coaxial line of `tests/em.rs`). Reason for `points`: the iterative solve of
 /// 122,244 points took 306 s and 4.3 GB. The time of the iterative solver is not a function of
-/// the points only: its iterations grow with the length of the model in wavelengths (175 on a
-/// WR-90 guide 30 mm long, 381 on a guide 60 mm long, both with max_cell 1 mm), and the guide
+/// the points only: its iterations grow with the length of the model in wavelengths (102 on a
+/// WR-90 guide 30 mm long, 219 on a guide 60 mm long, both with max_cell 1 mm), and the guide
 /// 60 mm long with 88,479 points took 348 iterations and 564 s of CPU. See the ignored tests
 /// `direct_cost` and `iterative_cost` of `tests/em.rs`.
 pub const LAPTOP: Limit = Limit {
