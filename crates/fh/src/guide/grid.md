@@ -1,4 +1,4 @@
-# Heat conduction with the built-in grid solver
+# Heat conduction and transmission lines with the built-in grid solver
 
 Use the built-in grid solver first for linear heat conduction in parts that are boxes, or prisms of a polygon or a circle (with holes) along 1 axis. Examples: layers and laminates, plates with holes, pipes, fins, and extruded sections. It needs no CAD, no mesh and no CalculiX, and a model of 100,000 unknowns solves in about 1 s. Write `CASE/grid.toml` and solve it with `fh run CASE`.
 
@@ -24,3 +24,19 @@ The person can also solve a `grid.toml` in the browser, with no `fh run`: the bu
 A model of boxes only is solved on a box grid: each face of a part is on a plane of the grid, so a box of any size is exact. When a part is a polygon or a circle, the solver makes a quality triangle mesh of all footprints, extrudes it through the planes of the axis, and cuts each prism into 3 tetrahedra. The points of a circle are on the circle, with segments of at most `max_cell` and at least 16 segments. The solver of a mesh of tetrahedra is direct, and it refuses a mesh of more than 400,000 points: use a larger `max_cell` or `max_growth`. Linear tetrahedra need about 2 times smaller cells than the box grid for the same accuracy.
 
 Do a mesh study with 2 values of `max_cell`. Near the edge of a part that touches a larger part, the temperature converges slowly, because the heat flux is singular there. Put the probes for a check away from those edges.
+
+## Transmission lines
+
+Use the built-in line solver first for the cross-section of a transmission line with linear materials, for example a coaxial cable, a microstrip, a stripline, a twisted pair seen as 2 round wires, a busbar pair or a cable bundle. It gives the quasi-TEM per-length matrices R, L, G and C of the signal conductors at each frequency, the modes, and the S-parameters of a length of line. It needs no gmsh and no GetDP. A `grid.toml` with a `[line]` table is a line case. Use GetDP (`fh guide electromagnetics`) for each other electromagnetic problem, for example a 3D field, a time history, a nonlinear material, a coil or a motor. The line solver refuses those inputs with a message that names GetDP.
+
+The physics: C and G come from an electrostatic solve with a complex permittivity (the loss tangent). R and L come from a magneto-quasi-static solve of A_z with the eddy currents in each conductor, so the skin effect and the proximity effect are in R and L. The solver makes the segments on the outline of each conductor 0.25 skin depth long at the highest frequency. The S-parameters come from the chain matrix exp([0 Z; Y 0] length) of the per-length Z = R + j omega L and Y = G + j omega C.
+
+1. Top: `units = "SI-m"` only. The cross-section is in the plane x y.
+2. `[grid]`: `max_cell` and `max_growth` (1.3 by default). Use `max_growth = 1.1` or less when the request needs Z0 or C to better than 1 %.
+3. `[material.NAME]`: `relative_permittivity` (1 by default), `loss_tangent` (0 by default), `relative_permeability` (1 by default), and for a conductor `electric_conductivity` (S/m) or `perfect_conductor = true`. `roughness` (the RMS surface roughness in m, with `electric_conductivity`) multiplies the loss of that conductor by the Hammerstad factor 1 + (2/pi) atan(1.4 (roughness / skin depth)^2).
+4. `[part.NAME]`: `material`, `priority`, and a box (`x`, `y`) or a `polygon` or a `circle`, with `holes`, as for heat. Space with no part is empty and has no permittivity: give the air or the dielectric around the conductors as a part with the lowest priority.
+5. `[line]`: `signals` (the conductor parts that carry a signal), `references` (the return conductors, at 0 V), `electric_walls` (the box sides that are perfect conductors at 0 V: `"x-"`, `"x+"`, `"y-"`, `"y+"`; each other side is a magnetic wall, a plane of symmetry or an open side far away), `frequencies` (1 number or a list, in Hz), `length` (m, optional: with it the solver writes the S-parameters) and `reference_impedance` (50 ohm by default). Each conductor part is a signal or a reference. A line needs a reference or an electric wall.
+
+`fh run` writes `grid/line.txt`: the signal of each number, then 1 line for each frequency with R, L, G and C (N x N each, in ohm/m, H/m, S/m and F/m), `eps_eff` and `loss` (dB/m) of each mode, and for 1 signal `z0_re` and `z0_im` (ohm). With `length`, `grid/line.sNp` is the Touchstone file of the 2N ports: ports 1 to N are the near ends of the signals, ports N+1 to 2N the far ends. The page shows the potential `V1`, `V2`, ... of each signal at 1 V and the current density `J1`, `J2`, ... at the highest frequency. `fh run` solves up to 1,000,000 points, the browser up to 250,000.
+
+Do a mesh study with 2 values of `max_cell`. A sharp corner of a conductor makes a singular field: C, L and Z0 converge, but slower than near a round face.

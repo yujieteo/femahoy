@@ -402,7 +402,12 @@ async fn solve_case(
         let _ = on_event.call2(&JsValue::NULL, &kind.into(), &text.into());
     };
     // A file with an error gets its message at once, with no worker.
-    fh_core::grid::read(&text).map_err(|e| format!("{name}: {e}"))?;
+    if fh_core::grid::is_line(&text) {
+        fh_core::line::read(&text).map(|_| ())
+    } else {
+        fh_core::grid::read(&text).map(|_| ())
+    }
+    .map_err(|e| format!("{name}: {e}"))?;
     let script = self::text(get(token, SCRIPT_PATH, signal).await?, SCRIPT_PATH)?;
     let worker = SolveWorker::start()?;
     let message = js_sys::Object::new();

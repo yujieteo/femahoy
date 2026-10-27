@@ -1,9 +1,11 @@
 //! The solve of a `grid.toml` case in the browser, with no `fh run`: the built-in grid solver
 //! (`fh-fem`) runs in a worker of the page (`web` module), and each output goes to the page as
 //! the lists of [`results::Results::receive`]. `fh run` uses the same reader, result grid and
-//! probe table (`fh_core::grid`), so the same case gives the same probes.
+//! probe table (`fh_core::grid`), so the same case gives the same probes. A case with a `[line]`
+//! table is a transmission line (`fh_core::line`): its answer is the table of `grid/line.txt`.
 
-use fh_core::grid::{frame_grid, probe_head, probe_row, read};
+use fh_core::grid::{frame_grid, is_line, probe_head, probe_row, read};
+use fh_core::line;
 use fh_core::vtu::PvdEntry;
 use fh_fem::heat::{self, Events, Frame, Limit, Mesh};
 
@@ -22,6 +24,12 @@ pub const BROWSER: Limit = Limit {
     memory: "the 4 GiB memory of wasm32 in a browser",
 };
 
+/// The largest mesh of a line case in the browser: a quarter of the native limit, the ratio of the
+/// limits of the box grid. Reason: the native 2D solve of 321,295 points used a factor of 200 MB
+/// at each frequency, so 250,000 points fit in the worker with a large margin; there is no
+/// measurement of the line solve in wasm32.
+pub const BROWSER_LINE_POINTS: usize = 250_000;
+
 /// Solve the case `text` (the text of `grid.toml`). `on_line` gets each line of progress and
 /// each warning, and `on_step` the lists of each output. The answer is the probe table, the
 /// same text as `grid/probes.txt` of `fh run`.
@@ -31,6 +39,9 @@ pub fn solve(
     on_line: &mut dyn FnMut(&str),
     on_step: &mut dyn FnMut(Vec<Vec<u8>>),
 ) -> Result<String, String> {
+    if is_line(text) {
+        return solve_line(text, on_line, on_step);
+    }
     let (model, units) = read(text).map_err(|e| format!("grid.toml: {e}"))?;
     let mut out = Output {
         mesh: None,
@@ -59,6 +70,44 @@ pub fn solve(
         (out.on_line)(&format!("warning: {w}"));
     }
     Ok(out.probes)
+}
+
+/// Solve the line case `text`: 1 output with the potential and the current density, and the
+/// answer is the table of the per-length parameters.
+fn solve_line(
+    text: &str,
+    on_line: &mut dyn FnMut(&str),
+    on_step: &mut dyn FnMut(Vec<Vec<u8>>),
+) -> Result<String, String> {
+    let mut model = line::read(text).map_err(|e| format!("grid.toml: {e}"))?;
+    model.max_points = BROWSER_LINE_POINTS;
+    struct Progress<'a>(&'a mut dyn FnMut(&str));
+    impl fh_fem::line::Events for Progress<'_> {
+        fn progress(&mut self, text: &str) {
+            (self.0)(text);
+        }
+    }
+    let solution = fh_fem::line::solve(&model, &mut Progress(on_line)).map_err(|e| {
+        if e.contains("more than") {
+            format!(
+                "{e}. The browser solves up to {BROWSER_LINE_POINTS} points; fh run solves up to \
+                 {}",
+                line::LAPTOP_POINTS
+            )
+        } else {
+            e
+        }
+    })?;
+    for w in &solution.warnings {
+        on_line(&format!("warning: {w}"));
+    }
+    let mut loader = Loader::stream("SI-m");
+    let entry = PvdEntry {
+        time: 0.0,
+        file: "step-1".into(),
+    };
+    on_step(loader.push_and_send(entry, line::solution_grid(&solution))?);
+    Ok(line::table_text(&model, &solution))
 }
 
 struct Output<'a> {
@@ -98,6 +147,21 @@ mod tests {
     use crate::results::Results;
 
     const WALL: &str = include_str!("../../../validation/cases/grid-layered-wall/wall/grid.toml");
+    const COAX: &str = include_str!("../../../validation/cases/line-coax/coax/grid.toml");
+
+    /// A line case gives the page the potential and the table of the per-length parameters.
+    #[test]
+    fn the_page_gets_the_fields_and_the_table_of_a_line() {
+        let mut results = Results::default();
+        let coarse = COAX.replace("max_cell = 4e-5", "max_cell = 2e-4");
+        let table = solve(&coarse, BROWSER, &mut |_| {}, &mut |s| {
+            results.receive(&s[..]).unwrap()
+        })
+        .unwrap();
+        assert!(table.contains("# f R1_1 L1_1"), "{table}");
+        assert_eq!(results.steps.len(), 1);
+        assert!(results.steps[0].field("V1").is_some());
+    }
 
     /// The page gets each output with its temperature field, and a larger grid than the limit
     /// is refused before the solve, with the limit and the memory in the text.

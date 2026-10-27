@@ -1,0 +1,30 @@
+# A stripline: a thin strip of perfect conductor in the middle between 2 ground planes (the
+# electric walls y- and y+), in a dielectric of relative permittivity 2.2. The magnetic walls x-
+# and x+ are 10 plate spacings from the strip (../derivation.md).
+units = "SI-m"
+
+[grid]
+max_cell = 1e-4
+max_growth = 1.05
+
+[material.dielectric]
+relative_permittivity = 2.2
+
+[material.pec]
+perfect_conductor = true
+
+[part.dielectric]
+material = "dielectric"
+x = [-20e-3, 20e-3]
+y = [-1e-3, 1e-3]
+
+[part.strip]
+material = "pec"
+priority = 1
+x = [-0.5e-3, 0.5e-3]
+y = [-0.1e-6, 0.1e-6]
+
+[line]
+signals = ["strip"]
+electric_walls = ["y-", "y+"]
+frequencies = [1e9]

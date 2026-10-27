@@ -171,129 +171,20 @@ pub fn mesh(
     if !(spacing.max_cell > 0.0 && spacing.max_cell.is_finite()) {
         return Err("max_cell must be a number above 0".into());
     }
-    // The outlines of each part (outline first, then the holes), as polygons.
-    let mut points: Vec<[f64; 2]> = Vec::new();
-    let mut segments: Vec<[u32; 2]> = Vec::new();
-    // The circle of the outline of each segment, if it is a circle.
-    let mut segment_circle: Vec<u32> = Vec::new();
-    let mut circles: Vec<([f64; 2], f64)> = Vec::new();
-    // The outline and the holes of each part, as polygons.
-    let mut polygons: Vec<Ring2> = Vec::new();
-    for p in parts {
-        if !(p.lo[axis].is_finite() && p.hi[axis].is_finite() && p.lo[axis] < p.hi[axis]) {
-            return Err(format!(
-                "part {}: its {} range must be 2 finite numbers, the first smaller",
-                p.name,
-                ["x", "y", "z"][axis]
-            ));
-        }
-        let footprint = match &p.footprint {
-            Some(f) => f.clone(),
-            None => {
-                let (lo, hi) = (across(axis, p.lo), across(axis, p.hi));
-                if !(lo[0] < hi[0] && lo[1] < hi[1]) {
-                    return Err(format!(
-                        "part {}: each range must have the first number smaller",
-                        p.name
-                    ));
-                }
-                Footprint {
-                    outline: Outline::Polygon(vec![lo, [hi[0], lo[1]], hi, [lo[0], hi[1]]]),
-                    holes: Vec::new(),
-                }
-            }
-        };
-        let mut rings = Vec::new();
-        for outline in std::iter::once(&footprint.outline).chain(&footprint.holes) {
-            let corners = match outline {
-                Outline::Circle { centre, radius } => {
-                    if !(radius.is_finite()
-                        && *radius > 0.0
-                        && centre.iter().all(|c| c.is_finite()))
-                    {
-                        return Err(format!(
-                            "part {}: a circle needs a finite centre and a radius above 0",
-                            p.name
-                        ));
-                    }
-                    outline.corners(spacing.max_cell)
-                }
-                Outline::Polygon(c) => {
-                    if c.len() < 3 || c.iter().flatten().any(|v| !v.is_finite()) {
-                        return Err(format!(
-                            "part {}: a polygon needs 3 or more corners with finite coordinates",
-                            p.name
-                        ));
-                    }
-                    c.clone()
-                }
-            };
-            let area: f64 = (0..corners.len())
-                .map(|k| {
-                    let (a, b) = (corners[k], corners[(k + 1) % corners.len()]);
-                    a[0] * b[1] - b[0] * a[1]
-                })
-                .sum();
-            if area == 0.0 {
-                return Err(format!("part {}: an outline has no area", p.name));
-            }
-            let circle = match outline {
-                Outline::Circle { centre, radius } => {
-                    circles.push((*centre, *radius));
-                    circles.len() as u32 - 1
-                }
-                Outline::Polygon(_) => u32::MAX,
-            };
-            let base = points.len() as u32;
-            let n = corners.len() as u32;
-            points.extend_from_slice(&corners);
-            for k in 0..n {
-                segments.push([base + k, base + (k + 1) % n]);
-                segment_circle.push(circle);
-            }
-            rings.push(corners);
-        }
-        let outline = rings.remove(0);
-        polygons.push((outline, rings));
-    }
-    // The parts that hold a point of the plane, highest priority first, interned as labels.
-    let covers: RefCell<Vec<Vec<u32>>> = RefCell::new(Vec::new());
-    let classify = |x: [f64; 2]| -> u32 {
-        let mut list: Vec<u32> = (0..parts.len() as u32)
-            .filter(|&k| {
-                let (outline, holes) = &polygons[k as usize];
-                inside(outline, x) && !holes.iter().any(|h| inside(h, x))
-            })
-            .collect();
-        if list.is_empty() {
-            return OUTSIDE;
-        }
-        // Highest priority first; the later part first at the same priority.
-        list.sort_by(|&a, &b| {
-            parts[b as usize]
-                .priority
-                .cmp(&parts[a as usize].priority)
-                .then(b.cmp(&a))
-        });
-        let mut c = covers.borrow_mut();
-        match c.iter().position(|l| *l == list) {
-            Some(k) => k as u32,
-            None => {
-                c.push(list);
-                c.len() as u32 - 1
-            }
-        }
-    };
-    let flat = mesh2d::mesh(
-        &points,
-        &segments,
+    let Flat {
+        mesh: flat,
+        covers,
+        segment_circle,
+        circles,
+    } = footprints(
+        parts,
+        axis,
         Size {
             max_size: spacing.max_cell,
             max_growth: spacing.max_growth,
         },
-        &classify,
+        &vec![f64::INFINITY; parts.len()],
     )?;
-    let covers = covers.into_inner();
     let planes = axis_planes(parts, axis, spacing, &[])?;
     let t = tol(&planes);
     // The part of each layer of each label.
@@ -424,4 +315,164 @@ pub fn mesh(
         triangles: flat.triangles.len(),
         planes: planes.len(),
     })
+}
+
+/// The triangle mesh of the footprints of the parts across the axis `axis`.
+pub struct Flat {
+    pub mesh: mesh2d::Mesh2,
+    /// The parts that hold each label of the mesh, highest priority first.
+    pub covers: Vec<Vec<u32>>,
+    /// The circle (an index into `circles`) of the outline of each input segment, or `u32::MAX`.
+    pub segment_circle: Vec<u32>,
+    /// The centre and the radius of each circle outline.
+    pub circles: Vec<([f64; 2], f64)>,
+}
+
+/// The quality triangle mesh of the footprints of `parts` across the axis `axis`. The outlines of
+/// part `k` have segments of at most `surface[k]` (`f64::INFINITY` for no limit), so the mesh is
+/// fine along them and grows away from them.
+pub fn footprints(
+    parts: &[Part],
+    axis: usize,
+    size: Size,
+    surface: &[f64],
+) -> Result<Flat, String> {
+    // The outlines of each part (outline first, then the holes), as polygons.
+    let mut points: Vec<[f64; 2]> = Vec::new();
+    let mut segments: Vec<[u32; 2]> = Vec::new();
+    // The circle of the outline of each segment, if it is a circle.
+    let mut segment_circle: Vec<u32> = Vec::new();
+    let mut circles: Vec<([f64; 2], f64)> = Vec::new();
+    // The outline and the holes of each part, as polygons.
+    let mut polygons: Vec<Ring2> = Vec::new();
+    for (k, p) in parts.iter().enumerate() {
+        if !(p.lo[axis].is_finite() && p.hi[axis].is_finite() && p.lo[axis] < p.hi[axis]) {
+            return Err(format!(
+                "part {}: its {} range must be 2 finite numbers, the first smaller",
+                p.name,
+                ["x", "y", "z"][axis]
+            ));
+        }
+        let footprint = match &p.footprint {
+            Some(f) => f.clone(),
+            None => {
+                let (lo, hi) = (across(axis, p.lo), across(axis, p.hi));
+                if !(lo[0] < hi[0] && lo[1] < hi[1]) {
+                    return Err(format!(
+                        "part {}: each range must have the first number smaller",
+                        p.name
+                    ));
+                }
+                Footprint {
+                    outline: Outline::Polygon(vec![lo, [hi[0], lo[1]], hi, [lo[0], hi[1]]]),
+                    holes: Vec::new(),
+                }
+            }
+        };
+        let mut rings = Vec::new();
+        for outline in std::iter::once(&footprint.outline).chain(&footprint.holes) {
+            let corners = match outline {
+                Outline::Circle { centre, radius } => {
+                    if !(radius.is_finite()
+                        && *radius > 0.0
+                        && centre.iter().all(|c| c.is_finite()))
+                    {
+                        return Err(format!(
+                            "part {}: a circle needs a finite centre and a radius above 0",
+                            p.name
+                        ));
+                    }
+                    outline.corners(size.max_size.min(surface[k]))
+                }
+                Outline::Polygon(c) => {
+                    if c.len() < 3 || c.iter().flatten().any(|v| !v.is_finite()) {
+                        return Err(format!(
+                            "part {}: a polygon needs 3 or more corners with finite coordinates",
+                            p.name
+                        ));
+                    }
+                    densify(c, surface[k])
+                }
+            };
+            let area: f64 = (0..corners.len())
+                .map(|k| {
+                    let (a, b) = (corners[k], corners[(k + 1) % corners.len()]);
+                    a[0] * b[1] - b[0] * a[1]
+                })
+                .sum();
+            if area == 0.0 {
+                return Err(format!("part {}: an outline has no area", p.name));
+            }
+            let circle = match outline {
+                Outline::Circle { centre, radius } => {
+                    circles.push((*centre, *radius));
+                    circles.len() as u32 - 1
+                }
+                Outline::Polygon(_) => u32::MAX,
+            };
+            let base = points.len() as u32;
+            let n = corners.len() as u32;
+            points.extend_from_slice(&corners);
+            for k in 0..n {
+                segments.push([base + k, base + (k + 1) % n]);
+                segment_circle.push(circle);
+            }
+            rings.push(corners);
+        }
+        let outline = rings.remove(0);
+        polygons.push((outline, rings));
+    }
+    // The parts that hold a point of the plane, highest priority first, interned as labels.
+    let covers: RefCell<Vec<Vec<u32>>> = RefCell::new(Vec::new());
+    let classify = |x: [f64; 2]| -> u32 {
+        let mut list: Vec<u32> = (0..parts.len() as u32)
+            .filter(|&k| {
+                let (outline, holes) = &polygons[k as usize];
+                inside(outline, x) && !holes.iter().any(|h| inside(h, x))
+            })
+            .collect();
+        if list.is_empty() {
+            return OUTSIDE;
+        }
+        // Highest priority first; the later part first at the same priority.
+        list.sort_by(|&a, &b| {
+            parts[b as usize]
+                .priority
+                .cmp(&parts[a as usize].priority)
+                .then(b.cmp(&a))
+        });
+        let mut c = covers.borrow_mut();
+        match c.iter().position(|l| *l == list) {
+            Some(k) => k as u32,
+            None => {
+                c.push(list);
+                c.len() as u32 - 1
+            }
+        }
+    };
+    let mesh = mesh2d::mesh(&points, &segments, size, &classify)?;
+    Ok(Flat {
+        mesh,
+        covers: covers.into_inner(),
+        segment_circle,
+        circles,
+    })
+}
+
+/// The corners of a polygon, with more corners on each side longer than `max`.
+fn densify(corners: &[[f64; 2]], max: f64) -> Vec<[f64; 2]> {
+    let mut out = Vec::new();
+    for k in 0..corners.len() {
+        let (a, b) = (corners[k], corners[(k + 1) % corners.len()]);
+        let n = if max.is_finite() {
+            ((((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt() / max).ceil() as usize).max(1)
+        } else {
+            1
+        };
+        for i in 0..n {
+            let t = i as f64 / n as f64;
+            out.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+        }
+    }
+    out
 }
