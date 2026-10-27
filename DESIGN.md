@@ -78,6 +78,19 @@ Reason of the plots: many analysis types give a curve, not a field, for example 
 
 Reason of the check: a missing or signed-out agent showed only as a failed chat.
 
+- The instructions of the agent are `crates/fh/src/daemon/agent.md`, with the index of the guides. `fh guide NAME` prints 1 how-to guide for each solver and each special analysis (`crates/fh/src/guide`). The agent reads a guide only when its job needs it.
+
+Reason of the guides: in 1 chat run of 33 model calls, each call sent the 62 KB of agent.md, about 15000 tokens. 35 KB of it were the guides, and a job uses 1 or 2 of them.
+
+The instructions in agent.md hold no reason, because the agent reads them on each call. The reasons of their rules are here:
+
+- Chat text with no Markdown: on a 390x844 phone the chat showed `## Results`, `**` and a pipe table as raw text.
+- Reference PDF, the pages from the text first: 1 run read pages 1 to 8 and then page 14 as images, but it needed 1 or 2 pages. Text alone loses the figures, the tables and the equations that hold reference values.
+- Report controls (`data-report-controls`): the flap report required repeated scroll actions and hid its run identity.
+- Mesh trend (`data-mesh-trend`): the flap mesh table exceeded its text panel by 155 pixels.
+- The viewer controls `range`, `probe` and `scale`: the column, heat-fin and crack runs exposed ambiguous colours, local values and deformation factors.
+- The `values` control of a curve: heat-fin and frequency curves require exact values from each series, without values from rounded plot coordinates.
+
 ---
 
 ## 5. Input and meshes
@@ -195,6 +208,6 @@ About 10 workers add solvers and cases at the same time. These rules changed wit
 1. `validate_runs_every_case` checks only that no case fails. It has no count and no list of the cases. Reason: each new case changed the count, thus parallel pull requests conflicted after each merge, and main failed once when 2 pull requests both changed 14 to 15. Exit test: a pull request that adds a case does not change `crates/fh/tests/cli.rs`.
 2. A new case with a written tolerance budget needs no approval. A change to the tolerance of an existing case needs the approval of the owner (`AGENTS.md`). Reason: a wider tolerance can hide a fault that an existing case found, but a new case has no earlier result to hide. Exit test: each tolerance change of an existing case on main has the approval of the owner.
 3. CI installs no solver for now, and the validation cases run by hand with `fh validate` (section 7). Reason: the solver installs download from a slow Ubuntu mirror, and 4 runs on main stopped at the 65-minute limit on 2026-10-26. Exit test: each CI run ends in less than its time limit.
-4. The table of section 6 is the only list of the solvers in the docs. `scripts/install.sh` has the other list of the solvers, because it must install each tool. Reason: the list was in 5 places in this file and again in `README.md`, and each new solver changed all of them. `crates/fh/src/daemon/agent.md` keeps 1 how-to section for each solver, because the chat cannot read this file. These sections are not a list of the solvers. Exit test: a new solver adds 1 row to the table and changes no other list of the solvers, except the solver list in `scripts/install.sh`.
+4. The table of section 6 is the only list of the solvers in the docs. `scripts/install.sh` has the other list of the solvers, because it must install each tool. Reason: the list was in 5 places in this file and again in `README.md`, and each new solver changed all of them. `crates/fh/src/guide` keeps 1 how-to guide for each solver (`fh guide`), because the chat cannot read this file. The guides are not a list of the solvers. Exit test: a new solver adds 1 row to the table and changes no other list of the solvers, except the solver list in `scripts/install.sh`.
 5. 1 rule of discretization error for all analysis types (section 7). Reason: each analysis type had its own rule, thus a new analysis type needed a new rule. Exit test: each case states its discretization error from 2 meshes or time steps, or why it cannot.
 6. The limits of section 6.1 apply to each solver process that `fh run` starts. Reason: the text named only `ccx`, but each solver already uses the same mechanism. Exit test: each solver module starts its programs only through `supervise`.

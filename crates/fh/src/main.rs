@@ -14,6 +14,7 @@ fn usage() -> &'static str {
          run       solve a CalculiX input, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS, topology or shape optimization case (fh run MODEL.inp|CASE [--timeout SECONDS])\n  \
          report    write 1 HTML file with a text, the viewer, the results of runs and plots of curves (fh report TEXT.html -o REPORT.html [--run RUN]... [--curve CURVE.csv]... [--viewer FILE.js] [--one-step])\n  \
          fit       fit a model to a curve by least squares (fh fit MODEL CURVE.csv [--series NAME] [-o OUT.csv])\n  \
+         guide     print the how-to guide of an analysis for the agent (fh guide NAME)\n  \
          serve     run the daemon, the browser viewer and the chat on 127.0.0.1 (fh serve)\n"
 }
 
@@ -51,6 +52,7 @@ fn main() -> ExitCode {
         Some("run") => run::run(&args[1..]),
         Some("report") => fh::daemon::report(&args[1..]),
         Some("fit") => fh::fit::command(&args[1..]),
+        Some("guide") => fh::guide::command(&args[1..]),
         Some("serve") => fh::daemon::serve(&args[1..]),
         _ => {
             eprintln!("fh: unknown argument: {}", args.join(" "));
