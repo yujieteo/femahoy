@@ -43,9 +43,11 @@ pub struct Footprint {
     pub holes: Vec<Outline>,
 }
 
-/// The fewest segments of a circle. Reason: a circle with fewer segments is not round: the
-/// polygon of 16 has 2.6 % less area than the circle, and the polygon of 4 has 36 % less.
-const MIN_CIRCLE_SEGMENTS: usize = 16;
+/// The fewest segments of a circle. Reason: the polygon of 16 has 2.6 % less area than the
+/// circle, and the stress at a small hole in a plate under tension (Kirsch) is 2.0 % low with 16
+/// segments, 0.7 % with 32 and 0.2 % with 64. The mesh grows away from the circle, so a small
+/// hole with 64 segments made the mesh of a plate 1.5 times larger than with 16, not 4 times.
+const MIN_CIRCLE_SEGMENTS: usize = 64;
 
 /// The coordinates of a point in the plane across the axis `axis`: the next 2 axes in the order
 /// x, y, z, x (for the axis x: y and z; for y: z and x; for z: x and y).
@@ -62,13 +64,17 @@ fn point(axis: usize, uv: [f64; 2], w: f64) -> [f64; 3] {
 }
 
 impl Outline {
-    /// The corners of the outline, a circle as a polygon with segments of at most `max_cell`.
+    /// The corners of the outline, a circle as a polygon with segments of at most `max_cell`. The
+    /// segments of a circle are a multiple of 4, so it has a corner at 0, 90, 180 and 270 degrees
+    /// from the first axis across the extrusion axis. Reason: a point support and a probe at
+    /// such a point are on the circle, for example the supports of a free ring.
     pub fn corners(&self, max_cell: f64) -> Vec<[f64; 2]> {
         match self {
             Outline::Polygon(p) => p.clone(),
             Outline::Circle { centre, radius } => {
                 let n = ((2.0 * std::f64::consts::PI * radius / max_cell).ceil() as usize)
-                    .max(MIN_CIRCLE_SEGMENTS);
+                    .max(MIN_CIRCLE_SEGMENTS)
+                    .next_multiple_of(4);
                 (0..n)
                     .map(|k| {
                         let a = 2.0 * std::f64::consts::PI * k as f64 / n as f64;

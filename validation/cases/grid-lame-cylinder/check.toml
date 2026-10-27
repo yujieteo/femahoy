@@ -1,0 +1,43 @@
+# A thick tube with open ends under an internal pressure, against the Lamé solution
+# (derivation.md).
+# Tolerance budget: the 64-point polygons of the circles give about 0.2 % (the displacements are
+# 0.1 % to 0.15 % low), and the mesh changes the values by at most 0.6 % (outer.sxx, from 3
+# meshes). Their sum is 0.8 %. The tolerance 1 % holds the sum.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[inner_ux]
+value = 9.365079e-3
+case = "tube"
+file = "probes.txt"
+column = "inner.ux"
+
+[wall_hoop]
+value = 154.2706
+case = "tube"
+file = "probes.txt"
+column = "wall.syy"
+
+[middle_uy]
+value = 7.169312e-3
+case = "tube"
+file = "probes.txt"
+column = "middle.uy"
+
+[middle_hoop]
+value = 92.59259
+case = "tube"
+file = "probes.txt"
+column = "middle.sxx"
+
+[outer_uy]
+value = 6.349206e-3
+case = "tube"
+file = "probes.txt"
+column = "outer.uy"
+
+[outer_hoop]
+value = 66.66667
+case = "tube"
+file = "probes.txt"
+column = "outer.sxx"

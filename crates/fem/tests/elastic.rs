@@ -9,7 +9,6 @@ use fh_fem::elastic::{
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{FaceSet, Mesh, Probe};
 use fh_fem::hex::Orthotropic;
-use fh_fem::prism::{Footprint, Outline};
 use fh_fem::solve::{Method, PCG_MAX_ITER};
 
 #[derive(Default)]
@@ -95,6 +94,7 @@ fn cantilever(l: f64, b: f64, h: f64, max_cell: f64, min_cells: usize, p: f64) -
             max_growth: 1.3,
             min_cells,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("root", "x-"), side("tip", "x+")],
         loads: vec![
@@ -156,6 +156,7 @@ fn a_thin_clamped_plate_bends_as_a_kirchhoff_plate() {
                 max_growth: 1.3,
                 min_cells: 2,
             },
+            axis: 2,
             symmetry: [true, true, false],
             faces: vec![
                 FaceSet {
@@ -199,6 +200,7 @@ fn a_free_uniform_expansion_has_no_stress() {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("x0", "x-"), side("y0", "y-"), side("z0", "z-")],
         loads: vec![
@@ -237,6 +239,7 @@ fn point_supports_hold_only_the_rigid_motions() {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![],
         loads: vec![
@@ -292,6 +295,7 @@ fn the_direct_and_the_multigrid_solvers_agree() {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("bottom", "z-")],
         loads: vec![
@@ -338,6 +342,7 @@ fn a_quarter_model_gives_the_values_of_the_full_model() {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry,
         faces: vec![
             FaceSet {
@@ -400,21 +405,6 @@ fn a_model_that_can_move_is_refused() {
     assert!(e.contains("move along y"), "{e}");
 }
 
-/// The static step solves only on the box grid, so a prism part is refused, not solved as a box.
-#[test]
-fn a_prism_part_is_refused() {
-    let mut m = cantilever(10.0, 1.0, 1.0, 0.5, 2, 1.0);
-    m.parts[0].footprint = Some(Footprint {
-        outline: Outline::Circle {
-            centre: [0.5, 0.5],
-            radius: 0.5,
-        },
-        holes: vec![],
-    });
-    let e = solve(&m, &mut Record::default()).unwrap_err();
-    assert!(e.contains("parts that are boxes"), "{e}");
-}
-
 /// 2 parts of 1 material are 1 solid: the line where they meet on a free face is not an edge
 /// where 2 materials meet.
 #[test]
@@ -473,6 +463,7 @@ fn panel(n: usize) -> Model {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("end", "x-"), side("skin", "z-")],
         loads: vec![

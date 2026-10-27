@@ -3,10 +3,11 @@
 //!
 //! A grid case is a folder with `grid.toml`: the parts as boxes or as prisms of a polygon or a
 //! circle with holes, the materials, the named face sets, the loads, the step, the probes and the
-//! surfaces (see `fh guide grid`). A model of boxes is solved on the box grid; a heat model with
-//! a prism part, and each electromagnetic model, on a mesh of tetrahedra. [`run_with`] reads it,
-//! solves it with the crate `fh-fem` and writes, for a heat step (steady or transient), with the
-//! reader and the result grid of `fh_core::grid`, which the browser solve of the viewer also uses:
+//! surfaces (see `fh guide grid`). A model of boxes is solved on the box grid; a model with a
+//! prism part, and each electromagnetic model, on a mesh of tetrahedra (10-node for a static
+//! step). [`run_with`] reads it, solves it with the crate `fh-fem` and writes, for a heat step
+//! (steady or transient), with the reader and the result grid of `fh_core::grid`, which the
+//! browser solve of the viewer also uses:
 //!
 //! - `step-N.vtu` and `results.pvd` in the run folder: for heat, the temperature `NT` at each
 //!   point, the heat flux `HFL` and the part number `part` of each cell, at each output time;
@@ -60,13 +61,13 @@ use std::time::{Duration, Instant};
 
 use fh_core::grid::{
     em_frame_grid, frame_grid, is_line, modes_row, ports_head, ports_row, probe_head, probe_row,
-    read, sparams_head, sparams_row, touchstone_head, touchstone_rows, Case, MODES_HEAD,
+    read, sparams_head, sparams_row, touchstone_head, touchstone_rows, vtk_type, Case, MODES_HEAD,
 };
 use fh_core::line;
-use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry, VTK_HEXAHEDRON, VTK_TETRA};
+use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry};
 use fh_fem::elastic::{self, Solution};
 use fh_fem::em;
-use fh_fem::heat::{self, Cell, Events, Frame, Mesh};
+use fh_fem::heat::{self, Events, Frame, Mesh};
 use fh_fem::homog::{self, diagonal, engineering, orthotropic, Effective, COUPLING};
 
 use crate::ccx::{prepare_run_dir, CancelToken, PVD_FILE};
@@ -475,18 +476,10 @@ impl Output<'_> {
             1,
             mesh.part.iter().map(|&p| f64::from(p) + 1.0).collect(),
         ));
-        let kind = match mesh.kind {
-            Cell::Hex8 => VTK_HEXAHEDRON,
-            Cell::Tet4 => VTK_TETRA,
-        };
         let grid = VtuGrid {
             points: mesh.points.clone(),
-            cell_types: vec![kind; mesh.len()],
-            cells: mesh
-                .cells
-                .chunks_exact(mesh.kind.nodes())
-                .map(|c| c.to_vec())
-                .collect(),
+            cell_types: vec![vtk_type(mesh.kind); mesh.len()],
+            cells: (0..mesh.len()).map(|e| mesh.cell(e).to_vec()).collect(),
             point_data,
             cell_data,
         };

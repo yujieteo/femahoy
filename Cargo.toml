@@ -14,6 +14,7 @@ publish = false
 
 # The tests of `cargo test` solve the grid validation cases. Reason: without optimization, the
 # solves of the electromagnetic cases took 13 times longer than with it (the H-plane step case
-# took 454 s against 35 s), longer than the time limit of CI.
+# took 454 s against 35 s), longer than the time limit of CI. The grid case of a round bar of
+# 116,040 unknowns took 359 s, and with this setting 13 s.
 [profile.dev.package.fh-fem]
 opt-level = 3

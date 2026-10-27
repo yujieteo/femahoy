@@ -98,6 +98,8 @@ pub struct Model {
     pub parts: Vec<Part>,
     pub materials: Vec<Material>,
     pub spacing: Spacing,
+    /// The extrusion axis of the parts with a footprint (0 x, 1 y, 2 z).
+    pub axis: usize,
     /// Solve the half above the middle plane of the parts of each axis that is true. The parts,
     /// the face sets of the loads and the loads must mirror at that plane.
     pub symmetry: [bool; 3],
@@ -268,7 +270,7 @@ pub const DIRECT_ENTRIES: u64 = 250_000_000;
 pub const MULTIGRID_ASPECT: f64 = 2.0;
 
 /// A force imbalance above this fraction is a warning.
-const IMBALANCE: f64 = 1e-6;
+pub(crate) const IMBALANCE: f64 = 1e-6;
 
 /// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
@@ -284,6 +286,9 @@ pub fn solve_within(
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
     let stiffness = check(model)?;
+    if model.parts.iter().any(|p| p.footprint.is_some()) {
+        return crate::elastic_tet::solve(model, &stiffness, entries, iterations, events);
+    }
     let mut warnings = Vec::new();
     let used: Vec<bool> = (0..model.faces.len())
         .map(|f| {
@@ -431,27 +436,8 @@ pub fn solve_within(
     let mut clamp_faces: Vec<Face> = Vec::new();
     // The point of each point support.
     let mut supports: Vec<(usize, usize)> = Vec::new();
-    let mut fix = |node: usize, value: &[Option<f64>; 3], li: usize| -> Result<(), String> {
-        for d in 0..3 {
-            let Some(v) = value[d] else { continue };
-            if owner[3 * node + d] == u32::MAX {
-                owner[3 * node + d] = li as u32;
-            }
-            match fixed[3 * node + d] {
-                Some(w) if w != v => {
-                    return Err(format!(
-                        "2 fixed displacements give 2 values of u{} at the point ({:e}, {:e}, \
-                         {:e}): {w} and {v}",
-                        ["x", "y", "z"][d],
-                        mesh.points[node][0],
-                        mesh.points[node][1],
-                        mesh.points[node][2]
-                    ))
-                }
-                _ => fixed[3 * node + d] = Some(v),
-            }
-        }
-        Ok(())
+    let mut fix = |node: usize, value: &[Option<f64>; 3], li: usize| {
+        fix_node(&mut fixed, &mut owner, node, value, li, mesh.points[node])
     };
     for (li, load) in model.loads.iter().enumerate() {
         match load {
@@ -610,58 +596,20 @@ pub fn solve_within(
         u[i] = x[j];
     }
 
-    // The reactions: K u - f at the fixed unknowns.
-    let mut ku = vec![0.0; 3 * n];
-    k.mul(&u, &mut ku);
-    let mut reactions: Vec<Reaction> = Vec::new();
-    let mut reaction_of = vec![usize::MAX; model.loads.len()];
-    for (li, load) in model.loads.iter().enumerate() {
-        if let Load::Displacement { faces, .. } = load {
-            reaction_of[li] = reactions.len();
-            reactions.push(Reaction {
-                name: model.faces[*faces].name.clone(),
-                force: [0.0; 3],
-            });
-        }
-    }
-    let mut total = applied;
-    let mut point_force = vec![[0.0; 3]; model.loads.len()];
-    for i in 0..3 * n {
-        if fixed[i].is_some() {
-            let r = ku[i] - force[i];
-            total[i % 3] += r;
-            gross += r.abs();
-            let o = owner[i] as usize;
-            match reaction_of.get(o) {
-                Some(&j) if j != usize::MAX => reactions[j].force[i % 3] += r,
-                Some(_) => point_force[o][i % 3] += r,
-                None => {}
-            }
-        }
-    }
-    for &(li, node) in &supports {
-        let f = point_force[li];
-        if f.iter().any(|v| v.abs() > IMBALANCE * gross) {
-            let x = mesh.points[node];
-            warnings.push(format!(
-                "the point support at ({:e}, {:e}, {:e}) takes the force ({:.4e}, {:.4e}, \
-                 {:.4e}): the stress next to it depends on the mesh. Hold the model on a face, \
-                 or hold only a rigid motion at the point",
-                x[0], x[1], x[2], f[0], f[1], f[2]
-            ));
-        }
-    }
-    let imbalance = if gross > 0.0 {
-        total.iter().fold(0.0f64, |m, v| m.max(v.abs())) / gross
-    } else {
-        0.0
-    };
-    if imbalance > IMBALANCE {
-        warnings.push(format!(
-            "the force balance is off by {imbalance:.2e} of the forces: the linear solve is not \
-             exact"
-        ));
-    }
+    let (reactions, imbalance) = reactions(
+        model,
+        &k,
+        &u,
+        &force,
+        &Fixed {
+            fixed: &fixed,
+            owner: &owner,
+            supports: &supports,
+        },
+        (applied, gross),
+        &mesh.points,
+        &mut warnings,
+    );
 
     // The strain and the stress at the corners of each cell, the mean at each point, and the
     // peak of each part.
@@ -722,29 +670,7 @@ pub fn solve_within(
         }
     }
     let peaks: Vec<Peak> = peaks.into_iter().filter(|p| p.mises.is_finite()).collect();
-    for p in &peaks {
-        if let Some(why) = p.singular {
-            let regular = match p.regular {
-                Some((m, x)) => format!(
-                    "; the largest value away from such points is {m:.4e} at ({:.6e}, {:.6e}, \
-                     {:.6e})",
-                    x[0], x[1], x[2]
-                ),
-                None => String::new(),
-            };
-            warnings.push(format!(
-                "part {}: the largest von Mises stress {:.4e} is at ({:.6e}, {:.6e}, {:.6e}), at or \
-                 next to {}. The exact stress there is infinite, so the value grows when the cells \
-                 get smaller{regular}",
-                model.parts[p.part].name,
-                p.mises,
-                p.point[0],
-                p.point[1],
-                p.point[2],
-                why.describe()
-            ));
-        }
-    }
+    peak_warnings(model, &peaks, &mut warnings);
 
     let displacement: Vec<[f64; 3]> = (0..n)
         .map(|i| [u[3 * i], u[3 * i + 1], u[3 * i + 2]])
@@ -818,10 +744,146 @@ pub fn solve_within(
     })
 }
 
+/// The fixed value of each unknown, the load that first fixes it, and the load and the point of
+/// each point support.
+pub(crate) struct Fixed<'a> {
+    pub fixed: &'a [Option<f64>],
+    pub owner: &'a [u32],
+    pub supports: &'a [(usize, usize)],
+}
+
+/// Fix the components `value` of the point `node` (at `x`) for the load `li`. An error tells
+/// that 2 loads give 2 values.
+pub(crate) fn fix_node(
+    fixed: &mut [Option<f64>],
+    owner: &mut [u32],
+    node: usize,
+    value: &[Option<f64>; 3],
+    li: usize,
+    x: [f64; 3],
+) -> Result<(), String> {
+    for d in 0..3 {
+        let Some(v) = value[d] else { continue };
+        if owner[3 * node + d] == u32::MAX {
+            owner[3 * node + d] = li as u32;
+        }
+        match fixed[3 * node + d] {
+            Some(w) if w != v => {
+                return Err(format!(
+                    "2 fixed displacements give 2 values of u{} at the point ({:e}, {:e}, {:e}): \
+                     {w} and {v}",
+                    ["x", "y", "z"][d],
+                    x[0],
+                    x[1],
+                    x[2]
+                ))
+            }
+            _ => fixed[3 * node + d] = Some(v),
+        }
+    }
+    Ok(())
+}
+
+/// The reactions K u - f at the fixed unknowns of each fixed face set, a warning for each point
+/// support that takes a force, and the force imbalance. `scale` is the sum of the applied forces
+/// and the sum of the magnitudes of the forces before the reactions.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn reactions(
+    model: &Model,
+    k: &Csr,
+    u: &[f64],
+    force: &[f64],
+    fixed: &Fixed,
+    scale: ([f64; 3], f64),
+    points: &[[f64; 3]],
+    warnings: &mut Vec<String>,
+) -> (Vec<Reaction>, f64) {
+    let (applied, mut gross) = scale;
+    let mut ku = vec![0.0; u.len()];
+    k.mul(u, &mut ku);
+    let mut reactions: Vec<Reaction> = Vec::new();
+    let mut reaction_of = vec![usize::MAX; model.loads.len()];
+    for (li, load) in model.loads.iter().enumerate() {
+        if let Load::Displacement { faces, .. } = load {
+            reaction_of[li] = reactions.len();
+            reactions.push(Reaction {
+                name: model.faces[*faces].name.clone(),
+                force: [0.0; 3],
+            });
+        }
+    }
+    let mut total = applied;
+    let mut point_force = vec![[0.0; 3]; model.loads.len()];
+    for i in 0..u.len() {
+        if fixed.fixed[i].is_some() {
+            let r = ku[i] - force[i];
+            total[i % 3] += r;
+            gross += r.abs();
+            let o = fixed.owner[i] as usize;
+            match reaction_of.get(o) {
+                Some(&j) if j != usize::MAX => reactions[j].force[i % 3] += r,
+                Some(_) => point_force[o][i % 3] += r,
+                None => {}
+            }
+        }
+    }
+    for &(li, node) in fixed.supports {
+        let f = point_force[li];
+        if f.iter().any(|v| v.abs() > IMBALANCE * gross) {
+            let x = points[node];
+            warnings.push(format!(
+                "the point support at ({:e}, {:e}, {:e}) takes the force ({:.4e}, {:.4e}, \
+                 {:.4e}): the stress next to it depends on the mesh. Hold the model on a face, \
+                 or hold only a rigid motion at the point",
+                x[0], x[1], x[2], f[0], f[1], f[2]
+            ));
+        }
+    }
+    let imbalance = if gross > 0.0 {
+        total.iter().fold(0.0f64, |m, v| m.max(v.abs())) / gross
+    } else {
+        0.0
+    };
+    if imbalance > IMBALANCE {
+        warnings.push(format!(
+            "the force balance is off by {imbalance:.2e} of the forces: the linear solve is not \
+             exact"
+        ));
+    }
+    (reactions, imbalance)
+}
+
+/// A warning for each part whose largest von Mises stress is at or next to a singular point.
+pub(crate) fn peak_warnings(model: &Model, peaks: &[Peak], warnings: &mut Vec<String>) {
+    for p in peaks {
+        if let Some(why) = p.singular {
+            let regular = match p.regular {
+                Some((m, x)) => format!(
+                    "; the largest value away from such points is {m:.4e} at ({:.6e}, {:.6e}, \
+                     {:.6e})",
+                    x[0], x[1], x[2]
+                ),
+                None => String::new(),
+            };
+            warnings.push(format!(
+                "part {}: the largest von Mises stress {:.4e} is at ({:.6e}, {:.6e}, {:.6e}), at or \
+                 next to {}. The exact stress there is infinite, so the value grows when the cells \
+                 get smaller{regular}",
+                model.parts[p.part].name,
+                p.mises,
+                p.point[0],
+                p.point[1],
+                p.point[2],
+                why.describe()
+            ));
+        }
+    }
+}
+
 /// The heat solve of a thermal load: it keeps the temperature and passes the progress on.
-struct HeatRun<'a> {
-    outer: &'a mut dyn Events,
-    temperature: Option<Vec<f64>>,
+pub(crate) struct HeatRun<'a> {
+    pub outer: &'a mut dyn Events,
+    pub temperature: Option<Vec<f64>>,
 }
 
 impl heat::Events for HeatRun<'_> {
@@ -865,12 +927,12 @@ fn surface_force(
 
 /// The stress vector of `hex` (xx, yy, zz, yz, xz, xy) in the order of the output: xx, yy, zz,
 /// xy, yz, xz.
-fn reorder(s: &[f64; 6]) -> [f64; 6] {
+pub(crate) fn reorder(s: &[f64; 6]) -> [f64; 6] {
     [s[0], s[1], s[2], s[5], s[3], s[4]]
 }
 
 /// The engineering strain of `hex` as tensor components in the order of the output.
-fn tensor_strain(e: &[f64; 6]) -> [f64; 6] {
+pub(crate) fn tensor_strain(e: &[f64; 6]) -> [f64; 6] {
     [e[0], e[1], e[2], 0.5 * e[5], 0.5 * e[3], 0.5 * e[4]]
 }
 
@@ -998,8 +1060,8 @@ fn singular_points(
 }
 
 /// The shape of a surface from the displacement along its normal, with the mirror of each face
-/// across each plane of symmetry in the plane of the surface. The fits are least squares over
-/// the area, with a 2 x 2 Gauss rule on each face.
+/// across each plane of symmetry in the plane of the surface. The fits (`fit_shape`) use a 2 x 2
+/// Gauss rule on each face.
 fn surface_shape(
     grid: &Grid,
     faces: &[Face],
@@ -1049,34 +1111,9 @@ fn surface_shape(
             all.extend(copies);
         }
     }
-    // The centre and the half size, for the scale of the fit.
-    let (mut area, mut ca, mut cb) = (0.0, 0.0, 0.0);
-    let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
-    for q in &all {
-        let s = (q[1][0] - q[0][0]).abs().max((q[2][0] - q[0][0]).abs())
-            * (q[3][1] - q[0][1]).abs().max((q[2][1] - q[0][1]).abs());
-        let mid = [0, 1].map(|k| q.iter().map(|c| c[k]).sum::<f64>() / 4.0);
-        area += s;
-        ca += s * mid[0];
-        cb += s * mid[1];
-        for c in q {
-            for k in 0..2 {
-                lo[k] = lo[k].min(c[k]);
-                hi[k] = hi[k].max(c[k]);
-            }
-        }
-    }
-    let (ca, cb) = (ca / area, cb / area);
-    let half = (0.5 * (hi[0] - lo[0]).max(hi[1] - lo[1])).max(f64::MIN_POSITIVE);
-    // The normal equations of w = sum c_k phi_k over the 2 x 2 Gauss points of each face, with
-    // phi = 1, s, t, s^2, s t, t^2 and s = (a - ca) / half, t = (b - cb) / half.
-    let basis = |a: f64, b: f64| {
-        let (s, t) = ((a - ca) / half, (b - cb) / half);
-        [1.0, s, t, s * s, s * t, t * t]
-    };
-    let mut m = [[0.0; 6]; 6];
-    let mut r = [0.0; 6];
+    // The 2 x 2 Gauss points of each face, with the bilinear w of the face, and the corners.
     let g = 0.5 / 3f64.sqrt();
+    let mut samples = Vec::new();
     for q in &all {
         let da = q[1][0] - q[0][0];
         let db = q[3][1] - q[0][1];
@@ -1087,7 +1124,6 @@ fn surface_shape(
             (0.5 + g, 0.5 + g),
             (0.5 - g, 0.5 + g),
         ] {
-            // The bilinear w of the face.
             let n = [
                 (1.0 - fa) * (1.0 - fb),
                 fa * (1.0 - fb),
@@ -1095,12 +1131,53 @@ fn surface_shape(
                 (1.0 - fa) * fb,
             ];
             let w: f64 = (0..4).map(|k| n[k] * q[k][2]).sum();
-            let phi = basis(q[0][0] + fa * da, q[0][1] + fb * db);
-            for i in 0..6 {
-                r[i] += weight * phi[i] * w;
-                for j in 0..6 {
-                    m[i][j] += weight * phi[i] * phi[j];
-                }
+            samples.push([q[0][0] + fa * da, q[0][1] + fb * db, w, weight]);
+        }
+    }
+    let nodes: Vec<[f64; 3]> = all.iter().flatten().copied().collect();
+    Ok(fit_shape(&surface.name, axis, &samples, &nodes))
+}
+
+/// The shape of a surface whose normal is the axis `axis`, from the displacement w along its
+/// outward normal: the least squares fits of a plane and of a quadratic to the samples (a, b, w,
+/// weight) of w over the area, and the range of w and of w minus the plane at the points
+/// `nodes` (a, b, w).
+pub(crate) fn fit_shape(
+    name: &str,
+    axis: usize,
+    samples: &[[f64; 4]],
+    nodes: &[[f64; 3]],
+) -> SurfaceShape {
+    // The centre and the half size, for the scale of the fit.
+    let (mut area, mut ca, mut cb) = (0.0, 0.0, 0.0);
+    for s in samples {
+        area += s[3];
+        ca += s[3] * s[0];
+        cb += s[3] * s[1];
+    }
+    let (ca, cb) = (ca / area, cb / area);
+    let (mut lo, mut hi) = ([f64::INFINITY; 2], [f64::NEG_INFINITY; 2]);
+    for c in nodes {
+        for k in 0..2 {
+            lo[k] = lo[k].min(c[k]);
+            hi[k] = hi[k].max(c[k]);
+        }
+    }
+    let half = (0.5 * (hi[0] - lo[0]).max(hi[1] - lo[1])).max(f64::MIN_POSITIVE);
+    // The normal equations of w = sum c_k phi_k over the samples, with phi = 1, s, t, s^2, s t,
+    // t^2 and s = (a - ca) / half, t = (b - cb) / half.
+    let basis = |a: f64, b: f64| {
+        let (s, t) = ((a - ca) / half, (b - cb) / half);
+        [1.0, s, t, s * s, s * t, t * t]
+    };
+    let mut m = [[0.0; 6]; 6];
+    let mut r = [0.0; 6];
+    for &[a, b, w, weight] in samples {
+        let phi = basis(a, b);
+        for i in 0..6 {
+            r[i] += weight * phi[i] * w;
+            for j in 0..6 {
+                m[i][j] += weight * phi[i] * phi[j];
             }
         }
     }
@@ -1112,34 +1189,32 @@ fn surface_shape(
         f64::INFINITY,
         f64::NEG_INFINITY,
     );
-    for q in &all {
-        for c in q {
-            let phi = basis(c[0], c[1]);
-            let fit: f64 = (0..3).map(|k| plane[k] * phi[k]).sum();
-            wmin = wmin.min(c[2]);
-            wmax = wmax.max(c[2]);
-            rmin = rmin.min(c[2] - fit);
-            rmax = rmax.max(c[2] - fit);
-        }
+    for c in nodes {
+        let phi = basis(c[0], c[1]);
+        let fit: f64 = (0..3).map(|k| plane[k] * phi[k]).sum();
+        wmin = wmin.min(c[2]);
+        wmax = wmax.max(c[2]);
+        rmin = rmin.min(c[2] - fit);
+        rmax = rmax.max(c[2] - fit);
     }
     let h2 = half * half;
     let curvature = [-2.0 * quad[3] / h2, -2.0 * quad[5] / h2, -quad[4] / h2];
     let mean = 0.5 * (curvature[0] + curvature[1]);
     let radius =
         (0.25 * (curvature[0] - curvature[1]).powi(2) + curvature[2] * curvature[2]).sqrt();
-    Ok(SurfaceShape {
-        name: surface.name.clone(),
+    SurfaceShape {
+        name: name.to_owned(),
         axis,
         range: wmax - wmin,
         flatness: rmax - rmin,
         curvature,
         principal: [mean + radius, mean - radius],
-    })
+    }
 }
 
 /// Solve the first `k` rows and columns of the symmetric system m x = r by Gauss elimination
 /// with partial pivoting. A singular system (a surface on 1 line) gives 0 for the free terms.
-fn solve_small(m: &[[f64; 6]; 6], r: &[f64; 6], k: usize) -> [f64; 6] {
+pub(crate) fn solve_small(m: &[[f64; 6]; 6], r: &[f64; 6], k: usize) -> [f64; 6] {
     let mut a = [[0.0; 7]; 6];
     for i in 0..k {
         a[i][..k].copy_from_slice(&m[i][..k]);
@@ -1178,7 +1253,11 @@ fn solve_small(m: &[[f64; 6]; 6], r: &[f64; 6], k: usize) -> [f64; 6] {
 
 /// Each connected piece of the mesh needs fixed components that stop its 3 translations and 3
 /// rotations, else its displacement has no unique value.
-fn check_supports(model: &Model, mesh: &Mesh, fixed: &[Option<f64>]) -> Result<(), String> {
+pub(crate) fn check_supports(
+    model: &Model,
+    mesh: &Mesh,
+    fixed: &[Option<f64>],
+) -> Result<(), String> {
     let n = mesh.points.len();
     let mut root: Vec<usize> = (0..n).collect();
     fn find(root: &mut [usize], mut i: usize) -> usize {
@@ -1188,7 +1267,8 @@ fn check_supports(model: &Model, mesh: &Mesh, fixed: &[Option<f64>]) -> Result<(
         }
         i
     }
-    for c in mesh.cells.chunks_exact(8) {
+    for e in 0..mesh.len() {
+        let c = mesh.cell(e);
         let a = find(&mut root, c[0] as usize);
         for &v in &c[1..] {
             let b = find(&mut root, v as usize);
@@ -1234,8 +1314,8 @@ fn check_supports(model: &Model, mesh: &Mesh, fixed: &[Option<f64>]) -> Result<(
         }
     }
     let mut checked = vec![false; n];
-    for (e, c) in mesh.cells.chunks_exact(8).enumerate() {
-        let p = find(&mut root, c[0] as usize);
+    for e in 0..mesh.len() {
+        let p = find(&mut root, mesh.cell(e)[0] as usize);
         if checked[p] {
             continue;
         }
@@ -1337,18 +1417,24 @@ fn check(model: &Model) -> Result<Vec<Stiffness>, String> {
                 .map_err(|e| format!("material {}: {e}", m.name))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    if let Some(p) = model.parts.iter().find(|p| p.footprint.is_some()) {
-        return Err(format!(
-            "part {}: a static step needs parts that are boxes: a polygon or a circle part has \
-             only heat steps",
-            p.name
-        ));
+    let prism = model.parts.iter().any(|p| p.footprint.is_some());
+    if prism && model.symmetry.iter().any(|&s| s) {
+        return Err(
+            "symmetry needs a model of boxes: a model with a polygon or a circle part is solved \
+             in full"
+                .into(),
+        );
     }
-    if let Some(f) = model.faces.iter().find(|f| f.circle.is_some()) {
-        return Err(format!(
-            "face set {}: `circle` selects the faces on a circle outline, and no part has one",
-            f.name
-        ));
+    if !prism {
+        if let Some(f) = model.faces.iter().find(|f| f.circle.is_some()) {
+            return Err(format!(
+                "face set {}: `circle` selects the faces on a circle outline, and no part has one",
+                f.name
+            ));
+        }
+    }
+    if model.axis > 2 {
+        return Err("the extrusion axis must be x, y or z".into());
     }
     for m in &model.materials {
         if !m.expansion.iter().all(|a| a.is_finite()) {
@@ -1421,7 +1507,10 @@ fn check(model: &Model) -> Result<Vec<Stiffness>, String> {
             }
         }
         Thermal::Heat(h) => {
-            if h.parts != model.parts || h.spacing != model.spacing || h.symmetry != model.symmetry
+            if h.parts != model.parts
+                || h.spacing != model.spacing
+                || h.symmetry != model.symmetry
+                || h.axis != model.axis
             {
                 return Err("the heat model must have the parts and the grid of the model".into());
             }
