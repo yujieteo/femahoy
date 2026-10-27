@@ -25,14 +25,19 @@ pub const TRANSIENT_DIRECT_LIMIT: usize = 40_000;
 pub enum Crossover {
     /// Direct up to this many unknowns.
     Unknowns(usize),
-    /// Direct when the factor costs up to this many flops for each unknown. The factor of a thin
-    /// model is cheap for its size, and multigrid converges slowly on its flat cells.
-    Flops(f64),
+    /// Direct when the factor has up to `entries` entries, and it costs up to `flops` for each
+    /// unknown or the cells are `flat`. The factor of a thin model is cheap for its size, and
+    /// multigrid converges slowly on its flat cells.
+    Flops {
+        flops: f64,
+        entries: u64,
+        flat: bool,
+    },
 }
 
 /// The relative residual of a PCG solve.
 pub const PCG_TOL: f64 = 1e-10;
-const PCG_MAX_ITER: usize = 500;
+pub const PCG_MAX_ITER: usize = 500;
 
 /// How a solver solves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,6 +53,7 @@ enum Inner {
 
 pub struct Solver {
     inner: Inner,
+    max_iter: usize,
 }
 
 /// The work of 1 solve.
@@ -82,9 +88,17 @@ impl Solver {
             (Some(Method::Direct), _) => Some(symbolic(&a, &level)),
             (Some(Method::Multigrid), _) => None,
             (None, Crossover::Unknowns(n)) => (a.n <= n).then(|| symbolic(&a, &level)),
-            (None, Crossover::Flops(f)) => {
+            (
+                None,
+                Crossover::Flops {
+                    flops,
+                    entries,
+                    flat,
+                },
+            ) => {
                 let sym = symbolic(&a, &level);
-                (sym.flops() <= f * a.n as f64).then_some(sym)
+                (sym.entries() <= entries && (flat || sym.flops() <= flops * a.n as f64))
+                    .then_some(sym)
             }
         };
         let inner = match sym {
@@ -97,7 +111,15 @@ impl Solver {
                 Inner::Multigrid(a, mg)
             }
         };
-        Ok(Solver { inner })
+        Ok(Solver {
+            inner,
+            max_iter: PCG_MAX_ITER,
+        })
+    }
+
+    /// The solver with at most `max_iter` PCG iterations for each solve.
+    pub fn with_max_iter(self, max_iter: usize) -> Solver {
+        Solver { max_iter, ..self }
     }
 
     pub fn method(&self) -> Method {
@@ -135,7 +157,7 @@ impl Solver {
                     x,
                     &|r, z| mg.apply(r, z),
                     PCG_TOL,
-                    PCG_MAX_ITER,
+                    self.max_iter,
                     cancelled,
                 )?;
                 Ok(Stats {

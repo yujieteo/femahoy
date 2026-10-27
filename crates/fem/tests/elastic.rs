@@ -2,11 +2,14 @@
 //! uniform fields, the force balance, symmetry, the 2 linear solvers and the refusal of a model
 //! with no unique solution.
 
-use fh_fem::elastic::{solve, Events, Load, Material, Model, Solution, Summary, Surface, Thermal};
+use fh_fem::elastic::{
+    solve, solve_within, Events, Load, Material, Model, Singular, Solution, Summary, Surface,
+    Thermal,
+};
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{FaceSet, Mesh, Probe};
 use fh_fem::hex::Orthotropic;
-use fh_fem::solve::Method;
+use fh_fem::solve::{Method, PCG_MAX_ITER};
 
 #[derive(Default)]
 struct Record {
@@ -390,6 +393,43 @@ fn a_model_that_can_move_is_refused() {
     m.loads[0] = fix(0, Some(0.0), None, Some(0.0));
     let e = solve(&m, &mut Record::default()).unwrap_err();
     assert!(e.contains("move along y"), "{e}");
+}
+
+/// 2 parts of 1 material are 1 solid: the line where they meet on a free face is not an edge
+/// where 2 materials meet.
+#[test]
+fn two_parts_of_one_material_have_no_material_edge() {
+    let mut m = cantilever(20.0, 2.0, 2.0, 1.0, 2, 100.0);
+    m.parts = vec![
+        part("root", 0, [0.0; 3], [10.0, 2.0, 2.0]),
+        part("end", 0, [10.0, 0.0, 0.0], [20.0, 2.0, 2.0]),
+    ];
+    let (_, s) = run(&m);
+    assert_eq!(s.peaks[0].singular, Some(Singular::SupportEdge));
+    assert_eq!(s.peaks[1].singular, None, "{:?}", s.peaks[1]);
+}
+
+/// Above the ceiling of the factor entries, a model with flat cells gets multigrid and the
+/// result of the direct solver. When multigrid does not converge on the flat cells, the error
+/// names the thin part and the remedy.
+#[test]
+fn a_factor_above_the_ceiling_gives_multigrid() {
+    let m = cantilever(20.0, 10.0, 1.0, 2.0, 2, 1.0);
+    let (sd, d) = run(&m);
+    let mut r = Record::default();
+    let sm = solve_within(&m, 0, PCG_MAX_ITER, &mut r).unwrap();
+    let mg = r.solution.unwrap();
+    assert_eq!((sd.method, sm.method), (Method::Direct, Method::Multigrid));
+    let (wd, wm) = (d.probes[0].displacement[2], mg.probes[0].displacement[2]);
+    assert!((wd - wm).abs() < 1e-6 * wd.abs(), "{wd} {wm}");
+
+    let e = solve_within(&m, 0, 1, &mut Record::default()).unwrap_err();
+    assert!(e.contains("did not converge"), "{e}");
+    assert!(e.contains("The cells of part beam are 4 times"), "{e}");
+    assert!(
+        e.contains("a smaller max_cell or a larger min_cells"),
+        "{e}"
+    );
 }
 
 /// A stiffened panel: a skin 0.002 thick in z with 4 ribs 0.003 thick in y, clamped at x = 0

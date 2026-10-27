@@ -36,6 +36,8 @@ Use CAD, `fh mesh` and CalculiX when the model has a curved or sloped face, cont
 
 The solver refuses a model that can move as a rigid body, and the message names the free motion, for example "turn about z". Add a support, or a point support for a free part.
 
+A static step with flat cells uses the direct solver up to a factor of 2.5e8 entries (2 GB), and multigrid above it. Multigrid can stop with no result on very flat cells. Then put more cells through the thin layer (a smaller `max_cell` or a larger `min_cells`), or make the model smaller.
+
 The person can also solve the `grid.toml` of a heat step in the browser, with no `fh run`: the button "Solve grid.toml" of the page of `fh serve` and of a report solves the file in the page and shows the progress, the fields and the probe table. It gives the same probes as `fh run`. The browser solves up to 1,000,000 points (the 4 GiB memory of wasm32), `fh run` up to 4,000,000. The browser does not solve a static step. Use `fh run` for it. Give the person the case folder when they want to change and solve the case themselves.
 
 ## Results

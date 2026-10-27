@@ -159,7 +159,7 @@ These limits apply to each solver process that `fh run` starts, with the same me
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops. One mechanism for all solvers keeps the limits the same for each solver.
 
-The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a heat grid of more than 4,000,000 points, and a stress grid of more than 300,000 points, before it makes the matrix. Reason: a heat solve of 1,009,057 points used 1.9 GB. A stress solve has 3 unknowns at each point, and a thin model needs the direct solver, whose factor of 361,800 unknowns had 1.2e8 entries (1 GB).
+The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a heat grid of more than 4,000,000 points, and a stress grid of more than 300,000 points, before it makes the matrix. Reason: a heat solve of 1,009,057 points used 1.9 GB. A stress solve has 3 unknowns at each point, and a thin model needs the direct solver, whose factor of 361,800 unknowns had 1.2e8 entries (1 GB). Flat cells use the direct solver only up to a factor of 2.5e8 entries (2 GB), and multigrid above it. Reason: the factor of a blocky grid with 1 thin layer can need tens of GB, and a failed allocation stops `fh` with no error.
 
 The browser solves heat steps only, and `fh run` solves a static step. In the browser the person stops the solve with a button, which ends its worker, and the limit is 1,000,000 points. Reason: wasm32 addresses at most 4 GiB, and a solve of 1,030,301 points grew the memory of the worker to 2.1 GiB.
 

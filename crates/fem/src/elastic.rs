@@ -37,7 +37,7 @@ use crate::heat::{
 };
 use crate::hex::{shape, Hex, Orthotropic, Stiffness, BITS};
 use crate::multigrid::{Cells, Level};
-use crate::solve::{Crossover, Method, Solver};
+use crate::solve::{Crossover, Method, Solver, PCG_MAX_ITER};
 use crate::sparse::Csr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -254,8 +254,14 @@ const MAX_POINTS: heat::Limit = heat::Limit {
 /// 0.14 s multigrid, and one of 19,494 (3.3e5 flops each) 0.62 s against 0.31 s.
 pub const DIRECT_FLOPS: f64 = 1.5e5;
 
-/// Above this ratio of the longest to the shortest side of a cell, the solver is direct.
-/// Reason: in the test `crossover`, multigrid PCG took 10 iterations on cubes, 59 on plates
+/// Above this many entries, the factor is too large for a laptop, and the solver is multigrid also
+/// on flat cells. Reason: the ignored test `crossover` factored a thin plate of 361,800 unknowns
+/// with 1.2e8 entries (1 GB) in 10 s, and 2 GB of factor stays well inside the RAM of a 16 GB
+/// laptop.
+pub const DIRECT_ENTRIES: u64 = 250_000_000;
+
+/// Above this ratio of the longest to the shortest side of a cell, the solver is direct up to
+/// `DIRECT_ENTRIES`. Reason: in the test `crossover`, multigrid PCG took 10 iterations on cubes, 59 on plates
 /// with cells of ratio 4, 290 to 381 at ratio 16 (8 times the direct time), and did not
 /// converge in 500 on a panel with cells of ratio 40.
 pub const MULTIGRID_ASPECT: f64 = 2.0;
@@ -263,8 +269,19 @@ pub const MULTIGRID_ASPECT: f64 = 2.0;
 /// A force imbalance above this fraction is a warning.
 const IMBALANCE: f64 = 1e-6;
 
-/// Solve the model.
+/// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
+    solve_within(model, DIRECT_ENTRIES, PCG_MAX_ITER, events)
+}
+
+/// Solve the model, use multigrid when the direct factor has more than `entries` entries, and
+/// stop multigrid after `iterations`.
+pub fn solve_within(
+    model: &Model,
+    entries: u64,
+    iterations: usize,
+    events: &mut dyn Events,
+) -> Result<Summary, String> {
     let stiffness = check(model)?;
     let mut warnings = Vec::new();
     let used: Vec<bool> = (0..model.faces.len())
@@ -527,35 +544,58 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> 
             .collect(),
         element: &element,
     };
-    let aspect = cell_of
+    let (aspect, thin) = cell_of
         .iter()
         .map(|&c| {
             let ijk = grid.cell_ijk(c);
             let size: [f64; 3] =
                 std::array::from_fn(|d| grid.planes[d][ijk[d] + 1] - grid.planes[d][ijk[d]]);
-            size.iter().fold(0.0_f64, |a, &b| a.max(b))
-                / size.iter().fold(f64::MAX, |a, &b| a.min(b))
+            let ratio = size.iter().fold(0.0_f64, |a, &b| a.max(b))
+                / size.iter().fold(f64::MAX, |a, &b| a.min(b));
+            (ratio, grid.part[c] as usize)
         })
-        .fold(1.0, f64::max);
-    let method = model
-        .method
-        .or((aspect > MULTIGRID_ASPECT).then_some(Method::Direct));
+        .fold((1.0, 0), |a, b| if b.0 > a.0 { b } else { a });
+    let flat = aspect > MULTIGRID_ASPECT;
     let solver = Solver::new(
         k.submatrix(&free),
         level,
-        method,
-        Crossover::Flops(DIRECT_FLOPS),
+        model.method,
+        Crossover::Flops {
+            flops: DIRECT_FLOPS,
+            entries,
+            flat,
+        },
         Some(cells),
-    )?;
+    )?
+    .with_max_iter(iterations);
     let method = solver.method();
-    events.progress(&format!(
-        "{} unknowns, {} solver",
-        free.len(),
-        heat::name(method)
-    ));
+    events.progress(
+        &if flat && model.method.is_none() && method == Method::Multigrid {
+            format!(
+            "{} unknowns, multigrid solver: the direct factor needs more than {entries} entries",
+            free.len()
+        )
+        } else {
+            format!("{} unknowns, {} solver", free.len(), heat::name(method))
+        },
+    );
     let rhs = reduced_rhs(&k, &force, &u, &free, None);
     let mut x = vec![0.0; free.len()];
-    let stats = solver.solve(&rhs, &mut x, &|| events.cancelled())?;
+    let stats = solver
+        .solve(&rhs, &mut x, &|| events.cancelled())
+        .map_err(|e| {
+            if flat && method == Method::Multigrid && e != "cancelled" {
+                format!(
+                    "{e}. The cells of part {} are {aspect:.0} times longer than they are thick, \
+                     and multigrid converges slowly on flat cells. Put more cells through the \
+                     thin layer (a smaller max_cell or a larger min_cells), or make the model \
+                     smaller",
+                    model.parts[thin].name
+                )
+            } else {
+                e
+            }
+        })?;
     events.progress(&match stats.iterations {
         0 => format!("residual {:.1e}", stats.residual),
         i => format!("PCG {i} iterations, residual {:.1e}", stats.residual),
@@ -619,7 +659,8 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> 
 
     // The strain and the stress at the corners of each cell, the mean at each point, and the
     // peak of each part.
-    let singular = singular_points(&grid, &numbering, &mids, &clamp, &clamp_faces);
+    let material_of: Vec<usize> = model.parts.iter().map(|p| p.material).collect();
+    let singular = singular_points(&grid, &numbering, &material_of, &mids, &clamp, &clamp_faces);
     let mut stress = vec![[0.0; 6]; n];
     let mut strain = vec![[0.0; 6]; n];
     let mut count = vec![0u32; n];
@@ -859,12 +900,13 @@ pub fn principal(s: &[f64; 6]) -> [f64; 3] {
 /// and the edges of the faces in `clamp_faces`. The 8 cells around a grid point decide the
 /// first 2. The point is regular when their material (or void) changes along 1 axis at most: a
 /// point inside a part, on a flat face or on a flat interface. Else, 2 or more materials make a
-/// material edge, and a part whose cells there are not a box makes a re-entrant edge or corner.
-/// A convex edge or corner of 1 part is regular. Beyond a plane of symmetry, the cells are the
+/// material edge, and a material whose cells there are not a box makes a re-entrant edge or
+/// corner. A convex edge or corner of 1 material is regular. Beyond a plane of symmetry, the cells are the
 /// mirrors of the cells inside.
 fn singular_points(
     grid: &Grid,
     numbering: &heat::Numbering,
+    material_of: &[usize],
     mids: &[Option<f64>; 3],
     clamp: &[bool],
     clamp_faces: &[Face],
@@ -884,7 +926,7 @@ fn singular_points(
         }
         match grid.part[grid.cell_index(q)] {
             VOID => 0,
-            p => p + 1,
+            p => material_of[p as usize] as u32 + 1,
         }
     };
     let mut out: Vec<Option<Singular>> = numbering
