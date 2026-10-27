@@ -2,7 +2,7 @@
 //! ccx when `fh run` ends for any reason. The stop tests use a small fake `ccx` that waits. The
 //! OpenFOAM tests use a fake `openfoam` that writes the files of each program, the GetDP tests a
 //! fake `gmsh` and a fake `getdp`, the Chrono, Meep and openEMS tests a fake Python, and the
-//! LAMMPS tests a fake `lmp`.
+//! LAMMPS tests a fake `lmp`. The grid test needs no solver program.
 mod common;
 use common::{ccx_solver, p, real_gmsh, root, scratch, script, stderr, stdout};
 
@@ -184,6 +184,49 @@ fn fh_run_solves_a_validation_input_and_writes_the_result_files() {
     let tip = field("U").iter().step_by(3).fold(0.0_f64, |m, v| m.max(*v));
     let want = 100.0 / 210000.0 * 100.0;
     assert!((tip - want).abs() < 1e-5 * want, "tip {tip} {want}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// The built-in solver solves the grid case of `grid-layered-wall` in process, with no solver
+/// program. The probes hold the exact temperatures of the wall, and the page gets the fields.
+#[test]
+fn fh_run_solves_a_grid_case_in_process_and_writes_the_result_files() {
+    let dir = scratch("run-grid");
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args([
+            "run",
+            p(&root().join("validation/cases/grid-layered-wall/wall")),
+        ])
+        .env("FH_STATE", dir.join("state"))
+        .output()
+        .unwrap();
+    let shown = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{shown}{}", stderr(&out));
+    let results = dir.join("state/runs/run-000001/out");
+    for file in [
+        "grid/grid.toml",
+        "grid/probes.txt",
+        "grid/energy.txt",
+        "grid/log.txt",
+        "results.pvd",
+        "step-1.vtu",
+    ] {
+        assert!(results.join(file).is_file(), "no {file}: {shown}");
+    }
+    let probes = fs::read_to_string(results.join("grid/probes.txt")).unwrap();
+    let last: Vec<f64> = probes
+        .lines()
+        .last()
+        .unwrap()
+        .split_whitespace()
+        .map(|v| v.parse().unwrap())
+        .collect();
+    let exact = [18.938879457, 18.684210526, -2.538200340, -4.660441426];
+    for (got, want) in last[1..].iter().zip(exact) {
+        assert!((got - want).abs() < 1e-6, "{probes}");
+    }
+    let grid = fh_core::vtu::read_vtu(&fs::read(results.join("step-1.vtu")).unwrap()).unwrap();
+    assert!(grid.point_field("NT").is_some() && grid.cell_field("HFL").is_some());
     let _ = fs::remove_dir_all(&dir);
 }
 

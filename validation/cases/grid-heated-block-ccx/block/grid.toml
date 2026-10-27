@@ -1,0 +1,50 @@
+# A steel plate with a copper block on its top. A heat source in the block, a convection on
+# the bottom of the plate, the other faces adiabatic. The reference is a CalculiX solve of the
+# same problem with C3D20 elements (../ccx/mesh.py). See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.000625
+symmetry = ["x", "y"]
+
+[material.steel]
+conductivity = 50.0
+
+[material.copper]
+conductivity = 400.0
+
+[part.plate]
+material = "steel"
+x = [0.0, 0.1]
+y = [0.0, 0.1]
+z = [0.0, 0.01]
+
+[part.block]
+material = "copper"
+x = [0.035, 0.065]
+y = [0.035, 0.065]
+z = [0.01, 0.03]
+
+[face.bottom]
+side = "z-"
+
+[[load]]
+convection = 200.0
+sink = 20.0
+face = "bottom"
+
+[[load]]
+source = 2e6
+part = "block"
+
+[step]
+type = "steady"
+
+[probe.block_top]
+point = [0.05, 0.05, 0.03]
+
+[probe.plate_corner]
+point = [0.0, 0.0, 0.0]
+
+[probe.plate_edge_top]
+point = [0.05, 0.0, 0.01]

@@ -141,6 +141,12 @@ impl Subprocess {
                                         .map(|()| openems::WORK)
                                         .map_err(|e| format!("openems {folder}: {e}"))
                                 }
+                                Some(Solver::Grid) => {
+                                    let solved = crate::grid::run(&dir, &out);
+                                    solved
+                                        .map(|()| crate::grid::WORK)
+                                        .map_err(|e| format!("grid {folder}: {e}"))
+                                }
                                 Some(Solver::Precice) => {
                                     let solved = self.precice.run(&dir, &out);
                                     solved

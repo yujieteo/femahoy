@@ -23,6 +23,9 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 - gmsh and each solver of the table in section 6, with its adapters, stay separate programs. femahoy never links or bundles them, because most of them are GPL or LGPL.
 - A solver under a permissive licence also stays a separate program, for example Project Chrono (BSD-3-Clause) as a Python with PyChrono. Thus femahoy has no dependency on a solver.
+- The exception is the built-in grid solver, the crate `fh-fem`. It is femahoy's own code, written from papers and books only, and it runs in the process of `fh`.
+
+Reason of the exception: the licence reason of the first rule does not apply to femahoy's own code. Most thermal models of boxes need no CAD, no mesher and no external solver. On the same plate and block (the case `grid-heated-block-ccx`), the grid solver took 1.15 s for the accuracy that `ccx` with C3D20 got in 131.7 s. The crate has no I/O and no dependency, so it also builds for WebAssembly, and CI checks that build.
 
 ---
 
@@ -124,7 +127,7 @@ Reason: tetrahedra mesh any shape, and quadratic elements do not have the bendin
 
 ## 6. Solvers
 
-`fh run` and `fh validate` start each solver directly, as a separate program (section 2). `scripts/install.sh` installs each solver for the user, with no root. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there.
+`fh run` and `fh validate` start each solver directly, as a separate program (section 2). The built-in grid solver runs in the process of `fh`. `scripts/install.sh` installs each solver for the user, with no root. `fh run` needs no daemon: the daemon and `fh run` share only the state folder. Each solve stops with an error that tells how to install its solver when the solver is not there.
 
 This table is the only list of the solvers in the docs. A new solver adds 1 row here, and the other docs point to this table. The install script has the other list of the solvers: `scripts/install.sh` must install each tool, so it names each solver.
 
@@ -142,6 +145,7 @@ This table is the only list of the solvers in the docs. A new solver adds 1 row 
 | Explicit dynamics (impact) | CalculiX (`ccx`) with `*DYNAMIC, EXPLICIT` | CalculiX `.inp` text | OpenRadioss, now OpenCourant, has builds for Linux and Windows only, not for macOS. `ccx` already runs on macOS. |
 | Optics and photonics | Meep: a Python with Meep runs the script | Meep case folder: `meep_case.py`, a Meep script | An optics problem needs the spectrum of a structure of a few wavelengths in open space. GetDP solves 1 frequency in each run. Meep, an FDTD solver, gives the full spectrum from 1 run on a regular grid with no mesh, and it has builds for macOS (Apple Silicon) and Linux. |
 | Antennas | openEMS (FDTD): a Python with the modules of openEMS runs the script | openEMS case folder: `openems.py`, a script for the Python modules of openEMS | GetDP solves 1 frequency in each solve. An antenna needs its input impedance and S11 over a broad band, and its far field. 1 FDTD run of openEMS gives all of them. openEMS builds from source on macOS (Apple Silicon) and Linux. |
+| Heat conduction in boxes | The built-in grid solver, the crate `fh-fem` (section 2): hex8 cells on a graded box grid, a direct sparse Cholesky solver for a small model and conjugate gradients with multigrid for a large one. It solves steady and transient (backward Euler) linear heat conduction. It refuses curved shapes, contact, radiation and temperature-dependent materials with a message that names gmsh and CalculiX. | Grid case folder: `grid.toml`, with the parts as boxes, the materials, the named face sets, the loads, the step and the probes (`fh guide grid`) | Most thermal models of layers and blocks are boxes. A case in a box grid needs no CAD and no mesh, and solves in seconds in process (section 2). CalculiX stays for the models out of this class. |
 
 Reason of the single table: the list of the solvers was in 6 places, and each new solver had to change all of them.
 
@@ -154,6 +158,8 @@ These limits apply to each solver process that `fh run` starts, with the same me
 - A cancel, the memory limit and the time limit kill the whole process group of the solver at once. A guard process kills the group when `fh` stops. When `fh run` ends for any reason, the solver stops: Ctrl+C, SIGTERM and SIGHUP cancel the run, and the guard process handles SIGKILL.
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops. One mechanism for all solvers keeps the limits the same for each solver.
+
+The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a grid of more than 4,000,000 points before it makes the matrix. Reason: a solve of 1,009,057 points used 1.9 GB.
 
 ### 6.2 Results
 
@@ -176,7 +182,7 @@ Reason of the output times: the dam break, the Taylor bar impact and the superso
 - Each case has a fixed tolerance, written and justified in its files (`docs/reference/check-toml.md`).
 - Each case states its discretization error from at least 2 meshes or 2 time steps, or states why it cannot.
 - A change to a solver or its adapter merges only if `fh validate` passes the cases of that solver. A failure blocks the merge. There is no override.
-- CI installs no solver for now. It runs the tests that need no solver, and each test that solves skips. The validation cases run by hand with `fh validate`.
+- CI installs no solver for now. It runs the tests that need no solver, and each test that solves skips. The validation cases run by hand with `fh validate`. The cases of the built-in grid solver (`grid-*`) need no install, so a test of `fh` also runs them in CI.
 
 Reason: a solver can give a wrong result without a warning. The suite is the only check. In CFD the mesh error is often the largest error. In the electromagnetic case it is 40 % of the tolerance. 1 mesh cannot show it. 1 rule for all analysis types means that a new analysis type needs no new rule.
 

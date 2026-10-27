@@ -1,0 +1,35 @@
+# A slab 0.02 m thick at 100 C. At time 0 both faces go to 0 C. The heat flows along z only.
+# Half symmetry in z. See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.0005
+symmetry = ["z"]
+
+[material.solid]
+conductivity = 1.0
+density = 1000.0
+specific_heat = 1000.0
+
+[part.slab]
+material = "solid"
+x = [0.0, 0.001]
+y = [0.0, 0.001]
+z = [0.0, 0.02]
+
+[face.faces]
+side = ["z-", "z+"]
+
+[[load]]
+temperature = 0.0
+face = "faces"
+
+[step]
+type = "transient"
+end = 20.0
+dt = 0.1
+initial = 100.0
+output_every = 50
+
+[probe.centre]
+point = [0.0005, 0.0005, 0.01]

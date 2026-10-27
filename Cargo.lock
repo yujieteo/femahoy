@@ -627,6 +627,7 @@ name = "fh"
 version = "0.0.0"
 dependencies = [
  "fh-core",
+ "fh-fem",
  "fh-viewer",
  "miniz_oxide 0.9.1",
  "toml_edit",
@@ -634,6 +635,10 @@ dependencies = [
 
 [[package]]
 name = "fh-core"
+version = "0.0.0"
+
+[[package]]
+name = "fh-fem"
 version = "0.0.0"
 
 [[package]]

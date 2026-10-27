@@ -1,0 +1,34 @@
+# A square bar with a uniform heat source and its 4 long sides at 0 C. The ends are adiabatic,
+# so the field is the 2D field of the cross-section. Quarter symmetry in y and z.
+# See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.000625
+symmetry = ["y", "z"]
+
+[material.steel]
+conductivity = 20.0
+
+[part.bar]
+material = "steel"
+x = [0.0, 0.0025]
+y = [0.0, 0.02]
+z = [0.0, 0.02]
+
+[face.sides]
+side = ["y-", "y+", "z-", "z+"]
+
+[[load]]
+temperature = 0.0
+face = "sides"
+
+[[load]]
+source = 1e7
+part = "bar"
+
+[step]
+type = "steady"
+
+[probe.centre]
+point = [0.00125, 0.01, 0.01]

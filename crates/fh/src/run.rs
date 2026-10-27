@@ -25,6 +25,8 @@
 //!   Meep is `$FH_MEEP`, else `python3` on `PATH`.
 //! - `fh run CASE` gives openEMS the case folder (`openems.py`, see `fh::openems`). The Python of
 //!   openEMS is `$FH_OPENEMS`, else `python3` on `PATH`.
+//! - `fh run CASE` solves the grid case folder (`grid.toml`, see `fh::grid`) with the built-in
+//!   heat conduction solver of femahoy, in the process of `fh`.
 //! - `fh run` solves a copy, so a later edit does not change the run.
 //! - `--timeout SECONDS` sets the time limit of the run.
 //!
@@ -49,6 +51,7 @@ use fh::chrono::{self, Chrono};
 use fh::daemon::{default_state_dir, new_preview, new_run, start_solve};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
+use fh::grid;
 use fh::lammps::{self, Lammps};
 use fh::meep::{self, Meep};
 use fh::openems::{self, OpenEms};
@@ -81,7 +84,9 @@ snapshot of the text dump files (*.dump).\n\
 CASE is also a Meep case folder with meep_case.py. fh run starts python3 meep_case.py, with the \
 Python of Meep.\n\
 CASE is also an openEMS case folder with openems.py. fh run starts python3 openems.py, with the \
-Python of openEMS.";
+Python of openEMS.\n\
+CASE is also a grid case folder with grid.toml. fh run solves it with the built-in heat \
+conduction solver of femahoy, with no other program (fh guide grid).";
 
 /// Exit codes of `fh run`, in addition to 0 (the run succeeded) and 2 (usage error).
 const FAILED: u8 = 1;
@@ -145,7 +150,7 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
              system/controlDict), a GetDP case folder (with case.pro), a preCICE case folder \
              (with precice-config.xml), a Chrono case folder (with chrono.py), a LAMMPS case \
              folder (with case.lmp), a Meep case folder (with meep_case.py), an openEMS case \
-             folder (with openems.py), a topology case folder (with topology.toml) or a shape \
+             folder (with openems.py), a grid case folder (with grid.toml), a topology case folder (with topology.toml) or a shape \
              optimization case folder (with optimize.toml)"
         ))
     }
@@ -221,6 +226,16 @@ fn report(
                 out.join(openems::WORK).display()
             ),
             "Write a field to a .pos file in openems.py",
+        ),
+        Solver::Grid => (
+            format!(
+                "{0}/{1} (the temperature at each probe), {0}/{2} (the energy balance), \
+                 {0}/log.txt (the grid, the solver and the warnings)",
+                out.join(grid::WORK).display(),
+                grid::PROBES,
+                grid::ENERGY
+            ),
+            "",
         ),
         Solver::Ccx => {
             let rms = out.join("ccx").join(fh::ccx::RMS_FILE);
@@ -379,6 +394,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             precice.foam.timeout = o.timeout;
             precice.run_with(&run.input, &run.out, &cancel, on_program)
         }
+        Solver::Grid => grid::run_with(&run.input, &run.out, o.timeout, &cancel, &mut |line| {
+            println!("  {line}");
+        }),
         Solver::Lammps => {
             let mut lammps = Lammps::new();
             lammps.timeout = o.timeout;

@@ -18,7 +18,9 @@ jobs:
       - name: Test the validation reports
         run: python3 scripts/test-validation-reports.py
       # Only the browser uses the window layer of the viewer, so the wasm build checks it.
+      # The built-in solver fh-fem must also build for the browser.
       - name: Test
         run: |
           cargo build -p fh-viewer --lib --target wasm32-unknown-unknown
+          cargo build -p fh-fem --target wasm32-unknown-unknown
           cargo test --workspace

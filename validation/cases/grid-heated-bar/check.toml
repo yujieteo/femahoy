@@ -1,0 +1,12 @@
+# The centre temperature of a square bar with a heat source and its sides at 0 C (derivation.md).
+# Tolerance budget: the discretization error of the max_cell 0.625 mm grid is +0.077 % (2 grids,
+# second order, derivation.md). The series of the reference and the direct solve add less than
+# 1e-10. The tolerance 0.1 % holds the discretization error with a margin of 0.023 %.
+rel_tol = 0.001
+abs_tol = 0.0
+
+[centre]
+value = 14.734270656
+case = "bar"
+file = "probes.txt"
+column = "centre"

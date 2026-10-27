@@ -1,0 +1,30 @@
+# A wall of 3 layers with a convection on each side (derivation.md). The temperature is linear in
+# each layer, and the hex8 cells hold a linear field exactly. Thus the discretization error is 0,
+# and the max_cell 0.05 and 0.025 grids give the same values to 1e-12 C. The tolerance is the
+# precision of the direct solve, with a factor of 1e5 of margin.
+rel_tol = 0.0
+abs_tol = 1e-6
+
+[surface_in]
+value = 18.938879457
+case = "wall"
+file = "probes.txt"
+column = "surface_in"
+
+[plaster_insulation]
+value = 18.684210526
+case = "wall"
+file = "probes.txt"
+column = "plaster_insulation"
+
+[insulation_brick]
+value = -2.538200340
+case = "wall"
+file = "probes.txt"
+column = "insulation_brick"
+
+[surface_out]
+value = -4.660441426
+case = "wall"
+file = "probes.txt"
+column = "surface_out"

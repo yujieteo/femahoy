@@ -1,0 +1,65 @@
+# A wall of plaster, insulation and brick, with the air inside at 20 C and outside at -5 C.
+# The heat flows along x only. See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.05
+min_cells = 2
+
+[material.plaster]
+conductivity = 0.5
+
+[material.insulation]
+conductivity = 0.04
+
+[material.brick]
+conductivity = 0.8
+
+[part.plaster]
+material = "plaster"
+x = [0.0, 0.015]
+y = [0.0, 0.2]
+z = [0.0, 0.2]
+
+[part.insulation]
+material = "insulation"
+x = [0.015, 0.115]
+y = [0.0, 0.2]
+z = [0.0, 0.2]
+
+[part.brick]
+material = "brick"
+x = [0.115, 0.315]
+y = [0.0, 0.2]
+z = [0.0, 0.2]
+
+[face.inside]
+side = "x-"
+
+[face.outside]
+side = "x+"
+
+[[load]]
+convection = 8.0
+sink = 20.0
+face = "inside"
+
+[[load]]
+convection = 25.0
+sink = -5.0
+face = "outside"
+
+[step]
+type = "steady"
+
+[probe.surface_in]
+point = [0.0, 0.1, 0.1]
+
+[probe.plaster_insulation]
+point = [0.015, 0.1, 0.1]
+
+[probe.insulation_brick]
+point = [0.115, 0.1, 0.1]
+
+[probe.surface_out]
+point = [0.315, 0.1, 0.1]

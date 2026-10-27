@@ -106,7 +106,8 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
             | Solver::Lammps
             | Solver::Optimize
             | Solver::Meep
-            | Solver::OpenEms,
+            | Solver::OpenEms
+            | Solver::Grid,
         ) => {
             getdp::copy_case(source, &dir.join(IN_DIR), true)?;
             dir.join(IN_DIR)
@@ -477,7 +478,7 @@ impl Store {
     }
 
     /// The text of the copy of the input that a run solves, for the page. It holds the text of
-    /// the include files. An OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS or
+    /// the include files. An OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS, grid or
     /// optimization case has no input text for the page, so it gives no bytes. A topology case
     /// gives its `job.inp`.
     pub(crate) fn input_file(&self, run: &str) -> Result<Vec<u8>, Failure> {
