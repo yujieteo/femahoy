@@ -1,0 +1,28 @@
+# A closed rectangular cavity with copper walls: the TE101 mode, its frequency and its Q
+# (../derivation.md).
+units = "SI-mm"
+
+[grid]
+max_cell = 2.0
+
+[material.air]
+permittivity = 1.0
+
+[part.cavity]
+material = "air"
+x = [0.0, 22.86]
+y = [0.0, 10.16]
+z = [0.0, 25.0]
+
+[face.walls]
+side = ["x-", "x+", "y-", "y+", "z-", "z+"]
+
+[[load]]
+wall = "conductor"
+conductivity = 5.8e7
+face = "walls"
+
+[step]
+type = "modes"
+near = 8e9
+count = 1

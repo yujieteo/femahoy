@@ -1,0 +1,46 @@
+# A symmetric H-plane step from a WR-90 waveguide (22.86 mm) to a guide of 16 mm, both 10.16 mm
+# high, with a TE10 wave port at each end, 25 mm from the step. The walls are perfect conductors
+# (the default wall), also the face of the step (../derivation.md).
+units = "SI-mm"
+
+[grid]
+max_cell = 1.4
+
+[material.air]
+permittivity = 1.0
+
+[part.wide]
+material = "air"
+x = [0.0, 22.86]
+y = [0.0, 10.16]
+z = [0.0, 25.0]
+
+[part.narrow]
+material = "air"
+x = [3.43, 19.43]
+y = [0.0, 10.16]
+z = [25.0, 50.0]
+
+[face.in]
+side = ["z-"]
+
+# The face of the step also faces +z, so the set takes the faces of the narrow part only.
+[face.out]
+side = ["z+"]
+parts = ["narrow"]
+
+[[load]]
+port = 1
+face = "in"
+mode = "te10"
+
+[[load]]
+port = 2
+face = "out"
+mode = "te10"
+
+[step]
+type = "frequency"
+start = 10e9
+stop = 10e9
+points = 1

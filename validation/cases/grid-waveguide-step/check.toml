@@ -1,0 +1,33 @@
+# A symmetric H-plane step in a waveguide, against the GetDP solution of the same model (getdp/,
+# derivation.md). Tolerance budget: at max_cell 1.4 mm the largest difference of the 4 parts of
+# S11 and S21 from GetDP is 0.0168 (the real part of S11). The difference falls with the cell
+# of each solver (derivation.md): the 2 solvers converge to 1 answer. The GetDP answer at 0.5 mm
+# still moves by about 0.0035 in a part between its last 2 meshes. The tolerance 0.035 holds the
+# largest difference with a margin of a factor of 2.1. The case uses 1.4 mm and not 1 mm (a
+# difference of 0.0081), because the test of each grid case in CI took 35 s at 1 mm.
+rel_tol = 0.0
+abs_tol = 0.035
+
+[s11_re]
+value = 0.199629
+case = "step"
+file = "sparams.txt"
+column = "S11_re"
+
+[s11_im]
+value = -0.304586
+case = "step"
+file = "sparams.txt"
+column = "S11_im"
+
+[s21_re]
+value = 0.737493
+case = "step"
+file = "sparams.txt"
+column = "S21_re"
+
+[s21_im]
+value = 0.568202
+case = "step"
+file = "sparams.txt"
+column = "S21_im"

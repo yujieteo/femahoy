@@ -1,0 +1,43 @@
+# A coaxial line filled with PTFE, 20 mm long, with a TEM port at each end. The inner conductor
+# is the hole of the dielectric part; the outer conductor is the outer face. Both are perfect
+# conductors, the default wall (../derivation.md).
+units = "SI-mm"
+
+[grid]
+max_cell = 0.5
+
+[material.ptfe]
+permittivity = 2.1
+
+[part.dielectric]
+material = "ptfe"
+circle = [0.0, 0.0, 2.3]
+holes = [[0.0, 0.0, 1.0]]
+z = [0.0, 20.0]
+
+[face.in]
+side = ["z-"]
+
+[face.out]
+side = ["z+"]
+
+[face.inner]
+circle = [0.0, 0.0, 1.0]
+
+[[load]]
+port = 1
+face = "in"
+mode = "tem"
+signal = "inner"
+
+[[load]]
+port = 2
+face = "out"
+mode = "tem"
+signal = "inner"
+
+[step]
+type = "frequency"
+start = 5e9
+stop = 5e9
+points = 1

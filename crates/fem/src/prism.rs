@@ -100,6 +100,8 @@ pub struct BoundaryFace {
     /// The 3 points, counterclockwise from outside.
     pub nodes: [u32; 3],
     pub tet: u32,
+    /// The hollow part on the other side of the face, or `u32::MAX` when there is none.
+    pub beyond: u32,
     /// The circles (indices into `TetMesh::circles`) whose outline holds the face.
     pub circles: Vec<u32>,
 }
@@ -167,6 +169,23 @@ pub fn mesh(
     refusal: &str,
     periodic: bool,
 ) -> Result<TetMesh, String> {
+    mesh_hollow(parts, axis, spacing, max_points, refusal, periodic, &[])
+}
+
+/// The mesh of `mesh`, with no tetrahedra in the parts `k` with `hollow[k]` (for example a
+/// perfect conductor, whose field is 0). A hollow part takes its space as any other part, and
+/// the faces between it and the mesh are boundary faces with the part in `beyond`. A missing
+/// item of `hollow` is false.
+pub fn mesh_hollow(
+    parts: &[Part],
+    axis: usize,
+    spacing: Spacing,
+    max_points: usize,
+    refusal: &str,
+    periodic: bool,
+    hollow: &[bool],
+) -> Result<TetMesh, String> {
+    let is_hollow = |p: u32| hollow.get(p as usize).copied().unwrap_or(false);
     if parts.is_empty() {
         return Err("the model has no part".into());
     }
@@ -258,22 +277,38 @@ pub fn mesh(
             }
         }
     }
-    if tets.is_empty() {
+    if !part.iter().any(|&p| !is_hollow(p)) {
         return Err("the parts hold no volume".into());
     }
-    // The faces with 1 tetrahedron.
-    let mut seen: HashMap<[u32; 3], (u32, u8, [u32; 3])> = HashMap::new();
+    // The faces of each solid tetrahedron with no solid tetrahedron on the other side: the
+    // tetrahedron, the oriented points and the hollow part beyond.
+    let mut seen: HashMap<[u32; 3], Vec<(u32, [u32; 3])>> = HashMap::new();
     for (e, tet) in tets.iter().enumerate() {
         // The faces of a tetrahedron with a positive volume, counterclockwise from outside.
         for f in [[1, 2, 3], [0, 3, 2], [0, 1, 3], [0, 2, 1]] {
             let nodes = f.map(|k| tet[k]);
             let mut key = nodes;
             key.sort_unstable();
-            seen.entry(key)
-                .and_modify(|v| v.1 += 1)
-                .or_insert((e as u32, 1, nodes));
+            seen.entry(key).or_default().push((e as u32, nodes));
         }
     }
+    let outer: Vec<(u32, [u32; 3], u32)> = seen
+        .into_values()
+        .filter_map(|v| {
+            let solid: Vec<&(u32, [u32; 3])> = v
+                .iter()
+                .filter(|(e, _)| !is_hollow(part[*e as usize]))
+                .collect();
+            match (solid.len(), v.len()) {
+                (1, 1) => Some((solid[0].0, solid[0].1, u32::MAX)),
+                (1, 2) => {
+                    let other = v.iter().find(|(e, _)| *e != solid[0].0).expect("2 sides");
+                    Some((solid[0].0, solid[0].1, part[other.0 as usize]))
+                }
+                _ => None,
+            }
+        })
+        .collect();
     // The 2D point of each 3D point.
     let mut flat_of = vec![0u32; pts.len()];
     for (slot, &n) in number.iter().enumerate() {
@@ -281,10 +316,27 @@ pub fn mesh(
             flat_of[n as usize] = (slot % nv) as u32;
         }
     }
-    let mut faces: Vec<BoundaryFace> = seen
-        .into_values()
-        .filter(|v| v.1 == 1)
-        .map(|(tet, _, nodes)| {
+    // The solid tetrahedra and their points, renumbered.
+    let mut tet_of = vec![u32::MAX; tets.len()];
+    let mut point_of = vec![u32::MAX; pts.len()];
+    let (mut kept_pts, mut kept_tets, mut kept_part) = (Vec::new(), Vec::new(), Vec::new());
+    for (e, tet) in tets.iter().enumerate() {
+        if is_hollow(part[e]) {
+            continue;
+        }
+        tet_of[e] = kept_tets.len() as u32;
+        kept_tets.push(tet.map(|v| {
+            if point_of[v as usize] == u32::MAX {
+                point_of[v as usize] = kept_pts.len() as u32;
+                kept_pts.push(pts[v as usize]);
+            }
+            point_of[v as usize]
+        }));
+        kept_part.push(part[e]);
+    }
+    let mut faces: Vec<BoundaryFace> = outer
+        .into_iter()
+        .map(|(tet, nodes, beyond)| {
             let mut flat_nodes: Vec<u32> = nodes.iter().map(|&n| flat_of[n as usize]).collect();
             flat_nodes.sort_unstable();
             flat_nodes.dedup();
@@ -302,17 +354,18 @@ pub fn mesh(
                 Vec::new()
             };
             BoundaryFace {
-                nodes,
-                tet,
+                nodes: nodes.map(|v| point_of[v as usize]),
+                tet: tet_of[tet as usize],
+                beyond,
                 circles,
             }
         })
         .collect();
     faces.sort_by_key(|f| (f.tet, f.nodes));
     Ok(TetMesh {
-        points: pts,
-        tets,
-        part,
+        points: kept_pts,
+        tets: kept_tets,
+        part: kept_part,
         faces,
         circles,
         triangles: flat.triangles.len(),

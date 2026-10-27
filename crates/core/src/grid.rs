@@ -2,7 +2,9 @@
 //! the result grid and the probe table of each output. `fh run` and the browser solve of the
 //! viewer use the same code, so the same case gives the same results.
 
+use fh_fem::complex::C64;
 use fh_fem::elastic::{self, Surface, Thermal};
+use fh_fem::em;
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{Cell, FaceSet, Frame, Load, Material, Mesh, Model, Probe, Step};
 use fh_fem::hex::Orthotropic;
@@ -12,17 +14,25 @@ use toml_edit::{Document, Item, TableLike};
 
 use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_TETRA};
 
-/// The text of an error about a key that the solver does not have.
-const CLASS: &str = "The built-in grid solver solves linear heat conduction in boxes and in \
-    prisms of polygons and circles along 1 axis, linear static thermo-elasticity in boxes, the \
-    homogenized material of a periodic unit cell, and with a [line] table the per-length parameters of a transmission line. For other curved or \
-    sloped shapes, contact, radiation, plasticity, large deformation, vibration or \
+/// The text of an error about a key that the heat, stress and unit cell solver does not have.
+const CLASS: &str = "The built-in grid solver solves linear heat conduction, and linear \
+    frequency-domain electromagnetics (`[step] type = \"frequency\"` or `\"modes\"`), in boxes \
+    and in prisms of polygons and circles along 1 axis, linear static thermo-elasticity in boxes, \
+    the homogenized material of a periodic unit cell, and with a [line] table the per-length \
+    parameters of a transmission line. For other curved or sloped shapes, contact, radiation, plasticity, large deformation, vibration or \
     temperature-dependent materials, use gmsh and CalculiX (fh guide grid)";
 
 /// True when the case `text` is a transmission line: it has a `[line]` table (`crate::line`).
 pub fn is_line(text: &str) -> bool {
     Document::parse(text).is_ok_and(|d| d.contains_key("line"))
 }
+
+/// The text of an error about a key that the electromagnetic solver does not have.
+const EM_CLASS: &str = "The built-in grid solver solves linear frequency-domain \
+    electromagnetics (the S-parameters of wave ports, and resonant modes) in boxes and in prisms \
+    of polygons and circles along 1 axis. For other curved or sloped shapes, nonlinear or \
+    dispersive materials, the time domain, or eddy currents and magnetostatics, use GetDP (fh \
+    guide electromagnetics)";
 
 /// The model of a grid case.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,6 +43,8 @@ pub enum Case {
     Elastic(elastic::Model),
     /// The homogenized material of a periodic unit cell.
     Homogenize(homog::Model),
+    /// A frequency sweep with wave ports, or the resonant modes.
+    Em(em::Model),
 }
 
 /// The keys of a material that a static step reads.
@@ -45,47 +57,40 @@ struct Elastic {
     density: f64,
 }
 
-/// The model of `grid.toml` and its unit system.
+/// The case of `grid.toml` and its unit system. A `[step]` of type `frequency` or `modes` is an
+/// electromagnetic case.
 pub fn read(text: &str) -> Result<(Case, String), String> {
     let doc = Document::parse(text).map_err(|e| e.message().to_owned())?;
     let top: &dyn TableLike = doc.as_table();
-    only(
-        top,
-        "the top",
-        &[
-            "units", "grid", "material", "part", "face", "load", "step", "probe", "surface",
-        ],
-    )?;
+    let kind = top
+        .get("step")
+        .and_then(Item::as_table_like)
+        .and_then(|s| s.get("type"))
+        .and_then(Item::as_str);
+    if matches!(kind, Some("frequency" | "modes")) {
+        let (model, units) = read_em(top)?;
+        return Ok((Case::Em(model), units));
+    }
+    read_heat(top)
+}
+
+/// The unit system at the top.
+fn units(top: &dyn TableLike) -> Result<String, String> {
     let units = string(top, "units", "the top")?;
     if units != "SI-m" && units != "SI-mm" {
         return Err(format!("`units` must be SI-m or SI-mm, not {units}"));
     }
-    let step = table(top, "step")?;
-    let kind = string(step, "type", "[step]")?;
-    if !["steady", "transient", "static", "homogenize"].contains(&kind.as_str()) {
-        return Err(format!(
-            "[step]: `type` must be steady, transient, static or homogenize, not {kind}. {CLASS}"
-        ));
-    }
-    let is_static = kind == "static";
-    let is_cell = kind == "homogenize";
-    if is_cell {
-        only(step, "[step]", &["type"])?;
-        for key in ["face", "load", "probe", "surface"] {
-            if top.contains_key(key) {
-                return Err(format!(
-                    "a homogenize step has no `{key}`: the unit cell has periodic conditions on \
-                     its 6 sides, and the result is its effective material"
-                ));
-            }
-        }
-    }
+    Ok(units)
+}
+
+/// The spacing, the extrusion axis and the symmetry of `[grid]`.
+fn read_grid(
+    top: &dyn TableLike,
+    keys: &[&str],
+    class: &str,
+) -> Result<(Spacing, usize, [bool; 3]), String> {
     let grid = table(top, "grid")?;
-    only(
-        grid,
-        "[grid]",
-        &["max_cell", "max_growth", "min_cells", "symmetry", "axis"],
-    )?;
+    only(grid, "[grid]", keys, class)?;
     let axis = match grid.get("axis") {
         None => 2,
         Some(item) => item
@@ -115,6 +120,45 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
             symmetry[d] = true;
         }
     }
+    Ok((spacing, axis, symmetry))
+}
+
+/// The heat, static or homogenize case of `grid.toml`.
+fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
+    only(
+        top,
+        "the top",
+        &[
+            "units", "grid", "material", "part", "face", "load", "step", "probe", "surface",
+        ],
+        CLASS,
+    )?;
+    let units = units(top)?;
+    let step = table(top, "step")?;
+    let kind = string(step, "type", "[step]")?;
+    if !["steady", "transient", "static", "homogenize"].contains(&kind.as_str()) {
+        return Err(format!(
+            "[step]: `type` must be steady, transient, static or homogenize, not {kind}. {CLASS}"
+        ));
+    }
+    let is_static = kind == "static";
+    let is_cell = kind == "homogenize";
+    if is_cell {
+        only(step, "[step]", &["type"], CLASS)?;
+        for key in ["face", "load", "probe", "surface"] {
+            if top.contains_key(key) {
+                return Err(format!(
+                    "a homogenize step has no `{key}`: the unit cell has periodic conditions on \
+                     its 6 sides, and the result is its effective material"
+                ));
+            }
+        }
+    }
+    let (spacing, axis, symmetry) = read_grid(
+        top,
+        &["max_cell", "max_growth", "min_cells", "symmetry", "axis"],
+        CLASS,
+    )?;
     // The heat keys of each material, with a missing conductivity, and the elastic keys.
     let mut materials = Vec::new();
     let mut conductive = Vec::new();
@@ -134,6 +178,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
                 "shear_modulus",
                 "expansion",
             ],
+            CLASS,
         )?;
         let conductivity = match item.get("conductivity") {
             None => None,
@@ -184,114 +229,18 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
             density: density.unwrap_or(0.0),
         });
     }
-    let mut parts = Vec::new();
-    for (name, item) in named(top, "part")? {
-        let where_ = format!("[part.{name}]");
-        only(
-            item,
-            &where_,
-            &[
-                "material", "x", "y", "z", "priority", "polygon", "circle", "holes",
-            ],
-        )?;
-        let m = string(item, "material", &where_)?;
-        let material = materials
-            .iter()
-            .position(|x| x.name == m)
-            .ok_or_else(|| format!("{where_}: no material {m}"))?;
-        let footprint = footprint(item, &where_, axis)?;
-        let mut lo = [0.0; 3];
-        let mut hi = [0.0; 3];
-        for (d, name) in ["x", "y", "z"].iter().enumerate() {
-            if footprint.is_some() && d != axis {
-                if item.contains_key(name) {
-                    return Err(format!(
-                        "{where_}: a part with a polygon or a circle has only the range `{}` \
-                         along the axis; its footprint gives {name}",
-                        ["x", "y", "z"][axis]
-                    ));
-                }
-                continue;
-            }
-            let range = item
-                .get(name)
-                .and_then(numbers)
-                .filter(|v| v.len() == 2)
-                .ok_or_else(|| {
-                    format!("{where_}: `{name}` must be 2 numbers, the range of the part")
-                })?;
-            lo[d] = range[0];
-            hi[d] = range[1];
-        }
-        let priority = match item.get("priority") {
-            None => 0,
-            Some(p) => p
-                .as_integer()
-                .ok_or(format!("{where_}: `priority` must be a whole number"))?,
-        };
-        parts.push(Part {
-            name: name.to_owned(),
-            material,
-            priority,
-            lo,
-            hi,
-            footprint,
-        });
-    }
+    let material_names: Vec<&str> = materials.iter().map(|m| m.name.as_str()).collect();
+    let parts: Vec<Part> = read_parts(top, &material_names, axis, &[], CLASS)?
+        .into_iter()
+        .map(|p| p.0)
+        .collect();
+    let faces = read_faces(top, &parts, CLASS)?;
     let part_index = |name: &str, where_: &str| {
         parts
             .iter()
             .position(|p: &Part| p.name == name)
             .ok_or_else(|| format!("{where_}: no part {name}"))
     };
-    let mut faces = Vec::new();
-    for (name, item) in named(top, "face")? {
-        let where_ = format!("[face.{name}]");
-        only(item, &where_, &["side", "box", "parts", "circle"])?;
-        let sides = match item.get("side") {
-            None => Vec::new(),
-            Some(s) => strings(s, &where_)?
-                .iter()
-                .map(|s| {
-                    Side::parse(s).ok_or_else(|| {
-                        format!("{where_}: side `{s}` must be x-, x+, y-, y+, z- or z+")
-                    })
-                })
-                .collect::<Result<_, _>>()?,
-        };
-        let region = match item.get("box") {
-            None => None,
-            Some(b) => {
-                let v = numbers(b).filter(|v| v.len() == 6).ok_or_else(|| {
-                    format!("{where_}: `box` must be 6 numbers: x0, y0, z0, x1, y1, z1")
-                })?;
-                Some(([v[0], v[1], v[2]], [v[3], v[4], v[5]]))
-            }
-        };
-        let parts = match item.get("parts") {
-            None => Vec::new(),
-            Some(p) => strings(p, &where_)?
-                .iter()
-                .map(|p| part_index(p, &where_))
-                .collect::<Result<_, _>>()?,
-        };
-        let circle = match item.get("circle") {
-            None => None,
-            Some(c) => {
-                let v = numbers(c).filter(|v| v.len() == 3).ok_or_else(|| {
-                    format!("{where_}: `circle` must be 3 numbers: the centre and the radius")
-                })?;
-                Some(([v[0], v[1]], v[2]))
-            }
-        };
-        faces.push(FaceSet {
-            name: name.to_owned(),
-            sides,
-            region,
-            parts,
-            circle,
-        });
-    }
     let face_index = |item: &dyn TableLike, where_: &str| -> Result<usize, String> {
         let f = string(item, "face", where_)?;
         faces
@@ -331,26 +280,26 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
                 ));
             }
             if item.contains_key("temperature") {
-                only(item, &where_, &["temperature", "face"])?;
+                only(item, &where_, &["temperature", "face"], CLASS)?;
                 loads.push(Load::Temperature {
                     faces: face_index(item, &where_)?,
                     value: number(item, "temperature", &where_)?,
                 });
             } else if item.contains_key("flux") {
-                only(item, &where_, &["flux", "face"])?;
+                only(item, &where_, &["flux", "face"], CLASS)?;
                 loads.push(Load::Flux {
                     faces: face_index(item, &where_)?,
                     value: number(item, "flux", &where_)?,
                 });
             } else if item.contains_key("convection") {
-                only(item, &where_, &["convection", "sink", "face"])?;
+                only(item, &where_, &["convection", "sink", "face"], CLASS)?;
                 loads.push(Load::Convection {
                     faces: face_index(item, &where_)?,
                     film: number(item, "convection", &where_)?,
                     sink: number(item, "sink", &where_)?,
                 });
             } else if item.contains_key("source") {
-                only(item, &where_, &["source", "part"])?;
+                only(item, &where_, &["source", "part"], CLASS)?;
                 loads.push(Load::Source {
                     part: part_index(&string(item, "part", &where_)?, &where_)?,
                     value: number(item, "source", &where_)?,
@@ -362,41 +311,41 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
                     optional(item, "uz", &where_)?,
                 ];
                 if item.contains_key("point") {
-                    only(item, &where_, &["ux", "uy", "uz", "point"])?;
+                    only(item, &where_, &["ux", "uy", "uz", "point"], CLASS)?;
                     forces.push(elastic::Load::Point {
                         point: vector(item, "point", &where_)?,
                         value,
                     });
                 } else {
-                    only(item, &where_, &["ux", "uy", "uz", "face"])?;
+                    only(item, &where_, &["ux", "uy", "uz", "face"], CLASS)?;
                     forces.push(elastic::Load::Displacement {
                         faces: face_index(item, &where_)?,
                         value,
                     });
                 }
             } else if item.contains_key("pressure") {
-                only(item, &where_, &["pressure", "face"])?;
+                only(item, &where_, &["pressure", "face"], CLASS)?;
                 forces.push(elastic::Load::Pressure {
                     faces: face_index(item, &where_)?,
                     value: number(item, "pressure", &where_)?,
                 });
             } else if item.contains_key("traction") {
-                only(item, &where_, &["traction", "face"])?;
+                only(item, &where_, &["traction", "face"], CLASS)?;
                 forces.push(elastic::Load::Traction {
                     faces: face_index(item, &where_)?,
                     value: vector(item, "traction", &where_)?,
                 });
             } else if item.contains_key("gravity") {
-                only(item, &where_, &["gravity"])?;
+                only(item, &where_, &["gravity"], CLASS)?;
                 forces.push(elastic::Load::Gravity(vector(item, "gravity", &where_)?));
             } else if item.contains_key("body_force") {
-                only(item, &where_, &["body_force", "part"])?;
+                only(item, &where_, &["body_force", "part"], CLASS)?;
                 forces.push(elastic::Load::BodyForce {
                     part: part_index(&string(item, "part", &where_)?, &where_)?,
                     value: vector(item, "body_force", &where_)?,
                 });
             } else {
-                only(item, &where_, &[])?;
+                only(item, &where_, &[], CLASS)?;
                 return Err(format!(
                     "{where_}: a load needs temperature, flux, convection or source{}",
                     if is_static {
@@ -413,7 +362,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
             .into_iter()
             .map(|(name, item)| {
                 let where_ = format!("[probe.{name}]");
-                only(item, &where_, &["point"])?;
+                only(item, &where_, &["point"], CLASS)?;
                 let p = item
                     .get("point")
                     .and_then(numbers)
@@ -438,7 +387,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
                         "{where_}: a surface is a result of a static step: [step] type = \"static\""
                     ));
                 }
-                only(item, &where_, &["face"])?;
+                only(item, &where_, &["face"], CLASS)?;
                 Ok(Surface {
                     name: name.to_owned(),
                     faces: face_index(item, &where_)?,
@@ -484,6 +433,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
                 step,
                 "[step]",
                 &["type", "end", "dt", "initial", "output_every"],
+                CLASS,
             )?;
             Step::Transient {
                 end: number(step, "end", "[step]")?,
@@ -500,7 +450,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
             }
         }
         "steady" => {
-            only(step, "[step]", &["type"])?;
+            only(step, "[step]", &["type"], CLASS)?;
             Step::Steady
         }
         _ => {
@@ -508,6 +458,7 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
                 step,
                 "[step]",
                 &["type", "reference_temperature", "temperature"],
+                CLASS,
             )?;
             Step::Steady
         }
@@ -592,6 +543,335 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
         }),
         units,
     ))
+}
+
+/// The electromagnetic case of `grid.toml`.
+fn read_em(top: &dyn TableLike) -> Result<(em::Model, String), String> {
+    only(
+        top,
+        "the top",
+        &["units", "grid", "material", "part", "face", "load", "step"],
+        EM_CLASS,
+    )?;
+    let units = units(top)?;
+    let (spacing, axis, _) = read_grid(
+        top,
+        &["max_cell", "max_growth", "min_cells", "axis"],
+        EM_CLASS,
+    )?;
+    let mut materials = Vec::new();
+    for (name, item) in named(top, "material")? {
+        let where_ = format!("[material.{name}]");
+        only(
+            item,
+            &where_,
+            &[
+                "permittivity",
+                "loss_tangent",
+                "permeability",
+                "conductivity",
+                "perfect_conductor",
+            ],
+            EM_CLASS,
+        )?;
+        let perfect = match item.get("perfect_conductor") {
+            None => false,
+            Some(v) => v.as_bool().ok_or(format!(
+                "{where_}: `perfect_conductor` must be true or false"
+            ))?,
+        };
+        if perfect && item.len() > 1 {
+            return Err(format!(
+                "{where_}: a perfect conductor has no other key: its field is 0"
+            ));
+        }
+        materials.push(em::Material {
+            name: name.to_owned(),
+            permittivity: optional(item, "permittivity", &where_)?.unwrap_or(1.0),
+            loss_tangent: optional(item, "loss_tangent", &where_)?.unwrap_or(0.0),
+            permeability: optional(item, "permeability", &where_)?.unwrap_or(1.0),
+            conductivity: optional(item, "conductivity", &where_)?.unwrap_or(0.0),
+            perfect,
+        });
+    }
+    let names: Vec<&str> = materials.iter().map(|m| m.name.as_str()).collect();
+    let read = read_parts(top, &names, axis, &["pml"], EM_CLASS)?;
+    let mut parts = Vec::new();
+    let mut pml = Vec::new();
+    for (part, item) in read {
+        pml.push(match item.get("pml") {
+            None => false,
+            Some(v) => v
+                .as_bool()
+                .ok_or(format!("[part.{}]: `pml` must be true or false", part.name))?,
+        });
+        parts.push(part);
+    }
+    let faces = read_faces(top, &parts, EM_CLASS)?;
+    let mut walls = Vec::new();
+    let mut ports: Vec<(i64, em::Port)> = Vec::new();
+    if let Some(list) = top.get("load") {
+        let list = list
+            .as_array_of_tables()
+            .ok_or("`load` must be a list of tables: [[load]]")?;
+        for (i, item) in list.iter().enumerate() {
+            let where_ = format!("[[load]] {}", i + 1);
+            let face_named = |key: &str| -> Result<usize, String> {
+                let f = string(item, key, &where_)?;
+                faces
+                    .iter()
+                    .position(|x: &FaceSet| x.name == f)
+                    .ok_or_else(|| format!("{where_}: no face set {f}"))
+            };
+            if item.contains_key("port") {
+                only(
+                    item,
+                    &where_,
+                    &["port", "face", "mode", "signal", "deembed"],
+                    EM_CLASS,
+                )?;
+                let number = item
+                    .get("port")
+                    .and_then(Item::as_integer)
+                    .filter(|&n| n >= 1)
+                    .ok_or(format!(
+                        "{where_}: `port` must be a whole number, 1 or more"
+                    ))?;
+                let mode = match string(item, "mode", &where_)?.as_str() {
+                    "te10" => {
+                        if item.contains_key("signal") {
+                            return Err(format!("{where_}: a TE10 port has no signal conductor"));
+                        }
+                        em::Mode::Te10
+                    }
+                    "tem" => em::Mode::Tem {
+                        signal: face_named("signal")?,
+                    },
+                    other => {
+                        return Err(format!(
+                            "{where_}: `mode` must be te10 or tem, not {other}. {EM_CLASS}"
+                        ))
+                    }
+                };
+                ports.push((
+                    number,
+                    em::Port {
+                        faces: face_named("face")?,
+                        mode,
+                        deembed: optional(item, "deembed", &where_)?.unwrap_or(0.0),
+                    },
+                ));
+            } else if item.contains_key("wall") {
+                only(item, &where_, &["wall", "face", "conductivity"], EM_CLASS)?;
+                let wall = match string(item, "wall", &where_)?.as_str() {
+                    "electric" => em::Wall::Electric,
+                    "magnetic" => em::Wall::Magnetic,
+                    "conductor" => em::Wall::Conductor(number(item, "conductivity", &where_)?),
+                    other => {
+                        return Err(format!(
+                            "{where_}: `wall` must be electric, magnetic or conductor, not \
+                             {other}"
+                        ))
+                    }
+                };
+                if !matches!(wall, em::Wall::Conductor(_)) && item.contains_key("conductivity") {
+                    return Err(format!(
+                        "{where_}: only a conductor wall has a conductivity"
+                    ));
+                }
+                walls.push(em::Boundary {
+                    faces: face_named("face")?,
+                    wall,
+                });
+            } else {
+                only(item, &where_, &[], EM_CLASS)?;
+                return Err(format!("{where_}: a load needs port or wall. {EM_CLASS}"));
+            }
+        }
+    }
+    ports.sort_by_key(|p| p.0);
+    for (k, (number, _)) in ports.iter().enumerate() {
+        if *number != k as i64 + 1 {
+            return Err(format!(
+                "the ports must be numbered 1, 2, 3 ... with each number once: port {number} \
+                 is out of order"
+            ));
+        }
+    }
+    let step = table(top, "step")?;
+    let whole = |key: &str| -> Result<Option<usize>, String> {
+        match step.get(key) {
+            None => Ok(None),
+            Some(item) => item
+                .as_integer()
+                .and_then(|v| usize::try_from(v).ok())
+                .filter(|&v| v >= 1)
+                .map(Some)
+                .ok_or_else(|| format!("[step]: `{key}` must be a whole number, 1 or more")),
+        }
+    };
+    let step = if string(step, "type", "[step]")? == "frequency" {
+        only(
+            step,
+            "[step]",
+            &["type", "start", "stop", "points", "output_every"],
+            EM_CLASS,
+        )?;
+        let start = number(step, "start", "[step]")?;
+        em::Step::Frequency {
+            start,
+            stop: optional(step, "stop", "[step]")?.unwrap_or(start),
+            points: whole("points")?.unwrap_or(1),
+            output_every: whole("output_every")?.unwrap_or(1),
+        }
+    } else {
+        only(step, "[step]", &["type", "near", "count"], EM_CLASS)?;
+        em::Step::Modes {
+            near: number(step, "near", "[step]")?,
+            count: whole("count")?.unwrap_or(1),
+        }
+    };
+    Ok((
+        em::Model {
+            parts,
+            materials,
+            spacing,
+            axis,
+            length: if units == "SI-mm" { 1e-3 } else { 1.0 },
+            pml,
+            faces,
+            walls,
+            ports: ports.into_iter().map(|p| p.1).collect(),
+            step,
+        },
+        units,
+    ))
+}
+
+/// The parts `[part.NAME]` with the materials `materials`, each with its table for the keys
+/// `extra` that only 1 kind of case has.
+fn read_parts<'a>(
+    top: &'a dyn TableLike,
+    materials: &[&str],
+    axis: usize,
+    extra: &[&str],
+    class: &str,
+) -> Result<Vec<(Part, &'a dyn TableLike)>, String> {
+    let mut parts = Vec::new();
+    for (name, item) in named(top, "part")? {
+        let where_ = format!("[part.{name}]");
+        let mut keys = vec![
+            "material", "x", "y", "z", "priority", "polygon", "circle", "holes",
+        ];
+        keys.extend_from_slice(extra);
+        only(item, &where_, &keys, class)?;
+        let m = string(item, "material", &where_)?;
+        let material = materials
+            .iter()
+            .position(|x| *x == m)
+            .ok_or_else(|| format!("{where_}: no material {m}"))?;
+        let footprint = footprint(item, &where_, axis)?;
+        let mut lo = [0.0; 3];
+        let mut hi = [0.0; 3];
+        for (d, name) in ["x", "y", "z"].iter().enumerate() {
+            if footprint.is_some() && d != axis {
+                if item.contains_key(name) {
+                    return Err(format!(
+                        "{where_}: a part with a polygon or a circle has only the range `{}` \
+                         along the axis; its footprint gives {name}",
+                        ["x", "y", "z"][axis]
+                    ));
+                }
+                continue;
+            }
+            let range = item
+                .get(name)
+                .and_then(numbers)
+                .filter(|v| v.len() == 2)
+                .ok_or_else(|| {
+                    format!("{where_}: `{name}` must be 2 numbers, the range of the part")
+                })?;
+            lo[d] = range[0];
+            hi[d] = range[1];
+        }
+        let priority = match item.get("priority") {
+            None => 0,
+            Some(p) => p
+                .as_integer()
+                .ok_or(format!("{where_}: `priority` must be a whole number"))?,
+        };
+        parts.push((
+            Part {
+                name: name.to_owned(),
+                material,
+                priority,
+                lo,
+                hi,
+                footprint,
+            },
+            item,
+        ));
+    }
+    Ok(parts)
+}
+
+/// The face sets `[face.NAME]` of the parts `parts`.
+fn read_faces(top: &dyn TableLike, parts: &[Part], class: &str) -> Result<Vec<FaceSet>, String> {
+    let part_index = |name: &str, where_: &str| {
+        parts
+            .iter()
+            .position(|p: &Part| p.name == name)
+            .ok_or_else(|| format!("{where_}: no part {name}"))
+    };
+    let mut faces = Vec::new();
+    for (name, item) in named(top, "face")? {
+        let where_ = format!("[face.{name}]");
+        only(item, &where_, &["side", "box", "parts", "circle"], class)?;
+        let sides = match item.get("side") {
+            None => Vec::new(),
+            Some(s) => strings(s, &where_)?
+                .iter()
+                .map(|s| {
+                    Side::parse(s).ok_or_else(|| {
+                        format!("{where_}: side `{s}` must be x-, x+, y-, y+, z- or z+")
+                    })
+                })
+                .collect::<Result<_, _>>()?,
+        };
+        let region = match item.get("box") {
+            None => None,
+            Some(b) => {
+                let v = numbers(b).filter(|v| v.len() == 6).ok_or_else(|| {
+                    format!("{where_}: `box` must be 6 numbers: x0, y0, z0, x1, y1, z1")
+                })?;
+                Some(([v[0], v[1], v[2]], [v[3], v[4], v[5]]))
+            }
+        };
+        let parts = match item.get("parts") {
+            None => Vec::new(),
+            Some(p) => strings(p, &where_)?
+                .iter()
+                .map(|p| part_index(p, &where_))
+                .collect::<Result<_, _>>()?,
+        };
+        let circle = match item.get("circle") {
+            None => None,
+            Some(c) => {
+                let v = numbers(c).filter(|v| v.len() == 3).ok_or_else(|| {
+                    format!("{where_}: `circle` must be 3 numbers: the centre and the radius")
+                })?;
+                Some(([v[0], v[1]], v[2]))
+            }
+        };
+        faces.push(FaceSet {
+            name: name.to_owned(),
+            sides,
+            region,
+            parts,
+            circle,
+        });
+    }
+    Ok(faces)
 }
 
 /// `items`, with an error for a name with other characters than letters, digits, `_`, `-` and
@@ -693,12 +973,7 @@ fn polygon_of(item: &Item) -> Option<Outline> {
 }
 
 /// An error for each key of `table` that is not in `keys`.
-fn only(table: &dyn TableLike, where_: &str, keys: &[&str]) -> Result<(), String> {
-    only_in(table, where_, keys, CLASS)
-}
-
-/// An error for each key of `table` that is not in `keys`, with the text `class`.
-pub(crate) fn only_in(
+pub(crate) fn only(
     table: &dyn TableLike,
     where_: &str,
     keys: &[&str],
@@ -861,6 +1136,147 @@ pub fn probe_row(frame: &Frame) -> String {
     format!("{}\n", row.join(" "))
 }
 
+/// The result grid of an electromagnetic frame: for each field of the frame, the magnitude
+/// `E1_mag` and the real and imaginary parts `E1_re` and `E1_im` of E at the centre of each cell
+/// (V/m, with a wave of 1 W into port 1; `E2_...` for port 2 ...), or `E_mag`, `E_re` and `E_im`
+/// of a mode (a largest magnitude of 1), and the part number `part` (from 1) of each cell.
+pub fn em_frame_grid(mesh: &Mesh, frame: &em::Frame) -> Grid {
+    let mut cell_data = Vec::new();
+    for (k, field) in frame.fields.iter().enumerate() {
+        let name = if frame.q.is_some() {
+            "E".to_owned()
+        } else {
+            format!("E{}", k + 1)
+        };
+        let mag = field
+            .iter()
+            .map(|e| e.iter().map(|c| c.norm2()).sum::<f64>().sqrt())
+            .collect();
+        cell_data.push(Field::f64(&format!("{name}_mag"), 1, mag));
+        for (part, of) in [
+            ("re", (|c: &C64| c.re) as fn(&C64) -> f64),
+            ("im", |c| c.im),
+        ] {
+            let values = field.iter().flatten().map(of).collect();
+            cell_data.push(Field::f64(&format!("{name}_{part}"), 3, values));
+        }
+    }
+    cell_data.push(Field::f64(
+        "part",
+        1,
+        mesh.part.iter().map(|&p| f64::from(p) + 1.0).collect(),
+    ));
+    Grid {
+        points: mesh.points.clone(),
+        cell_types: vec![VTK_TETRA; mesh.len()],
+        cells: (0..mesh.len()).map(|e| mesh.cell(e).to_vec()).collect(),
+        point_data: Vec::new(),
+        cell_data,
+    }
+}
+
+/// The first line of the S-parameter table of `ports` ports: the frequency, then the real and
+/// imaginary parts, the magnitude and the phase (degrees) of each S_ij.
+pub fn sparams_head(ports: usize) -> String {
+    let mut head = String::from("# frequency");
+    for i in 1..=ports {
+        for j in 1..=ports {
+            for part in ["re", "im", "mag", "deg"] {
+                head.push_str(&format!(" S{i}{j}_{part}"));
+            }
+        }
+    }
+    head.push('\n');
+    head
+}
+
+/// The line of the S-parameter table of `frame`.
+pub fn sparams_row(frame: &em::Frame) -> String {
+    let mut row = vec![frame.frequency];
+    for s in &frame.s {
+        row.extend([s.re, s.im, s.abs(), s.arg().to_degrees()]);
+    }
+    line(&row)
+}
+
+/// The first line of the port table: the frequency, then the propagation constant (rad/m) and
+/// the impedance (ohm) of each port.
+pub fn ports_head(ports: usize) -> String {
+    let mut head = String::from("# frequency");
+    for k in 1..=ports {
+        head.push_str(&format!(" beta_{k} impedance_{k}"));
+    }
+    head.push('\n');
+    head
+}
+
+pub fn ports_row(frame: &em::Frame) -> String {
+    let mut row = vec![frame.frequency];
+    for p in &frame.ports {
+        row.extend([p.beta, p.impedance]);
+    }
+    line(&row)
+}
+
+/// The first line of the mode table.
+pub const MODES_HEAD: &str = "# mode frequency q\n";
+
+/// The line of mode `k` (from 1): its frequency and its quality factor.
+pub fn modes_row(k: usize, frame: &em::Frame) -> String {
+    format!(
+        "{k} {:.10e} {:.10e}\n",
+        frame.frequency,
+        frame.q.unwrap_or(f64::INFINITY)
+    )
+}
+
+/// The head of a Touchstone file (version 1.1) of `ports` ports: the S-parameters in real and
+/// imaginary parts against the frequency in Hz.
+pub fn touchstone_head(ports: usize) -> String {
+    format!(
+        "! femahoy built-in solver, {ports} ports. Generalized S-parameters: each port is \
+         normalized to the impedance of its own mode,\n! which the comment line before each \
+         frequency gives (ohm). The reference planes are after the deembed shift.\n# HZ S RI R 50\n"
+    )
+}
+
+/// The lines of `frame` in a Touchstone file: a comment with the port impedances, then the
+/// frequency and the S-matrix (the order S11 S21 S12 S22 for 2 ports, else row by row with at
+/// most 4 values on a line).
+pub fn touchstone_rows(frame: &em::Frame) -> String {
+    let n = frame.ports.len();
+    let z: Vec<String> = frame
+        .ports
+        .iter()
+        .map(|p| format!("{:.6e}", p.impedance))
+        .collect();
+    let mut out = format!("! port impedances {}\n", z.join(" "));
+    let pair = |s: C64| format!(" {:.10e} {:.10e}", s.re, s.im);
+    out.push_str(&format!("{:.10e}", frame.frequency));
+    if n == 2 {
+        for k in [0, 2, 1, 3] {
+            out.push_str(&pair(frame.s[k]));
+        }
+        out.push('\n');
+        return out;
+    }
+    for i in 0..n {
+        for j in 0..n {
+            if j > 0 && j % 4 == 0 {
+                out.push('\n');
+            }
+            out.push_str(&pair(frame.s[i * n + j]));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+fn line(values: &[f64]) -> String {
+    let row: Vec<String> = values.iter().map(|v| format!("{v:.10e}")).collect();
+    format!("{}\n", row.join(" "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1020,8 +1436,8 @@ type = "homogenize"
                 "emissivity",
             ),
             (
-                WALL.replace("type = \"steady\"", "type = \"frequency\""),
-                "frequency",
+                WALL.replace("type = \"steady\"", "type = \"buckling\""),
+                "buckling",
             ),
         ] {
             let e = read(&text).unwrap_err();
@@ -1090,5 +1506,59 @@ type = "homogenize"
         }
         let e = heat::solve(&model, &mut Quiet).unwrap_err();
         assert!(e.contains("symmetry needs a model of boxes"), "{e}");
+    }
+
+    const GUIDE: &str =
+        include_str!("../../../validation/cases/grid-waveguide-step/step/grid.toml");
+
+    fn em_case(text: &str) -> Result<(em::Model, String), String> {
+        match read(text)? {
+            (Case::Em(m), units) => Ok((m, units)),
+            _ => Err("not an electromagnetic case".into()),
+        }
+    }
+
+    #[test]
+    fn the_reader_reads_an_electromagnetic_case() {
+        let (model, units) = em_case(GUIDE).unwrap();
+        assert_eq!(units, "SI-mm");
+        assert_eq!(model.length, 1e-3);
+        assert_eq!(model.parts.len(), 2);
+        assert_eq!(model.pml, vec![false, false]);
+        assert_eq!(model.ports.len(), 2);
+        assert_eq!(model.ports[0].mode, em::Mode::Te10);
+        assert_eq!(model.faces[model.ports[1].faces].name, "out");
+        assert_eq!(
+            model.step,
+            em::Step::Frequency {
+                start: 10e9,
+                stop: 10e9,
+                points: 1,
+                output_every: 1
+            }
+        );
+        let walls = GUIDE.replace(
+            "[[load]]\nport = 2",
+            "[[load]]\nwall = \"conductor\"\nconductivity = 5.8e7\nface = \"in\"\n\n[[load]]\nport = 2",
+        );
+        let (model, _) = em_case(&walls).unwrap();
+        assert_eq!(model.walls[0].wall, em::Wall::Conductor(5.8e7));
+    }
+
+    #[test]
+    fn an_electromagnetic_case_out_of_the_class_names_getdp() {
+        for text in [
+            GUIDE.replace("[grid]", "[grid]\nsymmetry = [\"x\"]"),
+            GUIDE.replace("permittivity = 1.0", "permittivity = 1.0\nnonlinear = true"),
+            GUIDE.replace(
+                "mode = \"te10\"\n\n[[load]]\nport = 2",
+                "mode = \"te10\"\n\n[[load]]\ncurrent = 1.0\nface = \"in\"\n\n[[load]]\nport = 2",
+            ),
+        ] {
+            let e = em_case(&text).unwrap_err();
+            assert!(e.contains("GetDP"), "{e}");
+        }
+        let e = em_case(&GUIDE.replace("port = 2", "port = 3")).unwrap_err();
+        assert!(e.contains("numbered 1, 2, 3"), "{e}");
     }
 }

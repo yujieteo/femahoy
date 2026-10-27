@@ -27,7 +27,7 @@
 
 use crate::grid::{tol, Face, Grid, Part, Side, Spacing, VOID};
 use crate::multigrid::Level;
-use crate::prism::{self, TetMesh};
+use crate::prism::{self, BoundaryFace, TetMesh};
 use crate::solve::{
     Crossover, Method, Solver, Unknowns, STEADY_DIRECT_LIMIT, TRANSIENT_DIRECT_LIMIT,
 };
@@ -805,59 +805,75 @@ fn locate_tet(tm: &TetMesh, x: [f64; 3]) -> Option<Vec<(u32, f64)>> {
     (worst >= -1e-9).then(|| tm.tets[e].iter().copied().zip(w).collect())
 }
 
-/// The faces of each face set of the model on the tetrahedral mesh.
-fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
+/// The size of the bounding box of the points times 1e-9: the tolerance of a face selection.
+pub(crate) fn face_tol(points: &[[f64; 3]]) -> f64 {
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
-    for p in &tm.points {
+    for p in points {
         for d in 0..3 {
             lo[d] = lo[d].min(p[d]);
             hi[d] = hi[d].max(p[d]);
         }
     }
-    let size = (0..3).map(|d| hi[d] - lo[d]).fold(0.0, f64::max);
-    let t = 1e-9 * size;
+    1e-9 * (0..3).map(|d| hi[d] - lo[d]).fold(0.0, f64::max)
+}
+
+/// The area of the boundary face `f` when the face set `set` holds it, else `None`. The part of
+/// a face is the part of its tetrahedron, or the hollow part beyond it. `t` is the tolerance of
+/// `face_tol`.
+pub(crate) fn selects(set: &FaceSet, tm: &TetMesh, f: &BoundaryFace, t: f64) -> Option<f64> {
+    let p = f.nodes.map(|i| tm.points[i as usize]);
+    let u: [f64; 3] = std::array::from_fn(|d| p[1][d] - p[0][d]);
+    let w: [f64; 3] = std::array::from_fn(|d| p[2][d] - p[0][d]);
+    let n = [
+        u[1] * w[2] - u[2] * w[1],
+        u[2] * w[0] - u[0] * w[2],
+        u[0] * w[1] - u[1] * w[0],
+    ];
+    let twice = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    let unit = n.map(|v| v / twice);
+    if !set.sides.is_empty()
+        && !set.sides.iter().any(|s| {
+            let sign = if s.positive { 1.0 } else { -1.0 };
+            unit[s.axis] * sign > 1.0 - 1e-9
+        })
+    {
+        return None;
+    }
+    if !set.parts.is_empty()
+        && !set.parts.contains(&(tm.part[f.tet as usize] as usize))
+        && !set.parts.contains(&(f.beyond as usize))
+    {
+        return None;
+    }
+    if let Some((blo, bhi)) = set.region {
+        let c: [f64; 3] = std::array::from_fn(|d| (p[0][d] + p[1][d] + p[2][d]) / 3.0);
+        if !(0..3).all(|d| c[d] >= blo[d] - t && c[d] <= bhi[d] + t) {
+            return None;
+        }
+    }
+    if let Some((c, r)) = set.circle {
+        let on = f.circles.iter().any(|&k| {
+            let (cc, rr) = tm.circles[k as usize];
+            (cc[0] - c[0]).abs() <= t && (cc[1] - c[1]).abs() <= t && (rr - r).abs() <= t
+        });
+        if !on {
+            return None;
+        }
+    }
+    Some(0.5 * twice)
+}
+
+/// The faces of each face set of the model on the tetrahedral mesh.
+fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
+    let t = face_tol(&tm.points);
     let mut out = Vec::new();
     for set in &model.faces {
         let mut list = Vec::new();
         for f in &tm.faces {
-            let p = f.nodes.map(|i| tm.points[i as usize]);
-            let u: [f64; 3] = std::array::from_fn(|d| p[1][d] - p[0][d]);
-            let w: [f64; 3] = std::array::from_fn(|d| p[2][d] - p[0][d]);
-            let n = [
-                u[1] * w[2] - u[2] * w[1],
-                u[2] * w[0] - u[0] * w[2],
-                u[0] * w[1] - u[1] * w[0],
-            ];
-            let twice = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            let unit = n.map(|v| v / twice);
-            if !set.sides.is_empty()
-                && !set.sides.iter().any(|s| {
-                    let sign = if s.positive { 1.0 } else { -1.0 };
-                    unit[s.axis] * sign > 1.0 - 1e-9
-                })
-            {
+            let Some(area) = selects(set, tm, f, t) else {
                 continue;
-            }
-            if !set.parts.is_empty() && !set.parts.contains(&(tm.part[f.tet as usize] as usize)) {
-                continue;
-            }
-            if let Some((blo, bhi)) = set.region {
-                let c: [f64; 3] = std::array::from_fn(|d| (p[0][d] + p[1][d] + p[2][d]) / 3.0);
-                if !(0..3).all(|d| c[d] >= blo[d] - t && c[d] <= bhi[d] + t) {
-                    continue;
-                }
-            }
-            if let Some((c, r)) = set.circle {
-                let on = f.circles.iter().any(|&k| {
-                    let (cc, rr) = tm.circles[k as usize];
-                    (cc[0] - c[0]).abs() <= t && (cc[1] - c[1]).abs() <= t && (rr - r).abs() <= t
-                });
-                if !on {
-                    continue;
-                }
-            }
-            let area = 0.5 * twice;
+            };
             let m = area / 12.0;
             list.push(Facet {
                 nodes: [f.nodes[0], f.nodes[1], f.nodes[2], 0],

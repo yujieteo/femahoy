@@ -6,7 +6,8 @@
 //! diagonal of the stored block holds D. There are no pivot swaps (static pivots in the order of
 //! the analysis). The matrices of the quasi-static field problems of `line` are the sum of a real
 //! positive definite part and j times a positive semidefinite part, and their pivots stay away
-//! from 0 with no swap.
+//! from 0 with no swap. The edge element matrices of the frequency-domain problems of `em` are
+//! complex symmetric and indefinite, and also need no swap.
 //!
 //! Sources: I. S. Duff and J. K. Reid, The multifrontal solution of indefinite sparse symmetric
 //! linear equations, ACM Trans. Math. Softw. 9 (1983) 302-325; J. W. H. Liu, The multifrontal
@@ -15,7 +16,9 @@
 //! factor of a symmetric matrix, which holds for a complex symmetric matrix with the transpose in
 //! place of the conjugate transpose); A. Bunse-Gerstner and R. Stöver, On a conjugate
 //! gradient-type method for solving complex symmetric linear systems, Linear Algebra Appl. 287
-//! (1999) 105-123 (complex symmetric systems of the eddy current equations).
+//! (1999) 105-123 (complex symmetric systems of the eddy current equations); J.-M. Jin, The
+//! Finite Element Method in Electromagnetics, 3rd ed., Wiley 2014, section 13.2 (direct solvers
+//! for the complex symmetric matrices of the edge element method).
 
 use crate::complex::C64;
 use crate::sparse::Csr;
@@ -172,43 +175,66 @@ impl Ldlt {
     }
 }
 
-/// The partial L D L^T factor of the first `k` columns of the dense `m` x `m` complex symmetric
-/// matrix `f` (lower triangle, column by column). Column j gets D(j) on the diagonal and L below
-/// it; the lower triangle of columns k..m gets the Schur complement. An error is the local column
-/// whose pivot is below `PIVOT` times the absolute value of its diagonal `diag` in A.
+/// The partial LDL^T factor of the first `k` columns of the dense `m` x `m` complex symmetric
+/// matrix `f` (lower triangle, column by column). Column j < k gets D(j) on the diagonal and L
+/// below it; the lower triangle of the columns k..m gets the Schur complement. An error is the
+/// local column with a pivot below `PIVOT` times the magnitude `diag` of its diagonal in A.
 fn partial_ldlt(f: &mut [C64], m: usize, k: usize, diag: &[f64]) -> Result<(), usize> {
-    // The column j of L times D(j), for the updates.
-    let mut ld = vec![C64::ZERO; m];
+    // The column j before the division by its pivot: D(j) L(:, j).
+    let mut w = vec![C64::ZERO; m];
     for j in 0..k {
         let (done, rest) = f.split_at_mut((j + 1) * m);
         let col = &mut done[j * m..];
         let d = col[j];
-        if !(d.abs() > PIVOT * diag[j]) {
+        if !(d.abs() > PIVOT * diag[j]) || !d.is_finite() {
             return Err(j);
         }
-        ld[j + 1..m].copy_from_slice(&col[j + 1..m]);
         let inv = C64::ONE / d;
+        w[j + 1..m].copy_from_slice(&col[j + 1..m]);
         for v in &mut col[j + 1..m] {
             *v *= inv;
         }
+        // The other columns of the supernode get the update of column j.
         let col = &done[j * m..];
         for c in j + 1..k {
             let target = &mut rest[(c - j - 1) * m..(c - j) * m];
-            let factor = ld[c];
+            let factor = w[c];
             for r in c..m {
                 target[r] -= col[r] * factor;
             }
         }
-        // The Schur complement gets the update of column j.
-        for c in k..m {
-            let target = &mut rest[(c - j - 1) * m..(c - j) * m];
-            let factor = ld[c];
-            if factor == C64::ZERO {
-                continue;
-            }
+    }
+    // The Schur complement: F22 -= L21 D L21^T, 4 columns of L at a time.
+    let (l, f22) = f.split_at_mut(k * m);
+    let d: Vec<C64> = (0..k).map(|p| l[p * m + p]).collect();
+    for c in k..m {
+        let target = &mut f22[(c - k) * m..(c - k + 1) * m];
+        let mut p = 0;
+        while p + 4 <= k {
+            let (c0, c1, c2, c3) = (
+                &l[p * m..(p + 1) * m],
+                &l[(p + 1) * m..(p + 2) * m],
+                &l[(p + 2) * m..(p + 3) * m],
+                &l[(p + 3) * m..(p + 4) * m],
+            );
+            let (f0, f1, f2, f3) = (
+                c0[c] * d[p],
+                c1[c] * d[p + 1],
+                c2[c] * d[p + 2],
+                c3[c] * d[p + 3],
+            );
             for r in c..m {
-                target[r] -= col[r] * factor;
+                target[r] -= c0[r] * f0 + c1[r] * f1 + c2[r] * f2 + c3[r] * f3;
             }
+            p += 4;
+        }
+        while p < k {
+            let c0 = &l[p * m..(p + 1) * m];
+            let f0 = c0[c] * d[p];
+            for r in c..m {
+                target[r] -= c0[r] * f0;
+            }
+            p += 1;
         }
     }
     Ok(())
@@ -270,5 +296,61 @@ mod tests {
             .map(|(p, q)| (*p - *q).abs())
             .fold(0.0, f64::max);
         assert!(err < 1e-9, "error {err}");
+    }
+
+    /// A complex shifted 5-point Laplacian on an n x n grid: indefinite in its real part, with a
+    /// small loss.
+    fn helmholtz(n: usize) -> (Csr, Csr, Vec<[f64; 3]>) {
+        let id = |i: usize, j: usize| (i + n * j) as u32;
+        let mut elements = Vec::new();
+        for j in 0..n {
+            for i in 0..n {
+                if i + 1 < n {
+                    elements.push([id(i, j), id(i + 1, j)]);
+                }
+                if j + 1 < n {
+                    elements.push([id(i, j), id(i, j + 1)]);
+                }
+            }
+        }
+        let mut re = Csr::pattern(n * n, elements.iter().map(|e| &e[..]));
+        for e in &elements {
+            re.add_element(e, &[1.0, -1.0, -1.0, 1.0]);
+        }
+        let mut im = re.clone();
+        im.val.fill(0.0);
+        for i in 0..n * n {
+            let k = re.find(i, i).unwrap();
+            re.val[k] -= 0.3;
+            im.val[k] += 0.01;
+        }
+        let xyz = (0..n * n)
+            .map(|k| [(k % n) as f64, (k / n) as f64, 0.0])
+            .collect();
+        (re, im, xyz)
+    }
+
+    #[test]
+    fn the_factor_solves_an_indefinite_complex_matrix_to_the_precision_of_the_arithmetic() {
+        let (re, im, xyz) = helmholtz(40);
+        let n = re.n;
+        let sym = Symbolic::analyse(&re, &nested_dissection(&re, &xyz));
+        let f = Ldlt::factor(&sym, &re, &im).unwrap();
+        let x: Vec<C64> = (0..n)
+            .map(|i| C64::new((i as f64 * 0.37).sin(), (i as f64 * 0.11).cos()))
+            .collect();
+        let mut b = vec![C64::ZERO; n];
+        for i in 0..n {
+            for e in re.ptr[i]..re.ptr[i + 1] {
+                b[i] += C64::new(re.val[e], im.val[e]) * x[re.idx[e] as usize];
+            }
+        }
+        f.solve(&mut b);
+        let err = x
+            .iter()
+            .zip(&b)
+            .map(|(p, q)| (*p - *q).abs())
+            .fold(0.0, f64::max);
+        assert!(err < 1e-8, "error {err}");
     }
 }

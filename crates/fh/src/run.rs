@@ -236,8 +236,10 @@ fn report(
                  stress peaks of a static step), or for a [line] case {0}/{6} (R, L, G, C, the \
                  modes and Z0 at each frequency) and {0}/line.s2Np (the S parameters), or for a \
                  homogenize step {0}/{7} (the effective tensors of the unit cell) and {0}/{8} (the \
-                 effective material for a grid.toml), and {0}/log.txt (the grid, the solver and \
-                 the warnings)",
+                 effective material for a grid.toml), or for electromagnetics {0}/{9} (the \
+                 S-parameters), {0}/{10} (beta and the impedance of each port), \
+                 {0}/sparams.sNp (Touchstone) or {0}/{11} (the frequency and Q of each mode), and \
+                 {0}/log.txt (the grid, the solver and the warnings)",
                 out.join(grid::WORK).display(),
                 grid::PROBES,
                 grid::ENERGY,
@@ -246,7 +248,10 @@ fn report(
                 grid::STRESS,
                 grid::LINE,
                 grid::HOMOGENIZED,
-                grid::MATERIAL
+                grid::MATERIAL,
+                grid::SPARAMS,
+                grid::PORTS,
+                grid::MODES
             ),
             "",
         ),
