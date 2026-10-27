@@ -133,7 +133,7 @@ impl results::Lists for js_sys::Array {
     }
 
     fn copy(&self, i: usize, out: &mut [u8]) {
-        Uint8Array::new(&self.get(i as u32)).copy_to(out);
+        self.get(i as u32).unchecked_into::<Uint8Array>().copy_to(out);
     }
 }
 
