@@ -58,7 +58,7 @@
 //! (cavity resonators); Y. Saad, Numerical Methods for Large Eigenvalue Problems, 2nd ed., SIAM
 //! 2011, chapters 4 and 5 (subspace iteration, shift and invert, Rayleigh-Ritz).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::cholesky::Cholesky;
 use crate::complex::{self, Matrix, C64};
@@ -679,6 +679,13 @@ fn discretize(model: &Model, limit: Limit, events: &mut dyn Events) -> Result<Di
             _ => None,
         })
         .collect();
+    let magnetic: HashSet<u32> = tm
+        .faces
+        .iter()
+        .zip(&kind)
+        .filter(|(_, k)| **k == Kind::Magnetic)
+        .flat_map(|(f, _)| face_pairs(f.nodes).map(|[a, b]| edge(f.nodes[a], f.nodes[b])))
+        .collect();
     let mut ports = Vec::new();
     for (p, port) in model.ports.iter().enumerate() {
         let faces: Vec<&prism::BoundaryFace> = tm
@@ -692,7 +699,7 @@ fn discretize(model: &Model, limit: Limit, events: &mut dyn Events) -> Result<Di
             &model.materials[model.parts[tm.part[f.tet as usize] as usize].material]
         };
         let (mode, proj) = match port.mode {
-            Mode::Te10 => te10(p, &faces, &points, &edge, &material)?,
+            Mode::Te10 => te10(p, &faces, &points, &edge, &material, &magnetic)?,
             Mode::Tem { signal } => {
                 let set = &model.faces[signal];
                 let on_signal: Vec<bool> = tm
@@ -946,15 +953,27 @@ type EdgeOf<'a> = dyn Fn(u32, u32) -> u32 + 'a;
 type MaterialOf<'a> = dyn Fn(&prism::BoundaryFace) -> &'a Material + 'a;
 
 /// The TE10 mode of a rectangular port face: e = sqrt(2 / (a b)) sin(pi u / a) along the short
-/// side, u across the long side a.
+/// side, u across the long side a. The 4 sides are electric walls: `magnetic` holds the edges of
+/// the magnetic walls.
 fn te10(
     p: usize,
     faces: &[&prism::BoundaryFace],
     points: &[[f64; 3]],
     edge: &EdgeOf,
     material: &MaterialOf,
+    magnetic: &HashSet<u32>,
 ) -> Result<(PortMode, Vec<(u32, f64)>), String> {
     let name = p + 1;
+    if faces.iter().any(|f| {
+        face_pairs(f.nodes)
+            .iter()
+            .any(|&[a, b]| magnetic.contains(&edge(f.nodes[a], f.nodes[b])))
+    }) {
+        return Err(format!(
+            "port {name}: a magnetic wall cuts the face of the TE10 port, but its mode needs \
+             electric walls on all 4 sides: model the full width of the waveguide"
+        ));
+    }
     let tri = |f: &prism::BoundaryFace| f.nodes.map(|i| points[i as usize]);
     // The normal axis and the plane.
     let n0 = {
@@ -1671,11 +1690,23 @@ fn modes(
         || model.pml.iter().any(|&p| p)
         || model.materials.iter().any(|m| m.conductivity > 0.0);
     if dispersive {
+        // Each mode keeps the new mode nearest to its own vector, so 2 modes with near
+        // frequencies stay 2 modes.
+        let total = found.len();
         for (theta, v) in found.iter_mut() {
             for _ in 0..5 {
                 let f = frequency_of(*theta);
-                let (mut again, _) = eigen(model, d, f, 1, events)?;
-                let (t, w) = again.remove(0);
+                let (again, _) = eigen(model, d, f, total, events)?;
+                let (_, m) = assemble(model, d, 2.0 * std::f64::consts::PI * f, &[]);
+                let mut mv = vec![C64::ZERO; v.len()];
+                m.mul(v, &mut mv);
+                let overlap = |w: &[C64]| {
+                    complex::dot(w, &mv).abs() / complex::norm(w).max(f64::MIN_POSITIVE)
+                };
+                let (t, w) = again
+                    .into_iter()
+                    .max_by(|a, b| overlap(&a.1).total_cmp(&overlap(&b.1)))
+                    .expect("a mode solve finds 1 mode or more");
                 *theta = t;
                 *v = w;
                 if (frequency_of(t) - f).abs() < 1e-9 * f {

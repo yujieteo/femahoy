@@ -2,7 +2,7 @@
 //! the result grid and the probe table of each output. `fh run` and the browser solve of the
 //! viewer use the same code, so the same case gives the same results.
 
-use fh_fem::complex::C64;
+use fh_fem::complex::{Matrix, C64};
 use fh_fem::elastic::{self, Surface, Thermal};
 use fh_fem::em;
 use fh_fem::grid::{Part, Side, Spacing};
@@ -1230,32 +1230,36 @@ pub fn modes_row(k: usize, frame: &em::Frame) -> String {
     )
 }
 
+/// The reference impedance of the Touchstone file (ohm).
+const TOUCHSTONE_OHM: f64 = 50.0;
+
 /// The head of a Touchstone file (version 1.1) of `ports` ports: the S-parameters in real and
-/// imaginary parts against the frequency in Hz.
+/// imaginary parts against the frequency in Hz, at 50 ohm.
 pub fn touchstone_head(ports: usize) -> String {
     format!(
-        "! femahoy built-in solver, {ports} ports. Generalized S-parameters: each port is \
-         normalized to the impedance of its own mode,\n! which the comment line before each \
-         frequency gives (ohm). The reference planes are after the deembed shift.\n# HZ S RI R 50\n"
+        "! femahoy built-in solver, {ports} ports. The S-parameters are renormalized to 50 ohm at \
+         each port from the impedance of its mode,\n! which the comment line before each \
+         frequency gives (ohm). The impedance of a TE10 port changes with the frequency, so \
+         its 50-ohm data is a convention.\n! sparams.txt has the S-parameters normalized to \
+         the impedance of each mode. The reference planes are after the deembed shift.\n\
+         # HZ S RI R 50\n"
     )
 }
 
 /// The lines of `frame` in a Touchstone file: a comment with the port impedances, then the
-/// frequency and the S-matrix (the order S11 S21 S12 S22 for 2 ports, else row by row with at
-/// most 4 values on a line).
+/// frequency and the S-matrix at 50 ohm (the order S11 S21 S12 S22 for 2 ports, else row by row
+/// with at most 4 values on a line).
 pub fn touchstone_rows(frame: &em::Frame) -> String {
     let n = frame.ports.len();
-    let z: Vec<String> = frame
-        .ports
-        .iter()
-        .map(|p| format!("{:.6e}", p.impedance))
-        .collect();
+    let impedances: Vec<f64> = frame.ports.iter().map(|p| p.impedance).collect();
+    let z: Vec<String> = impedances.iter().map(|z| format!("{z:.6e}")).collect();
+    let s = renormalize(&frame.s, &impedances, TOUCHSTONE_OHM);
     let mut out = format!("! port impedances {}\n", z.join(" "));
     let pair = |s: C64| format!(" {:.10e} {:.10e}", s.re, s.im);
     out.push_str(&format!("{:.10e}", frame.frequency));
     if n == 2 {
         for k in [0, 2, 1, 3] {
-            out.push_str(&pair(frame.s[k]));
+            out.push_str(&pair(s[k]));
         }
         out.push('\n');
         return out;
@@ -1265,11 +1269,43 @@ pub fn touchstone_rows(frame: &em::Frame) -> String {
             if j > 0 && j % 4 == 0 {
                 out.push('\n');
             }
-            out.push_str(&pair(frame.s[i * n + j]));
+            out.push_str(&pair(s[i * n + j]));
         }
         out.push('\n');
     }
     out
+}
+
+/// The S-matrix `s` (row-major) of ports of the real impedances `z`, renormalized to the real
+/// impedance `r` at each port: S' = T (S - P) (I - P S)^-1 T^-1 with P = diag((r - z) / (r + z))
+/// and T = diag((z + r) / (2 sqrt(z r))). K. Kurokawa, Power waves and the scattering matrix,
+/// IEEE Trans. Microwave Theory Tech. 13 (1965) 194-202.
+pub fn renormalize(s: &[C64], z: &[f64], r: f64) -> Vec<C64> {
+    let n = z.len();
+    let p: Vec<f64> = z.iter().map(|&z| (r - z) / (r + z)).collect();
+    let t: Vec<f64> = z
+        .iter()
+        .map(|&z| (z + r) / (2.0 * (z * r).sqrt()))
+        .collect();
+    // X = (S - P) (I - P S)^-1 is the transpose of (I - S^T P)^-1 (S^T - P).
+    let mut a = Matrix::identity(n);
+    let mut b = Matrix::zeros(n);
+    for i in 0..n {
+        for j in 0..n {
+            let st = s[j * n + i];
+            a.set(i, j, a.at(i, j) - st * p[j]);
+            b.set(i, j, if i == j { st - C64::from(p[i]) } else { st });
+        }
+    }
+    let x = a
+        .solve(&b)
+        .expect("I - P S is regular for |P| < 1 and a passive S");
+    (0..n * n)
+        .map(|k| {
+            let (i, j) = (k / n, k % n);
+            x.at(j, i) * (t[i] / t[j])
+        })
+        .collect()
 }
 
 fn line(values: &[f64]) -> String {
@@ -1560,5 +1596,50 @@ type = "homogenize"
         }
         let e = em_case(&GUIDE.replace("port = 2", "port = 3")).unwrap_err();
         assert!(e.contains("numbered 1, 2, 3"), "{e}");
+    }
+
+    /// A matched port of impedance Zw is S11 = (Zw - 50) / (Zw + 50) at 50 ohm, a lossless
+    /// 2-port stays unitary, and a port of 50 ohm keeps its S-parameters.
+    #[test]
+    fn the_touchstone_renormalization_to_50_ohm() {
+        let zw = 500.0;
+        let s = renormalize(&[C64::ZERO], &[zw], 50.0);
+        assert!((s[0] - C64::from((zw - 50.0) / (zw + 50.0))).abs() < 1e-14);
+        // A line of impedance 500 ohm, 0.3 rad long, between ports of 500 and 120 ohm.
+        let (zl, z2, phi) = (500.0, 120.0, 0.3_f64);
+        let (c, j) = (phi.cos(), C64::new(0.0, phi.sin()));
+        // The ABCD matrix of the line, then S with the 2 port impedances (Pozar, table 4.2).
+        let (aa, bb, cc, dd) = (C64::from(c), j * zl, j * (1.0 / zl), C64::from(c));
+        let (z1, z2c) = (C64::from(zl), C64::from(z2));
+        let den = aa * z2c + bb + cc * z1 * z2c + dd * z1;
+        let root = (zl * z2).sqrt();
+        let s = [
+            (aa * z2c + bb - cc * z1 * z2c - dd * z1) / den,
+            C64::from(2.0 * root) / den,
+            C64::from(2.0 * root) / den,
+            (C64::ZERO - aa * z2c + bb - cc * z1 * z2c + dd * z1) / den,
+        ];
+        let s50 = renormalize(&s, &[zl, z2], 50.0);
+        for i in 0..2 {
+            for k in 0..2 {
+                let mut v = C64::ZERO;
+                for m in 0..2 {
+                    v += s50[m * 2 + i].conj() * s50[m * 2 + k];
+                }
+                let want = if i == k { 1.0 } else { 0.0 };
+                assert!((v - C64::from(want)).abs() < 1e-12, "{v:?}");
+            }
+        }
+        // The same line at 50 ohm from the ABCD matrix directly.
+        let r = C64::from(50.0);
+        let den = aa * r + bb + cc * r * r + dd * r;
+        let want11 = (aa * r + bb - cc * r * r - dd * r) / den;
+        let want21 = C64::from(100.0) / den;
+        assert!((s50[0] - want11).abs() < 1e-12);
+        assert!((s50[2] - want21).abs() < 1e-12);
+        let same = renormalize(&s50, &[50.0, 50.0], 50.0);
+        for (a, b) in same.iter().zip(&s50) {
+            assert!((*a - *b).abs() < 1e-14);
+        }
     }
 }

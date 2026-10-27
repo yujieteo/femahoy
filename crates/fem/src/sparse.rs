@@ -193,51 +193,6 @@ impl Zcsr {
             *yi = s;
         }
     }
-
-    /// The rows and columns `keep` of the matrix, in that order. `keep` holds each index once.
-    pub fn submatrix(&self, keep: &[usize]) -> Zcsr {
-        let p = &self.pattern;
-        let mut new = vec![u32::MAX; p.n];
-        for (k, &i) in keep.iter().enumerate() {
-            new[i] = k as u32;
-        }
-        let mut ptr = Vec::with_capacity(keep.len() + 1);
-        ptr.push(0);
-        let (mut idx, mut val) = (Vec::new(), Vec::new());
-        for &i in keep {
-            let start = idx.len();
-            for k in p.ptr[i]..p.ptr[i + 1] {
-                let j = new[p.idx[k] as usize];
-                if j != u32::MAX {
-                    idx.push(j);
-                    val.push(self.val[k]);
-                }
-            }
-            // The rows of `keep` in increasing order keep the columns sorted; else sort them.
-            if !idx[start..].windows(2).all(|w| w[0] < w[1]) {
-                let mut pairs: Vec<(u32, C64)> = idx[start..]
-                    .iter()
-                    .copied()
-                    .zip(val[start..].iter().copied())
-                    .collect();
-                pairs.sort_unstable_by_key(|q| q.0);
-                for (k, (j, v)) in pairs.into_iter().enumerate() {
-                    idx[start + k] = j;
-                    val[start + k] = v;
-                }
-            }
-            ptr.push(idx.len());
-        }
-        Zcsr {
-            pattern: Csr {
-                n: keep.len(),
-                ptr,
-                idx,
-                val: Vec::new(),
-            },
-            val,
-        }
-    }
 }
 
 /// A rectangular sparse matrix in CSR form: `rows` rows of `cols` columns. The multigrid

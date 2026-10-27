@@ -178,6 +178,21 @@ fn a_rectangular_cavity_resonates_at_its_exact_frequency() {
 
 /// Reason for the band of 1 %: at max_cell 2 mm the Q is 0.41 % below the exact Q, and the error
 /// falls at second order (validation/cases/grid-cavity-te101/derivation.md).
+/// A magnetic wall on the plane of symmetry of a TE10 port gives an error, not the TE10 mode
+/// of the half width with the wrong cutoff.
+#[test]
+fn a_te10_port_cut_by_a_magnetic_wall_is_refused() {
+    let mut model = waveguide(30e-3, 2.0e-3, 10e9);
+    model.parts[0].hi[0] = A / 2.0;
+    model.faces.push(side("symmetry", 0, true));
+    model.walls.push(Boundary {
+        faces: 2,
+        wall: Wall::Magnetic,
+    });
+    let e = solve(&model, &mut Record::default()).unwrap_err();
+    assert!(e.contains("model the full width"), "{e}");
+}
+
 #[test]
 fn a_cavity_with_copper_walls_has_the_q_of_its_surface_resistance() {
     let (a, b, d, sigma) = (22.86e-3, 10.16e-3, 25.0e-3, 5.8e7);

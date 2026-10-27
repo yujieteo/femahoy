@@ -1,7 +1,8 @@
 //! The iterative solver of the edge element matrices of `em` for a model too large for the direct
 //! factor: GMRES with a right preconditioner that approximates the inverse of the shifted
-//! operator P = S + k0^2 M (curl-curl plus mass, not indefinite), where the system is
-//! A = S - k0^2 M (indefinite).
+//! operator P = S + c k0^2 M with the complex shift c = -1 + 0.5j (`SHIFT` of `em`), where the
+//! system is A = S - k0^2 M (indefinite). The real part S - k0^2 M of P is as indefinite as A:
+//! only the imaginary part 0.5 k0^2 M of the shift damps P.
 //!
 //! The preconditioner is the nodal auxiliary space method: a symmetric Gauss-Seidel smoother on
 //! P, and between its 2 sweeps the corrections in 2 nodal spaces, each solved exactly by the
@@ -19,7 +20,7 @@
 //! spaces, SIAM J. Numer. Anal. 45 (2007) 2483-2509 (the auxiliary spaces and the smoother);
 //! Y. A. Erlangga, C. W. Oosterlee and C. Vuik, A novel multigrid based preconditioner for
 //! heterogeneous Helmholtz problems, SIAM J. Sci. Comput. 27 (2006) 1471-1492 (a preconditioner
-//! from a shifted operator that is not indefinite); Y. Saad and M. H. Schultz, GMRES: a
+//! from a complex shifted operator); Y. Saad and M. H. Schultz, GMRES: a
 //! generalized minimal residual algorithm for solving nonsymmetric linear systems, SIAM J. Sci.
 //! Stat. Comput. 7 (1986) 856-869, and Y. Saad, Iterative Methods for Sparse Linear Systems, 2nd
 //! ed., SIAM 2003, sections 6.5 and 9.3 (restarted GMRES with a right preconditioner, with
