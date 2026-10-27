@@ -73,10 +73,9 @@ const SCRIPT_PATH: &str = "/viewer/fh_viewer.js";
 /// message has the text of the viewer script, the compiled viewer and the text of `results.pvd`.
 /// The worker imports the script from its own blob. Reason: a report from `file://` has an
 /// opaque origin, so a worker cannot import a blob of the page, and a module worker does not
-/// start. Each next
-/// message has the bytes of the next step, or the error of its fetch. Each message gets 1
-/// answer: the byte lists of the read step in `ok`, with each buffer transferred, and the file
-/// of the next step in `next`, or an `error`.
+/// start. Each next message has the bytes of the next step, or the error of its fetch. Each
+/// message gets 1 answer: the byte lists of the read step in `ok`, with each buffer
+/// transferred, and the file of the next step in `next`, or an `error`.
 const STEP_WORKER: &str = r#"
 let reader;
 onmessage = async ({ data }) => {
@@ -133,7 +132,9 @@ impl results::Lists for js_sys::Array {
     }
 
     fn copy(&self, i: usize, out: &mut [u8]) {
-        self.get(i as u32).unchecked_into::<Uint8Array>().copy_to(out);
+        self.get(i as u32)
+            .unchecked_into::<Uint8Array>()
+            .copy_to(out);
     }
 }
 
