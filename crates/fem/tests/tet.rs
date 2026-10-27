@@ -436,7 +436,14 @@ fn a_box_over_part_of_a_face_keeps_the_triangles_whose_centroid_is_in_it() {
         [0.0, 0.2],
     );
     let (lo, hi) = ([-1.0, -1.0, 0.2], [0.37, 2.0, 0.2]);
-    let m = mesh(std::slice::from_ref(&plate), 2, spacing(0.25), usize::MAX, "").unwrap();
+    let m = mesh(
+        std::slice::from_ref(&plate),
+        2,
+        spacing(0.25),
+        usize::MAX,
+        "",
+    )
+    .unwrap();
     let (mut centroid_in, mut corners_in) = (0.0, 0.0);
     for f in &m.faces {
         let p = f.nodes.map(|i| m.points[i as usize]);
