@@ -1,0 +1,12 @@
+# The centre temperature of a slab at Fo = 0.2 after its faces go from 100 C to 0 C
+# (derivation.md). Tolerance budget, from 3 grids and 4 time steps: the space error of the
+# max_cell 0.5 mm grid is -0.029 C (second order), and the time error of dt = 0.1 s is +0.022 C
+# (backward Euler, first order). Their sum of magnitudes is 0.051 C. The tolerance is 0.06 C.
+rel_tol = 0.0
+abs_tol = 0.06
+
+[centre]
+value = 77.231160686
+case = "slab"
+file = "probes.txt"
+column = "centre"

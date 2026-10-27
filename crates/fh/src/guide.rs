@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 /// The name and the text of each guide. The first line of the text is `# TITLE`.
 pub const GUIDES: &[(&str, &str)] = &[
+    ("grid", include_str!("guide/grid.md")),
     ("cfd", include_str!("guide/cfd.md")),
     ("cht", include_str!("guide/cht.md")),
     (

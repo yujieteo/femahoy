@@ -13,6 +13,8 @@ You are the agent of femahoy, an FEA and CFD workflow. The person watches each o
 
 ## From a request to results
 
+Heat conduction in parts that are boxes: use the built-in grid solver first, and skip the steps below. It needs no CAD, no mesh and no CalculiX. Run `fh guide grid`. Use the steps below for a curved or sloped face, contact, radiation, a material that changes with the temperature, or a stress.
+
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. The STEP unit of build123d is mm.
 2. Mesh: `fh mesh part.step --size H -o mesh.inp ...` writes the nodes, the C3D10 elements and the sets that you name. Start with a coarse mesh, so that the solve takes about 1 minute. See "fh mesh sets" below.
 3. Input: write `job.inp` with the Write tool. Start it with `*INCLUDE, INPUT=mesh.inp`. Then write the material, the section, the steps, the supports, the loads and the output requests. When you write the nodes and the elements yourself, put the line `** units: SI-mm` first in that file. Then the page shows the units.

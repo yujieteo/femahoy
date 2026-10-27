@@ -131,8 +131,9 @@ impl Case {
                 if crate::solver(&case).is_none() && !crate::fit::is_case(&case) {
                     let (pro, dict) = (case.join("case.pro"), case.join("system/controlDict"));
                     let missing = format!(
-                        "{}, {}, {}, {}, {}, {}, {}, {}, {} or {} not found",
+                        "{}, {}, {}, {}, {}, {}, {}, {}, {}, {} or {} not found",
                         pro.display(),
+                        case.join(crate::grid::CASE_FILE).display(),
                         case.join("chrono.py").display(),
                         case.join("meep_case.py").display(),
                         case.join("openems.py").display(),

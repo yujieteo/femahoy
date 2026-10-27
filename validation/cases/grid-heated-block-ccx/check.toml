@@ -1,0 +1,26 @@
+# A steel plate with a heated copper block, against CalculiX 2.23 with C3D20 elements on the
+# same problem (ccx/mesh.py with H = 1.25 mm: 267377 nodes). See derivation.md.
+# Tolerance budget, from the extrapolation of 3 meshes of each solver: the error of the grid
+# solver at max_cell 0.625 mm is at most 0.084 C, and the error of the CalculiX reference is at
+# most 0.080 C, both at the top of the block, next to the singular edge where the block meets
+# the plate. The tolerance 0.2 C holds their sum, 0.164 C.
+rel_tol = 0.0
+abs_tol = 0.2
+
+[block_top]
+value = 48.45740
+case = "block"
+file = "probes.txt"
+column = "block_top"
+
+[plate_corner]
+value = 34.98249
+case = "block"
+file = "probes.txt"
+column = "plate_corner"
+
+[plate_edge_top]
+value = 36.92743
+case = "block"
+file = "probes.txt"
+column = "plate_edge_top"

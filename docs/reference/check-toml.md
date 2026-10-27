@@ -4,6 +4,7 @@ A validation case is a folder `validation/cases/<id>/` with these files that `fh
 
 - `job.inp`: a plain CalculiX input. It holds the mesh, the model, the steps and the print requests that the check needs. It starts with the line `** units: SI-mm` or `** units: SI-m`. A large mesh can be in a file that `job.inp` includes (`*INCLUDE`).
 - Or, for CFD, electromagnetics, acoustics, fluid-structure interaction, particles, antennas, topology and shape optimization, multibody dynamics and optics, 1 or more OpenFOAM, GetDP, preCICE, LAMMPS, openEMS, topology, shape optimization, Chrono or Meep case folders in subfolders, for example `a4.04/system/controlDict`, `50hz/case.pro`, `fsi1/precice-config.xml`, `sph/case.lmp`, `omega12.5/openems.py`, `60x20/topology.toml`, `L40/optimize.toml`, `60rpm/chrono.py` or `res40/meep_case.py`. A case with table checks has no `job.inp`.
+- Or, for heat conduction with the built-in solver, a grid case folder in a subfolder, for example `wall/grid.toml` (see `fh guide grid`). `fh validate` solves it in process and writes the tables `probes.txt` (a column for each probe) and `energy.txt` in the case folder.
 - Or, for a curve fit, a fit case folder in a subfolder, for example `pontius/fit.toml`. `fit.toml` has `curve` (a curve file in the folder, see [curve](../../crates/fh/src/curve.rs)), `model` (a model of `fh fit`) and, when the curve has more than 1 series, `series`. `fh validate` fits the curve and writes the table `fit.txt`. Its columns are the parameters of the model (`c0`, `c1` ... for `poly`, `C` and `m` for `power`, `C10` and `C01` for the hyperelastic models) and `r2`.
 - `check.toml`: the reference values, what to measure and the tolerance.
 
@@ -40,11 +41,11 @@ A check of `A_RMS` has the 5 keys of `U`. The value of each node of the set is t
 
 A check of `CSTR` (contact stress, from `*CONTACT PRINT`) has 4 keys: `value`, `field`, `component` and `op`. Component 1 is the pressure, 2 and 3 are the shear stresses. It has no `set`: ccx writes the contact stress of all contact elements.
 
-A table check of an OpenFOAM, GetDP, preCICE, LAMMPS, openEMS, topology, shape optimization, Chrono or Meep case has 4 keys: `value`, `case`, `file` and `column`. It has no `field`.
+A table check of an OpenFOAM, GetDP, preCICE, LAMMPS, openEMS, topology, shape optimization, Chrono, Meep, grid or fit case has 4 keys: `value`, `case`, `file` and `column`. It has no `field`.
 
 | Key | Rule |
 |---|---|
-| `case` | The name of the subfolder with the OpenFOAM, GetDP, preCICE, LAMMPS, openEMS, topology, shape optimization, Chrono or Meep case. |
+| `case` | The name of the subfolder with the OpenFOAM, GetDP, preCICE, LAMMPS, openEMS, topology, shape optimization, Chrono, Meep, grid or fit case. |
 | `file` | The path of a text table in the case folder after the solve, for example `postProcessing/forceCoeffs/0/coefficient.dat`. A function object of OpenFOAM, the PostOperation of GetDP, a `watch-point` of preCICE, a `print` of LAMMPS, `chrono.py`, `meep_case.py` or `openems.py` writes it. In a preCICE case, the path starts with `fluid/` or `solid/`. For a topology case, the path is in the folder of the loop: `history.txt`, with the column `compliance`, or `cad/check.txt`, with the columns `compliance` and `volume` of the solid of the last design. For a shape optimization case, it is `optimum.txt` (the best design), with the column of each variable and `objective`. |
 | `column` | The name of the column in the header line: the last line that starts with `#`, else the first line. The value is the number in this column of the last row. |
 
