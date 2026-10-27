@@ -405,7 +405,7 @@ async fn solve_case(
     if fh_core::grid::is_line(&text) {
         fh_core::line::read(&text).map(|_| ())
     } else {
-        fh_core::grid::read(&text).map(|_| ())
+        crate::solve::read_heat(&text).map(|_| ())
     }
     .map_err(|e| format!("{name}: {e}"))?;
     let script = self::text(get(token, SCRIPT_PATH, signal).await?, SCRIPT_PATH)?;

@@ -14,10 +14,13 @@
 //! - `line`, `mtl`: the per-length R, L, G and C of a transmission line from its cross-section
 //!   (electrostatic and magneto-quasi-static solves on the triangle mesh), and the chain matrix,
 //!   the S matrix, the modes and the Touchstone text of a multiconductor line.
-//! - `multigrid`: conjugate gradients with a geometric multigrid preconditioner on the grid.
+//! - `multigrid`: conjugate gradients with a geometric multigrid preconditioner on the grid, for
+//!   1 or 3 unknowns at each point.
 //! - `solve`: the choice between the direct solver and PCG.
 //! - `heat`: steady and transient heat conduction on 8-node hex elements on the grid, or on
 //!   4-node tetrahedra on the extruded mesh.
+//! - `hex`: the 8-node hex with incompatible modes for elasticity, and the orthotropic material.
+//! - `elastic`: linear static thermo-elasticity on the grid.
 
 // `!(a > b)` is also true for NaN, so the checks of the input and of each pivot use it. The
 // numeric loops index several arrays with 1 index, as the formulas of the sources do.
@@ -25,8 +28,10 @@
 
 pub mod cholesky;
 pub mod complex;
+pub mod elastic;
 pub mod grid;
 pub mod heat;
+pub mod hex;
 pub mod ldlt;
 pub mod line;
 pub mod mesh2d;

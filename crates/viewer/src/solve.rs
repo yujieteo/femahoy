@@ -4,10 +4,10 @@
 //! probe table (`fh_core::grid`), so the same case gives the same probes. A case with a `[line]`
 //! table is a transmission line (`fh_core::line`): its answer is the table of `grid/line.txt`.
 
-use fh_core::grid::{frame_grid, is_line, probe_head, probe_row, read};
+use fh_core::grid::{frame_grid, is_line, probe_head, probe_row, read, Case};
 use fh_core::line;
 use fh_core::vtu::PvdEntry;
-use fh_fem::heat::{self, Events, Frame, Limit, Mesh};
+use fh_fem::heat::{self, Events, Frame, Limit, Mesh, Model};
 
 use crate::results::Loader;
 
@@ -23,6 +23,17 @@ pub const BROWSER: Limit = Limit {
     tet_points: 100_000,
     memory: "the 4 GiB memory of wasm32 in a browser",
 };
+
+/// The heat model of the case `text` and its unit system. The browser solves heat steps only, so
+/// a static step gets an error that names `fh run`.
+pub fn read_heat(text: &str) -> Result<(Model, String), String> {
+    match read(text)? {
+        (Case::Heat(model), units) => Ok((model, units)),
+        (Case::Elastic(_), _) => Err("the browser solves only heat steps (steady or \
+             transient). Solve a static step with fh run"
+            .into()),
+    }
+}
 
 /// The largest mesh of a line case in the browser: a quarter of the native limit, the ratio of the
 /// limits of the box grid. Reason: the native 2D solve of 321,295 points used a factor of 200 MB
@@ -42,7 +53,7 @@ pub fn solve(
     if is_line(text) {
         return solve_line(text, on_line, on_step);
     }
-    let (model, units) = read(text).map_err(|e| format!("grid.toml: {e}"))?;
+    let (model, units) = read_heat(text).map_err(|e| format!("grid.toml: {e}"))?;
     let mut out = Output {
         mesh: None,
         loader: Loader::stream(&units),
@@ -188,5 +199,14 @@ mod tests {
             e.contains("more than 10 points") && e.contains("wasm32") && e.contains("fh run"),
             "{e}"
         );
+    }
+
+    /// A static step gets an error that names fh run, not a solve.
+    #[test]
+    fn a_static_step_is_refused_with_fh_run_in_the_text() {
+        const BLOCK: &str =
+            include_str!("../../../validation/cases/grid-constrained-block/block/grid.toml");
+        let e = solve(BLOCK, BROWSER, &mut |_| {}, &mut |_| panic!("no output")).unwrap_err();
+        assert!(e.contains("heat steps") && e.contains("fh run"), "{e}");
     }
 }

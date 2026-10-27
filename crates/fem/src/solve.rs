@@ -4,7 +4,7 @@
 //! solves many right sides, for example each time step of a transient solve.
 
 use crate::cholesky::Cholesky;
-use crate::multigrid::{pcg, Level, Multigrid};
+use crate::multigrid::{pcg, Cells, Level, Multigrid};
 use crate::order::nested_dissection;
 use crate::sparse::Csr;
 use crate::symbolic::Symbolic;
@@ -21,9 +21,24 @@ pub const STEADY_DIRECT_LIMIT: usize = 3_000;
 /// 25.7 s at 61,749.
 pub const TRANSIENT_DIRECT_LIMIT: usize = 40_000;
 
+/// How a solver chooses its method when the model does not force one.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Crossover {
+    /// Direct up to this many unknowns.
+    Unknowns(usize),
+    /// Direct when the factor has up to `entries` entries, and it costs up to `flops` for each
+    /// unknown or the cells are `flat`. The factor of a thin model is cheap for its size, and
+    /// multigrid converges slowly on its flat cells.
+    Flops {
+        flops: f64,
+        entries: u64,
+        flat: bool,
+    },
+}
+
 /// The relative residual of a PCG solve.
 pub const PCG_TOL: f64 = 1e-10;
-const PCG_MAX_ITER: usize = 500;
+pub const PCG_MAX_ITER: usize = 500;
 
 /// How a solver solves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +54,7 @@ enum Inner {
 
 pub struct Solver {
     inner: Inner,
+    max_iter: usize,
 }
 
 /// Where the unknowns are.
@@ -60,18 +76,15 @@ pub struct Stats {
 
 impl Solver {
     /// The solver of `a` (symmetric positive definite) on the unknowns `unknowns`. `method`
-    /// forces a method, else the size and `many` (the solver solves many right sides) choose it.
+    /// forces a method, else `crossover` chooses it. `cells` gives the coarse matrices of a
+    /// displacement to multigrid.
     pub fn new(
         a: Csr,
         unknowns: Unknowns,
         method: Option<Method>,
-        many: bool,
+        crossover: Crossover,
+        cells: Option<Cells>,
     ) -> Result<Solver, String> {
-        let limit = if many {
-            TRANSIENT_DIRECT_LIMIT
-        } else {
-            STEADY_DIRECT_LIMIT
-        };
         let level = match unknowns {
             Unknowns::Grid(level) => level,
             Unknowns::Points(xyz) => {
@@ -81,31 +94,58 @@ impl Solver {
                             .into(),
                     );
                 }
+                let sym = Symbolic::analyse(&a, &nested_dissection(&a, &xyz));
+                let chol = Cholesky::factor(&sym, &a)?;
                 return Ok(Solver {
-                    inner: direct(a, &xyz)?,
+                    inner: Inner::Direct(a, chol),
+                    max_iter: PCG_MAX_ITER,
                 });
             }
         };
-        let method = method.unwrap_or(if a.n <= limit {
-            Method::Direct
-        } else {
-            Method::Multigrid
-        });
-        let inner = match method {
-            Method::Direct => {
-                let xyz: Vec<[f64; 3]> = level
-                    .points
-                    .iter()
-                    .map(|p| std::array::from_fn(|d| level.planes[d][p[d] as usize]))
-                    .collect();
-                direct(a, &xyz)?
+        let symbolic = |a: &Csr, level: &Level| {
+            let xyz: Vec<[f64; 3]> = level
+                .points
+                .iter()
+                .map(|p| std::array::from_fn(|d| level.planes[d][p[d] as usize]))
+                .collect();
+            Symbolic::analyse(a, &nested_dissection(a, &xyz))
+        };
+        let sym = match (method, crossover) {
+            (Some(Method::Direct), _) => Some(symbolic(&a, &level)),
+            (Some(Method::Multigrid), _) => None,
+            (None, Crossover::Unknowns(n)) => (a.n <= n).then(|| symbolic(&a, &level)),
+            (
+                None,
+                Crossover::Flops {
+                    flops,
+                    entries,
+                    flat,
+                },
+            ) => {
+                let sym = symbolic(&a, &level);
+                (sym.entries() <= entries && (flat || sym.flops() <= flops * a.n as f64))
+                    .then_some(sym)
             }
-            Method::Multigrid => {
-                let mg = Multigrid::new(a.clone(), level)?;
+        };
+        let inner = match sym {
+            Some(sym) => {
+                let chol = Cholesky::factor(&sym, &a)?;
+                Inner::Direct(a, chol)
+            }
+            None => {
+                let mg = Multigrid::new(a.clone(), level, cells)?;
                 Inner::Multigrid(a, mg)
             }
         };
-        Ok(Solver { inner })
+        Ok(Solver {
+            inner,
+            max_iter: PCG_MAX_ITER,
+        })
+    }
+
+    /// The solver with at most `max_iter` PCG iterations for each solve.
+    pub fn with_max_iter(self, max_iter: usize) -> Solver {
+        Solver { max_iter, ..self }
     }
 
     pub fn method(&self) -> Method {
@@ -143,7 +183,7 @@ impl Solver {
                     x,
                     &|r, z| mg.apply(r, z),
                     PCG_TOL,
-                    PCG_MAX_ITER,
+                    self.max_iter,
                     cancelled,
                 )?;
                 Ok(Stats {
@@ -153,11 +193,4 @@ impl Solver {
             }
         }
     }
-}
-
-/// The Cholesky factor of `a` in the nested dissection order of the points `xyz`.
-fn direct(a: Csr, xyz: &[[f64; 3]]) -> Result<Inner, String> {
-    let sym = Symbolic::analyse(&a, &nested_dissection(&a, xyz));
-    let chol = Cholesky::factor(&sym, &a)?;
-    Ok(Inner::Direct(a, chol))
 }

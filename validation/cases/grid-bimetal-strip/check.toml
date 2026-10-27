@@ -1,0 +1,33 @@
+# A free strip of 2 bonded layers, heated by 100 C, against the curvature of Timoshenko (1925)
+# (derivation.md). Tolerance budget: the fit of the curvature over the whole top face holds
+# the edge zones, where the bending is not uniform. Thus the curvature of the finest grid
+# (max_cell 0.25 mm) is 0.37 % (kxx) and 0.47 % (kyy) below the theory. The discretization
+# error at max_cell 1 mm is about 0.06 %. Their sum is 0.53 %, and the tolerance is 1 %. The load has
+# no net force, so the reaction of the face that holds the strip is 0. abs_tol 1e-6 holds its
+# value from the solve, about 2e-8 N.
+rel_tol = 0.01
+abs_tol = 1e-6
+
+[top_kxx]
+value = 1.163636e-3
+case = "strip"
+file = "surfaces.txt"
+column = "top.kxx"
+
+[top_kyy]
+value = 1.163636e-3
+case = "strip"
+file = "surfaces.txt"
+column = "top.kyy"
+
+[centre_fz]
+value = 0.0
+case = "strip"
+file = "reactions.txt"
+column = "centre.fz"
+
+[centre_fx]
+value = 0.0
+case = "strip"
+file = "reactions.txt"
+column = "centre.fx"

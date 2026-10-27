@@ -1,0 +1,25 @@
+# A steel cantilever with an end shear force, against the beam theory (derivation.md).
+# Tolerance budget for tip.uz: the 3D clamp makes the beam 0.66 % stiffer than the Timoshenko
+# beam (the extrapolation of 4 grids), and the discretization error at max_cell 2.5 mm is
+# 0.30 %. Their sum is 0.96 %. The stress probes are at the centre of a cell in x, where the
+# grid gives the exact Saint-Venant stress to 1e-9. The tolerance 1.5 % holds the sum.
+rel_tol = 0.015
+abs_tol = 0.0
+
+[tip_uz]
+value = -0.191933
+case = "beam"
+file = "probes.txt"
+column = "tip.uz"
+
+[top_sxx]
+value = 29.25
+case = "beam"
+file = "probes.txt"
+column = "middle_top.sxx"
+
+[bottom_sxx]
+value = -29.25
+case = "beam"
+file = "probes.txt"
+column = "middle_bottom.sxx"
