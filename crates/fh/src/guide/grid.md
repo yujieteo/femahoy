@@ -54,7 +54,7 @@ Heat steps: the temperature `NT`, the heat flux `HFL` and the part number of eac
 
 Static step: the displacement `U`, the stress `S` and the strain `E` (xx, yy, zz, xy, yz, xz), the von Mises stress `MISES`, the principal stresses `SP` (the largest first) and the temperature `NT` at each point. The value at a point is the mean of the cells around it.
 
-- `grid/probes.txt`: 1 row with `NAME.ux`, `NAME.uy`, `NAME.uz`, `NAME.sxx`, `NAME.syy`, `NAME.szz`, `NAME.sxy`, `NAME.syz`, `NAME.sxz`, `NAME.mises` and, with a thermal load, `NAME.t` of each probe. The stress at a probe is the value of the cell that holds it, so put a probe for a stress inside a cell, not on a cell face. On a mesh of tetrahedra, the stress at a probe is the mean of the cells that hold the point, so a probe on a face of a part is correct.
+- `grid/probes.txt`: 1 row with `NAME.ux`, `NAME.uy`, `NAME.uz`, `NAME.sxx`, `NAME.syy`, `NAME.szz`, `NAME.sxy`, `NAME.syz`, `NAME.sxz`, `NAME.mises` and, with a thermal load, `NAME.t` of each probe. The stress at a probe is the value of the cell that holds it, so put a probe for a stress inside a cell, not on a cell face. On a mesh of tetrahedra, the stress at a probe is the mean of the cells that hold the point. A probe on an outer face of a part is correct. A probe on a face between 2 materials gives the mean of the 2 materials, so put a probe for a stress inside 1 part.
 - `grid/surfaces.txt`: 1 row with the shape of each surface, from the displacement w along the outward normal:
   - `NAME.range`: the largest w minus the smallest w.
   - `NAME.flatness`: the range of w after the removal of the plane of the best fit.
