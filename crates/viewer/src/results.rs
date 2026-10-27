@@ -4,6 +4,7 @@
 //! Plain functions with no GPU or file types. The caller gives the file bytes to `load`. The
 //! browser fetches them from the daemon, and the tests read them from disk.
 
+use bytemuck::Pod;
 use fh_core::vtu::{read_pvd, read_vtu, Grid};
 
 use crate::mesh::{self, RenderMesh};
@@ -93,7 +94,7 @@ impl Step {
 }
 
 /// All the steps of one run.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Results {
     /// The unit system of the run (`SI-mm`, `SI-m` or `unspecified`).
     pub units: String,
@@ -247,37 +248,82 @@ pub fn is_plain_file_name(name: &str) -> bool {
 }
 
 /// Read the results of a run. `pvd` is the text of `results.pvd`. `read` gives the bytes of a
-/// file that `results.pvd` names. Each step must have as many points as the first step. A step
-/// with other cells than the step before it gets its own mesh. A step with no displacement field
-/// `U` (a heat transfer step) has a displacement of zero. When the points of a step are not the
-/// points of the first step, the displacement of each node adds its move.
+/// file that `results.pvd` names. See [`Loader`] for the checks of each step.
 pub fn load(
     pvd_name: &str,
     pvd: &str,
     mut read: impl FnMut(&str) -> Result<Vec<u8>, String>,
 ) -> Result<Results, String> {
-    let entries = match read_pvd(pvd) {
-        Ok(e) => e,
-        Err(e) => return fail(pvd_name, e),
-    };
-    if entries.is_empty() {
-        return fail(pvd_name, "the collection names no step file");
+    let mut loader = Loader::new(pvd_name, pvd)?;
+    while let Some(file) = loader.next_file() {
+        let file = file.to_owned();
+        loader.add(read(&file))?;
     }
-    let mut first: Option<Vec<[f64; 3]>> = None;
-    // The cells and the cell types of the last mesh.
-    let mut last: Option<(Vec<Vec<u32>>, Vec<u8>)> = None;
-    let mut meshes = Vec::new();
-    let mut steps = Vec::with_capacity(entries.len());
-    let mut moves = false;
-    for entry in entries {
-        let file = entry.file.as_str();
-        if !is_plain_file_name(file) {
+    Ok(loader.finish())
+}
+
+/// Reads the results of a run 1 step at a time, so that the page can fetch a step, read it
+/// and give the browser a frame before the next step. Each step must have as many points as
+/// the first step. A step with other cells than the step before it gets its own mesh. A step
+/// with no displacement field `U` (a heat transfer step) has a displacement of zero. When the
+/// points of a step are not the points of the first step, the displacement of each node adds
+/// its move.
+pub struct Loader {
+    units: String,
+    multibody: bool,
+    entries: Vec<fh_core::vtu::PvdEntry>,
+    first: Option<Vec<[f64; 3]>>,
+    /// The cells and the cell types of the last mesh.
+    last: Option<(Vec<Vec<u32>>, Vec<u8>)>,
+    meshes: Vec<RenderMesh>,
+    steps: Vec<Step>,
+    moves: bool,
+    /// The number of meshes that [`Loader::add_and_send`] sent.
+    sent: usize,
+}
+
+impl Loader {
+    /// Read `pvd`, the text of the collection `pvd_name`.
+    pub fn new(pvd_name: &str, pvd: &str) -> Result<Loader, String> {
+        let entries = match read_pvd(pvd) {
+            Ok(e) => e,
+            Err(e) => return fail(pvd_name, e),
+        };
+        if entries.is_empty() {
+            return fail(pvd_name, "the collection names no step file");
+        }
+        if let Some(e) = entries.iter().find(|e| !is_plain_file_name(&e.file)) {
             return fail(
                 pvd_name,
-                format!("step file {file} is not in the run folder"),
+                format!("step file {} is not in the run folder", e.file),
             );
         }
-        let bytes = match read(file) {
+        let steps = Vec::with_capacity(entries.len());
+        Ok(Loader {
+            units: pvd_units(pvd),
+            multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
+            entries,
+            first: None,
+            last: None,
+            meshes: Vec::new(),
+            steps,
+            moves: false,
+            sent: 0,
+        })
+    }
+
+    /// The file of the next step, or `None` when each step is read.
+    pub fn next_file(&self) -> Option<&str> {
+        self.entries.get(self.steps.len()).map(|e| e.file.as_str())
+    }
+
+    /// Read the bytes of the file of the next step.
+    pub fn add(&mut self, bytes: Result<Vec<u8>, String>) -> Result<(), String> {
+        let Some(entry) = self.entries.get(self.steps.len()) else {
+            return Err("each step is already read".into());
+        };
+        let file = entry.file.as_str();
+        let bytes = match bytes {
             Ok(b) => b,
             Err(e) => return fail(file, e),
         };
@@ -289,10 +335,13 @@ pub fn load(
         if grid.points.is_empty() || grid.cells.is_empty() {
             return fail(file, "the grid has no point or no cell");
         }
-        if first.as_ref().is_some_and(|f| f.len() != grid.points.len()) {
+        if (self.first.as_ref()).is_some_and(|f| f.len() != grid.points.len()) {
             return fail(
                 file,
-                format!("the points are not the points of {}", steps_file(&steps)),
+                format!(
+                    "the points are not the points of {}",
+                    steps_file(&self.steps)
+                ),
             );
         }
         if grid.points.iter().flatten().any(|c| !c.is_finite()) {
@@ -300,7 +349,8 @@ pub fn load(
         }
         // The mesh, the displacement and then the fields, so that a phone browser does not
         // hold the work data of the mesh and a second copy of the fields at the same time.
-        let same = (last.as_ref()).is_some_and(|(c, t)| *c == grid.cells && *t == grid.cell_types);
+        let same =
+            (self.last.as_ref()).is_some_and(|(c, t)| *c == grid.cells && *t == grid.cell_types);
         if !same {
             let mesh = mesh::build_grid(&grid);
             if mesh.triangles.is_empty() {
@@ -312,15 +362,15 @@ pub fn load(
                     ),
                 );
             }
-            meshes.push(mesh);
+            self.meshes.push(mesh);
         }
         let mut displacement = match grid.point_field("U") {
             None => vec![[0.0; 3]; grid.points.len()],
             Some(u) if u.components == 3 => u.values.as_chunks::<3>().0.to_vec(),
             Some(_) => return fail(file, "the displacement field U must have 3 components"),
         };
-        if let Some(f) = first.as_ref().filter(|f| **f != grid.points) {
-            moves = true;
+        if let Some(f) = self.first.as_ref().filter(|f| **f != grid.points) {
+            self.moves = true;
             for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(f) {
                 for k in 0..3 {
                     u[k] += p[k] - p0[k];
@@ -329,26 +379,226 @@ pub fn load(
         }
         let fields = fields_of(&mut grid, file)?;
         if !same {
-            last = Some((grid.cells, grid.cell_types));
+            self.last = Some((grid.cells, grid.cell_types));
         }
-        steps.push(Step {
+        self.steps.push(Step {
             time: entry.time,
             file: entry.file.clone(),
-            mesh: meshes.len() - 1,
+            mesh: self.meshes.len() - 1,
             displacement,
             fields,
         });
-        if first.is_none() {
-            first = Some(grid.points);
+        if self.first.is_none() {
+            self.first = Some(grid.points);
+        }
+        Ok(())
+    }
+
+    /// Read the next step like [`Loader::add`] and give it, with its mesh when the mesh is new,
+    /// as the lists of [`Results::receive`]. The worker of the page reads the steps with this,
+    /// so that a large step does not stop the page. The loader then keeps only what it needs to
+    /// check the next steps, so [`Loader::finish`] has no step data after this.
+    pub fn add_and_send(&mut self, bytes: Result<Vec<u8>, String>) -> Result<Vec<Vec<u8>>, String> {
+        self.add(bytes)?;
+        let mut out = vec![Vec::new()];
+        put_text(&mut out, &self.units);
+        put(&mut out, u8::from(self.multibody));
+        put(&mut out, u8::from(self.moves));
+        let mesh = self.meshes.get_mut(self.sent).map(std::mem::take);
+        self.sent = self.meshes.len();
+        put(&mut out, u8::from(mesh.is_some()));
+        if let Some(m) = mesh {
+            put_list(&mut out, &m.positions);
+            put_list(&mut out, &m.source_node);
+            put_list(&mut out, &m.triangles);
+            put_list(&mut out, &m.triangle_cell);
+            put_list(&mut out, &m.edges);
+            put_list(&mut out, &m.feature_edges);
+            for n in [m.node_count, m.element_count, m.skipped_elements] {
+                put(&mut out, n as u64);
+            }
+            put(&mut out, u8::from(m.bounds.is_some()));
+            if let Some(b) = m.bounds {
+                put(&mut out, b.min);
+                put(&mut out, b.max);
+            }
+        }
+        let step = self.steps.last_mut().ok_or("no step is read")?;
+        put(&mut out, step.time);
+        put_text(&mut out, &step.file);
+        put(&mut out, step.mesh as u64);
+        put_list(&mut out, &std::mem::take(&mut step.displacement));
+        let fields = std::mem::take(&mut step.fields);
+        put(&mut out, fields.len() as u64);
+        for f in fields {
+            put_text(&mut out, &f.name);
+            put(&mut out, f.quantity as u8);
+            put(&mut out, f.location as u8);
+            put(&mut out, u8::from(f.component));
+            put_list(&mut out, &f.values);
+        }
+        Ok(out)
+    }
+
+    /// The results, after each step is read.
+    pub fn finish(self) -> Results {
+        Results {
+            units: self.units,
+            multibody: self.multibody,
+            meshes: self.meshes,
+            steps: self.steps,
+            moves: self.moves,
         }
     }
-    Ok(Results {
-        units: pvd_units(pvd),
-        multibody: pvd_attribute(pvd, "kind") == Some("multibody"),
-        meshes,
-        steps,
-        moves,
-    })
+}
+
+impl Results {
+    /// Add the step that [`Loader::add_and_send`] gave as `lists`. Each list of numbers is a
+    /// copy of its bytes, with no work for each element, so that a large step does not stop
+    /// the page.
+    pub fn receive<L: Lists + ?Sized>(&mut self, lists: &L) -> Result<(), String> {
+        let head = list::<u8, _>(lists, 0)?;
+        let mut r = Received {
+            head: &head,
+            lists,
+            next: 1,
+        };
+        self.units = r.text()?;
+        self.multibody = r.get::<u8>()? != 0;
+        self.moves = r.get::<u8>()? != 0;
+        if r.get::<u8>()? != 0 {
+            self.meshes.push(RenderMesh {
+                positions: r.list()?,
+                source_node: r.list()?,
+                triangles: r.list()?,
+                triangle_cell: r.list()?,
+                edges: r.list()?,
+                feature_edges: r.list()?,
+                node_count: r.get::<u64>()? as usize,
+                element_count: r.get::<u64>()? as usize,
+                skipped_elements: r.get::<u64>()? as usize,
+                bounds: match r.get::<u8>()? {
+                    0 => None,
+                    _ => Some(mesh::Bounds {
+                        min: r.get()?,
+                        max: r.get()?,
+                    }),
+                },
+            });
+        }
+        let time = r.get()?;
+        let file = r.text()?;
+        let mesh = r.get::<u64>()? as usize;
+        let displacement = r.list()?;
+        let mut fields = Vec::new();
+        for _ in 0..r.get::<u64>()? {
+            fields.push(ScalarField {
+                name: r.text()?,
+                quantity: *[
+                    Quantity::Displacement,
+                    Quantity::Force,
+                    Quantity::Stress,
+                    Quantity::Other,
+                ]
+                .get(usize::from(r.get::<u8>()?))
+                .ok_or(BAD_STEP)?,
+                location: *[Location::Point, Location::Cell]
+                    .get(usize::from(r.get::<u8>()?))
+                    .ok_or(BAD_STEP)?,
+                component: r.get::<u8>()? != 0,
+                values: r.list()?,
+            });
+        }
+        if mesh >= self.meshes.len() || !r.head.is_empty() {
+            return Err(BAD_STEP.into());
+        }
+        self.steps.push(Step {
+            time,
+            file,
+            mesh,
+            displacement,
+            fields,
+        });
+        Ok(())
+    }
+}
+
+/// The error of [`Results::receive`] for lists that [`Loader::add_and_send`] did not write.
+const BAD_STEP: &str = "the step data from the worker is not complete";
+
+/// The byte lists of 1 step from [`Loader::add_and_send`]: the small values first, then each
+/// list of numbers. The page gives the buffers that the worker transferred.
+pub trait Lists {
+    /// The number of bytes of list `i`, or `None` when there is no list `i`.
+    fn size(&self, i: usize) -> Option<usize>;
+    /// Copy the bytes of list `i` into `out`, which has [`Lists::size`] bytes.
+    fn copy(&self, i: usize, out: &mut [u8]);
+}
+
+impl Lists for [Vec<u8>] {
+    fn size(&self, i: usize) -> Option<usize> {
+        self.get(i).map(Vec::len)
+    }
+
+    fn copy(&self, i: usize, out: &mut [u8]) {
+        out.copy_from_slice(&self[i]);
+    }
+}
+
+/// List `i` of `lists` as values of `T`.
+fn list<T: Pod, L: Lists + ?Sized>(lists: &L, i: usize) -> Result<Vec<T>, String> {
+    let size = lists.size(i).ok_or(BAD_STEP)?;
+    if size % size_of::<T>() != 0 {
+        return Err(BAD_STEP.into());
+    }
+    let mut values = vec![T::zeroed(); size / size_of::<T>()];
+    lists.copy(i, bytemuck::cast_slice_mut(&mut values));
+    Ok(values)
+}
+
+fn put<T: Pod>(out: &mut [Vec<u8>], value: T) {
+    out[0].extend_from_slice(bytemuck::bytes_of(&value));
+}
+
+fn put_list<T: Pod>(out: &mut Vec<Vec<u8>>, values: &[T]) {
+    out.push(bytemuck::cast_slice(values).to_vec());
+}
+
+fn put_text(out: &mut [Vec<u8>], text: &str) {
+    put(out, text.len() as u64);
+    out[0].extend_from_slice(text.as_bytes());
+}
+
+/// The lists of [`Loader::add_and_send`] that [`Results::receive`] did not read yet.
+struct Received<'a, L: ?Sized> {
+    head: &'a [u8],
+    lists: &'a L,
+    next: usize,
+}
+
+impl<L: Lists + ?Sized> Received<'_, L> {
+    fn take(&mut self, n: usize) -> Result<&[u8], String> {
+        if n > self.head.len() {
+            return Err(BAD_STEP.into());
+        }
+        let (taken, rest) = self.head.split_at(n);
+        self.head = rest;
+        Ok(taken)
+    }
+
+    fn get<T: Pod>(&mut self) -> Result<T, String> {
+        Ok(bytemuck::pod_read_unaligned(self.take(size_of::<T>())?))
+    }
+
+    fn list<T: Pod>(&mut self) -> Result<Vec<T>, String> {
+        self.next += 1;
+        list(self.lists, self.next - 1)
+    }
+
+    fn text(&mut self) -> Result<String, String> {
+        let n = usize::try_from(self.get::<u64>()?).map_err(|_| BAD_STEP)?;
+        String::from_utf8(self.take(n)?.to_vec()).map_err(|_| BAD_STEP.into())
+    }
 }
 
 fn steps_file(steps: &[Step]) -> &str {
@@ -700,6 +950,50 @@ mod tests {
         assert_eq!(
             deformed_positions(&r.meshes[0], step, 0.0),
             r.meshes[0].positions
+        );
+    }
+
+    /// The steps that the worker of the page sends give the results that `load` gives, also
+    /// for points that move. A fetch error keeps the text of `load`, and a cut message fails.
+    #[test]
+    fn sent_steps_are_the_loaded_results() {
+        let mut first = Vec::new();
+        for dir in [fixture_dir(), fixture_dir().join("../particles-2step")] {
+            let pvd = std::fs::read_to_string(dir.join(crate::RESULTS_FILE)).unwrap();
+            let mut loader = Loader::new(crate::RESULTS_FILE, &pvd).unwrap();
+            let mut received = Results::default();
+            while let Some(file) = loader.next_file() {
+                let bytes = std::fs::read(dir.join(file)).map_err(|e| e.to_string());
+                let sent = loader.add_and_send(bytes).unwrap();
+                received.receive(&sent[..]).unwrap();
+                if first.is_empty() {
+                    first = sent;
+                }
+            }
+            assert_eq!(
+                received,
+                crate::load_run(&dir).unwrap(),
+                "{}",
+                dir.display()
+            );
+        }
+        for cut in [0, 1, first[0].len() / 2, first[0].len() - 1] {
+            let mut cut_head = first.clone();
+            cut_head[0].truncate(cut);
+            assert_eq!(
+                Results::default().receive(&cut_head[..]),
+                Err(BAD_STEP.into())
+            );
+        }
+        assert_eq!(
+            Results::default().receive(&first[..first.len() - 1]),
+            Err(BAD_STEP.into())
+        );
+        let pvd = r#"<VTKFile type="Collection"><Collection><DataSet timestep="1" file="a.vtu"/></Collection></VTKFile>"#;
+        let mut loader = Loader::new(crate::RESULTS_FILE, pvd).unwrap();
+        assert_eq!(
+            loader.add_and_send(Err("HTTP 404: no such file".into())),
+            Err("a.vtu: HTTP 404: no such file".into())
         );
     }
 

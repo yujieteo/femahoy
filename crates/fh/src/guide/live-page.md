@@ -14,9 +14,9 @@ Keep the `token` and `run` parameters.
 | `prepare-rerun` | After a stop, fill the composer with a request for the retained input of the selected run. The person must send the request. |
 | `files` | Offer the retained input, result files, and the latest registered report of the selected run. Use it when the person must inspect the input or report. |
 | `run-search` | Show a search box above the Runs list for run IDs and source paths. Use it when an analysis has several runs. |
-| `mesh-compare` | Choose mesh A and mesh B from Runs. Show undeformed meshes with a linked camera and zoom. Use it to inspect mesh changes. |
+| `mesh-compare` | Compare a run with the open run from its row in Runs, or choose run A and run B with Compare runs. Show undeformed meshes with a linked camera and zoom. Use it to inspect mesh changes. |
 
 A mesh pair gives no convergence result. It compares no contour field, unit, time step, or independent deformation scale.
-A load error names its side. The other side stays open. Uncheck Link views for separate camera poses.
+A load error names its side. The other side stays open. Uncheck Link cameras for separate camera poses.
 The report command retains a report copy for each named run. Open report uses a sandbox with no daemon access.
 Reason: scout runs R5 to R9 showed repeated run names, hidden report paths, and unclear command and stop state.

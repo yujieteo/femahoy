@@ -18,21 +18,22 @@ const TOOLBAR: &str = r#"
 <div data-camera-panel id="fh-camera-panel">
 <div class="toolbar" role="group" aria-label="Camera controls">
   <button type="button" data-camera="fit" aria-keyshortcuts="F" title="Fit the full model. Keep the camera direction.">Fit <kbd>F</kbd></button>
-  <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Go back to the first view of the model">Reset view <kbd>Home</kbd></button>
-  <label data-camera="views"><span>Views</span> <select id="fh-direction" aria-label="Camera direction">
+  <button type="button" data-camera="report-view" aria-keyshortcuts="Home" title="Go back to the first camera of the model">Reset camera <kbd>Home</kbd></button>
+  <label data-camera="views"><span>Direction</span> <select id="fh-direction" aria-label="Camera direction">
     <option disabled>Custom</option><option>+X</option><option>-X</option><option>+Y</option><option>-Y</option><option>+Z</option><option>-Z</option><option>Isometric</option>
   </select></label>
   <button type="button" data-camera="help" id="fh-help-button" aria-controls="fh-camera-help" aria-expanded="false" aria-keyshortcuts="?">Help <kbd>?</kbd></button>
 </div>
 <div class="toolbar" id="fh-camera-help" data-camera-help hidden><p class="keys">
   <span data-pointer="mouse"><b>Drag</b> Orbit</span><span data-pointer="mouse"><b>Right or Shift drag</b> Pan</span>
-  <span data-pointer="mouse"><b>Scroll</b> Zoom</span><span data-pointer="mouse"><b>Double click</b> Reset view</span>
-  <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Reset view</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
+  <span data-pointer="mouse"><b>Scroll</b> Zoom</span><span data-pointer="mouse"><b>Double click</b> Reset camera</span>
+  <span data-pointer="mouse"><kbd>F</kbd> Fit</span><span data-pointer="mouse"><kbd>Home</kbd> Reset camera</span><span data-pointer="mouse"><kbd>?</kbd> Help</span>
   <span data-pointer="mouse">Shortcuts act when the model has focus.</span>
   <span data-pointer="touch"><b>Drag</b> Orbit</span><span data-pointer="touch"><b>Two-finger drag</b> Pan</span>
-  <span data-pointer="touch"><b>Pinch</b> Zoom</span><span data-pointer="touch"><b>Double tap</b> Reset view</span>
+  <span data-pointer="touch"><b>Pinch</b> Zoom</span><span data-pointer="touch"><b>Double tap</b> Reset camera</span>
 </p></div>
-</div>"#;
+</div>
+<p class="keys" data-gesture-hint aria-hidden="true"><span data-pointer="mouse"><b>Drag</b> Orbit</span><span data-pointer="mouse"><b>Right drag</b> Pan</span><span data-pointer="mouse"><b>Scroll</b> Zoom</span><span data-pointer="touch"><b>Drag</b> Orbit</span><span data-pointer="touch"><b>Two fingers</b> Pan</span><span data-pointer="touch"><b>Pinch</b> Zoom</span><span data-pointer="mouse"><b>Double-click</b> Reset</span><span data-pointer="touch"><b>Double tap</b> Reset</span></p>"#;
 
 /// Listen to `event` on `target`. With `capture`, a window listener runs before the
 /// listeners of eframe.
@@ -129,10 +130,14 @@ pub fn install(
             button.get_attribute("aria-expanded").as_deref() != Some("true"),
         );
     })?;
-    // A touch on the model closes the menu, as on iOS.
+    // A touch on the model closes the menu, as on iOS. The first touch also removes the hint
+    // of the gestures: the person found them.
     let target = toolbar.clone();
     listen(canvas, "pointerdown", false, move |_| {
-        set_menu(&target, false)
+        set_menu(&target, false);
+        if let Ok(Some(hint)) = target.query_selector("[data-gesture-hint]") {
+            hint.remove();
+        }
     })?;
     touch_scroll(canvas, slot.clone())?;
     for name in ["fit", "report-view", "views", "help"] {
@@ -340,4 +345,30 @@ pub fn fit_backing_store(canvas_id: &str) -> bool {
     canvas.set_width(width);
     canvas.set_height(height);
     true
+}
+
+/// Tell the page that the person hid the results panel (`data-fh-results="hidden"` on the root
+/// element). On a phone the page then gives the model the full screen height.
+pub fn set_results_hidden(hidden: bool) {
+    let root = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.document_element());
+    let Some(root) = root else {
+        return;
+    };
+    let now = root.get_attribute("data-fh-results").as_deref() == Some("hidden");
+    if now != hidden {
+        let _ = if hidden {
+            root.set_attribute("data-fh-results", "hidden")
+        } else {
+            root.remove_attribute("data-fh-results")
+        };
+    }
+}
+
+/// True on a touch screen with no hover, where the page shows no key hints (`ui.css`).
+pub fn touch() -> bool {
+    web_sys::window()
+        .and_then(|w| w.match_media("(hover: none) and (pointer: coarse)").ok()?)
+        .is_some_and(|m| m.matches())
 }

@@ -81,16 +81,31 @@ kbd { padding: 0 5px; border: 1px solid var(--line); border-bottom-width: 2px; b
   .keys:has(kbd):not([data-camera-help] > .keys), button kbd, [data-pointer="mouse"] { display: none; }
   [data-pointer="touch"] { display: inline; }
 }
-/* Camera menu: on a desktop the camera controls are a toolbar above the 3D view. A phone has
-   no space for that row, so the controls go in a pull-down menu: 1 round button over the top
-   right corner of the view. The menu is closed at the start. */
+/* Camera menu: a phone has no space for the group of the camera controls, so the controls go
+   in a pull-down menu: 1 round button over the top right corner of the view. The menu is closed
+   at the start. */
 .camera > [data-camera-menu] { display: none; }
+/* On a desktop the camera controls are 1 group that floats over the top left of the 3D view.
+   The camera element is 0 px high, so the model keeps its height. A page with its own floating
+   row above the model moves the group below that row with --fh-camera-top. */
+.camera { position: relative; z-index: 1; height: 0; }
+.camera > [data-camera-panel] {
+  position: absolute; z-index: 1; top: var(--fh-camera-top, var(--space-2)); left: var(--space-2); max-width: calc(100% - 2 * var(--space-2));
+  border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+}
+.camera > [data-camera-panel] > .toolbar { min-height: 0; padding: var(--space-1) var(--space-2); }
+/* The gestures of the model show below the group until the first touch on the model. */
+.camera > [data-gesture-hint] {
+  position: absolute; top: calc(var(--fh-camera-top, var(--space-2)) + var(--target) + 3 * var(--space-2)); left: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-2)); padding: var(--space-1) var(--space-2); border-radius: var(--radius);
+  background: var(--bg); pointer-events: none;
+}
 @media (pointer: coarse) and (max-width: 430px), (pointer: coarse) and (max-height: 500px) {
-  .camera { position: relative; z-index: 1; height: 0; }
   .camera > [data-camera-menu] { display: inline-grid; position: absolute; top: var(--space-2); right: var(--space-2); }
+  .camera > [data-gesture-hint] { top: calc(var(--target) + var(--space-3)); }
   [data-camera-menu][aria-expanded="false"] + [data-camera-panel] { display: none; }
   [data-camera-panel] {
-    position: absolute; top: calc(var(--target) + var(--space-3)); right: var(--space-2); max-width: calc(100vw - 2 * var(--space-2));
+    top: calc(var(--target) + var(--space-3)); left: auto; right: var(--space-2); max-width: calc(100vw - 2 * var(--space-2));
     border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
   }
   [data-camera-panel] > .toolbar[role="group"] { flex-direction: column; align-items: stretch; }

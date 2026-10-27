@@ -397,7 +397,7 @@ fn build(o: &Options) -> Result<String, String> {
             )
         })?;
         // A run in `found` is `run-` and digits, so it needs no escape.
-        let label = escape(&format!("{run} · {}", short(source)));
+        let label = escape(&format!("{} · {run}", short(source)));
         options.push_str(&format!(
             "<option value=\"{run}\" data-run=\"{run}\">{label}</option>"
         ));

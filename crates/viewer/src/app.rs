@@ -121,6 +121,11 @@ pub struct ViewerApp {
     results_height: Option<f32>,
     /// The height of the results panel in the page flow that the page has, 0 for none.
     flow_height: f32,
+    /// The person hid the results panel. A floating button Results shows it again.
+    results_hidden: bool,
+    /// This viewer set `data-fh-results="hidden"` on the page. Only a viewer that shows a
+    /// results panel writes it, so the mesh-only view B of a comparison never clears it.
+    wrote_hidden: bool,
 }
 
 impl ViewerApp {
@@ -130,6 +135,8 @@ impl ViewerApp {
             text_scale: 0.0,
             results_height: None,
             flow_height: 0.0,
+            results_hidden: false,
+            wrote_hidden: false,
             render_state: cc.wgpu_render_state.clone(),
             shown: None,
             message: Some((false, NO_RUN.into())),
@@ -368,15 +375,21 @@ impl Shown {
         }
     }
 
-    /// The panel of the body. A run with no view has the switch `all` when it is given. Returns
-    /// true when the view state changed.
-    fn panel(&mut self, ui: &mut egui::Ui, labels: &mut bool, all: Option<&mut bool>) -> bool {
+    /// The panel of the body. A run with no view has the switch `all` when it is given. The
+    /// button Hide of the results sets `hide`. Returns true when the view state changed.
+    fn panel(
+        &mut self,
+        ui: &mut egui::Ui,
+        labels: &mut bool,
+        all: Option<&mut bool>,
+        hide: &mut bool,
+    ) -> bool {
         let drawn = self.geometry.as_deref().map(|g| &g.positions[..]);
         match &mut self.body {
             Body::Results(r, v, loads, panel, view) => {
                 let mut switch = all.filter(|_| *view == View::default());
                 let before = switch.as_deref().copied();
-                let changed = results_panel(ui, r, v, panel, switch.as_deref_mut(), drawn);
+                let changed = results_panel(ui, r, v, panel, switch.as_deref_mut(), drawn, hide);
                 if let Some(all) = switch.filter(|a| Some(**a) != before) {
                     *panel = self::panel(r, view, &loads.preview, *all);
                 }
@@ -773,9 +786,9 @@ fn loads_overlay(
     }
 }
 
-/// The results panel: the switch `all` when it is given, and the controls and the fields of
-/// `panel`. `drawn` has the positions of the drawn mesh of `v`. Returns true when the view
-/// state changed.
+/// The results panel: the switch `all` when it is given, the button Hide that sets `hide`, and
+/// the controls and the fields of `panel`. `drawn` has the positions of the drawn mesh of `v`.
+/// Returns true when the view state changed.
 fn results_panel(
     ui: &mut egui::Ui,
     r: &Results,
@@ -783,6 +796,7 @@ fn results_panel(
     panel: &Panel,
     mut all: Option<&mut bool>,
     drawn: Option<&[[f32; 3]]>,
+    hide: &mut bool,
 ) -> bool {
     let before = v.clone();
     // One wrapped row, so that a wide short panel (a phone) keeps its height for the legend.
@@ -793,6 +807,16 @@ fn results_panel(
             if let Some(all) = all.as_deref_mut() {
                 widgets::checkbox(ui, all, "Show all controls")
                     .on_hover_text("also the fields that are not important for this run");
+            }
+            if widgets::button(
+                ui,
+                true,
+                "Hide",
+                "hide the results panel: the model gets its space",
+            )
+            .clicked()
+            {
+                *hide = true;
             }
         });
     };
@@ -817,7 +841,7 @@ fn results_panel(
         // With no menu (a report), the label goes too: the legend title names the field.
         if !panel.fields.is_empty() {
             ui.horizontal(|ui| {
-                ui.strong("Contour");
+                ui.strong("Field");
                 let field = v.field.clone().unwrap_or_else(|| "None".into());
                 widgets::menu("field", field).show_ui(ui, |ui| {
                     ui.selectable_value(&mut v.field, None, "None");
@@ -943,7 +967,13 @@ fn probe_controls(
         if widgets::button(ui, true, "Max", "locate the actual maximum item").clicked() {
             chosen = Some(true);
         }
-        if widgets::button(ui, v.probe.is_some(), "Clear", "clear probe (Escape)").clicked() {
+        // The key shows on the button where a keyboard is likely: not on a touch screen.
+        let clear = if crate::controls::touch() {
+            "Clear"
+        } else {
+            "Clear (Esc)"
+        };
+        if widgets::button(ui, v.probe.is_some(), clear, "clear probe (Escape)").clicked() {
             chosen = None;
             v.probe = None;
         }
@@ -1197,7 +1227,31 @@ impl eframe::App for ViewerApp {
         let flow = crate::controls::page_flow();
         ui.data_mut(|d| d.insert_temp(egui::Id::new(widgets::IN_FLOW), flow));
         let mut flow_height = 0.0;
-        if let Some(shown) = self.shown.as_mut().filter(|_| !self.mesh_only) {
+        let results = (self.shown.as_ref())
+            .is_some_and(|s| matches!(s.body, Body::Results(..)) && !self.mesh_only);
+        if results && self.results_hidden {
+            // The button floats over the model: at the top right on a desktop, and at the
+            // bottom right of the model on a phone, where the panel was.
+            let (align, offset) = if flow {
+                (egui::Align2::RIGHT_BOTTOM, egui::vec2(-16.0, -40.0))
+            } else {
+                (egui::Align2::RIGHT_TOP, egui::vec2(-16.0, 16.0))
+            };
+            egui::Area::new(egui::Id::new("show-results"))
+                .anchor(align, offset)
+                .show(ui.ctx(), |ui| {
+                    if widgets::button(ui, true, "Results", "show the results panel").clicked() {
+                        self.results_hidden = false;
+                    }
+                });
+        }
+        if results || self.wrote_hidden {
+            self.wrote_hidden = results && self.results_hidden;
+            crate::controls::set_results_hidden(self.wrote_hidden);
+        }
+        if let Some(shown) =
+            (self.shown.as_mut()).filter(|_| !self.mesh_only && !self.results_hidden)
+        {
             // On a narrow view (a phone) the results go below the model, so that the model
             // keeps the full width. A short, wide view (a desktop) keeps them on the right
             // when the model area then stays at least as wide as it is high.
@@ -1225,7 +1279,7 @@ impl eframe::App for ViewerApp {
             let response = panel.frame(frame).resizable(false).show(ui, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     let all = (!self.page_switch).then_some(&mut self.all);
-                    if shown.panel(ui, &mut self.labels, all) {
+                    if shown.panel(ui, &mut self.labels, all, &mut self.results_hidden) {
                         shown.refresh();
                     }
                 })
