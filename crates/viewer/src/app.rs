@@ -162,11 +162,14 @@ impl ViewerApp {
             Content::Preview(p) => Body::Preview(p),
             Content::Text(text) => {
                 self.message = Some((false, text));
+                // Free the shown model and its GPU buffers before the next one loads. Reason:
+                // a phone browser that holds two A320 models at a switch of run closes the page.
+                self.clear();
                 return;
             }
             Content::Failed(text) => {
                 self.message = Some((true, text));
-                self.shown = None;
+                self.clear();
                 return;
             }
         };
@@ -190,6 +193,14 @@ impl ViewerApp {
         self.message = None;
         shown.refresh();
         self.shown = Some(shown);
+    }
+
+    /// Show no model, and free its GPU buffers.
+    fn clear(&mut self) {
+        self.shown = None;
+        if let Some(rs) = &self.render_state {
+            rs.renderer.write().callback_resources.remove::<MeshGpu>();
+        }
     }
 
     /// Take the parts of the request of the page.

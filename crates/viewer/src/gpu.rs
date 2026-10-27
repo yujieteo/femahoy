@@ -10,7 +10,7 @@ use wgpu::util::DeviceExt;
 
 use crate::mesh::RenderMesh;
 use crate::results::{BANDS, BAND_COLORS};
-use crate::view::{face_vertices, Geometry};
+use crate::view::Geometry;
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -187,12 +187,20 @@ impl MeshGpu {
             }
         };
         let flat = |pairs: &[[u32; 2]]| pairs.iter().flatten().copied().collect::<Vec<u32>>();
-        let faces = face_vertices(mesh, &mesh.positions, &[]);
+        // The app writes the face vertices of each geometry before the first draw, so the
+        // buffer starts empty and not from a copy in memory. Reason: the copy is 27 MB for
+        // an A320 fuselage in a phone browser.
+        let face_count = 3 * mesh.triangles.len();
         Self {
             base: buffer(device, &mesh.positions, vertex),
             positions: buffer(device, &mesh.positions, vertex),
-            face_vertices: buffer(device, &faces, vertex),
-            face_count: faces.len() as u32,
+            face_vertices: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("fh-viewer face vertices"),
+                size: (16 * face_count.max(1)) as u64,
+                usage: vertex,
+                mapped_at_creation: false,
+            }),
+            face_count: face_count as u32,
             version: AtomicU64::new(0),
             faces: layer(&[]),
             edges: layer(&flat(&mesh.edges)),
@@ -279,7 +287,7 @@ impl MeshGpu {
 pub const DEPTH_BITS: u8 = 24;
 
 /// The egui paint callback for one frame. `geometry` is the vertex data to draw, or `None`
-/// for the undeformed mesh as uploaded.
+/// for the data in the buffers. The faces have no data before the first geometry.
 pub struct MeshCallback {
     pub params: FrameParams,
     pub geometry: Option<Arc<Geometry>>,
