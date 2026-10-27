@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-2a0cecec4ecc6d52c2d50f5ccc3add3c' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-ca250c56a1238c092f75bb53bd92b444' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -233,7 +233,7 @@ output { margin-left: var(--space-2); }
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0 and abs_tol = 0.006 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>interface_T</code></td><td>Not specified</td><td style="text-align:right">312.9</td><td style="text-align:right">312.904</td><td style="text-align:right">-0.00432335 (-0.00138168 %)</td><td style="text-align:right">0.006</td><td style="text-align:right">0.001677</td></tr><tr><td><code>heater_T</code></td><td>Not specified</td><td style="text-align:right">313.38</td><td style="text-align:right">313.384</td><td style="text-align:right">-0.00433177 (-0.00138225 %)</td><td style="text-align:right">0.006</td><td style="text-align:right">0.001668</td></tr><tr><td><code>outlet_T</code></td><td>Not specified</td><td style="text-align:right">330</td><td style="text-align:right">330</td><td style="text-align:right">-0.0002002 (-6.06667e-05 %)</td><td style="text-align:right">0.006</td><td style="text-align:right">0.0058</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6f86c62-dirty.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6097524.</p>
 <p>This case checks conjugate heat transfer in the CFD path: a fluid region and a solid region that exchange heat through a common interface.
 Laminar air flows between 2 parallel plastic walls. A heater on the outer face of each wall gives a uniform heat flux. The heat goes through the wall and into the air.
 The reference is exact. Thus the tolerance comes from the mesh study of the model, not from the difference between the model and the reference.</p>
@@ -280,9 +280,9 @@ The tolerance does not let a mesh with n = 5 pass: there <code>interface_T</code
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000003" data-run="run-000003">cht-heated-channel/channel · run-000003</option></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="2a0cecec4ecc6d52c2d50f5ccc3add3c"></script>
+<script src="viewer.js" nonce="ca250c56a1238c092f75bb53bd92b444"></script>
 
-<script type="module" nonce="2a0cecec4ecc6d52c2d50f5ccc3add3c">
+<script type="module" nonce="ca250c56a1238c092f75bb53bd92b444">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.

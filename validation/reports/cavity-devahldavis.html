@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-f6468be6827c906b0d33a0a46708bb34' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-c2c41b62f4eedb600e453b98eb548120' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -235,7 +235,7 @@ output { margin-left: var(--space-2); }
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.006 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>nu_ra1e4</code></td><td>Not specified</td><td style="text-align:right">2.24604</td><td style="text-align:right">2.243</td><td style="text-align:right">+0.00303765 (+0.135428 %)</td><td style="text-align:right">0.01346</td><td style="text-align:right">0.01042</td></tr><tr><td><code>umax_ra1e4</code></td><td>Not specified</td><td style="text-align:right">16.1802</td><td style="text-align:right">16.178</td><td style="text-align:right">+0.00218196 (+0.0134872 %)</td><td style="text-align:right">0.09707</td><td style="text-align:right">0.09489</td></tr><tr><td><code>vmax_ra1e4</code></td><td>Not specified</td><td style="text-align:right">19.6276</td><td style="text-align:right">19.617</td><td style="text-align:right">+0.0106059 (+0.0540648 %)</td><td style="text-align:right">0.1177</td><td style="text-align:right">0.1071</td></tr><tr><td><code>nu_ra1e5</code></td><td>Not specified</td><td style="text-align:right">4.53088</td><td style="text-align:right">4.519</td><td style="text-align:right">+0.0118762 (+0.262807 %)</td><td style="text-align:right">0.02711</td><td style="text-align:right">0.01524</td></tr><tr><td><code>umax_ra1e5</code></td><td>Not specified</td><td style="text-align:right">34.7501</td><td style="text-align:right">34.73</td><td style="text-align:right">+0.0200793 (+0.0578153 %)</td><td style="text-align:right">0.2084</td><td style="text-align:right">0.1883</td></tr><tr><td><code>vmax_ra1e5</code></td><td>Not specified</td><td style="text-align:right">68.6618</td><td style="text-align:right">68.59</td><td style="text-align:right">+0.0717973 (+0.104676 %)</td><td style="text-align:right">0.4115</td><td style="text-align:right">0.3397</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6f86c62-dirty.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6097524.</p>
 <p>This case checks heat transfer and buoyancy in the CFD path: laminar natural convection of air in a square cavity, at 2 Rayleigh numbers.
 The reference is a numerical bench mark with a known accuracy. Thus the tolerance comes from that accuracy and from the mesh study of the model, not from the difference between the model and the reference.</p>
 <h2>Sources</h2>
@@ -278,9 +278,9 @@ The tolerance does not let a mesh of 65 x 65 pass: there <code>nu_ra1e5</code> i
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000001" data-run="run-000001">cavity-devahldavis/ra1e4 · run-000001</option><option value="run-000002" data-run="run-000002">cavity-devahldavis/ra1e5 · run-000002</option></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="f6468be6827c906b0d33a0a46708bb34"></script>
+<script src="viewer.js" nonce="c2c41b62f4eedb600e453b98eb548120"></script>
 
-<script type="module" nonce="f6468be6827c906b0d33a0a46708bb34">
+<script type="module" nonce="c2c41b62f4eedb600e453b98eb548120">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.

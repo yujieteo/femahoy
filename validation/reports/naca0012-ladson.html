@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-f765d06ef55532139c64356c944d1976' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-701b4e9c710862dea6d5ef93d9c47314' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -240,7 +240,7 @@ output { margin-left: var(--space-2); }
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.04 and abs_tol = 0.0015 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>cd_a0</code></td><td>Not specified</td><td style="text-align:right">0.00912613</td><td style="text-align:right">0.00809</td><td style="text-align:right">+0.00103613 (+12.8075 %)</td><td style="text-align:right">0.001824</td><td style="text-align:right">0.0007875</td></tr><tr><td><code>cl_a4</code></td><td>Not specified</td><td style="text-align:right">0.444944</td><td style="text-align:right">0.4316</td><td style="text-align:right">+0.0133436 (+3.09166 %)</td><td style="text-align:right">0.01876</td><td style="text-align:right">0.00542</td></tr><tr><td><code>cd_a4</code></td><td>Not specified</td><td style="text-align:right">0.0095001</td><td style="text-align:right">0.00823</td><td style="text-align:right">+0.0012701 (+15.4325 %)</td><td style="text-align:right">0.001829</td><td style="text-align:right">0.0005591</td></tr><tr><td><code>cl_a10</code></td><td>Not specified</td><td style="text-align:right">1.08233</td><td style="text-align:right">1.0707</td><td style="text-align:right">+0.0116254 (+1.08578 %)</td><td style="text-align:right">0.04433</td><td style="text-align:right">0.0327</td></tr><tr><td><code>cd_a10</code></td><td>Not specified</td><td style="text-align:right">0.01303</td><td style="text-align:right">0.01201</td><td style="text-align:right">+0.00102005 (+8.49332 %)</td><td style="text-align:right">0.00198</td><td style="text-align:right">0.0009604</td></tr></tbody></table>
 <p>Only the steps that the text opens of each run are in this report, to keep the file small.</p>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6f86c62-dirty.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6097524.</p>
 <p>This case checks the CFD path: an OpenFOAM case through <code>fh validate</code>, <code>simpleFoam</code> with the Spalart-Allmaras (SA) model, and the force coefficients of <code>forceCoeffs</code>.
 It is the plain NACA 0012 airfoil, before a case with a flap.</p>
 <h2>Sources</h2>
@@ -282,9 +282,9 @@ A larger difference shows a fault in the setup or in <code>fh</code>, not a prop
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000005" data-run="run-000005">naca0012-ladson/a-0.05 · run-000005</option><option value="run-000006" data-run="run-000006">naca0012-ladson/a4.04 · run-000006</option><option value="run-000007" data-run="run-000007">naca0012-ladson/a10.12 · run-000007</option></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="f765d06ef55532139c64356c944d1976"></script>
+<script src="viewer.js" nonce="701b4e9c710862dea6d5ef93d9c47314"></script>
 
-<script type="module" nonce="f765d06ef55532139c64356c944d1976">
+<script type="module" nonce="701b4e9c710862dea6d5ef93d9c47314">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.

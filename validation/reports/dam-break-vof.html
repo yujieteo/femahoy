@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-4b1b75422834c2caf31c4ad997ac3d77' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-9e5fdaa3c9352c608f5220842d8392b5' blob: 'wasm-unsafe-eval'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <title>femahoy report</title>
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
@@ -229,7 +229,7 @@ output { margin-left: var(--space-2); }
 <h2>Result</h2>
 <p><strong>Pass.</strong> A check passes when |computed - reference| &le; rel_tol &middot; |reference| + abs_tol, with rel_tol = 0.055 and abs_tol = 0 (<code>check.toml</code>). <code>fh validate</code> gives the computed values.</p>
 <table><thead><tr><th style="text-align:left">Check</th><th style="text-align:right">Unit</th><th style="text-align:right">Computed</th><th style="text-align:right">Reference</th><th style="text-align:right">Difference</th><th style="text-align:right">Tolerance</th><th style="text-align:right">Margin</th></tr></thead><tbody><tr><td><code>T_211</code></td><td>Not specified</td><td style="text-align:right">1.8717</td><td style="text-align:right">1.83</td><td style="text-align:right">+0.0417 (+2.27869 %)</td><td style="text-align:right">0.1007</td><td style="text-align:right">0.05895</td></tr><tr><td><code>T_300</code></td><td>Not specified</td><td style="text-align:right">2.5856</td><td style="text-align:right">2.51</td><td style="text-align:right">+0.0756 (+3.01195 %)</td><td style="text-align:right">0.138</td><td style="text-align:right">0.06245</td></tr><tr><td><code>T_389</code></td><td>Not specified</td><td style="text-align:right">3.2057</td><td style="text-align:right">3.11</td><td style="text-align:right">+0.0957 (+3.07717 %)</td><td style="text-align:right">0.1711</td><td style="text-align:right">0.07535</td></tr></tbody></table>
-<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6f86c62-dirty.</p>
+<p>Made by <code>scripts/validation-reports.py</code> on 2026-10-27, femahoy 6097524.</p>
 <p>This case checks the free surface path: a 2D dam break with the volume of fluid (VOF) method of OpenFOAM (<code>interFoam</code>).
 A water column falls on a dry floor in air, and the surge front moves along the floor. The reference is a measurement. Thus the tolerance comes from the scatter of the measurement and from the mesh and time step studies of the model.</p>
 <h2>Why this case</h2>
@@ -279,9 +279,9 @@ The front of the model is slower than the mean at all 3 points, by 2.3 % to 3.1 
   <header class="toolbar"><div id="bar"></div><select id="runs" aria-label="The run in the model view" hidden><option value="run-000004" data-run="run-000004">dam-break-vof/n40 · run-000004</option></select></header>
   <div id="view"><canvas id="fh" aria-label="The 3D model view"></canvas><p id="msg">Loading the viewer...</p></div>
 </main>
-<script src="viewer.js" nonce="4b1b75422834c2caf31c4ad997ac3d77"></script>
+<script src="viewer.js" nonce="9e5fdaa3c9352c608f5220842d8392b5"></script>
 
-<script type="module" nonce="4b1b75422834c2caf31c4ad997ac3d77">
+<script type="module" nonce="9e5fdaa3c9352c608f5220842d8392b5">
 // The report starts the wasm viewer of fh serve (page.html) with no daemon. The viewer
 // fetches its files from a daemon, so the files of this report answer its fetches: each
 // `script[data-path]` below holds 1 file in base64, under the path that the daemon serves.
