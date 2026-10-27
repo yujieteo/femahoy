@@ -1,0 +1,38 @@
+# The unit cell of a laminate of aluminium and a polymer: 2 layers along z. The effective
+# conductivity, stiffness and expansion of the cell have the exact answers of the layer theory.
+# See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 0.25
+
+[material.aluminium]
+conductivity = 200.0
+youngs_modulus = 70e3
+poisson_ratio = 0.33
+expansion = 23e-6
+density = 2.7e-9
+specific_heat = 9.0e8
+
+[material.polymer]
+conductivity = 0.25
+youngs_modulus = 3e3
+poisson_ratio = 0.38
+expansion = 70e-6
+density = 1.2e-9
+specific_heat = 1.5e9
+
+[part.metal]
+material = "aluminium"
+x = [0.0, 1.0]
+y = [0.0, 1.0]
+z = [0.0, 0.3]
+
+[part.resin]
+material = "polymer"
+x = [0.0, 1.0]
+y = [0.0, 1.0]
+z = [0.3, 1.0]
+
+[step]
+type = "homogenize"

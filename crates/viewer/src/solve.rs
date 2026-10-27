@@ -25,12 +25,12 @@ pub const BROWSER: Limit = Limit {
 };
 
 /// The heat model of the case `text` and its unit system. The browser solves heat steps only, so
-/// a static step gets an error that names `fh run`.
+/// a static or a homogenize step gets an error that names `fh run`.
 pub fn read_heat(text: &str) -> Result<(Model, String), String> {
     match read(text)? {
         (Case::Heat(model), units) => Ok((model, units)),
-        (Case::Elastic(_), _) => Err("the browser solves only heat steps (steady or \
-             transient). Solve a static step with fh run"
+        (Case::Elastic(_) | Case::Homogenize(_), _) => Err("the browser solves only heat steps \
+             (steady or transient). Solve a static or a homogenize step with fh run"
             .into()),
     }
 }

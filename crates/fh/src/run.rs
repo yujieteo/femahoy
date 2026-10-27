@@ -234,15 +234,19 @@ fn report(
                 "{0}/{1} (the values at each probe), {0}/{2} (the energy balance of a heat \
                  step), {0}/{3}, {0}/{4} and {0}/{5} (the surface shapes, the reactions and the \
                  stress peaks of a static step), or for a [line] case {0}/{6} (R, L, G, C, the \
-                 modes and Z0 at each frequency) and {0}/line.s2Np (the S parameters), and \
-                 {0}/log.txt (the grid, the solver and the warnings)",
+                 modes and Z0 at each frequency) and {0}/line.s2Np (the S parameters), or for a \
+                 homogenize step {0}/{7} (the effective tensors of the unit cell) and {0}/{8} (the \
+                 effective material for a grid.toml), and {0}/log.txt (the grid, the solver and \
+                 the warnings)",
                 out.join(grid::WORK).display(),
                 grid::PROBES,
                 grid::ENERGY,
                 grid::SURFACES,
                 grid::REACTIONS,
                 grid::STRESS,
-                grid::LINE
+                grid::LINE,
+                grid::HOMOGENIZED,
+                grid::MATERIAL
             ),
             "",
         ),

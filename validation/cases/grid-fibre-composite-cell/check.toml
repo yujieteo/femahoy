@@ -1,0 +1,47 @@
+# 2 unit cells of a fibre composite of carbon in epoxy (derivation.md). Tolerance budget of the
+# round fibres (the conductivity across the fibres, on the periodic tetrahedral mesh): the
+# change from max_cell 0.02 to 0.01 is 0.014 %, so the discretization error at 0.02, with the
+# area of the polygon of the circle, is about 0.02 %. The Rayleigh formula leaves out the terms
+# of f^12 and above, about 0.01 % at f = 0.5. Their sum is 0.03 %, and the tolerance is 0.1 %.
+# The conductivity along the round fibres (for the volume fraction of the mesh) and the modulus,
+# the conductivity and the density along the square fibres are exact: the fields along z are
+# uniform. They agree to 1e-10, inside the same tolerance.
+rel_tol = 1e-3
+abs_tol = 0.0
+
+[round_kxx]
+value = 0.5829156886
+case = "round"
+file = "homogenized.txt"
+column = "kxx"
+
+[round_kyy]
+value = 0.5829156886
+case = "round"
+file = "homogenized.txt"
+column = "kyy"
+
+# 0.2 + 9.8 f, with the fraction f = 0.4997928030 of the polygon of the circle.
+[round_kzz]
+value = 5.0979694697
+case = "round"
+file = "homogenized.txt"
+column = "kzz"
+
+[square_ez]
+value = 85040.0
+case = "square"
+file = "homogenized.txt"
+column = "ez"
+
+[square_kzz]
+value = 3.728
+case = "square"
+file = "homogenized.txt"
+column = "kzz"
+
+[square_density]
+value = 1.416e-9
+case = "square"
+file = "homogenized.txt"
+column = "density"

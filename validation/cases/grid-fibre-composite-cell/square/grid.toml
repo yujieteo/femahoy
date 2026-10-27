@@ -1,0 +1,37 @@
+# The unit cell of a square array of square carbon fibres along z in epoxy, volume fraction 0.36.
+# The 2 materials have the same Poisson ratio, so the modulus and the conductivity along the fibres
+# are the means of the 2 materials, exactly. See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 0.05
+
+[material.epoxy]
+conductivity = 0.2
+youngs_modulus = 3.5e3
+poisson_ratio = 0.3
+expansion = 60e-6
+density = 1.2e-9
+
+[material.carbon]
+conductivity = 10.0
+youngs_modulus = 230e3
+poisson_ratio = 0.3
+expansion = -0.5e-6
+density = 1.8e-9
+
+[part.matrix]
+material = "epoxy"
+x = [0.0, 1.0]
+y = [0.0, 1.0]
+z = [0.0, 0.5]
+
+[part.fibre]
+material = "carbon"
+x = [0.2, 0.8]
+y = [0.2, 0.8]
+z = [0.0, 0.5]
+priority = 1
+
+[step]
+type = "homogenize"

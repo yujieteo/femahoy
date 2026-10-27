@@ -31,6 +31,16 @@
 //!   whether the point is singular, with the largest value away from the singular points;
 //! - `<run-dir>/grid/log.txt`.
 //!
+//! For a homogenize step (a periodic unit cell):
+//!
+//! - `step-1.vtu` and `results.pvd`: the mesh of the cell with `part`;
+//! - `<run-dir>/grid/homogenized.txt`: 1 row with the volume fraction of each material, the
+//!   effective conductivity tensor, stiffness tensor, engineering constants, expansion, density
+//!   and specific heat;
+//! - `<run-dir>/grid/material.toml`: the effective material as a `[material.homogenized]` table
+//!   for the `grid.toml` of a larger model;
+//! - `<run-dir>/grid/log.txt`.
+//!
 //! A case with a `[line]` table is a transmission line cross-section (`fh_core::line`). Its run
 //! writes the potential `V1`... and the current density `J1`... of the triangles to `step-1.vtu`,
 //! the per-length parameters to `<run-dir>/grid/line.txt` and, with a length, the S parameters to
@@ -45,9 +55,10 @@ use std::time::{Duration, Instant};
 
 use fh_core::grid::{frame_grid, is_line, probe_head, probe_row, read, Case};
 use fh_core::line;
-use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry, VTK_HEXAHEDRON};
+use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry, VTK_HEXAHEDRON, VTK_TETRA};
 use fh_fem::elastic::{self, Solution};
-use fh_fem::heat::{self, Events, Frame, Mesh};
+use fh_fem::heat::{self, Cell, Events, Frame, Mesh};
+use fh_fem::homog::{self, diagonal, engineering, orthotropic, Effective, COUPLING};
 
 use crate::ccx::{prepare_run_dir, CancelToken, PVD_FILE};
 use crate::vtu::{write_pvd, write_vtu};
@@ -64,6 +75,9 @@ pub const LINE: &str = "line.txt";
 pub const SURFACES: &str = "surfaces.txt";
 pub const REACTIONS: &str = "reactions.txt";
 pub const STRESS: &str = "stress.txt";
+/// The effective material of a unit cell, as a table and as a `grid.toml` material.
+pub const HOMOGENIZED: &str = "homogenized.txt";
+pub const MATERIAL: &str = "material.toml";
 
 /// True when `dir` is a grid case: it has `grid.toml`.
 pub fn is_case(dir: &Path) -> bool {
@@ -126,6 +140,25 @@ pub fn run_with(
                 s.warnings,
             )
         }),
+        Case::Homogenize(model) => homog::solve(model, &mut out).and_then(|eff| {
+            let (material, warnings) = material_text(&eff);
+            for line in tensor_lines(&eff) {
+                out.line(&line);
+            }
+            out.tables.push((HOMOGENIZED, table_text(model, &eff)));
+            out.tables.push((MATERIAL, material));
+            out.mesh = Some(eff.mesh.clone());
+            out.vtu(1.0, Vec::new(), Vec::new())?;
+            Ok((
+                format!(
+                    "{} cells, {} points, {} unknowns",
+                    eff.mesh.len(),
+                    eff.mesh.points.len(),
+                    eff.unknowns
+                ),
+                warnings,
+            ))
+        }),
     };
     let (summary, warnings) = match result {
         Ok(s) => s,
@@ -149,7 +182,9 @@ pub fn run_with(
     let write = |name: &str, text: &str| {
         fs::write(work.join(name), text).map_err(|e| format!("{name}: {e}"))
     };
-    write(PROBES, &out.probes)?;
+    if !matches!(model, Case::Homogenize(_)) {
+        write(PROBES, &out.probes)?;
+    }
     if matches!(model, Case::Heat(_)) {
         write(ENERGY, &out.energy)?;
     }
@@ -287,10 +322,18 @@ impl Output<'_> {
             1,
             mesh.part.iter().map(|&p| f64::from(p) + 1.0).collect(),
         ));
+        let kind = match mesh.kind {
+            Cell::Hex8 => VTK_HEXAHEDRON,
+            Cell::Tet4 => VTK_TETRA,
+        };
         let grid = VtuGrid {
             points: mesh.points.clone(),
-            cell_types: vec![VTK_HEXAHEDRON; mesh.len()],
-            cells: mesh.cells.chunks_exact(8).map(|c| c.to_vec()).collect(),
+            cell_types: vec![kind; mesh.len()],
+            cells: mesh
+                .cells
+                .chunks_exact(mesh.kind.nodes())
+                .map(|c| c.to_vec())
+                .collect(),
             point_data,
             cell_data,
         };
@@ -358,6 +401,147 @@ impl Events for Output<'_> {
         self.energy.push('\n');
         Ok(())
     }
+}
+
+impl homog::Events for Output<'_> {
+    fn cancelled(&self) -> bool {
+        Output::cancelled(self)
+    }
+
+    fn progress(&mut self, text: &str) {
+        self.line(text);
+    }
+}
+
+/// The names of the 6 components, in the order of the stiffness of `fh_fem::hex`.
+const VOIGT: [&str; 6] = ["xx", "yy", "zz", "yz", "xz", "xy"];
+
+/// The row of `homogenized.txt`.
+fn table_text(model: &homog::Model, eff: &Effective) -> String {
+    let mut columns = Vec::new();
+    for (m, f) in model.materials.iter().zip(&eff.fraction) {
+        columns.push((format!("fraction.{}", m.name), real(*f)));
+    }
+    if let Some(k) = eff.conductivity {
+        for (c, [i, j]) in VOIGT
+            .iter()
+            .zip([[0, 0], [1, 1], [2, 2], [1, 2], [0, 2], [0, 1]])
+        {
+            columns.push((format!("k{c}"), real(k[i][j])));
+        }
+    }
+    if let Some(c) = eff.stiffness {
+        for (i, row) in c.iter().enumerate() {
+            for (j, v) in row.iter().enumerate().skip(i) {
+                columns.push((format!("c{}{}", i + 1, j + 1), real(*v)));
+            }
+        }
+        if let Some(o) = engineering(&c) {
+            for (n, v) in ["ex", "ey", "ez"].iter().zip(o.e) {
+                columns.push((n.to_string(), real(v)));
+            }
+            for (n, v) in ["nuxy", "nuxz", "nuyz"].iter().zip(o.nu) {
+                columns.push((n.to_string(), real(v)));
+            }
+            for (n, v) in ["gxy", "gxz", "gyz"].iter().zip(o.g) {
+                columns.push((n.to_string(), real(v)));
+            }
+        }
+    }
+    if let Some(a) = eff.expansion {
+        for (c, v) in VOIGT.iter().zip(a) {
+            columns.push((format!("alpha{c}"), real(v)));
+        }
+    }
+    if let Some(r) = eff.density {
+        columns.push(("density".into(), real(r)));
+    }
+    if let Some(c) = eff.specific_heat {
+        columns.push(("specific_heat".into(), real(c)));
+    }
+    row(&columns)
+}
+
+/// The tensors of the cell as lines of the log.
+fn tensor_lines(eff: &Effective) -> Vec<String> {
+    let fmt = |v: &[f64]| {
+        v.iter()
+            .map(|x| format!("{x:12.5e}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let mut lines = Vec::new();
+    if let Some(k) = eff.conductivity {
+        lines.push("effective conductivity (x, y, z):".to_owned());
+        lines.extend(k.iter().map(|r| format!("  {}", fmt(r))));
+    }
+    if let Some(c) = eff.stiffness {
+        lines.push(
+            "effective stiffness (xx, yy, zz, yz, xz, xy, engineering shear strains):".to_owned(),
+        );
+        lines.extend(c.iter().map(|r| format!("  {}", fmt(r))));
+    }
+    if let Some(a) = eff.expansion {
+        lines.push(format!("effective expansion (xx ... xy): {}", fmt(&a)));
+    }
+    lines
+}
+
+/// The effective material as a `grid.toml` table, and the warnings of the properties that a
+/// `grid.toml` material cannot hold.
+fn material_text(eff: &Effective) -> (String, Vec<String>) {
+    let list = |v: &[f64]| {
+        let items: Vec<String> = v.iter().map(|x| format!("{x:.6e}")).collect();
+        format!("[{}]", items.join(", "))
+    };
+    let mut warnings = Vec::new();
+    let mut text = String::from(
+        "# The homogenized material of the unit cell (fh run). Copy the table into the grid.toml \
+         of a larger\n# model, and give it the name of the material there. The material axes are \
+         x, y and z of the cell.\n[material.homogenized]\n",
+    );
+    if let Some(k) = eff.conductivity {
+        if diagonal(&k) {
+            text.push_str(&format!(
+                "conductivity = {}\n",
+                list(&[k[0][0], k[1][1], k[2][2]])
+            ));
+        } else {
+            warnings.push(format!(
+                "the effective conductivity has terms that couple 2 axes ({HOMOGENIZED}), and a \
+                 grid.toml material has 1 value for each axis: {MATERIAL} has no conductivity"
+            ));
+        }
+    }
+    if let (Some(c), Some(a)) = (eff.stiffness, eff.expansion) {
+        let shear = a[3..].iter().map(|v| v.abs()).fold(0.0, f64::max);
+        let normal = a[..3].iter().map(|v| v.abs()).fold(0.0, f64::max);
+        match engineering(&c) {
+            Some(o) if orthotropic(&c) && shear <= COUPLING * normal.max(f64::MIN_POSITIVE) => {
+                text.push_str(&format!("youngs_modulus = {}\n", list(&o.e)));
+                text.push_str(&format!("poisson_ratio = {}\n", list(&o.nu)));
+                text.push_str(&format!("shear_modulus = {}\n", list(&o.g)));
+                text.push_str(&format!("expansion = {}\n", list(&a[..3])));
+            }
+            _ => warnings.push(format!(
+                "the effective stiffness or expansion couples a normal and a shear component \
+                 ({HOMOGENIZED}): the cell is not orthotropic in x, y and z, and a grid.toml \
+                 material is. {MATERIAL} has no elastic constants"
+            )),
+        }
+    }
+    if let Some(r) = eff.density {
+        text.push_str(&format!("density = {r:.6e}\n"));
+        if eff.specific_heat.is_none() {
+            text.push_str(
+                "# A steady or transient heat step also needs specific_heat. Add it, or remove density.\n",
+            );
+        }
+    }
+    if let Some(c) = eff.specific_heat {
+        text.push_str(&format!("specific_heat = {c:.6e}\n"));
+    }
+    (text, warnings)
 }
 
 /// The writer of a static step: the output and the model, for the names.

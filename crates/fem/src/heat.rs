@@ -693,6 +693,7 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
         model.spacing,
         limit.tet_points,
         &refusal,
+        false,
     )?;
     let n = tm.points.len();
     let mesh = Mesh {
@@ -763,7 +764,7 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
 }
 
 /// The gradients of the 4 shape functions of a tetrahedron and its volume.
-fn tet_gradients(p: [[f64; 3]; 4]) -> ([[f64; 3]; 4], f64) {
+pub(crate) fn tet_gradients(p: [[f64; 3]; 4]) -> ([[f64; 3]; 4], f64) {
     let e: [[f64; 3]; 3] = std::array::from_fn(|k| std::array::from_fn(|d| p[k + 1][d] - p[0][d]));
     let cross = |a: [f64; 3], b: [f64; 3]| {
         [
@@ -976,7 +977,7 @@ pub(crate) fn reduced_rhs(
 
 /// The 8 x 8 conductivity matrix of a box cell of side lengths `s`, row-major, in the order of a
 /// VTK hexahedron.
-fn conduction(s: [f64; 3], k: [f64; 3]) -> [f64; 64] {
+pub(crate) fn conduction(s: [f64; 3], k: [f64; 3]) -> [f64; 64] {
     const BITS: [[usize; 3]; 8] = [
         [0, 0, 0],
         [1, 0, 0],

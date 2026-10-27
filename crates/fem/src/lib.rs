@@ -21,6 +21,7 @@
 //!   4-node tetrahedra on the extruded mesh.
 //! - `hex`: the 8-node hex with incompatible modes for elasticity, and the orthotropic material.
 //! - `elastic`: linear static thermo-elasticity on the grid.
+//! - `homog`: the effective conductivity, stiffness and expansion of a periodic unit cell.
 
 // `!(a > b)` is also true for NaN, so the checks of the input and of each pivot use it. The
 // numeric loops index several arrays with 1 index, as the formulas of the sources do.
@@ -32,6 +33,7 @@ pub mod elastic;
 pub mod grid;
 pub mod heat;
 pub mod hex;
+pub mod homog;
 pub mod ldlt;
 pub mod line;
 pub mod mesh2d;

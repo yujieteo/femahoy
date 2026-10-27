@@ -157,13 +157,15 @@ fn volume(p: [[f64; 3]; 4]) -> f64 {
 type Ring2 = (Vec<[f64; 2]>, Vec<Vec<[f64; 2]>>);
 
 /// The mesh of `parts` (each with a footprint, or a box) extruded along `axis`. It stops with
-/// the error `refusal` when the mesh gets more than `max_points` points.
+/// the error `refusal` when the mesh gets more than `max_points` points. A `periodic` mesh has
+/// the same points on 2 opposite sides of the bounding box of the parts (`footprints`).
 pub fn mesh(
     parts: &[Part],
     axis: usize,
     spacing: Spacing,
     max_points: usize,
     refusal: &str,
+    periodic: bool,
 ) -> Result<TetMesh, String> {
     if parts.is_empty() {
         return Err("the model has no part".into());
@@ -184,6 +186,7 @@ pub fn mesh(
             max_growth: spacing.max_growth,
         },
         &vec![f64::INFINITY; parts.len()],
+        periodic,
     )?;
     let planes = axis_planes(parts, axis, spacing, &[])?;
     let t = tol(&planes);
@@ -330,12 +333,14 @@ pub struct Flat {
 
 /// The quality triangle mesh of the footprints of `parts` across the axis `axis`. The outlines of
 /// part `k` have segments of at most `surface[k]` (`f64::INFINITY` for no limit), so the mesh is
-/// fine along them and grows away from them.
+/// fine along them and grows away from them. A `periodic` mesh has the same points on 2 opposite
+/// sides of the bounding box of the footprints (`mesh2d::periodic_mesh`).
 pub fn footprints(
     parts: &[Part],
     axis: usize,
     size: Size,
     surface: &[f64],
+    periodic: bool,
 ) -> Result<Flat, String> {
     // The outlines of each part (outline first, then the holes), as polygons.
     let mut points: Vec<[f64; 2]> = Vec::new();
@@ -450,7 +455,11 @@ pub fn footprints(
             }
         }
     };
-    let mesh = mesh2d::mesh(&points, &segments, size, &classify)?;
+    let mesh = if periodic {
+        mesh2d::periodic_mesh(&points, &segments, size, &classify)?
+    } else {
+        mesh2d::mesh(&points, &segments, size, &classify)?
+    };
     Ok(Flat {
         mesh,
         covers: covers.into_inner(),
