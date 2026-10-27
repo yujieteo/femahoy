@@ -38,6 +38,8 @@ body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
 body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
 body.text-mode #model { display: none; }
 #identity { overflow-wrap: anywhere; font-size: var(--small); }
+#solve-log { flex-basis: 100%; }
+#solve-text { max-height: 30vh; overflow: auto; margin: 0; font-size: var(--small); white-space: pre-wrap; overflow-wrap: anywhere; }
 [data-mesh-trend] > section > h3 { margin-top: var(--space-4); }
 summary { min-height: var(--target); cursor: pointer; padding-block: var(--space-2); }
 @media (max-width: 800px) {
@@ -96,8 +98,11 @@ output { margin-left: var(--space-2); }
 <label><input type="radio" name="layout" value="split" checked aria-keyshortcuts="Alt+V">Split</label>
 </span>
 <span id="identity" class="readout" aria-live="polite" hidden></span>
+<button type="button" id="solve" title="Solve a grid.toml case in this report, with no fh run" hidden>Solve grid.toml</button>
+<input type="file" id="solve-file" accept=".toml" hidden>
 <label id="all" class="trail"><input type="checkbox"> Show all controls</label>
 <p id="report-keys" class="keys"></p>
+<details id="solve-log" hidden><summary>Solve log</summary><pre id="solve-text"></pre></details>
 </header>
 <article><!--TEXT--></article>
 </section>
@@ -130,7 +135,7 @@ const $ = (id) => document.getElementById(id);
 const runs = $("runs");
 const text = document.querySelector("article");
 // No marker means every report control. A marker shows only the controls that it names.
-const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "sections,layout,identity").split(","));
+const controls = new Set((text.querySelector("[data-report-controls]")?.dataset.reportControls ?? "sections,layout,identity,solve").split(","));
 const hasRuns = runs.options.length > 0;
 // The text scrolls in its own box. On a phone the page scrolls: the top of the view is then the
 // top of the screen.
@@ -344,6 +349,37 @@ async function start() {
     }
     const first = views().find(chosen);
     if (!first || !open(first)) open(runs.selectedOptions[0]);
+    // A grid.toml case solves in a worker of this report, with the built-in solver in the viewer
+    // and no fh run. The log gets each line of progress and at the end the probe table.
+    let solving = false;
+    $("solve").hidden = !controls.has("solve");
+    $("solve").onclick = () => {
+      if (solving) view.stop();
+      else $("solve-file").click();
+    };
+    $("solve-file").onchange = async () => {
+      const file = $("solve-file").files[0];
+      $("solve-file").value = "";
+      if (!file) return;
+      const text = await file.text();
+      const out = $("solve-text");
+      out.textContent = "";
+      $("solve-log").hidden = false;
+      $("identity").textContent = "Solve: " + file.name;
+      current = null;
+      solving = true;
+      $("solve").textContent = "Stop solve";
+      view.solve(text, file.name, (kind, line) => {
+        if (kind === "stopped") line = "The solve stopped.";
+        if (line) out.append(line + (line.endsWith("\n") ? "" : "\n"));
+        out.scrollTop = out.scrollHeight;
+        if (kind === "end" || kind === "error" || kind === "stopped") {
+          solving = false;
+          $("solve").textContent = "Solve grid.toml";
+        }
+      });
+      if ($("model").getBoundingClientRect().top > innerHeight / 2) $("model").scrollIntoView({ block: "start" });
+    };
     $("msg").remove();
   } catch (e) {
     $("msg").textContent = "The viewer cannot start. " + ((e && e.message) || e);

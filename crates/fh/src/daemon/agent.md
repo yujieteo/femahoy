@@ -13,7 +13,7 @@ You are the agent of femahoy, an FEA and CFD workflow. The person watches each o
 
 ## From a request to results
 
-Heat conduction in parts that are boxes: use the built-in grid solver first, and skip the steps below. It needs no CAD, no mesh and no CalculiX. Run `fh guide grid`. Use the steps below for a curved or sloped face, contact, radiation, a material that changes with the temperature, or a stress.
+Heat conduction in parts that are boxes: use the built-in grid solver first, and skip the steps below. It needs no CAD, no mesh and no CalculiX, and the person can also solve its `grid.toml` in the page or in a report. Run `fh guide grid`. Use the steps below for a curved or sloped face, contact, radiation, a material that changes with the temperature, or a stress.
 
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. The STEP unit of build123d is mm.
 2. Mesh: `fh mesh part.step --size H -o mesh.inp ...` writes the nodes, the C3D10 elements and the sets that you name. Start with a coarse mesh, so that the solve takes about 1 minute. See "fh mesh sets" below.
@@ -36,7 +36,7 @@ A report has no fixed form. It shows the conclusion of its results so that the p
 - Controls: an element of the text with `data-run="RUN"` opens the run RUN in the viewer, with the view of its other `data-` attributes. A link or a button opens it with a click. A `select` opens the run of the chosen `option`, and a radio button opens its run when the person checks it. A slider `<input type="range" min="A" max="B" value="N">` opens its run at the step of its value, and each move shows the step of the new value. Its `data-labels="TEXT|TEXT"` gives the text of each value from `min`, for example the time, the phase or the iteration of each step.
 - The controls of the 3D view: put the controls that change the 3D view in an element with `data-bar`. That element goes to the bar above the viewer. Write them from the conclusion, for each report again: for example a choice of the flap angle, a slider of the phase of a wave, a slider of the time with the front marked, or a slider of the iterations of a design. Give no control that the conclusion does not use. Give `data-controls` (see the table) on each element with `data-run`, with only the controls that this analysis needs. The text beside a control says what it shows for the conclusion.
 - The look of the controls: write a `button`, a `select`, a slider, or for a choice of 2 to 4 values, radio buttons each in a `label` in `<span class="segmented">`. Write no `style` and no other `class` for a control: the report gives each control the look of the other views of femahoy.
-- Report controls: a report with no marker shows each report control that applies to it. To show fewer, add `<div data-report-controls="sections,layout,identity"></div>` with only the useful names. `data-report-controls=""` shows none.
+- Report controls: a report with no marker shows each report control that applies to it. To show fewer, add `<div data-report-controls="sections,layout,identity,solve"></div>` with only the useful names. `data-report-controls=""` shows none.
   - `sections`: a menu of the `h2` sections. Use it for a long report with `h2` sections.
   - `layout`: Text gives the text the full width, and Split shows the text and the model view. Use it when a report needs both wide text and a model view.
   - `identity`: a caption of the active run. Use it when the reader must identify or compare runs.
