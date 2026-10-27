@@ -907,7 +907,7 @@ mod tests {
         assert_eq!(m.surfaces.len(), 1);
     }
 
-    /// Each wrong input of a static step gives an error that names the key.
+    /// The reader reads the parts and materials of a homogenize step.
     #[test]
     fn the_reader_reads_a_unit_cell() {
         let cell = r#"
@@ -960,6 +960,7 @@ type = "homogenize"
         }
     }
 
+    /// Each wrong input of a static step gives an error that names the key.
     #[test]
     fn the_reader_refuses_a_wrong_static_step() {
         for (text, key) in [

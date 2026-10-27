@@ -211,19 +211,10 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Effective, String
     };
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
-    for p in &model.parts {
+    for x in &mesh.points {
         for d in 0..3 {
-            lo[d] = lo[d].min(p.lo[d]);
-            hi[d] = hi[d].max(p.hi[d]);
-        }
-    }
-    if tets {
-        // The footprints give the range across the axis.
-        for x in &mesh.points {
-            for d in 0..3 {
-                lo[d] = lo[d].min(x[d]);
-                hi[d] = hi[d].max(x[d]);
-            }
+            lo[d] = lo[d].min(x[d]);
+            hi[d] = hi[d].max(x[d]);
         }
     }
     let volume: f64 = (0..3).map(|d| hi[d] - lo[d]).product();

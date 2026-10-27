@@ -245,6 +245,53 @@ fn a_square_array_of_cylinders_matches_rayleigh() {
     close(k[2][2], km + r.fraction[1] * (kf - km), 1e-9);
 }
 
+/// A tetrahedral cell away from the origin gives the box of its mesh and the same conductivity
+/// as the cell at the origin. The shift changes the round-off of the mesh, thus the tolerance
+/// is 1e-4.
+#[test]
+fn a_tetrahedral_cell_away_from_the_origin_is_periodic() {
+    let cell = |x: f64, y: f64| Model {
+        parts: vec![
+            block("matrix", 0, 0, [x, y, 0.0], [x + 1.0, y + 1.0, 0.1]),
+            Part {
+                name: "fibre".into(),
+                material: 1,
+                priority: 1,
+                lo: [0.0, 0.0, 0.0],
+                hi: [0.0, 0.0, 0.1],
+                footprint: Some(Footprint {
+                    outline: Outline::Circle {
+                        centre: [x + 0.5, y + 0.5],
+                        radius: 0.3,
+                    },
+                    holes: Vec::new(),
+                }),
+            },
+        ],
+        materials: vec![
+            material("m", 1.0, 1.0, 0.3, 0.0),
+            material("f", 10.0, 1.0, 0.3, 0.0),
+        ]
+        .into_iter()
+        .map(|m| Material { elastic: None, ..m })
+        .collect(),
+        spacing: Spacing {
+            max_cell: 0.1,
+            max_growth: 1.2,
+            min_cells: 1,
+        },
+        axis: 2,
+    };
+    let near = run(&cell(0.0, 0.0));
+    let far = run(&cell(1.0, 2.0));
+    assert_eq!((far.lo, far.hi), ([1.0, 2.0, 0.0], [2.0, 3.0, 0.1]));
+    close(far.fraction[1], near.fraction[1], 1e-4);
+    let (kn, kf) = (near.conductivity.unwrap(), far.conductivity.unwrap());
+    for d in 0..3 {
+        close(kf[d][d], kn[d][d], 1e-4);
+    }
+}
+
 #[test]
 fn a_cell_whose_opposite_sides_do_not_match_is_refused() {
     let model = Model {

@@ -532,6 +532,11 @@ fn material_text(eff: &Effective) -> (String, Vec<String>) {
     }
     if let Some(r) = eff.density {
         text.push_str(&format!("density = {r:.6e}\n"));
+        if eff.specific_heat.is_none() {
+            text.push_str(
+                "# A steady or transient heat step also needs specific_heat. Add it, or remove density.\n",
+            );
+        }
     }
     if let Some(c) = eff.specific_heat {
         text.push_str(&format!("specific_heat = {c:.6e}\n"));
