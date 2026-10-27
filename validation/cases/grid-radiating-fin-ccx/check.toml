@@ -1,0 +1,20 @@
+# A steel pin fin in vacuum with a radiation to the ambient and a table conductivity, against
+# CalculiX 2.23 with DC3D8 elements and *RADIATE on the same mesh (ccx/mesh.py with H = 1 mm).
+# See derivation.md. Tolerance budget: the 2 solvers integrate the conductivity and the radiation
+# differently on the same cells (the cell mean and lumped points against Gauss points). The
+# largest difference on this mesh is 3.1e-5 of the value (middle), and it falls at second order.
+# The tolerance 1e-4 holds it with a margin of a factor of 3.
+rel_tol = 1e-4
+abs_tol = 0.0
+
+[tip]
+value = 446.0565
+case = "fin"
+file = "probes.txt"
+column = "tip"
+
+[middle]
+value = 480.3071
+case = "fin"
+file = "probes.txt"
+column = "middle"

@@ -19,7 +19,9 @@
 //!   1 or 3 unknowns at each point.
 //! - `solve`: the choice between the direct solver and PCG.
 //! - `heat`: steady and transient heat conduction on 8-node hex elements on the grid, or on
-//!   4-node tetrahedra on the extruded mesh.
+//!   4-node tetrahedra on the extruded mesh, and `nonlinear`: the Newton iteration of a
+//!   radiation to the ambient and of a conductivity and a specific heat that change with the
+//!   temperature.
 //! - `hex`: the 8-node hex with incompatible modes for elasticity, and the orthotropic material.
 //! - `elastic`: linear static thermo-elasticity on the grid, and `elastic_tet` on the extruded
 //!   mesh with 10-node tetrahedra (`tet10`).
@@ -50,6 +52,7 @@ pub mod line;
 pub mod mesh2d;
 pub mod mtl;
 pub mod multigrid;
+pub mod nonlinear;
 pub mod order;
 pub mod pmultigrid;
 pub mod predicates;

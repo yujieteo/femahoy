@@ -73,6 +73,8 @@ fn material(k: f64) -> Material {
         name: format!("k{k}"),
         conductivity: [k; 3],
         capacity: 1.0,
+        conductivity_table: None,
+        capacity_table: None,
     }
 }
 

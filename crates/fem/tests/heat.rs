@@ -36,6 +36,8 @@ fn material(name: &str, k: f64) -> Material {
         name: name.into(),
         conductivity: [k; 3],
         capacity: 1.0,
+        conductivity_table: None,
+        capacity_table: None,
     }
 }
 
