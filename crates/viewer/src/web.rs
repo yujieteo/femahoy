@@ -3,9 +3,12 @@
 //! The viewer fetches the result files from the daemon with `Authorization: Bearer
 //! <token>`. A report (`crates/fh/src/daemon/report.html`) also gives the view of a run that
 //! the agent writes to `Viewer::open`, the step of a slider to `Viewer::step` and its switch
-//! "Show all controls" to `Viewer::all`.
+//! "Show all controls" to `Viewer::all`. The page and a report give the text of a `grid.toml`
+//! case to `Viewer::solve`, which solves it in a worker with no `fh run`, and `Viewer::stop`
+//! stops that solve.
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +19,7 @@ use wasm_bindgen_futures::JsFuture;
 use web_sys::{AbortController, AbortSignal};
 
 use crate::app::{Content, Request, RequestSlot, ViewerApp};
-use crate::{preview, results, view, RESULTS_FILE};
+use crate::{preview, results, solve, view, RESULTS_FILE};
 
 /// GET a daemon path. An HTTP error gives the `error` and `message` fields of the answer. An
 /// abort of `signal` stops the download.
@@ -95,9 +98,49 @@ onmessage = async ({ data }) => {
 };
 "#;
 
+/// The script of the worker that solves a `grid.toml` case with [`solve_grid`]. Its 1 message
+/// has the text of the viewer script, the compiled viewer and the text of the case. It imports
+/// the script from its own blob, as [`STEP_WORKER`] does. It answers with a `line` for each line
+/// of progress, the byte lists of each output in `ok`, with each buffer transferred, and at the
+/// end the probe table in `probes` with the bytes of its wasm memory in `memory`, or an `error`.
+const SOLVE_WORKER: &str = r#"
+onmessage = async ({ data }) => {
+  try {
+    const viewer = await import(URL.createObjectURL(new Blob([data.script], { type: "text/javascript" })));
+    const wasm = await viewer.default({ module_or_path: data.module });
+    const probes = viewer.solve_grid(data.text, (line) => postMessage({ line }),
+      (ok) => postMessage({ ok }, ok.map((list) => list.buffer)));
+    postMessage({ probes, memory: wasm.memory.buffer.byteLength });
+  } catch (e) {
+    // A trap of wasm (RuntimeError) is most often a failed memory growth.
+    const text = e instanceof Error ? e.message : String(e);
+    postMessage({ error: e instanceof WebAssembly.RuntimeError
+      ? "the solve stopped in the browser (" + text + "), most often because the case needs more memory than the browser gives. Use a larger max_cell, or solve the case with fh run"
+      : text });
+  }
+};
+"#;
+
 thread_local! {
-    /// The blob URL of [`STEP_WORKER`]. Each load starts a worker from it.
-    static STEP_WORKER_URL: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// The blob URL of each worker script. Each load starts a worker from it.
+    static WORKER_URLS: RefCell<Vec<(&'static str, String)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// A worker of the script `source`, from its blob URL.
+fn start_worker(source: &'static str) -> Result<web_sys::Worker, JsValue> {
+    let url = WORKER_URLS.with(|urls| -> Result<String, JsValue> {
+        if let Some((_, url)) = urls.borrow().iter().find(|(s, _)| std::ptr::eq(*s, source)) {
+            return Ok(url.clone());
+        }
+        let kind = web_sys::BlobPropertyBag::new();
+        kind.set_type("text/javascript");
+        let parts = js_sys::Array::of1(&source.into());
+        let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &kind)?;
+        let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+        urls.borrow_mut().push((source, url.clone()));
+        Ok(url)
+    })?;
+    web_sys::Worker::new(&url)
 }
 
 /// Reads the steps of a run in the worker of [`load_run`], with [`results::Loader`]. Only that
@@ -149,19 +192,7 @@ impl Drop for StepWorker {
 
 impl StepWorker {
     fn start() -> Result<StepWorker, String> {
-        let url = STEP_WORKER_URL.with(|u| -> Result<String, JsValue> {
-            if let Some(url) = u.borrow().as_ref() {
-                return Ok(url.clone());
-            }
-            let kind = web_sys::BlobPropertyBag::new();
-            kind.set_type("text/javascript");
-            let parts = js_sys::Array::of1(&STEP_WORKER.into());
-            let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &kind)?;
-            let url = web_sys::Url::create_object_url_with_blob(&blob)?;
-            *u.borrow_mut() = Some(url.clone());
-            Ok(url)
-        });
-        url.and_then(|url| web_sys::Worker::new(&url))
+        start_worker(STEP_WORKER)
             .map(StepWorker)
             .map_err(|e| format!("the step reader does not start ({e:?})"))
     }
@@ -260,6 +291,170 @@ async fn load_run(
     Ok(Content::Results(Box::new(results), loads, view))
 }
 
+/// Solve a `grid.toml` case in the worker of the page, in the main thread only.
+#[wasm_bindgen]
+pub fn solve_grid(
+    text: &str,
+    on_line: &js_sys::Function,
+    on_step: &js_sys::Function,
+) -> Result<String, String> {
+    solve::solve(
+        text,
+        solve::BROWSER,
+        &mut |line| {
+            let _ = on_line.call1(&JsValue::NULL, &line.into());
+        },
+        &mut |lists| {
+            let lists: js_sys::Array = lists.iter().map(|l| Uint8Array::from(&l[..])).collect();
+            let _ = on_step.call1(&JsValue::NULL, &lists);
+        },
+    )
+}
+
+/// The messages of a worker that the page did not read yet, and the wake of the read that
+/// waits for the next one.
+#[derive(Default)]
+struct Inbox {
+    queue: VecDeque<Result<JsValue, String>>,
+    wake: Option<js_sys::Function>,
+}
+
+/// The worker of 1 browser solve. Its messages go to a queue, so that none is lost while the
+/// page reads the one before. It stops when it is dropped, also in the middle of the solve.
+struct SolveWorker {
+    worker: web_sys::Worker,
+    inbox: Rc<RefCell<Inbox>>,
+    _handlers: [Closure<dyn FnMut(JsValue)>; 2],
+}
+
+impl Drop for SolveWorker {
+    fn drop(&mut self) {
+        self.worker.terminate();
+    }
+}
+
+impl SolveWorker {
+    fn start() -> Result<SolveWorker, String> {
+        let worker = start_worker(SOLVE_WORKER)
+            .map_err(|e| format!("the browser solver does not start ({e:?})"))?;
+        let inbox: Rc<RefCell<Inbox>> = Rc::default();
+        let handler = |error: bool| {
+            let inbox = inbox.clone();
+            Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
+                let field = |key: &str| js_sys::Reflect::get(&event, &key.into()).ok();
+                let message = match error {
+                    false => field("data").ok_or_else(|| "a message with no data".to_owned()),
+                    true => Err(format!(
+                        "the browser solver stopped: {}",
+                        field("message")
+                            .and_then(|m| m.as_string())
+                            .unwrap_or_default()
+                    )),
+                };
+                let mut inbox = inbox.borrow_mut();
+                inbox.queue.push_back(message);
+                if let Some(wake) = inbox.wake.take() {
+                    let _ = wake.call0(&JsValue::NULL);
+                }
+            })
+        };
+        let handlers = [handler(false), handler(true)];
+        worker.set_onmessage(Some(handlers[0].as_ref().unchecked_ref()));
+        worker.set_onerror(Some(handlers[1].as_ref().unchecked_ref()));
+        Ok(SolveWorker {
+            worker,
+            inbox,
+            _handlers: handlers,
+        })
+    }
+
+    /// The next message of the worker. An abort of `signal` stops the wait.
+    async fn next(&self, signal: &AbortSignal) -> Result<JsValue, String> {
+        loop {
+            if signal.aborted() {
+                return Err(REPLACED.into());
+            }
+            if let Some(message) = self.inbox.borrow_mut().queue.pop_front() {
+                return message;
+            }
+            let wait = js_sys::Promise::new(&mut |done, _| {
+                signal.set_onabort(Some(&done));
+                self.inbox.borrow_mut().wake = Some(done);
+            });
+            let _ = JsFuture::from(wait).await;
+            signal.set_onabort(None);
+        }
+    }
+}
+
+/// Solve the case `text` (the text of `grid.toml`) in a worker. `on_event` gets
+/// (`"line"`, each line of progress), and at the end (`"probes"`, the probe table). `show` puts
+/// the last line in the viewer. An abort of `signal` stops the solve.
+async fn solve_case(
+    token: &str,
+    text: String,
+    name: &str,
+    on_event: &js_sys::Function,
+    show: &dyn Fn(String),
+    signal: &AbortSignal,
+) -> Result<Content, String> {
+    let event = |kind: &str, text: &str| {
+        let _ = on_event.call2(&JsValue::NULL, &kind.into(), &text.into());
+    };
+    // A file with an error gets its message at once, with no worker.
+    fh_core::grid::read(&text).map_err(|e| format!("{name}: {e}"))?;
+    let script = self::text(get(token, SCRIPT_PATH, signal).await?, SCRIPT_PATH)?;
+    let worker = SolveWorker::start()?;
+    let message = js_sys::Object::new();
+    for (key, value) in [
+        ("script", script.into()),
+        ("module", wasm_bindgen::module()),
+        ("text", text.into()),
+    ] {
+        let _ = js_sys::Reflect::set(&message, &key.into(), &value);
+    }
+    worker
+        .worker
+        .post_message(&message)
+        .map_err(|e| format!("the browser solver: {e:?}"))?;
+    let mut results = results::Results::default();
+    loop {
+        let data = worker.next(signal).await?;
+        let field = |key: &str| js_sys::Reflect::get(&data, &key.into()).ok();
+        if let Some(e) = field("error").and_then(|e| e.as_string()) {
+            return Err(format!("{name}: {e}"));
+        }
+        if let Some(line) = field("line").and_then(|l| l.as_string()) {
+            event("line", &line);
+            show(format!("Solving {name} in the browser: {line}"));
+        }
+        if let Some(ok) = field("ok").and_then(|ok| ok.dyn_into::<js_sys::Array>().ok()) {
+            results.receive(&ok).map_err(|e| format!("{name}: {e}"))?;
+        }
+        if let Some(probes) = field("probes").and_then(|p| p.as_string()) {
+            let memory = field("memory").and_then(|m| m.as_f64()).unwrap_or(0.0);
+            event(
+                "line",
+                &format!(
+                    "the solve used {:.0} MiB of browser memory",
+                    memory / f64::from(1 << 20)
+                ),
+            );
+            event("probes", &probes);
+            break;
+        }
+    }
+    drop(worker);
+    let mut loads = preview::build(&fh_core::inp::parse(""), "");
+    loads.title = name.to_owned();
+    let view = view::View::parse("").map_err(|e| format!("{name}: the view: {e}"))?;
+    Ok(Content::Results(
+        Box::new(results),
+        Ok(Box::new(loads)),
+        view,
+    ))
+}
+
 /// Fetch an input file from the daemon path `path` and read its supports and loads.
 async fn model(
     token: &str,
@@ -271,6 +466,18 @@ async fn model(
     let mut p = preview::build(&fh_core::inp::parse(&input), &fh_core::inp::units(&input));
     p.title = name.to_owned();
     Ok(Box::new(p))
+}
+
+/// The callback of a browser solve and its last event, which it gets when this is dropped.
+struct Last(js_sys::Function, RefCell<(&'static str, String)>);
+
+impl Drop for Last {
+    fn drop(&mut self) {
+        let (kind, text) = &*self.1.borrow();
+        let _ = self
+            .0
+            .call2(&JsValue::NULL, &(*kind).into(), &text.as_str().into());
+    }
 }
 
 /// The viewer on the canvas of the page.
@@ -334,6 +541,48 @@ impl Viewer {
                 .await
                 .map(Content::Preview)
         });
+    }
+
+    /// Solve the case `text` (the text of a `grid.toml`, from the file `name`) in a worker, with
+    /// no `fh run`, and show its results. `on_event(kind, text)` gets (`"line"`, each line of
+    /// progress) and (`"probes"`, the probe table), and last 1 of (`"end"`, `""`), (`"error"`,
+    /// why the solve failed) and (`"stopped"`, `""`) when [`Viewer::stop`] or a later load
+    /// stopped it.
+    pub fn solve(&self, text: String, name: String, on_event: js_sys::Function) {
+        let token = self.token.clone();
+        let (slot, ctx) = (self.slot.clone(), self.ctx.clone());
+        // The last event goes when the work ends, also when a later load drops it before it
+        // starts.
+        let last = Last(on_event, RefCell::new(("stopped", String::new())));
+        self.load(
+            &format!("Solving {name} in the browser..."),
+            move |signal| async move {
+                let show = |text: String| {
+                    if let Ok(mut s) = slot.lock() {
+                        s.content = Some(Content::Text(text));
+                    }
+                    ctx.request_repaint();
+                };
+                let done = solve_case(&token, text, &name, &last.0, &show, &signal).await;
+                match &done {
+                    Ok(_) => *last.1.borrow_mut() = ("end", String::new()),
+                    Err(e) if e == REPLACED => {}
+                    Err(e) => *last.1.borrow_mut() = ("error", e.clone()),
+                }
+                done
+            },
+        );
+    }
+
+    /// Stop the solve of [`Viewer::solve`], and free its worker and its memory.
+    pub fn stop(&self) {
+        if let Some(solve) = self.abort.take() {
+            solve.abort();
+        }
+        if let Ok(mut s) = self.slot.lock() {
+            s.content = Some(Content::Text("The browser solve stopped.".into()));
+        }
+        self.ctx.request_repaint();
     }
 
     /// Show the step `step` (from 1) of the open run, or of the run that loads.

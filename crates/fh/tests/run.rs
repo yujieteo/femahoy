@@ -230,6 +230,44 @@ fn fh_run_solves_a_grid_case_in_process_and_writes_the_result_files() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+/// The browser solve of the viewer gives the same probe table as `fh run` for the same case: a
+/// steady case and a transient case with a symmetry crop. The page runs the same code in a
+/// worker, built to wasm.
+#[test]
+fn the_browser_solve_gives_the_probes_of_fh_run() {
+    let dir = scratch("run-grid-browser");
+    for (n, case) in ["grid-layered-wall/wall", "grid-cooling-slab/slab"]
+        .iter()
+        .enumerate()
+    {
+        let case = root().join("validation/cases").join(case);
+        let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+            .args(["run", p(&case)])
+            .env("FH_STATE", dir.join("state"))
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&out),
+            stderr(&out)
+        );
+        let run = dir.join(format!("state/runs/run-{:06}/out/grid/probes.txt", n + 1));
+        let want = fs::read_to_string(run).unwrap();
+        let text = fs::read_to_string(case.join("grid.toml")).unwrap();
+        let mut steps = 0;
+        let got =
+            fh_viewer::solve::solve(&text, fh_viewer::solve::BROWSER, &mut |_| {}, &mut |_| {
+                steps += 1
+            })
+            .unwrap();
+        assert_eq!(got, want);
+        assert_eq!(steps, want.lines().count() - 1);
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
 /// The real ccx solves the submodel of `submodel-kirsch-hole`: `fh run` copies the global model
 /// `global.inp` with the submodel, and solves it first, because the submodel reads `global.frd`.
 #[test]

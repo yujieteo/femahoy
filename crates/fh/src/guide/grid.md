@@ -16,4 +16,6 @@ Use CAD, `fh mesh` and CalculiX (`*HEAT TRANSFER`) when the model has a curved o
 
 `fh run` writes the temperature `NT`, the heat flux `HFL` and the part number of each cell for the page. In the run folder, `grid/probes.txt` has the time and each probe, `grid/energy.txt` has the heat flows of the energy balance, and `grid/log.txt` has the solver lines and the warnings. Read the warnings: an energy imbalance above 1e-6 of the gross flow is a warning.
 
+The person can also solve a `grid.toml` in the browser, with no `fh run`: the button "Solve grid.toml" of the page of `fh serve` and of a report solves the file in the page and shows the progress, the fields and the probe table. It gives the same probes as `fh run`. The browser solves up to 1,000,000 points (the 4 GiB memory of wasm32), `fh run` up to 4,000,000. Give the person the case folder when they want to change and solve the case themselves.
+
 Each face of a part is on a plane of the grid, so a box of any size is exact. Do a mesh study with 2 values of `max_cell`. Near the edge of a part that touches a larger part, the temperature converges slowly, because the heat flux is singular there. Put the probes for a check away from those edges.

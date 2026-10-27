@@ -23,7 +23,7 @@ femahoy is a finite element and CFD workflow in Rust. LLM agents and humans use 
 
 - gmsh and each solver of the table in section 6, with its adapters, stay separate programs. femahoy never links or bundles them, because most of them are GPL or LGPL.
 - A solver under a permissive licence also stays a separate program, for example Project Chrono (BSD-3-Clause) as a Python with PyChrono. Thus femahoy has no dependency on a solver.
-- The exception is the built-in grid solver, the crate `fh-fem`. It is femahoy's own code, written from papers and books only, and it runs in the process of `fh`.
+- The exception is the built-in grid solver, the crate `fh-fem`. It is femahoy's own code, written from papers and books only. It runs in the process of `fh`, and in a worker of the page of `fh serve` or of a report, built to WebAssembly in the viewer.
 
 Reason of the exception: the licence reason of the first rule does not apply to femahoy's own code. Most thermal models of boxes need no CAD, no mesher and no external solver. On the same plate and block (the case `grid-heated-block-ccx`), the grid solver took 1.15 s for the accuracy that `ccx` with C3D20 got in 131.7 s. The crate has no I/O and no dependency, so it also builds for WebAssembly, and CI checks that build.
 
@@ -159,7 +159,7 @@ These limits apply to each solver process that `fh run` starts, with the same me
 
 Reason: a large model can use all the RAM of the machine. A stop with a clear error is better than a machine that stops. One mechanism for all solvers keeps the limits the same for each solver.
 
-The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a grid of more than 4,000,000 points before it makes the matrix. Reason: a solve of 1,009,057 points used 1.9 GB.
+The built-in grid solver has no process. A cancel and the time limit stop it between 2 iterations or 2 time steps. It refuses a grid of more than 4,000,000 points before it makes the matrix. Reason: a solve of 1,009,057 points used 1.9 GB. In the browser the person stops the solve with a button, which ends its worker, and the limit is 1,000,000 points. Reason: wasm32 addresses at most 4 GiB, and a solve of 1,030,301 points grew the memory of the worker to 2.1 GiB.
 
 ### 6.2 Results
 

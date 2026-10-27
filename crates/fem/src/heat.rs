@@ -169,16 +169,35 @@ pub struct Summary {
     pub warnings: Vec<String>,
 }
 
+/// The most points of a grid, and the memory that they need, for the error of a larger grid.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Limit {
+    pub points: usize,
+    pub memory: &'static str,
+}
+
 /// A grid with more points than this needs more memory than a laptop has. Reason: a steady
 /// multigrid solve of 1,009,057 points used 1.9 GB (the peak resident size), so 4,000,000 points
 /// need about 7.5 GB, half of the RAM of a 16 GB laptop.
-const MAX_POINTS: usize = 4_000_000;
+pub const LAPTOP: Limit = Limit {
+    points: 4_000_000,
+    memory: "the memory of a laptop",
+};
 
 /// An energy imbalance above this fraction is a warning.
 const IMBALANCE: f64 = 1e-6;
 
-/// Solve the model.
+/// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
+    solve_within(model, LAPTOP, events)
+}
+
+/// Solve the model, and refuse a grid with more points than `limit`.
+pub fn solve_within(
+    model: &Model,
+    limit: Limit,
+    events: &mut dyn Events,
+) -> Result<Summary, String> {
     check(model)?;
     let mut warnings = Vec::new();
     let (grid, faces, mids) = build_grid(model)?;
@@ -209,10 +228,11 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> 
             if *slot == u32::MAX {
                 *slot = ijk.len() as u32;
                 ijk.push([p[0] as u32, p[1] as u32, p[2] as u32]);
-                if ijk.len() > MAX_POINTS {
+                if ijk.len() > limit.points {
                     return Err(format!(
-                        "the grid has more than {MAX_POINTS} points, more than the memory of a \
-                         laptop solves: use a larger max_cell or a larger max_growth"
+                        "the grid has more than {} points, the most that {} solves: use a \
+                         larger max_cell or a larger max_growth",
+                        limit.points, limit.memory
                     ));
                 }
             }

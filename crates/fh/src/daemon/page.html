@@ -107,6 +107,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 [data-control="run-search"] { display: flex; align-items: center; gap: var(--space-2); }
 #run-search { flex: 1; min-width: 0; }
 /* The padding keeps the focus ring inside the scroll box. The negative margin puts the rows in line with the search field. */
+#solve-text { max-height: 35vh; overflow: auto; margin: 0; font-size: var(--small); white-space: pre-wrap; overflow-wrap: anywhere; }
 #run-list, #file-list { display: grid; gap: var(--space-2); max-height: 35vh; overflow: auto; padding: var(--space-2); margin-inline: calc(-1 * var(--space-2)); }
 /* The file buttons wrap on a row, so a run with many steps shows more files in the 35vh list. */
 #file-list { display: flex; flex-wrap: wrap; align-content: flex-start; }
@@ -224,6 +225,9 @@ body.linked #fh-b-camera-controls { display: none; }
     </details>
     <details id="files" data-control="files" hidden><summary>Files</summary><div id="file-list"></div></details>
     <button type="button" id="report" data-control="files" hidden>Open report</button>
+    <button type="button" id="solve" data-control="browser-solve" title="Solve a grid.toml case in this page, with no fh run">Solve grid.toml</button>
+    <input type="file" id="solve-file" accept=".toml" hidden>
+    <details id="solve-log" hidden><summary>Solve log</summary><pre id="solve-text"></pre></details>
     <label id="link-control" hidden><input type="checkbox" id="linked" checked>Link cameras</label>
     <p id="comparison-note" class="note" hidden>Undeformed meshes only. No convergence result.</p>
     <button type="button" id="close-compare" class="trail" hidden>Done</button>
@@ -571,6 +575,40 @@ function runName(run) {
   if (!(run in names)) relist();
   return e;
 }
+
+// A grid.toml case solves in a worker of this page, with the built-in solver in the viewer and
+// no fh run. The log gets each line of progress and at the end the probe table.
+let solving = false;
+$("solve").onclick = () => {
+  if (solving) view.stop();
+  else $("solve-file").click();
+};
+$("solve-file").onchange = async () => {
+  const file = $("solve-file").files[0];
+  $("solve-file").value = "";
+  if (!file || !view) return;
+  const text = await file.text();
+  if ($("compare").checked) $("close-compare").click();
+  shown = null;
+  $("model").removeAttribute("data-empty");
+  hideFiles();
+  select();
+  const out = $("solve-text");
+  out.textContent = "";
+  $("solve-log").hidden = false;
+  solving = true;
+  $("solve").textContent = "Stop solve";
+  view.solve(text, file.name, (kind, line) => {
+    if (kind === "stopped") line = "The solve stopped.";
+    if (line) out.append(line + (line.endsWith("\n") ? "" : "\n"));
+    out.scrollTop = out.scrollHeight;
+    if (kind === "end" || kind === "error" || kind === "stopped") {
+      solving = false;
+      $("solve").textContent = "Solve grid.toml";
+    }
+  });
+  reveal();
+};
 
 async function startViewer() {
   try {

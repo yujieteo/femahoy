@@ -312,6 +312,22 @@ impl Loader {
         })
     }
 
+    /// A loader of steps that come 1 at a time with no `results.pvd`, for example from the
+    /// browser solve. [`Loader::push_and_send`] gives each step.
+    pub fn stream(units: &str) -> Loader {
+        Loader {
+            units: units.to_owned(),
+            multibody: false,
+            entries: Vec::new(),
+            first: None,
+            last: None,
+            meshes: Vec::new(),
+            steps: Vec::new(),
+            moves: false,
+            sent: 0,
+        }
+    }
+
     /// The file of the next step, or `None` when each step is read.
     pub fn next_file(&self) -> Option<&str> {
         self.entries.get(self.steps.len()).map(|e| e.file.as_str())
@@ -327,11 +343,18 @@ impl Loader {
             Ok(b) => b,
             Err(e) => return fail(file, e),
         };
-        let mut grid = match read_vtu(&bytes) {
+        let grid = match read_vtu(&bytes) {
             Ok(g) => g,
             Err(e) => return fail(file, e),
         };
         drop(bytes);
+        self.add_grid(grid)
+    }
+
+    /// Read the grid of the next step.
+    fn add_grid(&mut self, mut grid: Grid) -> Result<(), String> {
+        let entry = &self.entries[self.steps.len()];
+        let file = entry.file.as_str();
         if grid.points.is_empty() || grid.cells.is_empty() {
             return fail(file, "the grid has no point or no cell");
         }
@@ -400,6 +423,22 @@ impl Loader {
     /// check the next steps, so [`Loader::finish`] has no step data after this.
     pub fn add_and_send(&mut self, bytes: Result<Vec<u8>, String>) -> Result<Vec<Vec<u8>>, String> {
         self.add(bytes)?;
+        self.send()
+    }
+
+    /// Add the step `entry` with its grid, and give it like [`Loader::add_and_send`].
+    pub fn push_and_send(
+        &mut self,
+        entry: fh_core::vtu::PvdEntry,
+        grid: Grid,
+    ) -> Result<Vec<Vec<u8>>, String> {
+        self.entries.push(entry);
+        self.add_grid(grid)?;
+        self.send()
+    }
+
+    /// The lists of the last step that the loader read.
+    fn send(&mut self) -> Result<Vec<Vec<u8>>, String> {
         let mut out = vec![Vec::new()];
         put_text(&mut out, &self.units);
         put(&mut out, u8::from(self.multibody));

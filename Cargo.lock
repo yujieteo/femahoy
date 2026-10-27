@@ -636,6 +636,10 @@ dependencies = [
 [[package]]
 name = "fh-core"
 version = "0.0.0"
+dependencies = [
+ "fh-fem",
+ "toml_edit",
+]
 
 [[package]]
 name = "fh-fem"
@@ -648,6 +652,7 @@ dependencies = [
  "bytemuck",
  "eframe",
  "fh-core",
+ "fh-fem",
  "js-sys",
  "wasm-bindgen",
  "wasm-bindgen-futures",
