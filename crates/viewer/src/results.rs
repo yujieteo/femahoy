@@ -163,15 +163,25 @@ fn quantity(name: &str) -> Quantity {
 }
 
 /// The contour fields of a grid: the magnitude and the components of each vector field,
-/// the components of `S`, and each scalar field.
-fn fields_of(grid: &Grid, file: &str) -> Result<Vec<ScalarField>, String> {
+/// the components of `S`, and each scalar field. Takes the fields out of the grid, and frees
+/// each one after its contour fields are made. Reason: a copy of all the fields of an A320
+/// fuselage is 34 MB more in a phone browser.
+fn fields_of(grid: &mut Grid, file: &str) -> Result<Vec<ScalarField>, String> {
     let mut out = Vec::new();
     let groups = [
-        (Location::Point, &grid.point_data, grid.points.len()),
-        (Location::Cell, &grid.cell_data, grid.cells.len()),
+        (
+            Location::Point,
+            std::mem::take(&mut grid.point_data),
+            grid.points.len(),
+        ),
+        (
+            Location::Cell,
+            std::mem::take(&mut grid.cell_data),
+            grid.cells.len(),
+        ),
     ];
     for (location, data, count) in groups {
-        for field in data.iter() {
+        for field in data {
             let values = &field.values;
             let c = field.components.max(1);
             if values.len() != c * count {
@@ -271,10 +281,11 @@ pub fn load(
             Ok(b) => b,
             Err(e) => return fail(file, e),
         };
-        let grid = match read_vtu(&bytes) {
+        let mut grid = match read_vtu(&bytes) {
             Ok(g) => g,
             Err(e) => return fail(file, e),
         };
+        drop(bytes);
         if grid.points.is_empty() || grid.cells.is_empty() {
             return fail(file, "the grid has no point or no cell");
         }
@@ -287,20 +298,8 @@ pub fn load(
         if grid.points.iter().flatten().any(|c| !c.is_finite()) {
             return fail(file, "a point coordinate is not a finite number");
         }
-        let fields = fields_of(&grid, file)?;
-        let mut displacement = match grid.point_field("U") {
-            None => vec![[0.0; 3]; grid.points.len()],
-            Some(u) if u.components == 3 => u.values.as_chunks::<3>().0.to_vec(),
-            Some(_) => return fail(file, "the displacement field U must have 3 components"),
-        };
-        if let Some(f) = first.as_ref().filter(|f| **f != grid.points) {
-            moves = true;
-            for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(f) {
-                for k in 0..3 {
-                    u[k] += p[k] - p0[k];
-                }
-            }
-        }
+        // The mesh, the displacement and then the fields, so that a phone browser does not
+        // hold the work data of the mesh and a second copy of the fields at the same time.
         let same = (last.as_ref()).is_some_and(|(c, t)| *c == grid.cells && *t == grid.cell_types);
         if !same {
             let mesh = mesh::build_grid(&grid);
@@ -314,6 +313,22 @@ pub fn load(
                 );
             }
             meshes.push(mesh);
+        }
+        let mut displacement = match grid.point_field("U") {
+            None => vec![[0.0; 3]; grid.points.len()],
+            Some(u) if u.components == 3 => u.values.as_chunks::<3>().0.to_vec(),
+            Some(_) => return fail(file, "the displacement field U must have 3 components"),
+        };
+        if let Some(f) = first.as_ref().filter(|f| **f != grid.points) {
+            moves = true;
+            for ((u, p), p0) in displacement.iter_mut().zip(&grid.points).zip(f) {
+                for k in 0..3 {
+                    u[k] += p[k] - p0[k];
+                }
+            }
+        }
+        let fields = fields_of(&mut grid, file)?;
+        if !same {
             last = Some((grid.cells, grid.cell_types));
         }
         steps.push(Step {
@@ -576,7 +591,7 @@ mod tests {
             components: 3,
             values: vec![1.0, 2.0, 0.0],
         });
-        let fields = fields_of(&grid, "fluid.vtu").unwrap();
+        let fields = fields_of(&mut grid, "fluid.vtu").unwrap();
         assert_ne!(fields[0].quantity, Quantity::Displacement);
     }
 

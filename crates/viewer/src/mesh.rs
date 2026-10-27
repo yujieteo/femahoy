@@ -174,8 +174,10 @@ pub(crate) fn surface_face(element_type: &str, nodes: &[u32], number: u8) -> Opt
     }
 }
 
-fn sorted_key(corners: &[u32]) -> Vec<u32> {
-    let mut k = corners.to_vec();
+/// The sorted corners of a face (3 or 4), with `u32::MAX` after 3 corners.
+fn sorted_key(corners: &[u32]) -> [u32; 4] {
+    let mut k = [u32::MAX; 4];
+    k[..corners.len()].copy_from_slice(corners);
     k.sort_unstable();
     k
 }
@@ -284,16 +286,20 @@ pub fn build_grid(grid: &fh_core::vtu::Grid) -> RenderMesh {
 
 /// Build the render data from points and elements with 0-based point indices. `None` is
 /// an element that names a missing point.
+///
+/// The work data has fixed-size keys and indices, not a list for each face and edge. Reason:
+/// the 33416 shells of an A320 fuselage expand to 299903 points in the results, and a list for
+/// each face and edge took 120 MB of a phone browser for a mesh of 17 MB.
 fn build_indexed(points: &[[f64; 3]], elements: &[Option<(&str, Vec<u32>)>]) -> RenderMesh {
-    // Pass 1: gather every face and count how many elements share it.
-    struct Entry {
-        face: Face,
-        count: u32,
-        inside: [f64; 3],
+    // Pass 1: gather every face and count how many elements share it. A face is its element
+    // and its number in the element, in the order first seen.
+    struct Seen {
         cell: u32,
+        face: u8,
+        count: u32,
     }
-    let mut faces: HashMap<Vec<u32>, Entry> = HashMap::new();
-    let mut order: Vec<Vec<u32>> = Vec::new();
+    let mut index: HashMap<[u32; 4], u32> = HashMap::new();
+    let mut seen: Vec<Seen> = Vec::new();
     let mut skipped = 0;
     for (cell, el) in elements.iter().enumerate() {
         let Some((el_type, el_nodes)) = el else {
@@ -304,63 +310,75 @@ fn build_indexed(points: &[[f64; 3]], elements: &[Option<(&str, Vec<u32>)>]) -> 
             skipped += 1;
             continue;
         };
-        let mut centroid = [0.0; 3];
-        for &n in el_nodes {
-            let p = points[n as usize];
-            for k in 0..3 {
-                centroid[k] += p[k] / el_nodes.len() as f64;
-            }
-        }
-        for face in el_faces {
-            let key = sorted_key(&face.corners);
-            match faces.get_mut(&key) {
-                Some(e) => e.count += 1,
-                None => {
-                    order.push(key.clone());
-                    faces.insert(
-                        key,
-                        Entry {
-                            face,
-                            count: 1,
-                            inside: centroid,
-                            cell: cell as u32,
-                        },
-                    );
+        for (k, face) in el_faces.iter().enumerate() {
+            match index.entry(sorted_key(&face.corners)) {
+                std::collections::hash_map::Entry::Occupied(e) => {
+                    seen[*e.get() as usize].count += 1
+                }
+                std::collections::hash_map::Entry::Vacant(v) => {
+                    v.insert(seen.len() as u32);
+                    seen.push(Seen {
+                        cell: cell as u32,
+                        face: k as u8,
+                        count: 1,
+                    });
                 }
             }
         }
     }
+    drop(index);
 
     // Pass 2: emit the faces that one element owns.
-    let mut used: HashMap<u32, u32> = HashMap::new();
+    let mut used: Vec<u32> = vec![u32::MAX; points.len()];
     let mut positions: Vec<[f32; 3]> = Vec::new();
     let mut source_node: Vec<u32> = Vec::new();
     let mut slot = |id: u32, positions: &mut Vec<[f32; 3]>| -> u32 {
-        *used.entry(id).or_insert_with(|| {
+        let at = &mut used[id as usize];
+        if *at == u32::MAX {
             let p = points[id as usize];
             positions.push([p[0] as f32, p[1] as f32, p[2] as f32]);
             source_node.push(id);
-            (positions.len() - 1) as u32
-        })
+            *at = (positions.len() - 1) as u32;
+        }
+        *at
     };
     let mut triangles = Vec::new();
     let mut triangle_cell = Vec::new();
     let mut edges: Vec<[u32; 2]> = Vec::new();
-    // Corner edge (sorted node pair) to the outward normals of the surface faces on it.
-    let mut edge_normals: HashMap<(u32, u32), Vec<[f64; 3]>> = HashMap::new();
-    let mut edge_order: Vec<(u32, u32)> = Vec::new();
-    let mut edge_path: HashMap<(u32, u32), Vec<u32>> = HashMap::new();
+    // A corner edge (sorted node pair) on the surface: its path of positions (2, or 3 with
+    // the mid-side node) and the outward normals of the surface faces on it.
+    struct Edge {
+        path: [u32; 3],
+        len: u8,
+        normals: u32,
+        first: [[f64; 3]; 2],
+        /// A face on the edge has no normal.
+        degenerate: bool,
+    }
+    let mut edge_index: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut edge_list: Vec<Edge> = Vec::new();
 
-    for key in &order {
-        let e = &faces[key];
-        if e.count != 1 {
+    for s in seen.iter().filter(|s| s.count == 1) {
+        let Some((el_type, el_nodes)) = &elements[s.cell as usize] else {
             continue;
+        };
+        let Some(face) =
+            element_faces(el_type, el_nodes).map(|mut f| f.swap_remove(usize::from(s.face)))
+        else {
+            continue;
+        };
+        let mut inside = [0.0; 3];
+        for &n in el_nodes {
+            let p = points[n as usize];
+            for k in 0..3 {
+                inside[k] += p[k] / el_nodes.len() as f64;
+            }
         }
-        let c = &e.face.corners;
+        let c = &face.corners;
         let pts: Vec<[f64; 3]> = c.iter().map(|&id| points[id as usize]).collect();
-        let normal = face_normal(&pts, e.inside);
+        let normal = face_normal(&pts, inside);
         let ci: Vec<u32> = c.iter().map(|&id| slot(id, &mut positions)).collect();
-        match (&e.face.mids, c.len()) {
+        match (&face.mids, c.len()) {
             (Some(m), 3) => {
                 let mi: Vec<u32> = m.iter().map(|&id| slot(id, &mut positions)).collect();
                 triangles.push([ci[0], mi[0], mi[2]]);
@@ -383,38 +401,47 @@ fn build_indexed(points: &[[f64; 3]], elements: &[Option<(&str, Vec<u32>)>]) -> 
                 triangles.push([ci[0], ci[2], ci[3]]);
             }
         }
-        triangle_cell.resize(triangles.len(), e.cell);
+        triangle_cell.resize(triangles.len(), s.cell);
+        // A degenerate face has no normal. It marks the edge as a feature.
+        let normal = normal.unwrap_or([0.0; 3]);
         for k in 0..c.len() {
             let next = (k + 1) % c.len();
             let (a, b) = (c[k], c[next]);
             let pair = (a.min(b), a.max(b));
-            let path = match &e.face.mids {
-                Some(m) => vec![ci[k], slot(m[k], &mut positions), ci[next]],
-                None => vec![ci[k], ci[next]],
-            };
-            if let std::collections::hash_map::Entry::Vacant(v) = edge_path.entry(pair) {
-                for w in path.windows(2) {
+            let i = *edge_index.entry(pair).or_insert_with(|| {
+                let (path, len) = match &face.mids {
+                    Some(m) => ([ci[k], slot(m[k], &mut positions), ci[next]], 3),
+                    None => ([ci[k], ci[next], 0], 2),
+                };
+                for w in path[..len].windows(2) {
                     edges.push([w[0], w[1]]);
                 }
-                v.insert(path);
-                edge_order.push(pair);
+                edge_list.push(Edge {
+                    path,
+                    len: len as u8,
+                    normals: 0,
+                    first: [[0.0; 3]; 2],
+                    degenerate: false,
+                });
+                (edge_list.len() - 1) as u32
+            });
+            let e = &mut edge_list[i as usize];
+            if let Some(n) = e.first.get_mut(e.normals as usize) {
+                *n = normal;
             }
-            let list = edge_normals.entry(pair).or_default();
-            match normal {
-                Some(n) => list.push(n),
-                // A degenerate face has no normal. Mark the edge as a feature.
-                None => list.push([0.0; 3]),
-            }
+            e.normals += 1;
+            e.degenerate |= normal == [0.0; 3];
         }
     }
+    drop(edge_index);
 
     let cos_limit = FEATURE_ANGLE_DEG.to_radians().cos();
     let mut feature_edges = Vec::new();
-    for pair in &edge_order {
-        let n = &edge_normals[pair];
-        let feature = n.len() != 2 || n.contains(&[0.0; 3]) || dot(n[0], n[1]) < cos_limit;
+    for e in &edge_list {
+        let [n0, n1] = e.first;
+        let feature = e.normals != 2 || e.degenerate || dot(n0, n1) < cos_limit;
         if feature {
-            for w in edge_path[pair].windows(2) {
+            for w in e.path[..usize::from(e.len)].windows(2) {
                 feature_edges.push([w[0], w[1]]);
             }
         }

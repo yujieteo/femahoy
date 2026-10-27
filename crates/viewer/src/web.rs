@@ -186,6 +186,20 @@ impl Viewer {
         fill(&self.slot, &self.ctx, Content::Text(loading.into()));
         let (slot, ctx, opened) = (self.slot.clone(), self.ctx.clone(), self.opened.clone());
         wasm_bindgen_futures::spawn_local(async move {
+            // Start the fetch only after a frame took the text and freed the shown model.
+            // Reason: on localhost the fetch and the parse end before the next frame, and the
+            // page then holds two A320 models.
+            while opened.get() == n && slot.lock().is_ok_and(|s| s.content.is_some()) {
+                let wait = js_sys::Promise::new(&mut |done, _| {
+                    if let Some(w) = web_sys::window() {
+                        let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&done, 16);
+                    }
+                });
+                let _ = wasm_bindgen_futures::JsFuture::from(wait).await;
+            }
+            if opened.get() != n {
+                return;
+            }
             let content = work.await;
             if opened.get() == n {
                 fill(&slot, &ctx, content.unwrap_or_else(Content::Failed));
