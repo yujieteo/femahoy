@@ -4,7 +4,7 @@ Use the built-in grid solver first for linear heat conduction in parts that are 
 
 Use CAD, `fh mesh` and CalculiX (`*HEAT TRANSFER`) when the model has a curved or sloped face, contact, radiation, a material that changes with the temperature, or a stress. The grid solver refuses those inputs. It never approximates them.
 
-1. Top: `units = "SI-mm"` or `"SI-m"`. All numbers are in these units. In SI-mm, a conductivity is in mW/(mm K), a flux in mW/mm2 and a film coefficient in mW/(mm2 K).
+1. Top: `units = "SI-mm"` or `"SI-m"`. All numbers are in these units. In SI-m, a conductivity is in W/(m K), a flux in W/m2, a film coefficient in W/(m2 K), a density in kg/m3, a specific heat in J/(kg K) and a source in W/m3. In SI-mm, a conductivity is in mW/(mm K), a flux in mW/mm2, a film coefficient in mW/(mm2 K), a density in t/mm3, a specific heat in mJ/(t K) and a source in mW/mm3. For example, steel in SI-mm has `density = 7.85e-9` and `specific_heat = 4.6e8`, not 7850 and 460.
 2. `[grid]`: `max_cell` (the largest cell edge), `max_growth` (the largest size ratio of 2 adjacent cells, 1.3 by default), `min_cells` (the fewest cells through each part in each direction, 2 by default) and `symmetry` (for example `["x", "y"]`).
    - With `symmetry`, write the full model. The solver checks that the model is symmetric about the middle plane of each axis that you name, then solves only 1 half (or quarter). The results show the half. A probe in the other half reads its mirror point.
 3. `[material.NAME]`: `conductivity` (1 number, or 3 numbers for x, y and z), and `density` with `specific_heat` for a transient step.
