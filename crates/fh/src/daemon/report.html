@@ -326,6 +326,8 @@ async function start() {
       area.addEventListener("click", (e) => {
         const target = e.target.closest("[data-run]");
         if (!target || target instanceof HTMLOptionElement || target instanceof HTMLInputElement || !open(target)) return;
+        // A link such as `href="#"` must not jump the page after the run opens.
+        if (target instanceof HTMLAnchorElement) e.preventDefault();
         // On a phone the model is below the text, so a tap that shows a run scrolls the model into view.
         if ($("model").getBoundingClientRect().top > innerHeight / 2) $("model").scrollIntoView({ block: "start" });
       });
