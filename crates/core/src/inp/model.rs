@@ -104,6 +104,10 @@ pub struct ElementChange {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Step {
     pub name: Option<String>,
+    /// The time period of a `*STATIC`, `*DYNAMIC`, `*HEAT TRANSFER` or `*COUPLED
+    /// TEMPERATURE-DISPLACEMENT` step: the second number of its data line, 1 when the line has
+    /// none. `None` for a step with another procedure.
+    pub period: Option<f64>,
     pub boundaries: Vec<Boundary>,
     pub cloads: Vec<Cload>,
     pub dloads: Vec<Dload>,

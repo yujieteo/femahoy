@@ -60,6 +60,16 @@ impl Reader {
                 });
             }
             "END STEP" => self.end_step(),
+            "STATIC" | "DYNAMIC" | "HEAT TRANSFER" | "COUPLED TEMPERATURE-DISPLACEMENT" => {
+                if let Some(step) = &mut self.step {
+                    let line = b.data.first();
+                    let given = line.and_then(|d| d.get(1)).filter(|f| !f.is_empty());
+                    step.period = match given {
+                        Some(f) => real(Some(f)).filter(|&t| t > 0.0),
+                        None => Some(1.0),
+                    };
+                }
+            }
             "BOUNDARY" => self.boundary(b),
             "CLOAD" => self.cload(b),
             "DLOAD" => self.dload(b),
@@ -299,5 +309,18 @@ fn add(sets: &mut Vec<IdSet>, name: &str, ids: Vec<u32>) {
             name: name.to_owned(),
             ids,
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    #[test]
+    fn step_period() {
+        let text = "*STEP\n*STATIC\n*END STEP\n*STEP\n*DYNAMIC\n1e-4, 0.012\n*END STEP\n\
+                    *STEP\n*FREQUENCY\n10\n*END STEP\n";
+        let periods: Vec<_> = parse(text).steps.iter().map(|s| s.period).collect();
+        assert_eq!(periods, [Some(1.0), Some(0.012), None]);
     }
 }
