@@ -46,6 +46,7 @@ fn part(name: &str, material: usize, lo: [f64; 3], hi: [f64; 3]) -> Part {
         priority: 0,
         lo,
         hi,
+        footprint: None,
     }
 }
 
@@ -55,6 +56,7 @@ fn side(name: &str, s: &str) -> FaceSet {
         sides: vec![Side::parse(s).unwrap()],
         region: None,
         parts: vec![],
+        circle: None,
     }
 }
 
@@ -76,6 +78,7 @@ fn wall() -> Model {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("hot", "x-"), side("cold", "x+")],
         loads: vec![
@@ -170,6 +173,7 @@ fn a_half_model_gives_the_temperatures_of_the_full_model() {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry,
         faces: vec![side("bottom", "z-")],
         loads: vec![
@@ -207,7 +211,7 @@ fn a_half_model_gives_the_temperatures_of_the_full_model() {
     for i in 0..3 {
         assert!((a[i] - b[i]).abs() < 1e-8 * a[i].abs(), "{a:?} {b:?}");
     }
-    assert!(quarter.mesh.unwrap().cells.len() * 4 == full.mesh.unwrap().cells.len());
+    assert!(quarter.mesh.unwrap().len() * 4 == full.mesh.unwrap().len());
 }
 
 #[test]
@@ -287,6 +291,7 @@ fn laminate(n: usize) -> Model {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("bottom", "z-")],
         loads: vec![
@@ -327,6 +332,7 @@ fn panel(n: usize) -> Model {
             max_growth: 1.3,
             min_cells: 2,
         },
+        axis: 2,
         symmetry: [false; 3],
         faces: vec![side("end", "x-"), side("skin", "z-")],
         loads: vec![

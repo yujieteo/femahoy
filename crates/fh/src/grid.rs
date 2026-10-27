@@ -1,11 +1,12 @@
 //! The built-in heat conduction and linear elasticity solver of femahoy on a box grid, in the
 //! process of `fh`.
 //!
-//! A grid case is a folder with `grid.toml`: the parts as boxes, the materials, the named face
-//! sets, the loads, the step, the probes and the surfaces (see `fh guide grid`). [`run_with`]
-//! reads it, solves it with the crate `fh-fem` and writes, for a heat step (steady or
-//! transient), with the reader and the result grid of `fh_core::grid`, which the browser solve
-//! of the viewer also uses:
+//! A grid case is a folder with `grid.toml`: the parts as boxes or as prisms of a polygon or a
+//! circle with holes, the materials, the named face sets, the loads, the step, the probes and the
+//! surfaces (see `fh guide grid`). A model of boxes is solved on the box grid, and a heat model
+//! with a prism part on a mesh of tetrahedra. [`run_with`] reads it, solves it with the crate
+//! `fh-fem` and writes, for a heat step (steady or transient), with the reader and the result
+//! grid of `fh_core::grid`, which the browser solve of the viewer also uses:
 //!
 //! - `step-N.vtu` and `results.pvd` in the run folder: the temperature `NT` at each point, the
 //!   heat flux `HFL` and the part number `part` of each cell, at each output time;
@@ -190,8 +191,8 @@ impl Output<'_> {
         ));
         let grid = VtuGrid {
             points: mesh.points.clone(),
-            cell_types: vec![VTK_HEXAHEDRON; mesh.cells.len()],
-            cells: mesh.cells.iter().map(|c| c.to_vec()).collect(),
+            cell_types: vec![VTK_HEXAHEDRON; mesh.len()],
+            cells: mesh.cells.chunks_exact(8).map(|c| c.to_vec()).collect(),
             point_data,
             cell_data,
         };

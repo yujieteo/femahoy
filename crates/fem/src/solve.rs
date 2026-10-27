@@ -1,5 +1,6 @@
 //! The linear solver of a model: the sparse Cholesky factor for a small model, and conjugate
-//! gradients with the multigrid preconditioner for a large one. The solver is made once and
+//! gradients with the multigrid preconditioner for a large model on the box grid. A model on a
+//! tetrahedral mesh has no grid levels, so its solver is direct. The solver is made once and
 //! solves many right sides, for example each time step of a transient solve.
 
 use crate::cholesky::Cholesky;
@@ -56,6 +57,14 @@ pub struct Solver {
     max_iter: usize,
 }
 
+/// Where the unknowns are.
+pub enum Unknowns {
+    /// The grid point of each unknown: the direct solver and multigrid can solve.
+    Grid(Level),
+    /// The coordinates of each unknown of a mesh with no grid: only the direct solver solves.
+    Points(Vec<[f64; 3]>),
+}
+
 /// The work of 1 solve.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Stats {
@@ -66,16 +75,33 @@ pub struct Stats {
 }
 
 impl Solver {
-    /// The solver of `a` (symmetric positive definite) whose unknown `k` is the grid point
-    /// `level.points[k]`. `method` forces a method, else `crossover` chooses it. `cells` gives the
-    /// coarse matrices of a displacement to multigrid.
+    /// The solver of `a` (symmetric positive definite) on the unknowns `unknowns`. `method`
+    /// forces a method, else `crossover` chooses it. `cells` gives the coarse matrices of a
+    /// displacement to multigrid.
     pub fn new(
         a: Csr,
-        level: Level,
+        unknowns: Unknowns,
         method: Option<Method>,
         crossover: Crossover,
         cells: Option<Cells>,
     ) -> Result<Solver, String> {
+        let level = match unknowns {
+            Unknowns::Grid(level) => level,
+            Unknowns::Points(xyz) => {
+                if method == Some(Method::Multigrid) {
+                    return Err(
+                        "multigrid needs the box grid: a mesh of tetrahedra has the direct solver"
+                            .into(),
+                    );
+                }
+                let sym = Symbolic::analyse(&a, &nested_dissection(&a, &xyz));
+                let chol = Cholesky::factor(&sym, &a)?;
+                return Ok(Solver {
+                    inner: Inner::Direct(a, chol),
+                    max_iter: PCG_MAX_ITER,
+                });
+            }
+        };
         let symbolic = |a: &Csr, level: &Level| {
             let xyz: Vec<[f64; 3]> = level
                 .points

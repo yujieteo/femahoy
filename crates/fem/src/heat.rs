@@ -1,4 +1,5 @@
-//! Steady and transient heat conduction on the box grid, with 8-node hex elements.
+//! Steady and transient heat conduction on the box grid with 8-node hex elements, or on the
+//! 2.5D tetrahedral mesh (`prism`) with 4-node tetrahedra when a part has a footprint.
 //!
 //! The model is linear: each material has a constant conductivity (1 value, or 1 value for each
 //! axis), density and specific heat. The loads are a fixed temperature, a heat flux into the
@@ -7,7 +8,10 @@
 //! backward Euler with a lumped capacity, so a large step gives no oscillation.
 //!
 //! The element matrices of a box cell are exact tensor products of the 1D matrices of the
-//! linear element: the conductivity k/h [1 -1; -1 1] and the mass h/6 [2 1; 1 2].
+//! linear element: the conductivity k/h [1 -1; -1 1] and the mass h/6 [2 1; 1 2]. A linear
+//! tetrahedron has a constant gradient, so its conductivity matrix is V G^T K G, with the
+//! gradients G of its 4 shape functions, and a triangle face has the mass A/12 [2 1 1; 1 2 1;
+//! 1 1 2]. Each discretization gives the same set of matrices and face lists to 1 solve loop.
 //!
 //! Each result has an energy balance: the heat from the volume sources, the fluxes, the
 //! convection and the fixed temperatures, and the rate of the stored heat. Their sum is 0 to the
@@ -18,11 +22,15 @@
 //! (the generalized trapezoidal family, backward Euler, lumped capacity); F. P. Incropera, D. P.
 //! DeWitt, T. L. Bergman and A. S. Lavine, Fundamentals of Heat and Mass Transfer, 6th ed.,
 //! Wiley 2007, chapters 2 and 3 (the conduction equation, convection and the boundary
-//! conditions).
+//! conditions); O. C. Zienkiewicz, R. L. Taylor and J. Z. Zhu, The Finite Element Method: Its
+//! Basis and Fundamentals, 7th ed., Elsevier 2013, chapter 6 (the linear tetrahedron).
 
 use crate::grid::{tol, Face, Grid, Part, Side, Spacing, VOID};
 use crate::multigrid::Level;
-use crate::solve::{Crossover, Method, Solver, STEADY_DIRECT_LIMIT, TRANSIENT_DIRECT_LIMIT};
+use crate::prism::{self, TetMesh};
+use crate::solve::{
+    Crossover, Method, Solver, Unknowns, STEADY_DIRECT_LIMIT, TRANSIENT_DIRECT_LIMIT,
+};
 use crate::sparse::Csr;
 
 /// A material. `conductivity` is the value along x, y and z.
@@ -44,6 +52,9 @@ pub struct FaceSet {
     pub region: Option<([f64; 3], [f64; 3])>,
     /// The faces of the cells of these parts (empty: all parts).
     pub parts: Vec<usize>,
+    /// The faces on a circle outline of a footprint: its centre and radius, across the
+    /// extrusion axis (`None`: all).
+    pub circle: Option<([f64; 2], f64)>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -83,6 +94,8 @@ pub struct Model {
     pub parts: Vec<Part>,
     pub materials: Vec<Material>,
     pub spacing: Spacing,
+    /// The extrusion axis of the parts with a footprint (0 x, 1 y, 2 z).
+    pub axis: usize,
     /// Solve the half above the middle plane of the parts of each axis that is true. The parts,
     /// the face sets of the loads and the loads must mirror at that plane.
     pub symmetry: [bool; 3],
@@ -94,14 +107,50 @@ pub struct Model {
     pub method: Option<Method>,
 }
 
-/// The mesh of the result: the grid points of the cells of the parts, and the hex cells.
+/// The kind of the cells of a mesh.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cell {
+    /// An 8-node box, in the order of a VTK hexahedron.
+    Hex8,
+    /// A 4-node tetrahedron with a positive volume, in the order of a VTK tetra.
+    Tet4,
+}
+
+impl Cell {
+    pub fn nodes(self) -> usize {
+        match self {
+            Cell::Hex8 => 8,
+            Cell::Tet4 => 4,
+        }
+    }
+}
+
+/// The mesh of the result.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mesh {
     pub points: Vec<[f64; 3]>,
-    /// The points of each cell, in the order of a VTK hexahedron.
-    pub cells: Vec<[u32; 8]>,
+    pub kind: Cell,
+    /// The points of the cells, `kind.nodes()` for each cell.
+    pub cells: Vec<u32>,
     /// The part of each cell.
     pub part: Vec<u32>,
+}
+
+impl Mesh {
+    /// The number of cells.
+    pub fn len(&self) -> usize {
+        self.part.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.part.is_empty()
+    }
+
+    /// The points of cell `e`.
+    pub fn cell(&self, e: usize) -> &[u32] {
+        let n = self.kind.nodes();
+        &self.cells[e * n..(e + 1) * n]
+    }
 }
 
 /// The heat rates of a result (power). Heat into the body is positive.
@@ -169,10 +218,12 @@ pub struct Summary {
     pub warnings: Vec<String>,
 }
 
-/// The most points of a grid, and the memory that they need, for the error of a larger grid.
+/// The most points of a grid and of a mesh of tetrahedra, and the memory that they need, for the
+/// error of a larger model.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limit {
     pub points: usize,
+    pub tet_points: usize,
     pub memory: &'static str,
 }
 
@@ -181,11 +232,58 @@ pub struct Limit {
 /// need about 7.5 GB, half of the RAM of a 16 GB laptop.
 pub const LAPTOP: Limit = Limit {
     points: 4_000_000,
+    tet_points: MAX_TET_POINTS,
     memory: "the memory of a laptop",
 };
 
+/// A tetrahedral mesh with more points than this takes minutes, because its solver is the
+/// direct solver. Reason: a steady solve of a solid cylinder (Apple M-series, 1 thread) took
+/// 9.9 s and 1.7 GB at 154,440 points, and 97 s and 2.7 GB at 336,141 points. The time grows as
+/// about n^2.2, so 400,000 points take about 2.5 minutes.
+const MAX_TET_POINTS: usize = 400_000;
+
 /// An energy imbalance above this fraction is a warning.
 const IMBALANCE: f64 = 1e-6;
+
+/// A face on the outside of the model, with a load on it.
+struct Facet {
+    /// The points: 4 of a box face, or 3 of a triangle (the 4th is unused).
+    nodes: [u32; 4],
+    count: usize,
+    area: f64,
+    /// The mass matrix of the face (the integral of N_i N_j), `count` x `count`, row-major.
+    mass: Vec<f64>,
+}
+
+impl Facet {
+    fn nodes(&self) -> &[u32] {
+        &self.nodes[..self.count]
+    }
+}
+
+/// The heat flux at the centre of each cell, from the point temperatures.
+type FluxOf = Box<dyn Fn(&[f64]) -> Vec<[f64; 3]>>;
+
+/// The unknowns of the linear solver from the free points.
+type UnknownsOf = Box<dyn Fn(&[usize]) -> Unknowns>;
+
+/// A model on its mesh: what the solve loop needs from the box grid or the tetrahedral mesh.
+struct Discrete {
+    mesh: Mesh,
+    /// The conductivity matrix.
+    k: Csr,
+    /// The volume of each cell.
+    volume: Vec<f64>,
+    /// The faces of each face set of the model.
+    faces: Vec<Vec<Facet>>,
+    /// The points and the weights of the interpolation of each probe.
+    probes: Vec<Vec<(u32, f64)>>,
+    flux: FluxOf,
+    unknowns: UnknownsOf,
+    /// The line that tells the mesh.
+    line: String,
+    warnings: Vec<String>,
+}
 
 /// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
@@ -199,6 +297,259 @@ pub fn solve_within(
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
     check(model)?;
+    let d = if model.parts.iter().any(|p| p.footprint.is_some()) {
+        tet_model(model, limit)?
+    } else {
+        grid_model(model, limit)?
+    };
+    run(model, d, events)
+}
+
+/// The steady solve or the time steps of the model `model` on its mesh `d`.
+fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, String> {
+    let Discrete {
+        mesh,
+        mut k,
+        volume,
+        faces,
+        probes,
+        flux: cell_flux,
+        unknowns,
+        line,
+        mut warnings,
+    } = d;
+    events.mesh(&mesh)?;
+    events.progress(&line);
+    let n = mesh.points.len();
+    let per = mesh.kind.nodes() as f64;
+    // The lumped capacity and the volume sources.
+    let mut capacity = vec![0.0; n];
+    let mut source = vec![0.0; n];
+    let mut part_source = vec![0.0; model.parts.len()];
+    for load in &model.loads {
+        if let Load::Source { part, value } = load {
+            part_source[*part] += value;
+        }
+    }
+    for e in 0..mesh.len() {
+        let p = mesh.part[e] as usize;
+        let m = &model.materials[model.parts[p].material];
+        for &node in mesh.cell(e) {
+            capacity[node as usize] += m.capacity * volume[e] / per;
+            source[node as usize] += part_source[p] * volume[e] / per;
+        }
+    }
+    let mut flux = vec![0.0; n];
+    let mut film = vec![0.0; n];
+    let mut fixed: Vec<Option<(f64, usize)>> = vec![None; n];
+    // The convection faces: the nodes, the area, the film coefficient and the sink.
+    let mut convection: Vec<(&[u32], f64, f64, f64)> = Vec::new();
+    for load in &model.loads {
+        let set = match load {
+            Load::Source { .. } => continue,
+            Load::Temperature { faces, .. }
+            | Load::Flux { faces, .. }
+            | Load::Convection { faces, .. } => *faces,
+        };
+        for face in &faces[set] {
+            let nodes = face.nodes();
+            let share = face.area / face.count as f64;
+            match load {
+                Load::Temperature { value, faces: f } => {
+                    for &node in nodes {
+                        match fixed[node as usize] {
+                            Some((v, other)) if v != *value => {
+                                return Err(format!(
+                                    "the face sets {} and {} share a point with 2 fixed \
+                                     temperatures, {v} and {value}",
+                                    model.faces[other].name, model.faces[*f].name
+                                ))
+                            }
+                            _ => fixed[node as usize] = Some((*value, *f)),
+                        }
+                    }
+                }
+                Load::Flux { value, .. } => {
+                    for &node in nodes {
+                        flux[node as usize] += value * share;
+                    }
+                }
+                Load::Convection {
+                    film: h, sink: t, ..
+                } => {
+                    let hm: Vec<f64> = face.mass.iter().map(|m| h * m).collect();
+                    k.add_element(nodes, &hm);
+                    for &node in nodes {
+                        film[node as usize] += h * t * share;
+                    }
+                    convection.push((nodes, face.area, *h, *t));
+                }
+                Load::Source { .. } => unreachable!("skipped above"),
+            }
+        }
+    }
+    let transient = matches!(model.step, Step::Transient { .. });
+    if !transient {
+        let mut held: Vec<bool> = fixed.iter().map(Option::is_some).collect();
+        for (nodes, ..) in &convection {
+            for &v in *nodes {
+                held[v as usize] = true;
+            }
+        }
+        check_supports(model, &mesh, &held)?;
+    }
+    let load: Vec<f64> = (0..n).map(|i| source[i] + flux[i] + film[i]).collect();
+    let free: Vec<usize> = (0..n).filter(|&i| fixed[i].is_none()).collect();
+    let mut temperature: Vec<f64> = match model.step {
+        Step::Steady => vec![0.0; n],
+        Step::Transient { initial, .. } => vec![initial; n],
+    };
+    for i in 0..n {
+        if let Some((v, _)) = fixed[i] {
+            temperature[i] = v;
+        }
+    }
+    let energy_of = |t: &[f64], previous: &[f64], dt: Option<f64>, kt: &[f64]| -> Energy {
+        let mut e = Energy {
+            source: source.iter().sum(),
+            flux: flux.iter().sum(),
+            gross: source.iter().chain(&flux).map(|v| v.abs()).sum(),
+            ..Energy::default()
+        };
+        for (nodes, area, h, sink) in &convection {
+            let mean = nodes.iter().map(|&v| t[v as usize]).sum::<f64>() / nodes.len() as f64;
+            let q = h * area * (sink - mean);
+            e.convection += q;
+            e.gross += q.abs();
+        }
+        for i in 0..n {
+            let rate = dt.map_or(0.0, |dt| capacity[i] * (t[i] - previous[i]) / dt);
+            e.stored += rate;
+            e.gross += rate.abs();
+            if fixed[i].is_some() {
+                // The heat that the fixed point takes from the body, minus the loads on it.
+                let q = kt[i] + rate - load[i];
+                e.fixed += q;
+                e.gross += q.abs();
+            }
+        }
+        e
+    };
+    let mut imbalance: f64 = 0.0;
+    let mut emit = |time: f64, t: &[f64], energy: Energy, events: &mut dyn Events| {
+        imbalance = imbalance.max(energy.imbalance().abs());
+        let frame = Frame {
+            time,
+            temperature: t.to_vec(),
+            flux: cell_flux(t),
+            probes: probes
+                .iter()
+                .map(|w| w.iter().map(|&(v, f)| f * t[v as usize]).sum())
+                .collect(),
+            energy,
+        };
+        events.frame(&frame)
+    };
+    let mut kt = vec![0.0; n];
+    let method;
+    match model.step {
+        Step::Steady => {
+            let a = k.submatrix(&free);
+            let solver = Solver::new(
+                a,
+                unknowns(&free),
+                model.method,
+                Crossover::Unknowns(STEADY_DIRECT_LIMIT),
+                None,
+            )?;
+            method = solver.method();
+            events.progress(&format!("{} unknowns, {} solver", free.len(), name(method)));
+            let rhs = reduced_rhs(&k, &load, &temperature, &free, None);
+            let mut x = vec![0.0; free.len()];
+            let stats = solver.solve(&rhs, &mut x, &|| events.cancelled())?;
+            events.progress(&match stats.iterations {
+                0 => format!("residual {:.1e}", stats.residual),
+                i => format!("PCG {i} iterations, residual {:.1e}", stats.residual),
+            });
+            for (k, &i) in free.iter().enumerate() {
+                temperature[i] = x[k];
+            }
+            k.mul(&temperature, &mut kt);
+            let energy = energy_of(&temperature, &temperature, None, &kt);
+            emit(0.0, &temperature, energy, events)?;
+        }
+        Step::Transient {
+            end,
+            dt,
+            output_every,
+            ..
+        } => {
+            let steps = (end / dt).round() as usize;
+            let mut a_full = k.clone();
+            for i in 0..n {
+                let d = a_full.find(i, i).expect("a diagonal");
+                a_full.val[d] += capacity[i] / dt;
+            }
+            let solver = Solver::new(
+                a_full.submatrix(&free),
+                unknowns(&free),
+                model.method,
+                Crossover::Unknowns(TRANSIENT_DIRECT_LIMIT),
+                None,
+            )?;
+            method = solver.method();
+            events.progress(&format!(
+                "{} unknowns, {} solver, {steps} time steps",
+                free.len(),
+                name(method)
+            ));
+            // The first output has no rates: the heat flows start at time 0.
+            emit(0.0, &temperature, Energy::default(), events)?;
+            let mut x: Vec<f64> = free.iter().map(|&i| temperature[i]).collect();
+            for s in 1..=steps {
+                if events.cancelled() {
+                    return Err("cancelled".into());
+                }
+                let previous = temperature.clone();
+                let rhs = reduced_rhs(&a_full, &load, &temperature, &free, Some((&capacity, dt)));
+                solver.solve(&rhs, &mut x, &|| events.cancelled())?;
+                for (k, &i) in free.iter().enumerate() {
+                    temperature[i] = x[k];
+                }
+                k.mul(&temperature, &mut kt);
+                let energy = energy_of(&temperature, &previous, Some(dt), &kt);
+                if s % output_every.max(1) == 0 || s == steps {
+                    let time = s as f64 * dt;
+                    events.progress(&format!("time {time:.6e} step {s} of {steps}"));
+                    emit(time, &temperature, energy, events)?;
+                }
+            }
+        }
+    }
+    if imbalance > IMBALANCE {
+        warnings.push(format!(
+            "the energy balance is off by {:.2e} of the heat flow: the linear solve is not exact",
+            imbalance
+        ));
+    }
+    Ok(Summary {
+        cells: mesh.len(),
+        points: n,
+        unknowns: free.len(),
+        method,
+        imbalance,
+        warnings,
+    })
+}
+
+/// The model on the box grid, with hex cells.
+fn grid_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
+    if let Some(f) = model.faces.iter().find(|f| f.circle.is_some()) {
+        return Err(format!(
+            "face set {}: `circle` selects the faces on a circle outline, and no part has one",
+            f.name
+        ));
+    }
     let mut warnings = Vec::new();
     let used: Vec<bool> = model
         .faces
@@ -247,83 +598,28 @@ pub fn solve_within(
     } = number(&grid, limit)?;
     let n = ijk.len();
     let dims = grid.dims();
-    events.mesh(&mesh)?;
-    events.progress(&format!(
+    let line = format!(
         "grid {} x {} x {} planes, {} cells, {} points",
         dims[0] + 1,
         dims[1] + 1,
         dims[2] + 1,
-        mesh.cells.len(),
+        mesh.len(),
         n
-    ));
-    let node_of = |p: [usize; 3]| number[grid.point_index(p)] as usize;
-
-    // The conductivity matrix with the convection, the lumped capacity and the loads.
-    let mut k = Csr::pattern(n, mesh.cells.iter().map(|c| &c[..]));
-    let mut capacity = vec![0.0; n];
-    let mut source = vec![0.0; n];
+    );
+    let node_of = |p: [usize; 3]| number[grid.point_index(p)];
+    let mut k = Csr::pattern(n, (0..mesh.len()).map(|e| mesh.cell(e)));
+    let mut volume = Vec::with_capacity(mesh.len());
     for (e, &cell) in cell_of.iter().enumerate() {
         let m = &model.materials[model.parts[grid.part[cell] as usize].material];
         let size = grid.size(cell);
-        k.add_element(&mesh.cells[e], &conduction(size, m.conductivity));
-        let volume = size[0] * size[1] * size[2];
-        for &node in &mesh.cells[e] {
-            capacity[node as usize] += m.capacity * volume / 8.0;
-        }
+        k.add_element(mesh.cell(e), &conduction(size, m.conductivity));
+        volume.push(size[0] * size[1] * size[2]);
     }
-    let mut part_source = vec![0.0; model.parts.len()];
-    for load in &model.loads {
-        if let Load::Source { part, value } = load {
-            part_source[*part] += value;
-        }
-    }
-    for (e, &cell) in cell_of.iter().enumerate() {
-        let q = part_source[grid.part[cell] as usize];
-        if q != 0.0 {
-            let s = grid.size(cell);
-            for &node in &mesh.cells[e] {
-                source[node as usize] += q * s[0] * s[1] * s[2] / 8.0;
-            }
-        }
-    }
-    let mut flux = vec![0.0; n];
-    let mut film = vec![0.0; n];
-    let mut fixed: Vec<Option<(f64, usize)>> = vec![None; n];
-    // The convection faces: the 4 nodes, the area, the film coefficient and the sink.
-    let mut convection: Vec<([usize; 4], f64, f64, f64)> = Vec::new();
-    for load in &model.loads {
-        let set = match load {
-            Load::Source { .. } => continue,
-            Load::Temperature { faces, .. }
-            | Load::Flux { faces, .. }
-            | Load::Convection { faces, .. } => *faces,
-        };
-        for &face in &faces[set] {
-            let nodes = grid.face_points(face).map(node_of);
-            let area = grid.face_area(face);
-            match load {
-                Load::Temperature { value, faces: f } => {
-                    for &node in &nodes {
-                        match fixed[node] {
-                            Some((v, other)) if v != *value => {
-                                return Err(format!(
-                                    "the face sets {} and {} share a point with 2 fixed \
-                                     temperatures, {v} and {value}",
-                                    model.faces[other].name, model.faces[*f].name
-                                ))
-                            }
-                            _ => fixed[node] = Some((*value, *f)),
-                        }
-                    }
-                }
-                Load::Flux { value, .. } => {
-                    for &node in &nodes {
-                        flux[node] += value * area / 4.0;
-                    }
-                }
-                Load::Convection {
-                    film: h, sink: t, ..
-                } => {
+    let facets: Vec<Vec<Facet>> = faces
+        .iter()
+        .map(|list| {
+            list.iter()
+                .map(|&face| {
                     let s = grid.size(face.cell);
                     let side = Side::ALL[face.side as usize];
                     let (a, b) = match side.axis {
@@ -331,171 +627,259 @@ pub fn solve_within(
                         1 => (s[0], s[2]),
                         _ => (s[0], s[1]),
                     };
-                    let ids = nodes.map(|v| v as u32);
-                    k.add_element(&ids, &face_mass(a, b, *h));
-                    for &node in &nodes {
-                        film[node] += h * t * area / 4.0;
+                    Facet {
+                        nodes: grid.face_points(face).map(node_of),
+                        count: 4,
+                        area: grid.face_area(face),
+                        mass: face_mass(a, b, 1.0).to_vec(),
                     }
-                    convection.push((nodes, area, *h, *t));
-                }
-                Load::Source { .. } => unreachable!("skipped above"),
-            }
-        }
-    }
-    let transient = matches!(model.step, Step::Transient { .. });
-    if !transient {
-        let mut held: Vec<bool> = fixed.iter().map(Option::is_some).collect();
-        for (nodes, ..) in &convection {
-            for &v in nodes {
-                held[v] = true;
-            }
-        }
-        check_supports(model, &mesh, &held)?;
-    }
-    let load: Vec<f64> = (0..n).map(|i| source[i] + flux[i] + film[i]).collect();
-    let free: Vec<usize> = (0..n).filter(|&i| fixed[i].is_none()).collect();
-    let mut temperature: Vec<f64> = match model.step {
-        Step::Steady => vec![0.0; n],
-        Step::Transient { initial, .. } => vec![initial; n],
-    };
-    for i in 0..n {
-        if let Some((v, _)) = fixed[i] {
-            temperature[i] = v;
-        }
-    }
+                })
+                .collect()
+        })
+        .collect();
+    let probes = probes(model, &grid, &mids, &node_of)?;
     let level = Level {
         planes: grid.planes.clone(),
-        points: free.iter().map(|&i| ijk[i]).collect(),
-        comp: vec![0; free.len()],
+        points: Vec::new(),
+        comp: Vec::new(),
     };
-    let energy_of = |t: &[f64], previous: &[f64], dt: Option<f64>, kt: &[f64]| -> Energy {
-        let mut e = Energy {
-            source: source.iter().sum(),
-            flux: flux.iter().sum(),
-            gross: source.iter().chain(&flux).map(|v| v.abs()).sum(),
-            ..Energy::default()
-        };
-        for (nodes, area, h, sink) in &convection {
-            let mean = nodes.iter().map(|&v| t[v]).sum::<f64>() / 4.0;
-            let q = h * area * (sink - mean);
-            e.convection += q;
-            e.gross += q.abs();
-        }
-        for i in 0..n {
-            let rate = dt.map_or(0.0, |dt| capacity[i] * (t[i] - previous[i]) / dt);
-            e.stored += rate;
-            e.gross += rate.abs();
-            if fixed[i].is_some() {
-                // The heat that the fixed point takes from the body, minus the loads on it.
-                let q = kt[i] + rate - load[i];
-                e.fixed += q;
-                e.gross += q.abs();
-            }
-        }
-        e
-    };
-    let mut imbalance: f64 = 0.0;
-    let mut emit = |time: f64, t: &[f64], energy: Energy, events: &mut dyn Events| {
-        imbalance = imbalance.max(energy.imbalance().abs());
-        let frame = Frame {
-            time,
-            temperature: t.to_vec(),
-            flux: cell_flux(model, &grid, &mesh, &cell_of, t),
-            probes: probes(model, &grid, &mids, &node_of, t)?,
-            energy,
-        };
-        events.frame(&frame)
-    };
-    let mut kt = vec![0.0; n];
-    let method;
-    match model.step {
-        Step::Steady => {
-            let a = k.submatrix(&free);
-            let solver = Solver::new(
-                a,
-                level,
-                model.method,
-                Crossover::Unknowns(STEADY_DIRECT_LIMIT),
-                None,
-            )?;
-            method = solver.method();
-            events.progress(&format!("{} unknowns, {} solver", free.len(), name(method)));
-            let rhs = reduced_rhs(&k, &load, &temperature, &free, None);
-            let mut x = vec![0.0; free.len()];
-            let stats = solver.solve(&rhs, &mut x, &|| events.cancelled())?;
-            events.progress(&match stats.iterations {
-                0 => format!("residual {:.1e}", stats.residual),
-                i => format!("PCG {i} iterations, residual {:.1e}", stats.residual),
-            });
-            for (k, &i) in free.iter().enumerate() {
-                temperature[i] = x[k];
-            }
-            k.mul(&temperature, &mut kt);
-            let energy = energy_of(&temperature, &temperature, None, &kt);
-            emit(0.0, &temperature, energy, events)?;
-        }
-        Step::Transient {
-            end,
-            dt,
-            output_every,
-            ..
-        } => {
-            let steps = (end / dt).round() as usize;
-            let mut a_full = k.clone();
-            for i in 0..n {
-                let d = a_full.find(i, i).expect("a diagonal");
-                a_full.val[d] += capacity[i] / dt;
-            }
-            let solver = Solver::new(
-                a_full.submatrix(&free),
-                level,
-                model.method,
-                Crossover::Unknowns(TRANSIENT_DIRECT_LIMIT),
-                None,
-            )?;
-            method = solver.method();
-            events.progress(&format!(
-                "{} unknowns, {} solver, {steps} time steps",
-                free.len(),
-                name(method)
-            ));
-            // The first output has no rates: the heat flows start at time 0.
-            emit(0.0, &temperature, Energy::default(), events)?;
-            let mut x: Vec<f64> = free.iter().map(|&i| temperature[i]).collect();
-            for s in 1..=steps {
-                if events.cancelled() {
-                    return Err("cancelled".into());
-                }
-                let previous = temperature.clone();
-                let rhs = reduced_rhs(&a_full, &load, &temperature, &free, Some((&capacity, dt)));
-                solver.solve(&rhs, &mut x, &|| events.cancelled())?;
-                for (k, &i) in free.iter().enumerate() {
-                    temperature[i] = x[k];
-                }
-                k.mul(&temperature, &mut kt);
-                let energy = energy_of(&temperature, &previous, Some(dt), &kt);
-                if s % output_every.max(1) == 0 || s == steps {
-                    let time = s as f64 * dt;
-                    events.progress(&format!("time {time:.6e} step {s} of {steps}"));
-                    emit(time, &temperature, energy, events)?;
-                }
-            }
-        }
-    }
-    if imbalance > IMBALANCE {
-        warnings.push(format!(
-            "the energy balance is off by {:.2e} of the heat flow: the linear solve is not exact",
-            imbalance
-        ));
-    }
-    Ok(Summary {
-        cells: mesh.cells.len(),
-        points: n,
-        unknowns: free.len(),
-        method,
-        imbalance,
+    let conductivity: Vec<[f64; 3]> = cell_of
+        .iter()
+        .map(|&c| model.materials[model.parts[grid.part[c] as usize].material].conductivity)
+        .collect();
+    let sizes: Vec<[f64; 3]> = cell_of.iter().map(|&c| grid.size(c)).collect();
+    let cells_flat = mesh.cells.clone();
+    Ok(Discrete {
+        mesh,
+        k,
+        volume,
+        faces: facets,
+        probes,
+        flux: Box::new(move |t| cell_flux(&cells_flat, &sizes, &conductivity, t)),
+        unknowns: Box::new(move |free| {
+            Unknowns::Grid(Level {
+                planes: level.planes.clone(),
+                points: free.iter().map(|&i| ijk[i]).collect(),
+                comp: vec![0; free.len()],
+            })
+        }),
+        line,
         warnings,
     })
+}
+
+/// The model on the 2.5D tetrahedral mesh.
+fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
+    if model.symmetry.iter().any(|&s| s) {
+        return Err(
+            "symmetry needs a model of boxes: a model with a polygon or a circle part is solved \
+             in full"
+                .into(),
+        );
+    }
+    let why = if limit.tet_points < MAX_TET_POINTS {
+        format!("{} solves", limit.memory)
+    } else {
+        "the direct solver solves in a few minutes".to_string()
+    };
+    let refusal = format!(
+        "the mesh has more than {} points, the most that {why}: use a larger max_cell or a larger \
+         max_growth",
+        limit.tet_points
+    );
+    let tm = prism::mesh(
+        &model.parts,
+        model.axis,
+        model.spacing,
+        limit.tet_points,
+        &refusal,
+    )?;
+    let n = tm.points.len();
+    let mesh = Mesh {
+        points: tm.points.clone(),
+        kind: Cell::Tet4,
+        cells: tm.tets.iter().flatten().copied().collect(),
+        part: tm.part.clone(),
+    };
+    let line = format!(
+        "mesh {} triangles x {} planes, {} tetrahedra, {} points",
+        tm.triangles,
+        tm.planes,
+        mesh.len(),
+        n
+    );
+    let mut k = Csr::pattern(n, (0..mesh.len()).map(|e| mesh.cell(e)));
+    let mut volume = Vec::with_capacity(mesh.len());
+    // The gradients of the 4 shape functions of each tetrahedron, times its conductivity.
+    let mut grads: Vec<[[f64; 3]; 4]> = Vec::with_capacity(mesh.len());
+    for (e, tet) in tm.tets.iter().enumerate() {
+        let c = model.materials[model.parts[tm.part[e] as usize].material].conductivity;
+        let (g, v) = tet_gradients(tet.map(|i| tm.points[i as usize]));
+        let mut ke = [0.0; 16];
+        for i in 0..4 {
+            for j in 0..4 {
+                ke[i * 4 + j] = v * (0..3).map(|d| c[d] * g[i][d] * g[j][d]).sum::<f64>();
+            }
+        }
+        k.add_element(tet, &ke);
+        volume.push(v);
+        grads.push(g.map(|gi| std::array::from_fn(|d| c[d] * gi[d])));
+    }
+    let faces = tet_faces(model, &tm)?;
+    let probes = model
+        .probes
+        .iter()
+        .map(|p| {
+            locate_tet(&tm, p.point).ok_or_else(|| {
+                format!(
+                    "probe {} at ({}, {}, {}) is in no part",
+                    p.name, p.point[0], p.point[1], p.point[2]
+                )
+            })
+        })
+        .collect::<Result<_, _>>()?;
+    let tets = tm.tets.clone();
+    let points = tm.points;
+    Ok(Discrete {
+        mesh,
+        k,
+        volume,
+        faces,
+        probes,
+        flux: Box::new(move |t| {
+            tets.iter()
+                .zip(&grads)
+                .map(|(tet, g)| {
+                    std::array::from_fn(|d| {
+                        -(0..4).map(|i| g[i][d] * t[tet[i] as usize]).sum::<f64>()
+                    })
+                })
+                .collect()
+        }),
+        unknowns: Box::new(move |free| Unknowns::Points(free.iter().map(|&i| points[i]).collect())),
+        line,
+        warnings: Vec::new(),
+    })
+}
+
+/// The gradients of the 4 shape functions of a tetrahedron and its volume.
+fn tet_gradients(p: [[f64; 3]; 4]) -> ([[f64; 3]; 4], f64) {
+    let e: [[f64; 3]; 3] = std::array::from_fn(|k| std::array::from_fn(|d| p[k + 1][d] - p[0][d]));
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let det = e[0][0] * (e[1][1] * e[2][2] - e[1][2] * e[2][1])
+        - e[0][1] * (e[1][0] * e[2][2] - e[1][2] * e[2][0])
+        + e[0][2] * (e[1][0] * e[2][1] - e[1][1] * e[2][0]);
+    // The rows of the inverse of the matrix with the columns e are the gradients of N1..N3.
+    let rows = [cross(e[1], e[2]), cross(e[2], e[0]), cross(e[0], e[1])];
+    let g: [[f64; 3]; 3] = rows.map(|r| r.map(|v| v / det));
+    let g0 = std::array::from_fn(|d| -(g[0][d] + g[1][d] + g[2][d]));
+    ([g0, g[0], g[1], g[2]], det / 6.0)
+}
+
+/// The points of the tetrahedron that holds `x`, with the barycentric weight of each. On a
+/// face between 2 tetrahedra, either one.
+fn locate_tet(tm: &TetMesh, x: [f64; 3]) -> Option<Vec<(u32, f64)>> {
+    // The tetrahedron where the smallest weight is largest: inside, all weights are 0 or more.
+    let mut best: Option<(f64, [f64; 4], usize)> = None;
+    for (e, tet) in tm.tets.iter().enumerate() {
+        let p = tet.map(|i| tm.points[i as usize]);
+        let (g, _) = tet_gradients(p);
+        let mut w = [0.0; 4];
+        for i in 1..4 {
+            w[i] = (0..3).map(|d| g[i][d] * (x[d] - p[0][d])).sum();
+        }
+        w[0] = 1.0 - w[1] - w[2] - w[3];
+        let worst = w.iter().copied().fold(f64::INFINITY, f64::min);
+        if best.is_none_or(|(b, ..)| worst > b) {
+            best = Some((worst, w, e));
+        }
+    }
+    let (worst, w, e) = best?;
+    (worst >= -1e-9).then(|| tm.tets[e].iter().copied().zip(w).collect())
+}
+
+/// The faces of each face set of the model on the tetrahedral mesh.
+fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    for p in &tm.points {
+        for d in 0..3 {
+            lo[d] = lo[d].min(p[d]);
+            hi[d] = hi[d].max(p[d]);
+        }
+    }
+    let size = (0..3).map(|d| hi[d] - lo[d]).fold(0.0, f64::max);
+    let t = 1e-9 * size;
+    let mut out = Vec::new();
+    for set in &model.faces {
+        let mut list = Vec::new();
+        for f in &tm.faces {
+            let p = f.nodes.map(|i| tm.points[i as usize]);
+            let u: [f64; 3] = std::array::from_fn(|d| p[1][d] - p[0][d]);
+            let w: [f64; 3] = std::array::from_fn(|d| p[2][d] - p[0][d]);
+            let n = [
+                u[1] * w[2] - u[2] * w[1],
+                u[2] * w[0] - u[0] * w[2],
+                u[0] * w[1] - u[1] * w[0],
+            ];
+            let twice = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+            let unit = n.map(|v| v / twice);
+            if !set.sides.is_empty()
+                && !set.sides.iter().any(|s| {
+                    let sign = if s.positive { 1.0 } else { -1.0 };
+                    unit[s.axis] * sign > 1.0 - 1e-9
+                })
+            {
+                continue;
+            }
+            if !set.parts.is_empty() && !set.parts.contains(&(tm.part[f.tet as usize] as usize)) {
+                continue;
+            }
+            if let Some((blo, bhi)) = set.region {
+                let c: [f64; 3] = std::array::from_fn(|d| (p[0][d] + p[1][d] + p[2][d]) / 3.0);
+                if !(0..3).all(|d| c[d] >= blo[d] - t && c[d] <= bhi[d] + t) {
+                    continue;
+                }
+            }
+            if let Some((c, r)) = set.circle {
+                let on = f.circles.iter().any(|&k| {
+                    let (cc, rr) = tm.circles[k as usize];
+                    (cc[0] - c[0]).abs() <= t && (cc[1] - c[1]).abs() <= t && (rr - r).abs() <= t
+                });
+                if !on {
+                    continue;
+                }
+            }
+            let area = 0.5 * twice;
+            let m = area / 12.0;
+            list.push(Facet {
+                nodes: [f.nodes[0], f.nodes[1], f.nodes[2], 0],
+                count: 3,
+                area,
+                mass: vec![2.0 * m, m, m, m, 2.0 * m, m, m, m, 2.0 * m],
+            });
+        }
+        let used = model.loads.iter().any(|l| match l {
+            Load::Temperature { faces, .. }
+            | Load::Flux { faces, .. }
+            | Load::Convection { faces, .. } => model.faces[*faces].name == set.name,
+            Load::Source { .. } => false,
+        });
+        if used && list.is_empty() {
+            return Err(format!(
+                "face set {} selects no face of the model: a face of the model has no part beyond it",
+                set.name
+            ));
+        }
+        out.push(list);
+    }
+    Ok(out)
 }
 
 /// The mesh of the cells of the parts of a grid, and the maps between the grid and the mesh.
@@ -515,16 +899,14 @@ pub(crate) fn number(grid: &Grid, limit: Limit) -> Result<Numbering, String> {
     let dims = grid.dims();
     let mut number = vec![u32::MAX; (dims[0] + 1) * (dims[1] + 1) * (dims[2] + 1)];
     let mut ijk: Vec<[u32; 3]> = Vec::new();
-    let mut cells: Vec<[u32; 8]> = Vec::new();
+    let mut cells: Vec<u32> = Vec::new();
     let mut cell_of: Vec<usize> = Vec::new();
     for cell in 0..grid.part.len() {
         if grid.part[cell] == VOID {
             continue;
         }
-        let corners = grid.corners(cell);
-        let mut nodes = [0u32; 8];
-        for (c, p) in corners.iter().enumerate() {
-            let slot = &mut number[grid.point_index(*p)];
+        for p in grid.corners(cell) {
+            let slot = &mut number[grid.point_index(p)];
             if *slot == u32::MAX {
                 *slot = ijk.len() as u32;
                 ijk.push([p[0] as u32, p[1] as u32, p[2] as u32]);
@@ -536,9 +918,8 @@ pub(crate) fn number(grid: &Grid, limit: Limit) -> Result<Numbering, String> {
                     ));
                 }
             }
-            nodes[c] = *slot;
+            cells.push(*slot);
         }
-        cells.push(nodes);
         cell_of.push(cell);
     }
     let points: Vec<[f64; 3]> = ijk
@@ -547,6 +928,7 @@ pub(crate) fn number(grid: &Grid, limit: Limit) -> Result<Numbering, String> {
         .collect();
     let mesh = Mesh {
         points,
+        kind: Cell::Hex8,
         cells,
         part: cell_of.iter().map(|&c| grid.part[c]).collect(),
     };
@@ -642,52 +1024,43 @@ fn face_mass(a: f64, b: f64, h: f64) -> [f64; 16] {
     m
 }
 
-/// The heat flux -k grad T at the centre of each cell.
-fn cell_flux(
-    model: &Model,
-    grid: &Grid,
-    mesh: &Mesh,
-    cell_of: &[usize],
-    t: &[f64],
-) -> Vec<[f64; 3]> {
-    cell_of
-        .iter()
-        .zip(&mesh.cells)
-        .map(|(&cell, nodes)| {
-            let m = &model.materials[model.parts[grid.part[cell] as usize].material];
-            let s = grid.size(cell);
-            let v = nodes.map(|i| t[i as usize]);
+/// The heat flux -k grad T at the centre of each box cell.
+fn cell_flux(cells: &[u32], sizes: &[[f64; 3]], k: &[[f64; 3]], t: &[f64]) -> Vec<[f64; 3]> {
+    cells
+        .chunks_exact(8)
+        .zip(sizes)
+        .zip(k)
+        .map(|((nodes, s), k)| {
+            let v: Vec<f64> = nodes.iter().map(|&i| t[i as usize]).collect();
             // The mean of the differences across each axis.
             let gx = (v[1] - v[0] + v[2] - v[3] + v[5] - v[4] + v[6] - v[7]) / (4.0 * s[0]);
             let gy = (v[3] - v[0] + v[2] - v[1] + v[7] - v[4] + v[6] - v[5]) / (4.0 * s[1]);
             let gz = (v[4] - v[0] + v[5] - v[1] + v[6] - v[2] + v[7] - v[3]) / (4.0 * s[2]);
-            let k = m.conductivity;
             [-k[0] * gx, -k[1] * gy, -k[2] * gz]
         })
         .collect()
 }
 
-/// The temperature at each probe, by the trilinear interpolation of its cell. A probe in the
-/// half that symmetry removed reads its mirror point.
+/// The points and the trilinear weights of each probe in its cell. A probe in the half that
+/// symmetry removed reads its mirror point.
 fn probes(
     model: &Model,
     grid: &Grid,
     mids: &[Option<f64>; 3],
-    node_of: &dyn Fn([usize; 3]) -> usize,
-    t: &[f64],
-) -> Result<Vec<f64>, String> {
+    node_of: &dyn Fn([usize; 3]) -> u32,
+) -> Result<Vec<Vec<(u32, f64)>>, String> {
     model
         .probes
         .iter()
         .map(|p| {
             let (cell, l, _) = locate_probe(grid, mids, p)?;
-            let corners = grid.corners(cell);
             let w = crate::hex::shape(l.map(|f| 2.0 * f - 1.0));
-            Ok(corners
+            Ok(grid
+                .corners(cell)
                 .iter()
                 .zip(w)
-                .map(|(corner, w)| w * t[node_of(*corner)])
-                .sum())
+                .map(|(corner, w)| (node_of(*corner), w))
+                .collect())
         })
         .collect()
 }
@@ -740,6 +1113,17 @@ fn check(model: &Model) -> Result<(), String> {
                 return Err(format!("face set {}: the box must have lo <= hi", f.name));
             }
         }
+        if let Some((c, r)) = f.circle {
+            if !(c.iter().all(|v| v.is_finite()) && r.is_finite() && r > 0.0) {
+                return Err(format!(
+                    "face set {}: a circle needs a finite centre and a radius above 0",
+                    f.name
+                ));
+            }
+        }
+    }
+    if model.axis > 2 {
+        return Err("the extrusion axis must be x, y or z".into());
     }
     for load in &model.loads {
         let finite = match load {
@@ -937,7 +1321,8 @@ fn check_supports(model: &Model, mesh: &Mesh, held: &[bool]) -> Result<(), Strin
         }
         i
     }
-    for c in &mesh.cells {
+    for e in 0..mesh.len() {
+        let c = mesh.cell(e);
         let a = find(&mut root, c[0] as usize);
         for &v in &c[1..] {
             let b = find(&mut root, v as usize);
@@ -949,8 +1334,8 @@ fn check_supports(model: &Model, mesh: &Mesh, held: &[bool]) -> Result<(), Strin
         let r = find(&mut root, i);
         piece_held[r] = true;
     }
-    for (e, c) in mesh.cells.iter().enumerate() {
-        let r = find(&mut root, c[0] as usize);
+    for e in 0..mesh.len() {
+        let r = find(&mut root, mesh.cell(e)[0] as usize);
         if !piece_held[r] {
             let part = &model.parts[mesh.part[e] as usize].name;
             return Err(format!(

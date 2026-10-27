@@ -1,0 +1,32 @@
+# A thick cylinder wall with a fixed inner temperature and a convection outside, against the
+# analytic answer (derivation.md). Tolerance budget: at max_cell 0.002 m the largest error of the
+# 4 checks is 4.3e-5 of the value (the heat flow); the probes are within 3.2e-5. The errors come
+# from the mesh and from the polygons of the 2 circles, and fall at second order (3 meshes,
+# derivation.md). The direct solve adds less than 1e-12. The tolerance 1e-4 holds the largest
+# error with a margin of a factor of 2.
+rel_tol = 1e-4
+abs_tol = 0.0
+
+[middle]
+value = 58.136421500
+case = "pipe"
+file = "probes.txt"
+column = "middle"
+
+[middle_45]
+value = 58.136421500
+case = "pipe"
+file = "probes.txt"
+column = "middle_45"
+
+[outer]
+value = 40.833228321
+case = "pipe"
+file = "probes.txt"
+column = "outer"
+
+[heat_flow]
+value = 0.209438455
+case = "pipe"
+file = "energy.txt"
+column = "fixed"

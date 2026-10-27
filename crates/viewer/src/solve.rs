@@ -12,9 +12,13 @@ use crate::results::Loader;
 /// The largest grid that the browser solves. Reason: wasm32 addresses at most 4 GiB. In Chrome, a
 /// solve of 1,030,301 points grew the memory of the worker to 1,821 MiB (steady) and 2,121 MiB
 /// (transient). So 1,000,000 points use about 2 GiB, and half of the 4 GiB stays free for the
-/// growth of a list and for a browser that gives less.
+/// growth of a list and for a browser that gives less. The limit of a mesh of tetrahedra has the
+/// same ratio to the native limit (1,000,000 / 4,000,000 of 400,000). Reason: the native direct
+/// solve of 336,141 points used 2.7 GB, so 400,000 points do not fit in the worker, and there is
+/// no measurement of the direct solve in wasm32.
 pub const BROWSER: Limit = Limit {
     points: 1_000_000,
+    tet_points: 100_000,
     memory: "the 4 GiB memory of wasm32 in a browser",
 };
 
@@ -49,8 +53,10 @@ pub fn solve(
     let summary = heat::solve_within(&model, limit, &mut out).map_err(|e| {
         if e.contains(limit.memory) {
             format!(
-                "{e}, or solve the case with fh run (up to {} points)",
-                heat::LAPTOP.points
+                "{e}, or solve the case with fh run (up to {} points of a box grid and {} of a \
+                 mesh of tetrahedra)",
+                heat::LAPTOP.points,
+                heat::LAPTOP.tet_points
             )
         } else {
             e
@@ -121,6 +127,7 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("unknowns")), "{lines:?}");
         let small = Limit {
             points: 10,
+            tet_points: BROWSER.tet_points,
             memory: BROWSER.memory,
         };
         let e = solve(WALL, small, &mut |_| {}, &mut |_| {}).unwrap_err();

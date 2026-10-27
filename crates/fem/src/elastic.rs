@@ -37,7 +37,7 @@ use crate::heat::{
 };
 use crate::hex::{shape, Hex, Orthotropic, Stiffness, BITS};
 use crate::multigrid::{Cells, Level};
-use crate::solve::{Crossover, Method, Solver, PCG_MAX_ITER};
+use crate::solve::{Crossover, Method, Solver, Unknowns, PCG_MAX_ITER};
 use crate::sparse::Csr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -246,6 +246,7 @@ pub struct Summary {
 /// as n log n, so 300,000 points (900,000 unknowns) need about 3 GB and a few minutes.
 const MAX_POINTS: heat::Limit = heat::Limit {
     points: 300_000,
+    tet_points: 0,
     memory: "the memory of a laptop",
 };
 
@@ -325,6 +326,11 @@ pub fn solve_within(
     }
     let numbering = number(&grid, MAX_POINTS)?;
     let (mesh, ijk, cell_of) = (&numbering.mesh, &numbering.ijk, &numbering.cell_of);
+    let hexes: Vec<[u32; 8]> = mesh
+        .cells
+        .chunks_exact(8)
+        .map(|c| c.try_into().expect("8 points"))
+        .collect();
     let n = ijk.len();
     let dims = grid.dims();
     events.mesh(mesh)?;
@@ -333,7 +339,7 @@ pub fn solve_within(
         dims[0] + 1,
         dims[1] + 1,
         dims[2] + 1,
-        mesh.cells.len(),
+        mesh.len(),
         n
     ));
     let node_of = |p: [usize; 3]| numbering.number[grid.point_index(p)] as usize;
@@ -369,7 +375,7 @@ pub fn solve_within(
     let dofs = |nodes: &[u32; 8]| -> [u32; 24] {
         std::array::from_fn(|k| 3 * nodes[k / 3] + (k % 3) as u32)
     };
-    let elements: Vec<[u32; 24]> = mesh.cells.iter().map(dofs).collect();
+    let elements: Vec<[u32; 24]> = hexes.iter().map(dofs).collect();
     let mut k = Csr::pattern(3 * n, elements.iter().map(|e| &e[..]));
     let mut force = vec![0.0; 3 * n];
     let mut gravity = [0.0; 3];
@@ -392,7 +398,7 @@ pub fn solve_within(
         let size = grid.size(cell);
         let hex = Hex::new(size, &stiffness[model.parts[part].material], m.expansion);
         k.add_element(&elements[e], &hex.k);
-        let nodes = &mesh.cells[e];
+        let nodes = &hexes[e];
         let t: [f64; 8] = nodes.map(|v| dt[v as usize]);
         let volume = size[0] * size[1] * size[2];
         for r in 0..24 {
@@ -558,7 +564,7 @@ pub fn solve_within(
     let flat = aspect > MULTIGRID_ASPECT;
     let solver = Solver::new(
         k.submatrix(&free),
-        level,
+        Unknowns::Grid(level),
         model.method,
         Crossover::Flops {
             flops: DIRECT_FLOPS,
@@ -678,7 +684,7 @@ pub fn solve_within(
             return Err("cancelled".into());
         }
         let hex = element_hex(cell);
-        let nodes = &mesh.cells[e];
+        let nodes = &hexes[e];
         let ue: [f64; 24] = std::array::from_fn(|r| u[3 * nodes[r / 3] as usize + r % 3]);
         let te: [f64; 8] = nodes.map(|v| dt[v as usize]);
         let part = grid.part[cell] as usize;
@@ -803,7 +809,7 @@ pub fn solve_within(
         reactions,
     })?;
     Ok(Summary {
-        cells: mesh.cells.len(),
+        cells: mesh.len(),
         points: n,
         unknowns: free.len(),
         method,
@@ -1182,7 +1188,7 @@ fn check_supports(model: &Model, mesh: &Mesh, fixed: &[Option<f64>]) -> Result<(
         }
         i
     }
-    for c in &mesh.cells {
+    for c in mesh.cells.chunks_exact(8) {
         let a = find(&mut root, c[0] as usize);
         for &v in &c[1..] {
             let b = find(&mut root, v as usize);
@@ -1228,7 +1234,7 @@ fn check_supports(model: &Model, mesh: &Mesh, fixed: &[Option<f64>]) -> Result<(
         }
     }
     let mut checked = vec![false; n];
-    for (e, c) in mesh.cells.iter().enumerate() {
+    for (e, c) in mesh.cells.chunks_exact(8).enumerate() {
         let p = find(&mut root, c[0] as usize);
         if checked[p] {
             continue;
@@ -1331,6 +1337,19 @@ fn check(model: &Model) -> Result<Vec<Stiffness>, String> {
                 .map_err(|e| format!("material {}: {e}", m.name))
         })
         .collect::<Result<Vec<_>, _>>()?;
+    if let Some(p) = model.parts.iter().find(|p| p.footprint.is_some()) {
+        return Err(format!(
+            "part {}: a static step needs parts that are boxes: a polygon or a circle part has \
+             only heat steps",
+            p.name
+        ));
+    }
+    if let Some(f) = model.faces.iter().find(|f| f.circle.is_some()) {
+        return Err(format!(
+            "face set {}: `circle` selects the faces on a circle outline, and no part has one",
+            f.name
+        ));
+    }
     for m in &model.materials {
         if !m.expansion.iter().all(|a| a.is_finite()) {
             return Err(format!("material {}: the expansion must be finite", m.name));

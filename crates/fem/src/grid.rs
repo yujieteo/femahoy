@@ -16,6 +16,8 @@
 //! G. E. Forsythe and W. R. Wasow, Finite-Difference Methods for Partial Differential Equations,
 //! Wiley 1960.
 
+use crate::prism::Footprint;
+
 /// A part: a box of 1 material.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Part {
@@ -26,6 +28,9 @@ pub struct Part {
     pub priority: i64,
     pub lo: [f64; 3],
     pub hi: [f64; 3],
+    /// The shape across the extrusion axis of the model, for a part that is not a box. The part
+    /// is then the prism of the footprint between `lo` and `hi` on the extrusion axis.
+    pub footprint: Option<Footprint>,
 }
 
 /// The rules of the cell sizes.
@@ -410,7 +415,7 @@ pub fn tol(p: &[f64]) -> f64 {
 }
 
 /// The graded planes of 1 axis.
-fn axis_planes(
+pub(crate) fn axis_planes(
     parts: &[Part],
     d: usize,
     spacing: Spacing,
@@ -521,6 +526,7 @@ mod tests {
             priority,
             lo,
             hi,
+            footprint: None,
         }
     }
 

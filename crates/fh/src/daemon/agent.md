@@ -13,7 +13,7 @@ You are the agent of femahoy, an FEA and CFD workflow. The person watches each o
 
 ## From a request to results
 
-Heat conduction, or a linear static stress or deformation (also from a temperature), in parts that are boxes: use the built-in grid solver first, and skip the steps below. It needs no CAD, no mesh and no CalculiX. The person can also solve the `grid.toml` of a heat step in the page or in a report, and `fh run` solves a static step. Run `fh guide grid`. Use the steps below for a curved or sloped face, contact, radiation, plasticity, large deformation, vibration, buckling or a material that changes with the temperature.
+Heat conduction in parts that are boxes, or prisms of polygons and circles (with holes) along 1 axis, for example layers, plates with holes, pipes and extruded sections, or a linear static stress or deformation (also from a temperature) in parts that are boxes: use the built-in grid solver first, and skip the steps below. It needs no CAD, no mesh and no CalculiX. The person can also solve the `grid.toml` of a heat step in the page or in a report, and `fh run` solves a static step. Run `fh guide grid`. Use the steps below for another curved or sloped face, contact, radiation, plasticity, large deformation, vibration, buckling or a material that changes with the temperature.
 
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. The STEP unit of build123d is mm.
 2. Mesh: `fh mesh part.step --size H -o mesh.inp ...` writes the nodes, the C3D10 elements and the sets that you name. Start with a coarse mesh, so that the solve takes about 1 minute. See "fh mesh sets" below.

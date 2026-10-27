@@ -9,6 +9,7 @@ use fh_fem::elastic::{
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{FaceSet, Mesh, Probe};
 use fh_fem::hex::Orthotropic;
+use fh_fem::prism::{Footprint, Outline};
 use fh_fem::solve::{Method, PCG_MAX_ITER};
 
 #[derive(Default)]
@@ -55,6 +56,7 @@ fn part(name: &str, material: usize, lo: [f64; 3], hi: [f64; 3]) -> Part {
         priority: 0,
         lo,
         hi,
+        footprint: None,
     }
 }
 
@@ -64,6 +66,7 @@ fn side(name: &str, s: &str) -> FaceSet {
         sides: vec![Side::parse(s).unwrap()],
         region: None,
         parts: vec![],
+        circle: None,
     }
 }
 
@@ -162,6 +165,7 @@ fn a_thin_clamped_plate_bends_as_a_kirchhoff_plate() {
                         .to_vec(),
                     region: None,
                     parts: vec![],
+                    circle: None,
                 },
                 side("top", "z+"),
             ],
@@ -341,6 +345,7 @@ fn a_quarter_model_gives_the_values_of_the_full_model() {
                 sides: vec![Side::parse("z-").unwrap()],
                 region: Some(([3.5, 3.5, 0.0], [4.5, 4.5, 0.0])),
                 parts: vec![],
+                circle: None,
             },
             side("bottom", "z-"),
         ],
@@ -393,6 +398,21 @@ fn a_model_that_can_move_is_refused() {
     m.loads[0] = fix(0, Some(0.0), None, Some(0.0));
     let e = solve(&m, &mut Record::default()).unwrap_err();
     assert!(e.contains("move along y"), "{e}");
+}
+
+/// The static step solves only on the box grid, so a prism part is refused, not solved as a box.
+#[test]
+fn a_prism_part_is_refused() {
+    let mut m = cantilever(10.0, 1.0, 1.0, 0.5, 2, 1.0);
+    m.parts[0].footprint = Some(Footprint {
+        outline: Outline::Circle {
+            centre: [0.5, 0.5],
+            radius: 0.5,
+        },
+        holes: vec![],
+    });
+    let e = solve(&m, &mut Record::default()).unwrap_err();
+    assert!(e.contains("parts that are boxes"), "{e}");
 }
 
 /// 2 parts of 1 material are 1 solid: the line where they meet on a free face is not an edge
