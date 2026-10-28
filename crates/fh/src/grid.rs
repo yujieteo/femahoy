@@ -1,6 +1,6 @@
-//! The built-in solvers of femahoy (heat conduction, linear elasticity, unit cells, DC
-//! conduction and electrostatics, transmission lines and frequency-domain electromagnetics), in
-//! the process of `fh`.
+//! The built-in solvers of femahoy (heat conduction, linear elasticity, natural frequencies, unit
+//! cells, DC conduction and electrostatics, transmission lines and frequency-domain
+//! electromagnetics), in the process of `fh`.
 //!
 //! A grid case is a folder with `grid.toml`: the parts as boxes or as prisms of a polygon or a
 //! circle with holes, the materials, the named face sets, the loads, the step, the probes and the
@@ -43,6 +43,13 @@
 //!   whether the point is singular, with the largest value away from the singular points;
 //! - `<run-dir>/grid/log.txt`.
 //!
+//! For the modes of a structure:
+//!
+//! - `step-K.vtu` and `results.pvd`: the shape `U` of mode K, with K as the time;
+//! - `<run-dir>/grid/modes.txt`: the frequency, the eigenvalue, the participation factors and the
+//!   effective mass fractions of each mode;
+//! - `<run-dir>/grid/log.txt`.
+//!
 //! For a homogenize step (a periodic unit cell):
 //!
 //! - `step-1.vtu` and `results.pvd`: the mesh of the cell with `part`;
@@ -67,8 +74,9 @@ use std::time::{Duration, Instant};
 
 use fh_core::grid::{
     dc_grid, dc_probes_text, em_frame_grid, frame_grid, is_line, matrix_text, modes_row,
-    ports_head, ports_row, probe_head, probe_row, read, sparams_head, sparams_row, terminals_text,
-    touchstone_head, touchstone_rows, vtk_type, Case, MODES_HEAD,
+    ports_head, ports_row, probe_head, probe_row, read, sparams_head, sparams_row,
+    structure_modes_row, terminals_text, touchstone_head, touchstone_rows, vtk_type, Case,
+    MODES_HEAD, STRUCTURE_MODES_HEAD,
 };
 use fh_core::line;
 use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry};
@@ -77,6 +85,7 @@ use fh_fem::elastic::{self, Solution};
 use fh_fem::em;
 use fh_fem::heat::{self, Events, Frame, Mesh};
 use fh_fem::homog::{self, diagonal, engineering, orthotropic, Effective, COUPLING};
+use fh_fem::modes;
 
 use crate::ccx::{prepare_run_dir, CancelToken, PVD_FILE};
 use crate::vtu::{write_pvd, write_vtu};
@@ -194,6 +203,23 @@ pub fn run_with(
                 warnings,
             ))
         }),
+        Case::Modes(model) => {
+            let mut modal = Modal {
+                out: &mut out,
+                table: STRUCTURE_MODES_HEAD.to_owned(),
+            };
+            modes::solve(model, &mut modal).map(|s| {
+                let table = std::mem::take(&mut modal.table);
+                modal.out.tables.push((MODES, table));
+                (
+                    format!(
+                        "{} cells, {} points, {} unknowns, {} modes in {} iterations, mass {:.6e}",
+                        s.cells, s.points, s.unknowns, model.count, s.iterations, s.mass
+                    ),
+                    s.warnings,
+                )
+            })
+        }
         Case::Em(_) | Case::Dc(_) => unreachable!("run_em and run_dc solve these cases"),
     };
     let (summary, warnings) = stopped(result, cancel, out.end, timeout)?;
@@ -204,7 +230,7 @@ pub fn run_with(
     let write = |name: &str, text: &str| {
         fs::write(work.join(name), text).map_err(|e| format!("{name}: {e}"))
     };
-    if !matches!(model, Case::Homogenize(_)) {
+    if !matches!(model, Case::Homogenize(_) | Case::Modes(_)) {
         write(PROBES, &out.probes)?;
     }
     if matches!(model, Case::Heat(_)) {
@@ -764,6 +790,41 @@ fn material_text(eff: &Effective) -> (String, Vec<String>) {
         text.push_str(&format!("specific_heat = {c:.6e}\n"));
     }
     (text, warnings)
+}
+
+/// The writer of a modes step: the output and the mode table.
+struct Modal<'a, 'b> {
+    out: &'a mut Output<'b>,
+    table: String,
+}
+
+impl modes::Events for Modal<'_, '_> {
+    fn cancelled(&self) -> bool {
+        self.out.cancelled()
+    }
+
+    fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
+        self.out.mesh = Some(mesh.clone());
+        Ok(())
+    }
+
+    fn progress(&mut self, text: &str) {
+        self.out.line(text);
+    }
+
+    /// The mode number is the time of its `step-N.vtu`: the rigid modes all have the frequency 0.
+    fn mode(&mut self, mode: &modes::Mode) -> Result<(), String> {
+        let k = self.out.entries.len() + 1;
+        self.table.push_str(&structure_modes_row(k, mode));
+        let m = mode.mass_fraction;
+        self.out.line(&format!(
+            "mode {k}: {:.6e} Hz, effective mass fraction x {:.4} y {:.4} z {:.4}",
+            mode.frequency, m[0], m[1], m[2]
+        ));
+        let shape = mode.shape.iter().flatten().copied().collect();
+        self.out
+            .vtu(k as f64, vec![Field::f64("U", 3, shape)], Vec::new())
+    }
 }
 
 /// The writer of a static step: the output and the model, for the names.

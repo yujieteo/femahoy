@@ -239,6 +239,8 @@ fn report(
                  effective material for a grid.toml), or for electromagnetics {0}/{9} (the \
                  S-parameters), {0}/{10} (beta and the impedance of each port), \
                  {0}/sparams.sNp (Touchstone) or {0}/{11} (the frequency and Q of each mode), or \
+                 for the modes of a structure {0}/{11} (the frequency, the participation and the \
+                 mass fraction of each mode), or \
                  for a conduction or an electrostatic step {0}/{12} (the voltage and the current \
                  or the charge of each terminal) and {0}/{13} or {0}/{14} (the matrix of the \
                  terminals), and {0}/log.txt (the grid, the solver and the warnings)",

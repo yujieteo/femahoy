@@ -62,7 +62,7 @@ impl Subprocess {
 
     /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS or topology case of each
     /// check at the same time, each in its own folder in `run`, and read the value of each check in
-    /// the last row of its table.
+    /// its row of its table (the last row by default).
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
@@ -180,13 +180,13 @@ impl Subprocess {
                     .binary_search(&folder)
                     .expect("each folder is in the list");
                 let work = solves[at].clone()?;
-                let Field::Table { file, column } = &r.quantity.field else {
+                let Field::Table { file, column, row } = &r.quantity.field else {
                     unreachable!("a case with tables has table checks only")
                 };
                 let path = run.join(folder).join(work).join(file);
                 let text = std::fs::read_to_string(&path)
                     .map_err(|e| format!("{}: {e}", path.display()))?;
-                last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))
+                table_value(&text, column, *row).map_err(|e| format!("{folder}: {file}: {e}"))
             })
             .collect()
     }
@@ -227,13 +227,13 @@ impl Solve for Native {
                 if !out.join(crate::grid::WORK).is_dir() {
                     crate::grid::run(&dir, &out).map_err(|e| format!("grid {folder}: {e}"))?;
                 }
-                let Field::Table { file, column } = &r.quantity.field else {
+                let Field::Table { file, column, row } = &r.quantity.field else {
                     unreachable!("a case with tables has table checks only")
                 };
                 let path = out.join(crate::grid::WORK).join(file);
                 let text = std::fs::read_to_string(&path)
                     .map_err(|e| format!("{}: {e}", path.display()))?;
-                last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))
+                table_value(&text, column, *row).map_err(|e| format!("{folder}: {file}: {e}"))
             })
             .collect()
     }
@@ -243,7 +243,14 @@ impl Solve for Native {
 /// `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
 /// `# Time Cd Cd(f) Cd(r) Cl ...`. A table with no comment line, for example a watch point of
 /// preCICE, names the columns in its first line. Each column holds one number in each row.
+#[cfg(test)]
 fn last_row(text: &str, name: &str) -> Result<f64, String> {
+    table_value(text, name, None)
+}
+
+/// The value in column `name` of the row `row` (from 1) of a table, else of its last row, as in
+/// `last_row`. A mode table of the grid solver has 1 row for each mode.
+fn table_value(text: &str, name: &str, row: Option<usize>) -> Result<f64, String> {
     let header = text
         .lines()
         .rfind(|l| l.starts_with('#'))
@@ -254,16 +261,21 @@ fn last_row(text: &str, name: &str) -> Result<f64, String> {
         .iter()
         .position(|w| *w == name)
         .ok_or_else(|| format!("no column {name}"))?;
-    let row: Vec<&str> = text
+    let mut rows = text
         .lines()
-        .rfind(|l| !l.starts_with('#') && !l.trim().is_empty() && !std::ptr::eq(*l, header))
-        .ok_or("no row")?
-        .split_whitespace()
-        .collect();
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty() && !std::ptr::eq(*l, header));
+    let row: Vec<&str> = match row {
+        None => rows.next_back().ok_or("no row")?,
+        Some(r) => rows
+            .nth(r - 1)
+            .ok_or_else(|| format!("the table has no row {r}"))?,
+    }
+    .split_whitespace()
+    .collect();
     // A vector, for example `(1 0 0)`, is 3 words in 1 column.
     if row.len() != names.len() {
         return Err(format!(
-            "the last row has {} words for {} columns. Write each vector field as its components \
+            "the row has {} words for {} columns. Write each vector field as its components \
              with the function object `components`",
             row.len(),
             names.len()
@@ -271,7 +283,7 @@ fn last_row(text: &str, name: &str) -> Result<f64, String> {
     }
     let value: f64 = row[column]
         .parse()
-        .map_err(|_| format!("the last row has no number in column {name}"))?;
+        .map_err(|_| format!("the row has no number in column {name}"))?;
     if !value.is_finite() {
         return Err(format!("{name} is {value}, which is not finite"));
     }
@@ -460,12 +472,23 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::last_row;
+    use super::{last_row, table_value};
 
     const TABLE: &str = "# Force and moment coefficients\n# magUInf : 1\n#\n\
         # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \tCmPitch\n\
         1         \t0.75  \t-0.35  \t1.1   \t1.47  \t0.2    \n\
         1500      \t0.0094\t0.004  \t0.005 \t0.4448\t-0.1151\n";
+
+    /// A check with `row` reads that row, for example 1 mode of a mode table.
+    #[test]
+    fn a_value_with_a_row_is_in_that_row() {
+        let table = "# mode frequency\n1 0.0\n2 120.5\n3 131.0\n";
+        assert_eq!(table_value(table, "frequency", Some(2)), Ok(120.5));
+        assert_eq!(table_value(table, "frequency", None), Ok(131.0));
+        assert!(table_value(table, "frequency", Some(4))
+            .unwrap_err()
+            .contains("no row 4"));
+    }
 
     #[test]
     fn a_value_is_the_column_of_its_name_in_the_last_row() {

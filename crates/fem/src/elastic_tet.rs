@@ -492,7 +492,7 @@ pub(crate) fn solve(
 }
 
 /// The corner of the mesh at `x`, for a point support.
-fn corner_at(tm: &TetMesh, x: [f64; 3]) -> Result<usize, String> {
+pub(crate) fn corner_at(tm: &TetMesh, x: [f64; 3]) -> Result<usize, String> {
     let (lo, hi) = bounds(&tm.points);
     let span = (0..3).map(|d| hi[d] - lo[d]).fold(0.0, f64::max);
     let dist = |p: &[f64; 3]| (0..3).map(|d| (p[d] - x[d]).abs()).fold(0.0, f64::max);

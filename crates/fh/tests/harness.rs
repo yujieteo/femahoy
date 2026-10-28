@@ -127,7 +127,8 @@ fn a_table_check_names_an_openfoam_getdp_or_lammps_case() {
         case.references[1].quantity.field,
         Field::Table {
             file: "b.txt".into(),
-            column: "Cd".into()
+            column: "Cd".into(),
+            row: None,
         }
     );
 

@@ -250,7 +250,7 @@ pub struct Summary {
 /// ignored test `crossover` (Apple M-series, 1 thread) factored a thin plate of 361,800
 /// unknowns in 10 s with 1.2e8 factor entries (1 GB). The factor of a thin model grows about
 /// as n log n, so 300,000 points (900,000 unknowns) need about 3 GB and a few minutes.
-const MAX_POINTS: heat::Limit = heat::Limit {
+pub(crate) const MAX_POINTS: heat::Limit = heat::Limit {
     points: 300_000,
     tet_points: 0,
     memory: "the memory of a laptop",
@@ -1405,7 +1405,7 @@ fn free_motion(g: &[[f64; 6]; 6]) -> Option<&'static str> {
 }
 
 /// The grid point at `x`, after the mirror into the solved part at each plane of symmetry.
-fn grid_point(
+pub(crate) fn grid_point(
     grid: &Grid,
     numbering: &Numbering,
     mids: &[Option<f64>; 3],
@@ -1442,7 +1442,7 @@ fn grid_point(
 }
 
 /// The checks of the model that the grid does not need, and the stiffness of each material.
-fn check(model: &Model) -> Result<Vec<Stiffness>, String> {
+pub(crate) fn check(model: &Model) -> Result<Vec<Stiffness>, String> {
     let stiffness = model
         .materials
         .iter()

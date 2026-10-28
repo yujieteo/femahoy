@@ -30,6 +30,10 @@
 //!   mesh with 10-node tetrahedra (`tet10`).
 //! - `pmultigrid`: the p-multigrid preconditioner of the 10-node tetrahedra, with the linear
 //!   tetrahedra as the coarse level.
+//! - `eigen`: shift-invert subspace iteration for the lowest eigenpairs of K x = λ M x, and the
+//!   dense generalized problem with Cholesky and cyclic Jacobi.
+//! - `modes`: the natural frequencies, mode shapes and participation factors of a structure, on
+//!   the grid or on the 10-node tetrahedra, with the consistent mass of `hex` and `tet10`.
 //! - `homog`: the effective conductivity, stiffness and expansion of a periodic unit cell.
 //! - `em`: frequency-domain electromagnetics with edge elements on the extruded mesh: wave
 //!   ports and S-parameters over a frequency sweep, walls, absorbing layers, resonant modes.
@@ -43,6 +47,7 @@
 pub mod cholesky;
 pub mod complex;
 pub mod dc;
+pub mod eigen;
 pub mod elastic;
 pub mod elastic_tet;
 pub mod em;
@@ -54,6 +59,7 @@ pub mod hx;
 pub mod ldlt;
 pub mod line;
 pub mod mesh2d;
+pub mod modes;
 pub mod mtl;
 pub mod multigrid;
 pub mod nonlinear;

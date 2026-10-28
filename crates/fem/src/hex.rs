@@ -18,6 +18,10 @@
 //!
 //! The 2 x 2 x 2 Gauss rule integrates each matrix of a box cell exactly.
 //!
+//! The consistent mass is that of the trilinear field of the 8 corners: the incompatible modes
+//! have no mass, as in Wilson et al. They are internal strain modes, not a displacement of the
+//! cell that a frequency solve must carry.
+//!
 //! Sources: E. L. Wilson, R. L. Taylor, W. P. Doherty and J. Ghaboussi, Incompatible
 //! displacement models, in Numerical and Computer Methods in Structural Mechanics, Academic Press
 //! 1973, 43-57; R. L. Taylor, P. J. Beresford and E. L. Wilson, A non-conforming element for
@@ -331,6 +335,31 @@ impl Hex {
     }
 }
 
+/// The consistent mass of the 24 corner unknowns of a box with the side lengths `size` and the
+/// density `density` (row-major): the integral of density N_i N_j on each component. The
+/// trilinear functions are products of 1 function of each axis, so each entry is the product of
+/// the 1D masses a/3 (the same end) and a/6 (2 ends).
+pub fn mass(size: [f64; 3], density: f64) -> [f64; 576] {
+    let mut m = [0.0; 576];
+    for i in 0..8 {
+        for j in 0..8 {
+            let v: f64 = (0..3)
+                .map(|d| {
+                    if BITS[i][d] == BITS[j][d] {
+                        size[d] / 3.0
+                    } else {
+                        size[d] / 6.0
+                    }
+                })
+                .product();
+            for a in 0..3 {
+                m[(3 * i + a) * 24 + 3 * j + a] = density * v;
+            }
+        }
+    }
+    m
+}
+
 /// The Cholesky factor of a 9 x 9 symmetric positive definite matrix (lower triangle).
 fn cholesky9(a: &[[f64; 9]; 9]) -> [[f64; 9]; 9] {
     let mut l = [[0.0; 9]; 9];
@@ -373,6 +402,29 @@ mod tests {
     use super::*;
 
     const SIZE: [f64; 3] = [2.0, 0.5, 0.1];
+
+    /// The mass of the corners equals the 2-point Gauss integral of rho N_i N_j, which is exact
+    /// for the trilinear functions, and its sum on each component is the mass of the cell.
+    #[test]
+    fn the_mass_is_the_integral_of_the_corner_functions() {
+        let m = mass(SIZE, 7.0);
+        let jac = SIZE[0] * SIZE[1] * SIZE[2] / 8.0;
+        for i in 0..8 {
+            for j in 0..8 {
+                let exact: f64 = gauss()
+                    .iter()
+                    .map(|&xi| 7.0 * shape(xi)[i] * shape(xi)[j] * jac)
+                    .sum();
+                assert!((m[(3 * i) * 24 + 3 * j] - exact).abs() < 1e-14);
+                assert_eq!(m[(3 * i) * 24 + 3 * j + 1], 0.0);
+            }
+        }
+        let total: f64 = (0..24)
+            .flat_map(|r| (0..24).map(move |c| (r, c)))
+            .map(|(r, c)| m[r * 24 + c])
+            .sum();
+        assert!((total - 3.0 * 7.0 * 8.0 * jac).abs() < 1e-12);
+    }
 
     fn steel() -> Stiffness {
         Orthotropic::isotropic(200.0, 0.3).stiffness().unwrap()

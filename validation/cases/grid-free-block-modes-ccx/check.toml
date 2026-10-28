@@ -1,0 +1,53 @@
+# The 6 elastic modes after the 6 rigid modes of a free steel block, against CalculiX 2.23 with
+# C3D20 elements on the same problem (ccx/mesh.py with H = 1.25 mm: 55,857 nodes). See
+# derivation.md.
+# Tolerance budget: the largest error of the grid solver at max_cell 1.25 mm against the
+# reference is 0.27 % (mode 12; the grid converges at second order, and its own extrapolation
+# agrees with CalculiX to 0.04 %). The largest change of the CalculiX reference from H = 2.5 mm
+# to 1.25 mm is 0.013 %. Their sum is 0.29 %. The tolerance 0.5 % holds the sum with a margin of
+# 1.7. The 6 rigid modes have their check in crates/fem/tests/modes.rs (an eigenvalue below
+# 1e-6 of the first elastic one), because a reference of 0 needs an absolute tolerance.
+rel_tol = 0.005
+abs_tol = 0.0
+
+[f7]
+value = 11961.42
+case = "block"
+file = "modes.txt"
+column = "frequency"
+row = 7
+
+[f8]
+value = 13530.06
+case = "block"
+file = "modes.txt"
+column = "frequency"
+row = 8
+
+[f9]
+value = 25595.73
+case = "block"
+file = "modes.txt"
+column = "frequency"
+row = 9
+
+[f10]
+value = 28841.65
+case = "block"
+file = "modes.txt"
+column = "frequency"
+row = 10
+
+[f11]
+value = 31574.5
+case = "block"
+file = "modes.txt"
+column = "frequency"
+row = 11
+
+[f12]
+value = 31633.88
+case = "block"
+file = "modes.txt"
+column = "frequency"
+row = 12

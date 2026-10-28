@@ -35,6 +35,8 @@ pub enum Field {
         file: String,
         /// The name of the column in the last comment line of the table.
         column: String,
+        /// The row (from 1, after the header), else the last row.
+        row: Option<usize>,
     },
 }
 
@@ -261,7 +263,7 @@ impl Reader<'_> {
         };
         let value = self.finite(get("value")?, "value")?;
         if table.contains_key("case") {
-            only(&["value", "case", "file", "column"])?;
+            only(&["value", "case", "file", "column", "row"])?;
             let case_item = get("case")?;
             let case = self.string(case_item, "case")?;
             if !plain(case) {
@@ -282,6 +284,17 @@ impl Reader<'_> {
                 ));
             }
             let column = self.string(get("column")?, "column")?;
+            let row = match table.get("row") {
+                None => None,
+                Some(item) => Some(
+                    item.as_integer()
+                        .and_then(|v| usize::try_from(v).ok())
+                        .filter(|&v| v >= 1)
+                        .ok_or_else(|| {
+                            self.err(Some(item), "`row` must be a whole number, 1 or more".into())
+                        })?,
+                ),
+            };
             return Ok(Reference {
                 name: name.to_owned(),
                 value,
@@ -290,6 +303,7 @@ impl Reader<'_> {
                     field: Field::Table {
                         file: file.to_owned(),
                         column: column.to_owned(),
+                        row,
                     },
                     component: 0,
                     op: Op::Value,
