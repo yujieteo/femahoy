@@ -33,7 +33,7 @@ impl Events for Record {
 
 fn run(model: &Model, method: Option<Method>) -> (Summary, Vec<Mode>) {
     let mut r = Record::default();
-    let s = solve_within(model, method, LAPTOP, &mut r).unwrap();
+    let s = solve_within(model, method, LAPTOP, elastic::DIRECT_ENTRIES, &mut r).unwrap();
     (s, r.modes)
 }
 

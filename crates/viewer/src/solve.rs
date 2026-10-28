@@ -63,6 +63,12 @@ pub fn read_case(text: &str) -> Result<(Case, String), String> {
 /// measurement of the line solve in wasm32.
 pub const BROWSER_LINE_POINTS: usize = 250_000;
 
+/// The most entries of the direct factor of a structure in the browser: a quarter of
+/// `elastic::DIRECT_ENTRIES` (about 0.5 GB), the ratio of the structure limits. Above it the
+/// solver is multigrid. Reason: the native ceiling of 2 GB of factor, with the subspace vectors of
+/// 100 modes and the matrices, can pass the 4 GiB of wasm32.
+pub const BROWSER_DIRECT_ENTRIES: u64 = elastic::DIRECT_ENTRIES / 4;
+
 const MEMORY: &str = "the 4 GiB memory of wasm32 in a browser";
 
 /// The largest models of a solve: heat, electromagnetics, and a structure (static and modes).
@@ -71,8 +77,8 @@ const MEMORY: &str = "the 4 GiB memory of wasm32 in a browser";
 /// wasm32. The iterative solve of 39,818 points used 1.16 GB. Reason for the structure limits: a
 /// quarter of the native limits (`elastic::LAPTOP`), the ratio of the heat limits of the box
 /// grid. The native limit of 300,000 points of the grid needs about 3 GB, and a static solve of
-/// 183,000 points of 10-node tetrahedra used 2.3 GB, so the browser limits use under 1 GB. The
-/// subspace vectors of 100 modes of 75,000 points use 1.1 GB more, below the 2 GB refusal of
+/// 183,000 points of 10-node tetrahedra used 2.3 GB, so the browser limits, with a direct factor
+/// of at most `BROWSER_DIRECT_ENTRIES`, use about 1 GB. The subspace vectors of 100 modes of 75,000 points use 1.1 GB more, below the 2 GB refusal of
 /// `fh_fem::eigen::fits`. There is no measurement in wasm32.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limits {
@@ -234,7 +240,7 @@ fn solve_static(
     let summary = elastic::solve_within(
         model,
         limit,
-        elastic::DIRECT_ENTRIES,
+        BROWSER_DIRECT_ENTRIES,
         fh_fem::solve::PCG_MAX_ITER,
         &mut out,
     )
@@ -300,7 +306,7 @@ fn solve_modes(
         on_line,
         on_step,
     };
-    let summary = modes::solve_within(model, None, limit, &mut out)
+    let summary = modes::solve_within(model, None, limit, BROWSER_DIRECT_ENTRIES, &mut out)
         .map_err(|e| structure_refusal(e, limit))?;
     (out.on_line)(&format!(
         "{} cells, {} points, {} unknowns, {} modes in {} iterations, mass {:.6e}",

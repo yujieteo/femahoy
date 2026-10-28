@@ -96,12 +96,15 @@ const SHIFT: f64 = 1e-8;
 /// iteration solves 2 q vectors in each iteration, so the factor pays for itself. A cube on
 /// the grid (86,490 unknowns, 6 modes, 196 solves) took 25.7 s direct and 150.8 s with
 /// multigrid PCG; a round bar of 10-node tetrahedra (116,040 unknowns, 2 modes, 40 solves)
-/// took 38 s direct and 216 s with p-multigrid PCG.
-const CROSSOVER: Crossover = Crossover::Flops {
-    flops: f64::INFINITY,
-    entries: elastic::DIRECT_ENTRIES,
-    flat: true,
-};
+/// took 38 s direct and 216 s with p-multigrid PCG. Above `entries` entries of the factor, the
+/// solver is multigrid.
+fn crossover(entries: u64) -> Crossover {
+    Crossover::Flops {
+        flops: f64::INFINITY,
+        entries,
+        flat: true,
+    }
+}
 
 /// The most modes. Reason: each iteration solves for 2 vectors of each mode, so 100 modes cost
 /// 200 solves an iteration; a user who needs more modes needs a code with Lanczos.
@@ -109,15 +112,23 @@ pub const MAX_MODES: usize = 100;
 
 /// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
-    solve_within(model, None, elastic::LAPTOP, events)
+    solve_within(
+        model,
+        None,
+        elastic::LAPTOP,
+        elastic::DIRECT_ENTRIES,
+        events,
+    )
 }
 
 /// Solve the model with the linear solver `method`, else the size of the model chooses it, and
-/// refuse a model with more points than `limit`.
+/// refuse a model with more points than `limit`. The solver is direct up to `entries` entries of
+/// the factor.
 pub fn solve_within(
     model: &Model,
     method: Option<Method>,
     limit: heat::Limit,
+    entries: u64,
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
     let s = &model.structure;
@@ -182,7 +193,7 @@ pub fn solve_within(
     for (v, w) in a.val.iter_mut().zip(&mf.val) {
         *v -= shift * w;
     }
-    let solver = solver(a, &free, shift, method)?;
+    let solver = solver(a, &free, shift, method, crossover(entries))?;
     let used = solver.method();
     events.progress(&format!(
         "{} unknowns, {} solver, shift {shift:.3e}",
@@ -257,7 +268,7 @@ pub fn solve_within(
 
 /// The factory of the solver of K - shift M on the free unknowns.
 type MakeSolver<'a> =
-    Box<dyn FnOnce(Csr, &[usize], f64, Option<Method>) -> Result<Solver, String> + 'a>;
+    Box<dyn FnOnce(Csr, &[usize], f64, Option<Method>, Crossover) -> Result<Solver, String> + 'a>;
 
 /// The matrices of a mesh: K and M of all unknowns, the fixed unknowns, the mass of the model
 /// and the factory of the solver.
@@ -372,7 +383,7 @@ fn grid_assembly<'a>(
         &|x| grid_point(&grid, &numbering, &mids, x),
     )?;
     let mesh = mesh.clone();
-    let solver: MakeSolver = Box::new(move |a, free, shift, method| {
+    let solver: MakeSolver = Box::new(move |a, free, shift, method, crossover| {
         let level = Level {
             planes: grid.planes.clone(),
             points: free.iter().map(|&i| numbering.ijk[i / 3]).collect(),
@@ -396,7 +407,7 @@ fn grid_assembly<'a>(
                 .collect(),
             element: &element,
         };
-        Solver::new(a, Unknowns::Grid(level), method, CROSSOVER, Some(cells))
+        Solver::new(a, Unknowns::Grid(level), method, crossover, Some(cells))
     });
     Ok(Assembly {
         mesh,
@@ -475,7 +486,7 @@ fn tet_assembly<'a>(
         },
         &|x| corner_at(&tm, x),
     )?;
-    let solver: MakeSolver = Box::new(move |a, free, _, method| {
+    let solver: MakeSolver = Box::new(move |a, free, _, method, crossover| {
         let (p, coarse) = prolongation(&q.points, q.corners, &q.edges, free);
         Solver::new(
             a,
@@ -485,7 +496,7 @@ fn tet_assembly<'a>(
                 coarse,
             },
             method,
-            CROSSOVER,
+            crossover,
             None,
         )
     });
