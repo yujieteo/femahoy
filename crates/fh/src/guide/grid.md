@@ -1,16 +1,17 @@
-# Heat conduction, stress, unit cells, DC conduction, transmission lines and electromagnetics with the built-in grid solver
+# Heat conduction, stress, natural frequencies, unit cells, DC conduction, transmission lines and electromagnetics with the built-in grid solver
 
 Use the built-in grid solver first for:
 
 - heat conduction, steady or transient, in parts that are boxes, or prisms of a polygon or a circle (with holes) along 1 axis, also with a radiation to the ambient and with a conductivity and a specific heat that change with the temperature. Examples: layers and laminates, plates with holes, pipes, fins, and extruded sections; hot parts in vacuum or in still air (space hardware, furnaces, lamps, heaters), and materials over a large range of temperature.
 - linear static stress and deformation in the same parts, with isotropic or orthotropic materials, from supports, pressures, forces, gravity and a temperature change (a uniform temperature, or the steady heat solve of the same case). Examples: frames and laminates of boxes, plates with holes, tubes under pressure, round bars, and stiffened extruded sections.
+- the natural frequencies, mode shapes and participation factors of the same parts, free or with fixed supports (`type = "modes"`, see "Modes step" below).
 - DC current conduction and electrostatics in the same parts: the resistance between face sets, the current density and the Joule heat, the temperature of the Joule heat (also with an electric conductivity that changes with the temperature) and its thermal stress, and the capacitance matrix of conductors in a dielectric. Examples: resistors, bus bars, fuses, heaters, traces with vias, contact spots, electrodes and capacitors. It needs no GetDP. See "DC conduction and electrostatics" below.
 - the homogenized (effective) material of a periodic unit cell: the conductivity, the stiffness and the expansion of a composite, a laminate, a lattice, a foam or a woven or stacked structure that repeats in x, y and z (`type = "homogenize"`, see "Unit cells" below).
 - linear frequency-domain electromagnetics in the same shapes: the S-parameters of waveguides, transmission lines, steps, vias, filters and transitions with wave ports, and the resonant frequencies and Q of cavities. It needs no gmsh and no GetDP. See "Electromagnetics" below.
 
 It needs no CAD, no mesh and no CalculiX, and a model of 100,000 unknowns solves in about 1 to 5 s. Write `CASE/grid.toml` and solve it with `fh run CASE`.
 
-Use CAD, `fh mesh` and CalculiX when the model has a curved or sloped face that is not a prism along the axis (for example a sphere, a fillet or a cone), contact, radiation between surfaces (with view factors), plasticity or another nonlinear elastic material, large deformation, vibration or buckling, or elastic constants that change with the temperature. The grid solver refuses those inputs. It never approximates them.
+Use CAD, `fh mesh` and CalculiX when the model has a curved or sloped face that is not a prism along the axis (for example a sphere, a fillet or a cone), contact, radiation between surfaces (with view factors), plasticity or another nonlinear elastic material, large deformation, forced or transient vibration, modes with a prestress, buckling, or elastic constants that change with the temperature. The grid solver refuses those inputs. It never approximates them.
 
 1. Top: `units = "SI-mm"` or `"SI-m"`. All numbers are in these units. In SI-m, a conductivity is in W/(m K), a flux in W/m2, a film coefficient in W/(m2 K), a density in kg/m3, a specific heat in J/(kg K), a source in W/m3, a modulus and a pressure in Pa, and a length in m. In SI-mm, a conductivity is in mW/(mm K), a flux in mW/mm2, a film coefficient in mW/(mm2 K), a density in t/mm3, a specific heat in mJ/(t K), a source in mW/mm3, a modulus and a pressure in MPa, and a length in mm. For example, steel in SI-mm has `density = 7.85e-9`, `specific_heat = 4.6e8` and `youngs_modulus = 210e3`, not 7850, 460 and 210e9.
 2. `[grid]`: `max_cell` (the largest cell edge), `max_growth` (the largest size ratio of 2 adjacent cells, 1.3 by default), `min_cells` (the fewest cells through each part along each axis of the grid, 2 by default), `axis` (the extrusion axis of the polygon and circle parts: `"x"`, `"y"` or `"z"`, `"z"` by default) and `symmetry` (for example `["x", "y"]`).
@@ -19,7 +20,7 @@ Use CAD, `fh mesh` and CalculiX when the model has a curved or sloped face that 
    - isotropic: `youngs_modulus` and `poisson_ratio`, 1 number each.
    - orthotropic, with the material axes on x, y and z: `youngs_modulus` (x, y, z), `poisson_ratio` (xy, xz, yz) and `shear_modulus` (xy, xz, yz), 3 numbers each. `poisson_ratio` xy is −(strain y) / (strain x) under a stress in x.
    - `expansion`: the expansion coefficient, 1 number, or 3 numbers for x, y and z (0 by default).
-   - `density`, for gravity.
+   - `density`, for gravity and for a modes step.
    - `conductivity`, only when the step has heat loads.
 4. `[part.NAME]`: `material`, and the shape:
    - A box: `x`, `y`, `z`, each the range of the box, for example `x = [0.0, 10.0]`.
@@ -41,6 +42,7 @@ Use CAD, `fh mesh` and CalculiX when the model has a curved or sloped face that 
    - `type = "steady"`.
    - `type = "transient"` with `end`, `dt`, `initial` (the temperature at time 0) and `output_every` (the number of time steps between 2 outputs, 1 by default). The transient step is backward Euler: give at least 10 steps over the time that the result needs.
    - `type = "homogenize"`: the effective material of a periodic unit cell (see "Unit cells").
+   - `type = "modes"` with `count` (1 by default, at most 100): the `count` lowest natural frequencies of the structure (a material with `youngs_modulus` makes `"modes"` a structure step). Each material needs `density`. The only loads are supports: `ux`, `uy` and `uz` of 0 with `face` or `point`. With no support, the first 6 modes are the rigid motions at 0 Hz. A modes step has no `symmetry`, no probe and no surface.
    - `type = "static"`, with `reference_temperature` (the temperature with no thermal strain) for a thermal load. The thermal load is `temperature` (the same temperature at each point), or the heat loads of the case: then the solver first solves the steady temperature, and the stress uses it. The stress does not change the temperature.
 8. `[probe.NAME]`: `point = [x, y, z]`. The probe gives the values at that point.
 9. `[surface.NAME]`, static step only: `face`, a face set whose faces all have 1 normal direction. The result gives the shape of the surface after the deformation.
@@ -49,7 +51,7 @@ The solver refuses a model that can move as a rigid body, and the message names 
 
 A static step with flat cells uses the direct solver up to a factor of 2.5e8 entries (2 GB), and multigrid above it. A cell of a box grid is flat when its longest side is more than 2 times its shortest side. A tetrahedron is flat when it is more than 8 times wider across the axis than it is high along the axis. Multigrid can stop with no result on very flat cells. Then put more cells through the thin layer (a smaller `max_cell` or a larger `min_cells`), or make the model smaller.
 
-The person can also solve the `grid.toml` of a heat or an electromagnetic step in the browser, with no `fh run`: the button "Solve grid.toml" of the page of `fh serve` and of a report solves the file in the page and shows the progress, the fields and the probe table. It gives the same probes as `fh run`. The browser solves up to 1,000,000 points on a box grid and 100,000 on a mesh of tetrahedra (the 4 GiB memory of wasm32), `fh run` up to 4,000,000 and 400,000. The browser does not solve a static step. Use `fh run` for it. Give the person the case folder when they want to change and solve the case themselves.
+The person can also solve the `grid.toml` of a heat or an electromagnetic step in the browser, with no `fh run`: the button "Solve grid.toml" of the page of `fh serve` and of a report solves the file in the page and shows the progress, the fields and the probe table. It gives the same probes as `fh run`. The browser solves up to 1,000,000 points on a box grid and 100,000 on a mesh of tetrahedra (the 4 GiB memory of wasm32), `fh run` up to 4,000,000 and 400,000. The browser does not solve a static step or a modes step of a structure. Use `fh run` for it. Give the person the case folder when they want to change and solve the case themselves.
 
 ## Results
 
@@ -67,6 +69,14 @@ Static step: the displacement `U`, the stress `S` and the strain `E` (xx, yy, zz
   - `NAME.shape`: `convex` (it bulges outward), `concave` or `flat`, from the mean curvature.
 - `grid/reactions.txt`: 1 row with `NAME.fx`, `NAME.fy` and `NAME.fz`, the force of the supports of each fixed face set. With symmetry, the force is that of the solved part.
 - `grid/stress.txt`: the largest von Mises stress of each part and its point, and `singular`: `re-entrant`, `material-edge`, `support-edge` or `no`. A singular point is a re-entrant edge or corner, an edge where 2 materials meet, or the edge of a face that holds 2 or more components. There, the exact stress is infinite, so the value grows when the cells get smaller. Do not report it as a stress. The columns `regular_*` give the largest value away from those points.
+
+Modes step: the mode shape `U` of each mode, with the mode number as the time. Each shape is normalized to a modal mass of 1 (φᵀ M φ = 1), so its size is not a displacement. Compare only the shapes, or the ratios of 2 points.
+
+- `grid/modes.txt`: 1 row for each mode with `frequency` (Hz), `eigenvalue` ((2π f)²), `gamma_x`, `gamma_y` and `gamma_z` (the participation factors φᵀ M r of a unit rigid motion along each axis), and `mass_fraction_x`, `mass_fraction_y` and `mass_fraction_z` (the effective mass γ² over the total mass). For a base motion along an axis, add modes until the sum of the mass fractions along that axis is near 1, for example 0.9.
+
+The modes solver is direct while the factor has at most 2.5e8 entries, and else PCG with multigrid. Each solve of the subspace iteration is 1 solve with the same factor, so the direct solver is the faster solver while it fits. A free box of 43,659 unknowns gives 12 modes in about 11 s direct.
+
+The modes solver refuses a model when its subspace vectors need more than 2 GB: 3 × p × n × 8 bytes, with n the unknowns and p = max(2 count, count + 8). For example, 100 modes of 900,000 unknowns need 4.3 GB. Ask for fewer modes, or use CalculiX `*FREQUENCY`.
 
 `grid/log.txt` has the solver lines and the warnings. Read the warnings: an energy imbalance or a force imbalance above 1e-6 is a warning, and so is a stress peak at a singular point.
 
@@ -135,7 +145,7 @@ Do a mesh study with 2 values of `max_cell`. A sharp corner of a conductor makes
 
 ## Electromagnetics
 
-A `grid.toml` with `[step] type = "frequency"` or `"modes"` is an electromagnetic case. The solver finds the electric field E with first-order edge elements on a mesh of tetrahedra (also for a model of boxes only), with the time factor exp(jωt). Use GetDP (`fh guide electromagnetics`) for eddy currents, magnetostatics, the time domain, nonlinear materials, and curved or sloped shapes that are not prisms along the axis. The solver refuses those inputs with a message that names GetDP.
+A `grid.toml` with `[step] type = "frequency"` is an electromagnetic case. So is `"modes"`, when no material has `youngs_modulus`. The solver finds the electric field E with first-order edge elements on a mesh of tetrahedra (also for a model of boxes only), with the time factor exp(jωt). Use GetDP (`fh guide electromagnetics`) for eddy currents, magnetostatics, the time domain, nonlinear materials, and curved or sloped shapes that are not prisms along the axis. The solver refuses those inputs with a message that names GetDP.
 
 1. Top: `units = "SI-mm"` or `"SI-m"` gives the unit of the lengths only. A frequency is in Hz, a conductivity in S/m, an impedance in ohm, and beta in rad/m.
 2. `[grid]`: `max_cell`, `max_growth`, `min_cells` and `axis`, as for heat. No `symmetry`: use a magnetic or an electric wall on the plane of symmetry. Give at least 10 cells in each wavelength in each material at the highest frequency. The solver warns below 8.

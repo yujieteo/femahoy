@@ -1,0 +1,21 @@
+# A free steel block 60 x 40 x 10 mm with no support: its 6 rigid modes and its first 6 elastic
+# modes. The reference is CalculiX on the same problem (../ccx). See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 1.25
+
+[material.steel]
+youngs_modulus = 210e3
+poisson_ratio = 0.3
+density = 7.85e-9
+
+[part.block]
+material = "steel"
+x = [0.0, 60.0]
+y = [0.0, 40.0]
+z = [0.0, 10.0]
+
+[step]
+type = "modes"
+count = 12

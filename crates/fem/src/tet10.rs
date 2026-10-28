@@ -15,6 +15,10 @@
 //! between the 4 corners (the field of the heat solve on the linear mesh), so its load
 //! integrand is also quadratic and exact.
 //!
+//! The consistent mass is the integral of density N_i N_j. Each product is a polynomial of degree
+//! 4 in the volume coordinates, and the integral of L1^a L2^b L3^c L4^d over the cell is
+//! 6 V a! b! c! d! / (a + b + c + d + 3)!, so the entries are exact multiples of V / 420.
+//!
 //! The consistent load of a uniform force per volume is -V/20 at each corner and V/5 at each
 //! edge point, and that of a uniform force per area on a flat 6-point triangle is 0 at each
 //! corner and A/3 at each edge point.
@@ -161,6 +165,51 @@ impl Tet10 {
         }
         (e, s)
     }
+
+    /// The consistent mass of the 30 unknowns with the density `density` (row-major).
+    pub fn mass(&self, density: f64) -> Vec<f64> {
+        // The scalar mass in units of V / 420: a corner with itself 6 and with another corner 1;
+        // a corner with an edge point -4 on its edge and -6 off it; an edge point with itself
+        // 32, with an edge that shares a corner 16, and with the opposite edge 8.
+        let scalar = |i: usize, j: usize| -> f64 {
+            match (i < 4, j < 4) {
+                (true, true) => {
+                    if i == j {
+                        6.0
+                    } else {
+                        1.0
+                    }
+                }
+                (true, false) | (false, true) => {
+                    let (c, e) = if i < 4 { (i, j - 4) } else { (j, i - 4) };
+                    if EDGES[e].contains(&c) {
+                        -4.0
+                    } else {
+                        -6.0
+                    }
+                }
+                (false, false) => {
+                    let (a, b) = (EDGES[i - 4], EDGES[j - 4]);
+                    match a.iter().filter(|c| b.contains(c)).count() {
+                        2 => 32.0,
+                        1 => 16.0,
+                        _ => 8.0,
+                    }
+                }
+            }
+        };
+        let w = density * self.volume / 420.0;
+        let mut m = vec![0.0; 900];
+        for i in 0..10 {
+            for j in 0..10 {
+                let v = w * scalar(i, j);
+                for a in 0..3 {
+                    m[(3 * i + a) * 30 + 3 * j + a] = v;
+                }
+            }
+        }
+        m
+    }
 }
 
 /// The volume coordinates of the 10 points of a tetrahedron.
@@ -241,5 +290,50 @@ impl Quadratic {
             middle(nodes[1], nodes[2]),
             middle(nodes[2], nodes[0]),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Each entry of the mass is the exact integral of rho N_i N_j: the polynomial in the volume
+    /// coordinates, term by term, with 6 V a! b! c! d! / (a + b + c + d + 3)!.
+    #[test]
+    fn the_mass_is_the_exact_integral_of_the_functions() {
+        let tet = Tet10::new([
+            [0.0, 0.0, 0.0],
+            [2.0, 0.1, 0.0],
+            [0.3, 1.5, 0.2],
+            [0.1, 0.4, 0.9],
+        ]);
+        let m = tet.mass(3.0);
+        // Each function as terms (coefficient, exponents of L1..L4).
+        let terms = |i: usize| -> Vec<(f64, [u32; 4])> {
+            let unit = |k: usize, p: u32| std::array::from_fn(|c| if c == k { p } else { 0 });
+            if i < 4 {
+                vec![(2.0, unit(i, 2)), (-1.0, unit(i, 1))]
+            } else {
+                let [a, b] = EDGES[i - 4];
+                vec![(4.0, std::array::from_fn(|c| u32::from(c == a || c == b)))]
+            }
+        };
+        let fact = |n: u32| (1..=n).map(f64::from).product::<f64>();
+        for i in 0..10 {
+            for j in 0..10 {
+                let mut exact = 0.0;
+                for (ci, ei) in terms(i) {
+                    for (cj, ej) in terms(j) {
+                        let e: [u32; 4] = std::array::from_fn(|c| ei[c] + ej[c]);
+                        let num: f64 = e.iter().map(|&p| fact(p)).product();
+                        exact += ci * cj * 6.0 * tet.volume * num / fact(e.iter().sum::<u32>() + 3);
+                    }
+                }
+                assert!(
+                    (m[3 * i * 30 + 3 * j] - 3.0 * exact).abs() < 1e-12,
+                    "{i} {j}"
+                );
+            }
+        }
     }
 }

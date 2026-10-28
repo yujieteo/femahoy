@@ -62,7 +62,7 @@ impl Subprocess {
 
     /// Solve the OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS or topology case of each
     /// check at the same time, each in its own folder in `run`, and read the value of each check in
-    /// the last row of its table.
+    /// its row of its table (the last row by default).
     fn tables(&self, case: &Case, input: &Path, run: &Path) -> Result<Vec<f64>, String> {
         let mut folders: Vec<&str> = case
             .references
@@ -180,13 +180,13 @@ impl Subprocess {
                     .binary_search(&folder)
                     .expect("each folder is in the list");
                 let work = solves[at].clone()?;
-                let Field::Table { file, column } = &r.quantity.field else {
+                let Field::Table { file, column, row } = &r.quantity.field else {
                     unreachable!("a case with tables has table checks only")
                 };
                 let path = run.join(folder).join(work).join(file);
                 let text = std::fs::read_to_string(&path)
                     .map_err(|e| format!("{}: {e}", path.display()))?;
-                last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))
+                table_value(&text, column, *row).map_err(|e| format!("{folder}: {file}: {e}"))
             })
             .collect()
     }
@@ -227,23 +227,24 @@ impl Solve for Native {
                 if !out.join(crate::grid::WORK).is_dir() {
                     crate::grid::run(&dir, &out).map_err(|e| format!("grid {folder}: {e}"))?;
                 }
-                let Field::Table { file, column } = &r.quantity.field else {
+                let Field::Table { file, column, row } = &r.quantity.field else {
                     unreachable!("a case with tables has table checks only")
                 };
                 let path = out.join(crate::grid::WORK).join(file);
                 let text = std::fs::read_to_string(&path)
                     .map_err(|e| format!("{}: {e}", path.display()))?;
-                last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))
+                table_value(&text, column, *row).map_err(|e| format!("{folder}: {file}: {e}"))
             })
             .collect()
     }
 }
 
-/// The value in column `name` of the last row of the table of a function object, for example
-/// `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
+/// The value in column `name` of the row `row` (from 1) of a table, else of its last row, for
+/// example `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
 /// `# Time Cd Cd(f) Cd(r) Cl ...`. A table with no comment line, for example a watch point of
-/// preCICE, names the columns in its first line. Each column holds one number in each row.
-fn last_row(text: &str, name: &str) -> Result<f64, String> {
+/// preCICE, names the columns in its first line. Each column holds one number in each row. A mode
+/// table of the grid solver has 1 row for each mode.
+fn table_value(text: &str, name: &str, row: Option<usize>) -> Result<f64, String> {
     let header = text
         .lines()
         .rfind(|l| l.starts_with('#'))
@@ -254,16 +255,21 @@ fn last_row(text: &str, name: &str) -> Result<f64, String> {
         .iter()
         .position(|w| *w == name)
         .ok_or_else(|| format!("no column {name}"))?;
-    let row: Vec<&str> = text
+    let mut rows = text
         .lines()
-        .rfind(|l| !l.starts_with('#') && !l.trim().is_empty() && !std::ptr::eq(*l, header))
-        .ok_or("no row")?
-        .split_whitespace()
-        .collect();
+        .filter(|l| !l.starts_with('#') && !l.trim().is_empty() && !std::ptr::eq(*l, header));
+    let row: Vec<&str> = match row {
+        None => rows.next_back().ok_or("no row")?,
+        Some(r) => rows
+            .nth(r - 1)
+            .ok_or_else(|| format!("the table has no row {r}"))?,
+    }
+    .split_whitespace()
+    .collect();
     // A vector, for example `(1 0 0)`, is 3 words in 1 column.
     if row.len() != names.len() {
         return Err(format!(
-            "the last row has {} words for {} columns. Write each vector field as its components \
+            "the row has {} words for {} columns. Write each vector field as its components \
              with the function object `components`",
             row.len(),
             names.len()
@@ -271,7 +277,7 @@ fn last_row(text: &str, name: &str) -> Result<f64, String> {
     }
     let value: f64 = row[column]
         .parse()
-        .map_err(|_| format!("the last row has no number in column {name}"))?;
+        .map_err(|_| format!("the row has no number in column {name}"))?;
     if !value.is_finite() {
         return Err(format!("{name} is {value}, which is not finite"));
     }
@@ -286,7 +292,7 @@ fn block_of(field: &Field) -> (&'static str, usize, usize) {
         Field::S => ("stresses", 2, 6),
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
-        // `mode_value`, `last_row` and `rms_values` read these. They have no block of a set.
+        // `mode_value`, `table_value` and `rms_values` read these. They have no block of a set.
         Field::Freq | Field::Buckle | Field::ARms | Field::Table { .. } => ("", 0, 0),
     }
 }
@@ -460,30 +466,43 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::last_row;
+    use super::table_value;
 
     const TABLE: &str = "# Force and moment coefficients\n# magUInf : 1\n#\n\
         # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \tCmPitch\n\
         1         \t0.75  \t-0.35  \t1.1   \t1.47  \t0.2    \n\
         1500      \t0.0094\t0.004  \t0.005 \t0.4448\t-0.1151\n";
 
+    /// A check with `row` reads that row, for example 1 mode of a mode table.
+    #[test]
+    fn a_value_with_a_row_is_in_that_row() {
+        let table = "# mode frequency\n1 0.0\n2 120.5\n3 131.0\n";
+        assert_eq!(table_value(table, "frequency", Some(2)), Ok(120.5));
+        assert_eq!(table_value(table, "frequency", None), Ok(131.0));
+        assert!(table_value(table, "frequency", Some(4))
+            .unwrap_err()
+            .contains("no row 4"));
+    }
+
     #[test]
     fn a_value_is_the_column_of_its_name_in_the_last_row() {
-        assert_eq!(last_row(TABLE, "Cl"), Ok(0.4448));
-        assert_eq!(last_row(TABLE, "Cd"), Ok(0.0094));
-        assert_eq!(last_row(TABLE, "CmPitch"), Ok(-0.1151));
-        assert!(last_row(TABLE, "Cs").unwrap_err().contains("no column Cs"));
+        assert_eq!(table_value(TABLE, "Cl", None), Ok(0.4448));
+        assert_eq!(table_value(TABLE, "Cd", None), Ok(0.0094));
+        assert_eq!(table_value(TABLE, "CmPitch", None), Ok(-0.1151));
+        assert!(table_value(TABLE, "Cs", None)
+            .unwrap_err()
+            .contains("no column Cs"));
         let cut = TABLE.replace("\t-0.1151", "");
-        assert!(last_row(&cut, "Cl")
+        assert!(table_value(&cut, "Cl", None)
             .unwrap_err()
             .contains("5 words for 6 columns"));
-        assert!(last_row("# Time Cd\n", "Cd")
+        assert!(table_value("# Time Cd\n", "Cd", None)
             .unwrap_err()
             .contains("no row"));
-        assert!(last_row("# Time Cd\n1 nan\n", "Cd")
+        assert!(table_value("# Time Cd\n1 nan\n", "Cd", None)
             .unwrap_err()
             .contains("not finite"));
-        assert!(last_row("# Time Cd\n1 x\n", "Cd")
+        assert!(table_value("# Time Cd\n1 x\n", "Cd", None)
             .unwrap_err()
             .contains("no number in column Cd"));
     }
@@ -494,10 +513,12 @@ mod tests {
         let table = "  Time  Coordinate0  Displacement0  Displacement1\n\
             \x20 0.0e+00   6.0e-01   0.0e+00   0.0e+00\n\
             \x20 1.6e+01   6.0e-01   2.2e-05   8.1e-04";
-        assert_eq!(last_row(table, "Displacement1"), Ok(8.1e-4));
-        assert!(last_row(&table[..table.find('\n').unwrap()], "Time")
-            .unwrap_err()
-            .contains("no row"));
+        assert_eq!(table_value(table, "Displacement1", None), Ok(8.1e-4));
+        assert!(
+            table_value(&table[..table.find('\n').unwrap()], "Time", None)
+                .unwrap_err()
+                .contains("no row")
+        );
     }
 
     /// `surfaceFieldValue` writes a vector as `(x y z)`. Thus the words of a row do not match the
@@ -505,12 +526,12 @@ mod tests {
     #[test]
     fn a_vector_column_is_an_error() {
         let table = "# Time\tmax(U)\tmax(Ux)\n20\t(3.53 0.09 0)\t3.53\n";
-        assert!(last_row(table, "max(Ux)")
+        assert!(table_value(table, "max(Ux)", None)
             .unwrap_err()
             .contains("components"));
         let table = "# Time\tareaNormalAverage(grad(T))\n2000\t4.5308763737e+00\n";
         assert_eq!(
-            last_row(table, "areaNormalAverage(grad(T))"),
+            table_value(table, "areaNormalAverage(grad(T))", None),
             Ok(4.5308763737)
         );
     }

@@ -1,0 +1,30 @@
+# A steel beam 100 x 10 x 5 mm, clamped at x = 0: its first natural frequency. The reference is
+# the Euler-Bernoulli beam (Blevins, Table 8-1). See ../derivation.md.
+units = "SI-mm"
+
+[grid]
+max_cell = 2.5
+
+[material.steel]
+youngs_modulus = 210e3
+poisson_ratio = 0.3
+density = 7.85e-9
+
+[part.beam]
+material = "steel"
+x = [0.0, 100.0]
+y = [0.0, 10.0]
+z = [0.0, 5.0]
+
+[face.root]
+side = "x-"
+
+[[load]]
+ux = 0.0
+uy = 0.0
+uz = 0.0
+face = "root"
+
+[step]
+type = "modes"
+count = 1

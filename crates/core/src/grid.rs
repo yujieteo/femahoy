@@ -10,6 +10,7 @@ use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{Cell, FaceSet, Frame, Load, Material, Mesh, Model, Probe, Step};
 use fh_fem::hex::Orthotropic;
 use fh_fem::homog;
+use fh_fem::modes;
 use fh_fem::mtl;
 use fh_fem::nonlinear::Table;
 use fh_fem::prism::{Footprint, Outline};
@@ -20,14 +21,16 @@ use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_TETRA};
 /// The text of an error about a key that the heat, stress and unit cell solver does not have.
 const CLASS: &str = "The built-in grid solver solves heat conduction (with a radiation to the \
     ambient and a conductivity and a specific heat that change with the temperature), linear \
-    static thermo-elasticity, DC current conduction with its Joule heat (also with an electric \
-    conductivity that changes with the temperature), electrostatics with the capacitance matrix, \
-    and linear frequency-domain electromagnetics (`[step] type = \"frequency\"` or \
-    `\"modes\"`), in boxes and in prisms of polygons and circles along 1 axis, the homogenized \
-    material of a periodic unit cell, and with a [line] table the per-length parameters of a \
-    transmission line. For other curved or sloped shapes, contact, radiation between surfaces, \
-    plasticity, large deformation, vibration or elastic materials that change with the \
-    temperature, use gmsh and CalculiX (fh guide grid)";
+    static thermo-elasticity, the natural frequencies and mode shapes of a linear elastic \
+    structure (`[step] type = \"modes\"` with youngs_modulus), DC current conduction with its \
+    Joule heat (also with an electric conductivity that changes with the temperature), \
+    electrostatics with the capacitance matrix, and linear frequency-domain electromagnetics \
+    (`[step] type = \"frequency\"` or `\"modes\"`), in boxes and in prisms of polygons and \
+    circles along 1 axis, the homogenized material of a periodic unit cell, and with a [line] \
+    table the per-length parameters of a transmission line. For other curved or sloped shapes, \
+    contact, radiation between surfaces, plasticity, large deformation, forced or transient \
+    vibration, modes with a prestress, or elastic materials that change with the temperature, use \
+    gmsh and CalculiX (fh guide grid)";
 
 /// The Stefan-Boltzmann constant in W/(m2 K4) (CODATA 2018, exact in the SI of 2019).
 const STEFAN_BOLTZMANN: f64 = 5.670374419e-8;
@@ -57,6 +60,8 @@ pub enum Case {
     Em(em::Model),
     /// A DC current conduction (with its Joule heat) or an electrostatic field.
     Dc(dc::Model),
+    /// The natural frequencies and mode shapes of a structure.
+    Modes(modes::Model),
 }
 
 /// The keys of a material that a static step reads.
@@ -69,8 +74,8 @@ struct Elastic {
     density: f64,
 }
 
-/// The case of `grid.toml` and its unit system. A `[step]` of type `frequency` or `modes` is an
-/// electromagnetic case.
+/// The case of `grid.toml` and its unit system. A `[step]` of type `frequency`, or of type
+/// `modes` with no material that has `youngs_modulus`, is an electromagnetic case.
 pub fn read(text: &str) -> Result<(Case, String), String> {
     let doc = Document::parse(text).map_err(|e| e.message().to_owned())?;
     let top: &dyn TableLike = doc.as_table();
@@ -79,7 +84,16 @@ pub fn read(text: &str) -> Result<(Case, String), String> {
         .and_then(Item::as_table_like)
         .and_then(|s| s.get("type"))
         .and_then(Item::as_str);
-    if matches!(kind, Some("frequency" | "modes")) {
+    let structure = top
+        .get("material")
+        .and_then(Item::as_table_like)
+        .is_some_and(|t| {
+            t.iter().any(|(_, m)| {
+                m.as_table_like()
+                    .is_some_and(|m| m.contains_key("youngs_modulus"))
+            })
+        });
+    if kind == Some("frequency") || (kind == Some("modes") && !structure) {
         let (model, units) = read_em(top)?;
         return Ok((Case::Em(model), units));
     }
@@ -152,21 +166,35 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
         "steady",
         "transient",
         "static",
+        "modes",
         "homogenize",
         "conduction",
         "electrostatic",
     ];
     if !kinds.contains(&kind.as_str()) {
         return Err(format!(
-            "[step]: `type` must be steady, transient, static, homogenize, conduction or \
+            "[step]: `type` must be steady, transient, static, modes, homogenize, conduction or \
              electrostatic, not {kind}. {CLASS}"
         ));
     }
-    let is_static = kind == "static";
+    let is_modes = kind == "modes";
+    // A modes step reads the supports and the materials of a static step.
+    let is_static = kind == "static" || is_modes;
     let is_charge = kind == "electrostatic";
     // The steps that take a voltage and a current.
-    let is_current = kind == "conduction" || is_static;
+    let is_current = kind == "conduction" || kind == "static";
     let is_cell = kind == "homogenize";
+    if is_modes {
+        only(step, "[step]", &["type", "count"], CLASS)?;
+        for key in ["probe", "surface"] {
+            if top.contains_key(key) {
+                return Err(format!(
+                    "a modes step has no `{key}`: its results are the frequencies and the mode \
+                     shapes"
+                ));
+            }
+        }
+    }
     if is_cell {
         only(step, "[step]", &["type"], CLASS)?;
         for key in ["face", "load", "probe", "surface"] {
@@ -357,6 +385,27 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             ]
             .into_iter()
             .find(|k| item.contains_key(k));
+            if is_modes {
+                if let Some(key) = [
+                    "temperature",
+                    "flux",
+                    "convection",
+                    "emissivity",
+                    "source",
+                    "pressure",
+                    "traction",
+                    "gravity",
+                    "body_force",
+                ]
+                .into_iter()
+                .find(|k| item.contains_key(k))
+                {
+                    return Err(format!(
+                        "{where_}: a modes step has only supports, ux, uy and uz held at 0, not \
+                         `{key}`"
+                    ));
+                }
+            }
             if let Some(key) = elastic_key.filter(|_| !is_static) {
                 return Err(format!(
                     "{where_}: `{key}` is a load of a static step: [step] type = \"static\""
@@ -435,6 +484,11 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                     optional(item, "uy", &where_)?,
                     optional(item, "uz", &where_)?,
                 ];
+                if is_modes && value.iter().flatten().any(|&v| v != 0.0) {
+                    return Err(format!(
+                        "{where_}: a support of a modes step holds ux, uy or uz at 0"
+                    ));
+                }
                 if item.contains_key("point") {
                     only(item, &where_, &["ux", "uy", "uz", "point"], CLASS)?;
                     forces.push(elastic::Load::Point {
@@ -482,6 +536,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                             "voltage or current, or temperature, flux, convection, \
                                          emissivity or source",
                         "electrostatic" => "voltage or charge",
+                        "modes" => "ux, uy or uz held at 0, with face or point",
                         _ => "temperature, flux, convection, emissivity or source",
                     }
                 ));
@@ -547,6 +602,52 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                 materials: cell_materials,
                 spacing,
                 axis,
+            }),
+            units,
+        ));
+    }
+    if is_modes {
+        let count = match step.get("count") {
+            None => 1,
+            Some(item) => item
+                .as_integer()
+                .and_then(|v| usize::try_from(v).ok())
+                .filter(|&v| v >= 1)
+                .ok_or("[step]: `count` must be a whole number, 1 or more")?,
+        };
+        let materials = materials
+            .iter()
+            .zip(elastic)
+            .map(|(m, e)| {
+                let where_ = format!("[material.{}]", m.name);
+                if e.density.is_nan() || e.density <= 0.0 {
+                    return Err(format!("{where_}: a modes step needs `density`"));
+                }
+                Ok(elastic::Material {
+                    name: m.name.clone(),
+                    elastic: orthotropic(&e, &where_)?,
+                    expansion: [0.0; 3],
+                    density: e.density,
+                })
+            })
+            .collect::<Result<_, String>>()?;
+        return Ok((
+            Case::Modes(modes::Model {
+                structure: elastic::Model {
+                    parts,
+                    materials,
+                    spacing,
+                    axis,
+                    symmetry,
+                    faces,
+                    loads: forces,
+                    thermal: Thermal::None,
+                    reference: 0.0,
+                    probes: Vec::new(),
+                    surfaces: Vec::new(),
+                    method: None,
+                },
+                count,
             }),
             units,
         ));
@@ -1573,6 +1674,19 @@ pub fn modes_row(k: usize, frame: &em::Frame) -> String {
     )
 }
 
+/// The first line of the mode table of a structure.
+pub const STRUCTURE_MODES_HEAD: &str = "# mode frequency eigenvalue gamma_x gamma_y gamma_z \
+    mass_fraction_x mass_fraction_y mass_fraction_z\n";
+
+/// The line of the mode `k` (from 1) of a structure: its frequency, omega^2, the participation
+/// factors and the effective mass fractions.
+pub fn structure_modes_row(k: usize, mode: &modes::Mode) -> String {
+    let mut values = vec![mode.frequency, mode.eigenvalue];
+    values.extend(mode.participation);
+    values.extend(mode.mass_fraction);
+    format!("{k} {}", line(&values))
+}
+
 /// The reference impedance of the Touchstone file (ohm).
 const TOUCHSTONE_OHM: f64 = 50.0;
 
@@ -1783,6 +1897,38 @@ type = "homogenize"
             assert!(e.contains(key), "{key}: {e}");
         }
     }
+    /// A modes step with `youngs_modulus` is the modes of a structure, and with none it is the
+    /// modes of an electromagnetic cavity. Each input out of the class gives an error.
+    #[test]
+    fn the_reader_reads_the_modes_of_a_structure() {
+        const BEAM: &str =
+            include_str!("../../../validation/cases/grid-frequency-cantilever/beam/grid.toml");
+        const CAVITY: &str =
+            include_str!("../../../validation/cases/grid-cavity-te101/cavity/grid.toml");
+        let Ok((Case::Modes(m), _)) = read(BEAM) else {
+            panic!("the modes of a structure");
+        };
+        assert_eq!((m.count, m.structure.materials[0].density), (1, 7.85e-9));
+        assert!(matches!(read(CAVITY), Ok((Case::Em(_), _))));
+        for (text, key) in [
+            (BEAM.replace("count = 1", "count = 0"), "count"),
+            (BEAM.replace("count = 1", "near = 400.0"), "near"),
+            (BEAM.replace("density = 7.85e-9\n", ""), "density"),
+            (BEAM.replace("ux = 0.0", "ux = 0.1"), "at 0"),
+            (
+                BEAM.replace("[step]", "[[load]]\ngravity = [0, 0, -9.81e3]\n\n[step]"),
+                "only supports",
+            ),
+            (
+                BEAM.replace("[step]", "[probe.tip]\npoint = [100, 5, 5]\n\n[step]"),
+                "probe",
+            ),
+        ] {
+            let e = read(&text).unwrap_err();
+            assert!(e.contains(key), "{key}: {e}");
+        }
+    }
+
     const PLATE: &str =
         include_str!("../../../validation/cases/grid-plate-hole-ccx/plate/grid.toml");
 

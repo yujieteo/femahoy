@@ -36,14 +36,15 @@ pub const BROWSER: Limits = Limits {
 };
 
 /// The case `text` that the browser solves (heat or electromagnetics) and its unit system. A
-/// static, a homogenize, a conduction or an electrostatic step gets an error that names `fh run`.
+/// static, a structural modes, a homogenize, a conduction or an electrostatic step gets an error
+/// that names `fh run`.
 pub fn read_case(text: &str) -> Result<(Case, String), String> {
     match read(text)? {
-        (Case::Elastic(_) | Case::Homogenize(_) | Case::Dc(_), _) => Err("the browser solves \
-             only heat steps (steady or transient) and electromagnetic steps (frequency or \
-             modes). Solve a static, a homogenize, a conduction or an electrostatic step with fh \
-             run"
-        .into()),
+        (Case::Elastic(_) | Case::Modes(_) | Case::Homogenize(_) | Case::Dc(_), _) => Err("the \
+             browser solves only heat steps (steady or transient) and electromagnetic steps \
+             (frequency or modes). Solve a static, a structural modes, a homogenize, a conduction \
+             or an electrostatic step with fh run"
+            .into()),
         case => Ok(case),
     }
 }
@@ -83,7 +84,7 @@ pub fn solve(
     let model = match case {
         Case::Em(model) => return solve_em(&model, &units, limits.em, on_line, on_step),
         Case::Heat(model) => model,
-        Case::Elastic(_) | Case::Homogenize(_) | Case::Dc(_) => {
+        Case::Elastic(_) | Case::Modes(_) | Case::Homogenize(_) | Case::Dc(_) => {
             unreachable!("read_case refuses them")
         }
     };

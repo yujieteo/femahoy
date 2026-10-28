@@ -1,0 +1,15 @@
+# Blevins (1979), Table 8-1, clamped-free beam, mode 1: f = 1.87510407^2 / (2 pi L^2) sqrt(E I / m).
+# L = 100 mm, I = 10 x 5^3 / 12 mm4, m = 7.85e-9 x 50 t/mm. See derivation.md.
+# Tolerance budget: the solid is 0.22 % above the beam theory (shear, rotary inertia and the
+# clamp of the Poisson contraction: the extrapolation of 4 grids), and the discretization error
+# at max_cell 2.5 mm is 0.21 %. Their sum is 0.43 %. The tolerance 1 % holds the sum with a
+# margin of 2.3.
+rel_tol = 0.01
+abs_tol = 0.0
+
+[f1]
+value = 417.758
+case = "beam"
+file = "modes.txt"
+column = "frequency"
+row = 1
