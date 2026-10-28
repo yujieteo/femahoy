@@ -15,7 +15,7 @@ Sources: [program](../../crates/quine/src/lib.rs),
 nix shell nixpkgs#emscripten nixpkgs#nodejs -c scripts/build-quine.sh --test
 ```
 
-The script builds the crate `fh-quine` for `wasm32-unknown-emscripten` as a static library, and quine-wasm links it with emcc. The files go to `target/quine/`, or to the folder that you give as the last argument. With `--test`, Playwright opens each file in Chromium. The test checks the pass on the screen, the tables in the `.tar` export against the references and the tolerance, and the results in a saved copy.
+The script builds the crate `fh-quine` for `wasm32-unknown-emscripten` as a static library, and quine-wasm links it with emcc. The files go to `target/quine/`, or to the folder that you give as the last argument. With `--test`, Playwright opens each file in Chromium. The test checks the pass on the screen, the check and the result tables in the `.tar` export, and the results in a saved copy.
 
 ## The cases
 
