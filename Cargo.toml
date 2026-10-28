@@ -9,7 +9,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.0"
+# The 1 version of femahoy: `fh --version` prints it, and scripts/release.sh checks that the tag
+# and the top entry of CHANGELOG.md agree with it.
+version = "0.1.0"
 edition = "2021"
 publish = false
 
