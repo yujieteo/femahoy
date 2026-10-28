@@ -1,0 +1,12 @@
+# The capacitance of a coaxial capacitor, C = 2 pi eps0 eps_r L / ln(b / a) (derivation.md).
+# Tolerance budget: at max_cell 0.5 mm the error is +0.27 %. It comes from the cells of the
+# cross-section and falls at second order with the cell (a mesh study in derivation.md). The
+# tolerance 0.5 % holds it with a margin of 0.23 %.
+rel_tol = 5e-3
+abs_tol = 0.0
+
+[capacitance]
+value = 2.8053061878e-12
+case = "coax"
+file = "capacitance.txt"
+column = "inner.inner"

@@ -1,0 +1,33 @@
+# A coaxial capacitor 20 mm long filled with PTFE: the inner conductor is the hole of the
+# dielectric part, the outer conductor its outer face. The 2 ends have no charge
+# (../derivation.md).
+units = "SI-mm"
+
+[grid]
+max_cell = 0.5
+
+[material.ptfe]
+relative_permittivity = 2.1
+
+[part.dielectric]
+material = "ptfe"
+circle = [0.0, 0.0, 2.3]
+holes = [[0.0, 0.0, 1.0]]
+z = [0.0, 20.0]
+
+[face.inner]
+circle = [0.0, 0.0, 1.0]
+
+[face.outer]
+circle = [0.0, 0.0, 2.3]
+
+[[load]]
+voltage = 1.0
+face = "inner"
+
+[[load]]
+voltage = 0.0
+face = "outer"
+
+[step]
+type = "electrostatic"

@@ -4,6 +4,8 @@ For the cross-section of a transmission line with linear materials (R, L, G, C, 
 
 For the S-parameters of waveguides, transmission lines, steps, vias and filters, or the resonant modes of a cavity, in parts that are boxes or prisms of polygons and circles along 1 axis: use the built-in grid solver first (`fh guide grid`, section "Electromagnetics"). It needs no gmsh and no GetDP, and the person can also solve its `grid.toml` in the page.
 
+For a DC current (the resistance, the current density, the Joule heat and its temperature) or an electrostatic field (the capacitance matrix) in the same shapes: use the built-in grid solver first (`fh guide grid`, section "DC conduction and electrostatics"). It needs no gmsh and no GetDP.
+
 For another electromagnetic request, for example eddy currents in 3D, a magnetic field, or a curved or sloped shape, write a GetDP case folder and solve it with `fh run CASE`.
 
 1. Case: write `case.geo` for gmsh and `case.pro` for GetDP. The physical groups of `case.geo` are the regions of `case.pro`. Use SI units, with lengths in m. Do not name a group `All` or `Skin`: GetDP reserves these words.

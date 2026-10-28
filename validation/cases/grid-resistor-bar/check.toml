@@ -1,0 +1,12 @@
+# The resistance of a uniform copper bar, R = L / (sigma A) (derivation.md). Tolerance budget:
+# the potential is linear along the bar, and the trilinear cells hold a linear field exactly, so
+# the only error is the round-off of the direct solve (below 1e-12 relative). The tolerance 1e-9
+# holds it with a margin of 1000.
+rel_tol = 1e-9
+abs_tol = 0.0
+
+[resistance]
+value = 8.6206896552e-5
+case = "bar"
+file = "terminals.txt"
+column = "resistance"

@@ -31,6 +31,7 @@
 //! (the singular points); O. K. Smith, Eigenvalues of a symmetric 3 x 3 matrix, Comm. ACM 4
 //! (1961) 168 (the principal stresses).
 
+use crate::dc;
 use crate::grid::{Face, Grid, Part, Side, Spacing, VOID};
 use crate::heat::{
     self, build_grid, locate_probe, number, reduced_rhs, FaceSet, Mesh, Numbering, Probe,
@@ -84,6 +85,9 @@ pub enum Thermal {
     /// The temperature of a steady heat solve. Its parts, spacing and symmetry must be those
     /// of the elastic model.
     Heat(Box<heat::Model>),
+    /// The temperature of the Joule heat of a DC conduction with a heat solve. Its parts and
+    /// spacing must be those of the elastic model, with no symmetry.
+    Joule(Box<dc::Model>),
 }
 
 /// A surface whose shape the result gives: the faces of a face set, all with 1 outward normal.
@@ -350,27 +354,7 @@ pub fn solve_within(
     let node_of = |p: [usize; 3]| numbering.number[grid.point_index(p)] as usize;
 
     // The temperature change at each point.
-    let temperature: Option<Vec<f64>> = match &model.thermal {
-        Thermal::None => None,
-        Thermal::Uniform(t) => Some(vec![*t; n]),
-        Thermal::Heat(h) => {
-            let mut run = HeatRun {
-                outer: events,
-                temperature: None,
-            };
-            let summary = heat::solve(h, &mut run)?;
-            for w in summary.warnings {
-                warnings.push(format!("heat: {w}"));
-            }
-            let t = run
-                .temperature
-                .ok_or("the heat solve gave no temperature")?;
-            if t.len() != n {
-                return Err("the heat model has other parts or another grid".into());
-            }
-            Some(t)
-        }
-    };
+    let temperature = solve_thermal(&model.thermal, n, events, &mut warnings)?;
     let dt: Vec<f64> = match &temperature {
         Some(t) => t.iter().map(|t| t - model.reference).collect(),
         None => vec![0.0; n],
@@ -877,6 +861,57 @@ pub(crate) fn peak_warnings(model: &Model, peaks: &[Peak], warnings: &mut Vec<St
                 why.describe()
             ));
         }
+    }
+}
+
+/// The temperature of the thermal load at each of the `n` points of the mesh (of the corners on
+/// a mesh of tetrahedra).
+pub(crate) fn solve_thermal(
+    thermal: &Thermal,
+    n: usize,
+    events: &mut dyn Events,
+    warnings: &mut Vec<String>,
+) -> Result<Option<Vec<f64>>, String> {
+    let (t, notes) = match thermal {
+        Thermal::None => return Ok(None),
+        Thermal::Uniform(t) => return Ok(Some(vec![*t; n])),
+        Thermal::Heat(h) => {
+            let mut run = HeatRun {
+                outer: events,
+                temperature: None,
+            };
+            let summary = heat::solve(h, &mut run)?;
+            let t = run
+                .temperature
+                .ok_or("the heat solve gave no temperature")?;
+            (t, summary.warnings)
+        }
+        Thermal::Joule(m) => {
+            let s = dc::solve(m, &mut DcRun(events))?;
+            let t = s
+                .temperature
+                .ok_or("the conduction solve gave no temperature")?;
+            (t, s.warnings)
+        }
+    };
+    for w in notes {
+        warnings.push(format!("heat: {w}"));
+    }
+    if t.len() != n {
+        return Err("the heat model has other parts or another mesh".into());
+    }
+    Ok(Some(t))
+}
+
+/// The progress of a conduction solve of a thermal load.
+struct DcRun<'a, 'b>(&'a mut (dyn Events + 'b));
+
+impl dc::Events for DcRun<'_, '_> {
+    fn cancelled(&self) -> bool {
+        self.0.cancelled()
+    }
+    fn progress(&mut self, text: &str) {
+        self.0.progress(&format!("conduction: {text}"));
     }
 }
 
@@ -1518,6 +1553,25 @@ fn check(model: &Model) -> Result<Vec<Stiffness>, String> {
                 return Err(
                     "the temperature of a static step comes from a steady heat solve".into(),
                 );
+            }
+            if !model.reference.is_finite() {
+                return Err("the reference temperature must be finite".into());
+            }
+        }
+        Thermal::Joule(m) => {
+            if m.parts != model.parts
+                || m.spacing != model.spacing
+                || m.axis != model.axis
+                || model.symmetry != [false; 3]
+            {
+                return Err(
+                    "the conduction model must have the parts and the grid of the model, with no \
+                     symmetry"
+                        .into(),
+                );
+            }
+            if m.heat.is_none() {
+                return Err("the Joule heat of a static step needs heat loads".into());
             }
             if !model.reference.is_finite() {
                 return Err("the reference temperature must be finite".into());

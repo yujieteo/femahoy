@@ -1,9 +1,10 @@
-# Heat conduction, stress, unit cells, transmission lines and electromagnetics with the built-in grid solver
+# Heat conduction, stress, unit cells, DC conduction, transmission lines and electromagnetics with the built-in grid solver
 
 Use the built-in grid solver first for:
 
 - heat conduction, steady or transient, in parts that are boxes, or prisms of a polygon or a circle (with holes) along 1 axis, also with a radiation to the ambient and with a conductivity and a specific heat that change with the temperature. Examples: layers and laminates, plates with holes, pipes, fins, and extruded sections; hot parts in vacuum or in still air (space hardware, furnaces, lamps, heaters), and materials over a large range of temperature.
 - linear static stress and deformation in the same parts, with isotropic or orthotropic materials, from supports, pressures, forces, gravity and a temperature change (a uniform temperature, or the steady heat solve of the same case). Examples: frames and laminates of boxes, plates with holes, tubes under pressure, round bars, and stiffened extruded sections.
+- DC current conduction and electrostatics in the same parts: the resistance between face sets, the current density and the Joule heat, the temperature of the Joule heat (also with an electric conductivity that changes with the temperature) and its thermal stress, and the capacitance matrix of conductors in a dielectric. Examples: resistors, bus bars, fuses, heaters, traces with vias, contact spots, electrodes and capacitors. It needs no GetDP. See "DC conduction and electrostatics" below.
 - the homogenized (effective) material of a periodic unit cell: the conductivity, the stiffness and the expansion of a composite, a laminate, a lattice, a foam or a woven or stacked structure that repeats in x, y and z (`type = "homogenize"`, see "Unit cells" below).
 - linear frequency-domain electromagnetics in the same shapes: the S-parameters of waveguides, transmission lines, steps, vias, filters and transitions with wave ports, and the resonant frequencies and Q of cavities. It needs no gmsh and no GetDP. See "Electromagnetics" below.
 
@@ -91,6 +92,30 @@ Use `[step] type = "homogenize"` to get the effective material of a structure th
 - `grid/material.toml`: the table `[material.homogenized]` for the `grid.toml` of a larger model, with `conductivity`, `youngs_modulus`, `poisson_ratio`, `shear_modulus`, `expansion`, `density` and `specific_heat`. Its axes are the x, y and z of the cell. A `grid.toml` material is orthotropic in x, y and z: when the cell couples 2 axes (a term above 1e-4 of the largest), that property is not in the file, and the log has a warning.
 
 The conductivity uses 3 solves with a unit mean gradient, the stiffness 6 solves with a unit mean strain, and the expansion 1 solve with a unit temperature change, each with a periodic fluctuation. A box cell holds a laminate exactly. For round fibres on tetrahedra in a cell of side 1, `max_cell = 0.04` gave the conductivity across the fibres to 0.08 % and `max_cell = 0.02` to 0.02 %. Do a mesh study with 2 values of `max_cell`.
+
+## DC conduction and electrostatics
+
+Use `[step] type = "conduction"` for a DC current in conductors, and `type = "electrostatic"` for the field and the capacitance of conductors in a dielectric. The solver solves div(σ grad V) = 0 (or div(ε grad V) = 0) with the elements of a heat step: hex cells on a box grid, linear tetrahedra on a mesh of prisms. Use GetDP (`fh guide electromagnetics`) for eddy currents, magnetic fields and AC currents.
+
+1. Top: `units` gives the unit of the lengths and of the heat loads only. A voltage is in V, a current in A, a charge in C, an electric conductivity in S/m, a resistance in ohm and a capacitance in F, also in SI-mm.
+2. `[grid]`: as for heat, with no `symmetry`.
+3. `[material.NAME]`: `electric_conductivity` (S/m, 1 number) for each material of a conduction step. Add `conductivity` (the thermal conductivity) for the Joule heat, and `temperature_coefficient` (alpha, 1/K) for a resistivity ρ0 (1 + alpha (T − T_ref)). For an electrostatic step, `relative_permittivity` (1 by default). Space with no part has no field: give the air or the dielectric around the conductors as a part. A conductor of an electrostatic step is a hole or the outside of the dielectric, with a voltage on its face set.
+4. `[[load]]`: each load makes 1 terminal: a face set at 1 potential. Give each terminal its own face set. 2 terminals must not touch.
+   - `voltage` with `face`: a fixed voltage. Each part needs a voltage on it, on a part that it touches, or on a terminal that it shares with such a part.
+   - `current` with `face` (conduction): a total current into the part through the face set, which has 1 unknown voltage.
+   - `charge` with `face` (electrostatic): a total charge on a conductor at 1 unknown voltage. A floating conductor has `charge = 0.0`.
+   - Heat loads (`temperature`, `flux`, `convection`, `source`) in a conduction step: then the solver also solves the steady temperature with the Joule heat as a source. A face with no heat load is adiabatic.
+   - A static step with `voltage` or `current` loads and heat loads: the stress uses the temperature of the Joule heat.
+5. `[step]`: `type = "conduction"`, with `electric_reference_temperature` (T_ref) for a `temperature_coefficient`. Then the solver repeats the electric and the heat solves until the Joule power changes by less than 1e-6. A current drive with alpha above 0 can heat with no limit (thermal runaway): the solver stops after 50 iterations with a message. A voltage drive is stable. A static step takes `electric_reference_temperature` too.
+6. `[probe.NAME]`: `point`. The probe gives the potential, and the temperature with heat loads.
+
+`fh run` writes in `grid`:
+
+- `terminals.txt`: 1 row with `NAME.v` and `NAME.i` (conduction) or `NAME.q` (electrostatic) of each terminal (the name of its face set), the Joule power `power` (W), and with 2 terminals the resistance `resistance` between them (ohm).
+- `conductance.txt` or `capacitance.txt`: 1 row with `A.B`, the matrix I = G V (S) or Q = C V (F) of the terminals: the Maxwell capacitance matrix. The capacitance between 2 conductors of 2 terminals is `A.A`.
+- `probes.txt`: 1 row with `NAME.v` and `NAME.t` of each probe.
+
+The page shows the potential `V`, the current density `J` (A/m2) and the Joule power density `JOULE` (W/m3), or the electric field `E` (V/m), and `NT` with heat loads. Each terminal is 1 more solve with the same factor. The resistance of a box grid is exact for a uniform bar (`grid-resistor-bar`), and a coaxial capacitor of circles is within 0.3 % at the default 64 segments (`grid-coax-capacitor`). At the rim of a contact spot and at a sharp edge of an electrode, the current density is singular, and the resistance converges slowly from below: put small parts of the same material at the rim (`grid-holm-spot`, 2 % low with rings 0.02 of the radius from the rim).
 
 ## Transmission lines
 

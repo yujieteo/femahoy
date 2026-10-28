@@ -1,0 +1,19 @@
+# The peak temperature of a bar with its Joule heat and its 2 ends at 20 C,
+# T_max = T0 + q L^2 / (8 k) with q = sigma (V / L)^2 (derivation.md). Tolerance budget: the
+# problem is 1D, and linear elements with a uniform source give the exact temperature at the
+# points; the probe is a point of the grid. The only error is the round-off of the 2 direct
+# solves (below 1e-12 relative). The tolerance 1e-9 holds it with a margin of 1000.
+rel_tol = 1e-9
+abs_tol = 0.0
+
+[peak]
+value = 20.25
+case = "bar"
+file = "probes.txt"
+column = "middle.t"
+
+[current]
+value = 5.0
+case = "bar"
+file = "terminals.txt"
+column = "left.i"
