@@ -117,10 +117,13 @@ impl Table {
 }
 
 /// Newton stops when the norm of the residual on the free points is below this fraction of the
-/// gross heat flow (`Nonlinear::gross`), which does not grow with the number of points. Reason: the slab with radiation (test
-/// `a_slab_that_radiates_has_the_root_of_its_energy_balance`) needs its face temperature to 1e-8
-/// of the root of the scalar equation, and the linear solve of each iteration has the relative
-/// residual 1e-10.
+/// gross heat flow (`Nonlinear::gross`), which does not grow with the number of points, or when
+/// the full Newton step is below this fraction of the largest temperature. Reason: the slab with
+/// radiation (test `a_slab_that_radiates_has_the_root_of_its_energy_balance`) needs its face
+/// temperature to 1e-8 of the root of the scalar equation, and the linear solve of each
+/// iteration has the relative residual 1e-10. Near equilibrium the gross heat flow goes to 0 and
+/// the residual stays at the rounding of K(T) T (test
+/// `a_body_at_equilibrium_with_its_ambient_stays_there`): there the step stops the iteration.
 const TOL: f64 = 1e-10;
 
 /// The most Newton iterations of 1 solve. Reason: the tests and the validation cases converge in
@@ -332,7 +335,9 @@ impl Nonlinear<'_> {
             state = next;
             let (norm, gross) = (self.norm(&state), self.gross(&state));
             residual = if gross > 0.0 { norm / gross } else { norm };
-            if norm <= TOL * gross {
+            let step = dx.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            let size = t.iter().fold(0.0f64, |m, v| m.max(v.abs()));
+            if norm <= TOL * gross || step <= TOL * size {
                 let report = Report {
                     iterations: iteration,
                     method: s.method(),

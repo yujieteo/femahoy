@@ -282,6 +282,29 @@ fn a_transient_step_with_tables_and_radiation_keeps_the_energy_balance() {
 }
 
 #[test]
+fn a_body_at_equilibrium_with_its_ambient_stays_there() {
+    // No load and no fixed temperature: each heat flow is 0, and only the rounding of K(T) T
+    // is left in the residual.
+    let mut m = material(1.0);
+    m.capacity = 4e6;
+    m.conductivity_table = Some(Table {
+        temperature: vec![300.0, 1000.0],
+        value: vec![20.0, 12.0],
+    });
+    let mut model = slab(0.02, 0.002, m, vec![radiation(1, 0.9, 300.0)]);
+    model.step = Step::Transient {
+        end: 5.0,
+        dt: 1.0,
+        initial: 300.0,
+        output_every: 1,
+    };
+    let (_, frames) = run(&model);
+    for p in &frames.last().unwrap().probes {
+        assert!((p - 300.0).abs() < 1e-9, "{p}");
+    }
+}
+
+#[test]
 fn a_constant_table_gives_the_linear_transient() {
     let loads = vec![
         Load::Temperature {
