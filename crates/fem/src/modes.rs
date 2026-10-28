@@ -171,6 +171,7 @@ pub fn solve_within(
     } = assembly;
     let n = mesh.points.len();
     let free: Vec<usize> = (0..3 * n).filter(|&i| !fixed[i]).collect();
+    eigen::fits(free.len(), model.count)?;
     let (kf, mf) = (k.submatrix(&free), m.submatrix(&free));
     let (kd, md) = (kf.diagonal(), mf.diagonal());
     let mean = kd.iter().zip(&md).map(|(k, m)| k / m).sum::<f64>() / free.len() as f64;

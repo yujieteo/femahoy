@@ -2,6 +2,7 @@
 //! mesh against beam theory, the 6 rigid modes of a free body, a repeated frequency, the 2
 //! linear solvers and the refusals.
 
+use fh_fem::eigen;
 use fh_fem::elastic::{self, Load, Material, Thermal};
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{FaceSet, Mesh};
@@ -217,6 +218,22 @@ fn the_modes_solver_refuses_what_it_does_not_solve() {
         let mut model = beam([20.0, 10.0, 10.0], 5.0, true, 2);
         change(&mut model);
         let e = solve(&model, &mut Record::default()).unwrap_err();
+        assert!(e.contains(text), "{e}");
+    }
+}
+
+/// Many modes of a large model need too much memory for the subspace vectors.
+#[test]
+fn the_modes_solver_refuses_subspace_vectors_above_2_gb() {
+    assert!(eigen::fits(900_000, 6).is_ok());
+    let e = eigen::fits(900_000, 100).unwrap_err();
+    for text in [
+        "100 modes",
+        "900000 unknowns",
+        "4.3 GB",
+        "fewer modes",
+        "CalculiX",
+    ] {
         assert!(e.contains(text), "{e}");
     }
 }

@@ -76,6 +76,8 @@ Modes step: the mode shape `U` of each mode, with the mode number as the time. E
 
 The modes solver is direct while the factor has at most 2.5e8 entries, and else PCG with multigrid. Each solve of the subspace iteration is 1 solve with the same factor, so the direct solver is the faster solver while it fits. A free box of 43,659 unknowns gives 12 modes in about 11 s direct.
 
+The modes solver refuses a model when its subspace vectors need more than 2 GB: 3 × p × n × 8 bytes, with n the unknowns and p = max(2 count, count + 8). For example, 100 modes of 900,000 unknowns need 4.3 GB. Ask for fewer modes, or use CalculiX `*FREQUENCY`.
+
 `grid/log.txt` has the solver lines and the warnings. Read the warnings: an energy imbalance or a force imbalance above 1e-6 is a warning, and so is a stress peak at a singular point.
 
 ## Mesh study

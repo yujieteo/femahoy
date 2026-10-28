@@ -39,6 +39,30 @@ pub const TOL: f64 = 1e-6;
 /// of 2.
 pub const MAX_ITER: usize = 120;
 
+/// The most memory of the subspace vectors (bytes). Reason: the iteration keeps 3 sets of p
+/// vectors of length n, so 100 modes of a stress grid at its limit of 300,000 points need
+/// 4.3 GB on top of the factor; 2 GB is the limit of the direct factor of flat cells.
+pub const MAX_BYTES: f64 = 2e9;
+
+/// The count of subspace vectors for `count` modes of `n` unknowns.
+fn vectors(n: usize, count: usize) -> usize {
+    (2 * count).max(count + 8).min(n)
+}
+
+/// An error when the subspace vectors of `count` modes of `n` unknowns need more than
+/// `MAX_BYTES`.
+pub fn fits(n: usize, count: usize) -> Result<(), String> {
+    let bytes = 3.0 * vectors(n, count) as f64 * n as f64 * 8.0;
+    if bytes > MAX_BYTES {
+        return Err(format!(
+            "{count} modes of {n} unknowns need {:.1} GB for the subspace vectors, more than {:.0} GB: ask for fewer modes, or use CalculiX *FREQUENCY",
+            bytes / 1e9,
+            MAX_BYTES / 1e9
+        ));
+    }
+    Ok(())
+}
+
 /// The eigenpairs, the lowest eigenvalue first.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Pairs {
@@ -68,7 +92,7 @@ pub fn subspace(
             "the model has {n} unknowns, so it has 1 to {n} modes, not {count}"
         ));
     }
-    let p = (2 * count).max(count + 8).min(n);
+    let p = vectors(n, count);
     // The start vectors: the diagonal of M, and pseudo-random vectors (xorshift).
     let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
     let mut random = || {
