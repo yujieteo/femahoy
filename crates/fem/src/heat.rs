@@ -1609,7 +1609,7 @@ fn select(grid: &Grid, all: &[Face], set: &FaceSet) -> Vec<Face> {
 /// temperature has no unique value.
 /// `held` marks each point with a fixed temperature or a convection.
 fn check_supports(model: &Model, mesh: &Mesh, held: &[bool]) -> Result<(), String> {
-    match loose_part(mesh, held) {
+    match loose_part(mesh, held, &[]) {
         None => Ok(()),
         Some(p) => Err(format!(
             "part {} has no fixed temperature and no convection on it or on a part that \
@@ -1620,8 +1620,9 @@ fn check_supports(model: &Model, mesh: &Mesh, held: &[bool]) -> Result<(), Strin
     }
 }
 
-/// The part of a cell of a connected piece of the mesh with no point that `held` marks.
-pub(crate) fn loose_part(mesh: &Mesh, held: &[bool]) -> Option<usize> {
+/// The part of a cell of a connected piece of the mesh with no point that `held` marks. The
+/// points with the same `Some` value in `joined` (empty: none) are in 1 piece.
+pub(crate) fn loose_part(mesh: &Mesh, held: &[bool], joined: &[Option<usize>]) -> Option<usize> {
     let n = mesh.points.len();
     let mut root: Vec<usize> = (0..n).collect();
     fn find(root: &mut [usize], mut i: usize) -> usize {
@@ -1637,6 +1638,21 @@ pub(crate) fn loose_part(mesh: &Mesh, held: &[bool]) -> Option<usize> {
         for &v in &c[1..] {
             let b = find(&mut root, v as usize);
             root[b] = a;
+        }
+    }
+    let mut first: Vec<Option<usize>> = Vec::new();
+    for (i, g) in joined.iter().enumerate() {
+        let Some(g) = *g else { continue };
+        if first.len() <= g {
+            first.resize(g + 1, None);
+        }
+        match first[g] {
+            None => first[g] = Some(i),
+            Some(j) => {
+                let a = find(&mut root, j);
+                let b = find(&mut root, i);
+                root[b] = a;
+            }
         }
     }
     let mut piece_held = vec![false; n];

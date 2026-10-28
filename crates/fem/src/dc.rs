@@ -207,10 +207,11 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Solution, String>
         .iter()
         .map(|o| o.is_some_and(|t| matches!(model.terminals[t].drive, Drive::Voltage(_))))
         .collect();
-    if let Some(p) = heat::loose_part(mesh, &held) {
+    if let Some(p) = heat::loose_part(mesh, &held, &owner) {
         return Err(format!(
-            "part {} has no voltage on it or on a part that it touches, so its potential has no \
-             unique value: add a voltage on a face of it, or remove the part",
+            "part {} has no voltage on it, on a part that it touches or on a terminal that it \
+             shares, so its potential has no unique value: add a voltage on a face of it, or \
+             remove the part",
             model.parts[p].name
         ));
     }
