@@ -1,6 +1,6 @@
 // The HTML file of each case (scripts/build-quine.sh) opens from file://, runs the case and shows
-// the pass of the check. The results in its .tar export agree with the references and the
-// tolerance of the check.toml of the case. A saved copy holds the results.
+// the pass of the check. Its .tar export holds the check and the result tables. A saved copy holds
+// the results.
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
@@ -9,31 +9,13 @@ const root = path.join(__dirname, '..', '..');
 const out = process.env.FH_QUINE_OUT;
 const cases = (process.env.FH_QUINE_CASES || '').split(/\s+/).filter(Boolean);
 
-// The tolerances and the checks of a check.toml: the lines `key = value` before and in each
-// `[name]` table (docs/reference/check-toml.md).
-function checkToml(id) {
+// The result tables that the checks of a check.toml read: results/<case>/grid/<file>
+// (docs/reference/check-toml.md).
+function tables(id) {
   const text = fs.readFileSync(path.join(root, 'validation/cases', id, 'check.toml'), 'utf8');
-  const top = {};
-  const checks = [];
-  let at = top;
-  for (const line of text.split('\n')) {
-    const table = line.match(/^\[(\w+)\]/);
-    const pair = line.match(/^(\w+)\s*=\s*(.+?)\s*$/);
-    if (table) checks.push((at = { name: table[1] }));
-    else if (pair) at[pair[1]] = JSON.parse(pair[2]);
-  }
-  return { relTol: top.rel_tol, absTol: top.abs_tol, checks };
-}
-
-// The value in column `name` of the last row of a table whose last comment line (or first line)
-// names the columns.
-function lastRow(text, name) {
-  const lines = text.split('\n').filter((l) => l.trim());
-  const comments = lines.filter((l) => l.startsWith('#'));
-  const head = (comments.length ? comments[comments.length - 1].replace(/^#/, '') : lines.shift()).trim().split(/\s+/);
-  const row = lines.filter((l) => !l.startsWith('#')).pop().trim().split(/\s+/);
-  expect(head).toContain(name);
-  return Number(row[head.indexOf(name)]);
+  const values = (key) => [...text.matchAll(new RegExp(`^${key}\\s*=\\s*"([^"]+)"`, 'gm'))].map((m) => m[1]);
+  const files = values('file');
+  return values('case').map((c, i) => `results/${c}/grid/${files[i]}`);
 }
 
 // The entries of a ustar archive, by name.
@@ -68,13 +50,7 @@ for (const id of cases) {
     await download(page, '#quine-tar', tar);
     const files = untar(fs.readFileSync(tar));
     expect(files['results/check.txt']).toContain('1 cases: 1 pass, 0 fail');
-    const { relTol, absTol, checks } = checkToml(id);
-    for (const c of checks) {
-      const table = files[`results/${c.case}/grid/${c.file}`];
-      expect(table, c.name).toBeTruthy();
-      const computed = lastRow(table, c.column);
-      expect(Math.abs(computed - c.value), c.name).toBeLessThanOrEqual(relTol * Math.abs(c.value) + absTol);
-    }
+    for (const table of tables(id)) expect(files[table], table).toBeTruthy();
 
     const saved = info.outputPath('saved.html');
     await download(page, '#quine-save', saved);

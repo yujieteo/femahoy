@@ -213,11 +213,15 @@ impl Solve for Native {
             .map(|r| {
                 let folder = r.quantity.set.as_str();
                 let (dir, out) = (input.join(folder), self.run.join(folder));
-                if crate::solver(&dir) != Some(Solver::Grid) {
-                    return Err(format!(
-                        "{folder} has no {}: the native solvers solve only grid.toml cases",
-                        crate::grid::CASE_FILE
-                    ));
+                match crate::solver(&dir) {
+                    Some(Solver::Grid) => {}
+                    Some(other) => {
+                        return Err(format!(
+                            "{folder} needs the solver {other:?}: the native solvers solve only \
+                             grid.toml cases"
+                        ))
+                    }
+                    None => return Err(format!("{folder} is not a case folder")),
                 }
                 // Each folder solves once, at its first check.
                 if !out.join(crate::grid::WORK).is_dir() {
