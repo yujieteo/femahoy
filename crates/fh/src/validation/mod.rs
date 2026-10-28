@@ -6,5 +6,5 @@ mod measure;
 mod run;
 
 pub use fixture::{load_all, Case, Field};
-pub use measure::Subprocess;
-pub use run::{check, run_case_with, Outcome, Report, Solve};
+pub use measure::{Native, Subprocess};
+pub use run::{check, run_case_with, summary, Outcome, Report, Solve};

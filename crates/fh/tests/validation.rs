@@ -51,3 +51,23 @@ fn the_grid_cases_pass() {
         assert!(matches!(r.outcome, Outcome::Pass), "{}: {r:?}", case.id);
     }
 }
+
+/// The native solve of `fh-quine` passes a grid case and keeps its results in the run folder. It
+/// refuses a CalculiX case, and the reason names CalculiX.
+#[test]
+fn the_native_solve_keeps_the_results_and_refuses_calculix() {
+    let cases = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../validation/cases");
+    let run = std::env::temp_dir().join(format!("fh-native-{}", std::process::id()));
+    let native = fh::validation::Native { run: run.clone() };
+    let cell = Case::load(&cases.join("grid-laminate-cell")).unwrap();
+    let r = run_case_with(&cell, &native);
+    assert!(matches!(r.outcome, Outcome::Pass), "{r:?}");
+    assert!(run.join("cell/grid/homogenized.txt").is_file());
+    let _ = std::fs::remove_dir_all(&run);
+
+    let r = run_case_with(&case(1.0, 0.1), &native);
+    let Outcome::Fail(why) = &r.outcome else {
+        panic!("{r:?}")
+    };
+    assert!(why.contains("CalculiX"), "{why}");
+}

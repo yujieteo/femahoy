@@ -66,6 +66,7 @@ pub fn is_case(dir: &Path) -> bool {
 
 /// Copy the topology case `case` into `dir`: `topology.toml`, and `job.inp` with its `*INCLUDE`
 /// files. Each copy is read-only.
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
 pub(crate) fn copy_case(case: &Path, dir: &Path) -> Result<(), String> {
     stage_input(&case.join("job.inp"), dir, "job.inp")?;
     let copy = || -> std::io::Result<()> {

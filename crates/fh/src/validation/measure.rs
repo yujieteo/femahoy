@@ -192,6 +192,49 @@ impl Subprocess {
     }
 }
 
+/// Solves the grid cases of a case one after the other in this process and thread, in the run
+/// folder `run`, and keeps the results there. It starts no program and no thread, so it runs in a
+/// browser (`fh-quine`). A case that needs another solver is an error that names the solver.
+pub struct Native {
+    pub run: std::path::PathBuf,
+}
+
+impl Solve for Native {
+    fn measure(&self, case: &Case, input: &Path) -> Result<Vec<f64>, String> {
+        if !case.tables() {
+            return Err(
+                "the check reads job.inp, which needs CalculiX: the native solvers \
+                        solve only grid.toml cases"
+                    .into(),
+            );
+        }
+        case.references
+            .iter()
+            .map(|r| {
+                let folder = r.quantity.set.as_str();
+                let (dir, out) = (input.join(folder), self.run.join(folder));
+                if crate::solver(&dir) != Some(Solver::Grid) {
+                    return Err(format!(
+                        "{folder} has no {}: the native solvers solve only grid.toml cases",
+                        crate::grid::CASE_FILE
+                    ));
+                }
+                // Each folder solves once, at its first check.
+                if !out.join(crate::grid::WORK).is_dir() {
+                    crate::grid::run(&dir, &out).map_err(|e| format!("grid {folder}: {e}"))?;
+                }
+                let Field::Table { file, column } = &r.quantity.field else {
+                    unreachable!("a case with tables has table checks only")
+                };
+                let path = out.join(crate::grid::WORK).join(file);
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                last_row(&text, column).map_err(|e| format!("{folder}: {file}: {e}"))
+            })
+            .collect()
+    }
+}
+
 /// The value in column `name` of the last row of the table of a function object, for example
 /// `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
 /// `# Time Cd Cd(f) Cd(r) Cl ...`. A table with no comment line, for example a watch point of

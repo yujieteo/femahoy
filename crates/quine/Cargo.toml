@@ -1,0 +1,12 @@
+[package]
+name = "fh-quine"
+description = "The native solvers and the check of 1 validation case, as a C library for emcc and quine-wasm"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+fh = { path = "../fh", default-features = false }
+
+[lib]
+crate-type = ["staticlib", "rlib"]

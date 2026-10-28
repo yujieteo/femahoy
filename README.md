@@ -109,5 +109,6 @@ A solver variable has priority over its line in `solvers.env`. With neither, `fh
 - `AGENTS.md`: rules for the agents that build femahoy.
 - [Input keywords and element types](docs/reference/inp.md): the input of the preview and the element types of the page.
 - [Check file fields](docs/reference/check-toml.md): measurements and tolerances of a validation case.
+- [Validation cases as 1 HTML file](docs/reference/quine.md): 5 cases that run offline in a browser, with their check.
 
 femahoy is under the MIT License, see `LICENSE`.

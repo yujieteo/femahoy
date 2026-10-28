@@ -6,6 +6,7 @@
 pub mod ccx;
 pub mod chrono;
 pub mod curve;
+#[cfg(feature = "server")]
 pub mod daemon;
 pub mod fit;
 pub mod foam;

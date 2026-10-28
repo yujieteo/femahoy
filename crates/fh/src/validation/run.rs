@@ -104,3 +104,39 @@ pub fn run_case_with(case: &Case, solver: &dyn Solve) -> Report {
         fail(problems.join("; "), rows)
     }
 }
+
+/// One line for each case, the quantity tables, and the summary line. True when each case passes
+/// and at least 1 case runs.
+pub fn summary(reports: &[(&Case, Report)]) -> (String, bool) {
+    let (mut pass, mut fail) = (0, 0);
+    let mut lines = String::new();
+    let mut tables = String::new();
+    for (case, report) in reports {
+        let status = match &report.outcome {
+            Outcome::Pass => {
+                pass += 1;
+                "pass".to_owned()
+            }
+            Outcome::Fail(why) => {
+                fail += 1;
+                if why.contains("cannot run") {
+                    format!("cannot run: {why}")
+                } else {
+                    format!("fail: {why}")
+                }
+            }
+        };
+        lines.push_str(&format!("{}\t{status}\n", case.id));
+        for r in &report.rows {
+            tables.push_str(&format!(
+                "  {}\t{}\tcomputed={:.10e}\treference={:.10e}\ttolerance={:.3e}\tmargin={:.3e}\n",
+                case.id, r.name, r.computed, r.reference, r.tolerance, r.margin
+            ));
+        }
+    }
+    let text = format!(
+        "{lines}{tables}{} cases: {pass} pass, {fail} fail\n",
+        reports.len()
+    );
+    (text, fail == 0 && pass > 0)
+}

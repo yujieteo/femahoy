@@ -119,6 +119,7 @@ fn run_files(inp: &Path, flat: &Flat) -> Result<(Vec<PathBuf>, Vec<PathBuf>), St
 /// Copy the input file `inp` to `dir/name`, and each file of its run (see [`run_files`]) to its
 /// relative path in `dir`. Each copy is read-only. A later run of `dir/name` does not change when
 /// `inp` does.
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
 pub(crate) fn stage_input(inp: &Path, dir: &Path, name: &str) -> Result<(), String> {
     let flat = flatten(inp)?;
     let (_, files) = run_files(inp, &flat)?;
@@ -126,6 +127,7 @@ pub(crate) fn stage_input(inp: &Path, dir: &Path, name: &str) -> Result<(), Stri
 }
 
 /// The text of an input file, with the text of each `*INCLUDE` file in the place of its line.
+#[cfg_attr(not(feature = "server"), allow(dead_code))]
 pub(crate) fn input_text(inp: &Path) -> Result<String, String> {
     flatten(inp).map(|f| f.text)
 }
