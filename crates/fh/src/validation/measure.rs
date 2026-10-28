@@ -489,7 +489,9 @@ mod tests {
         assert_eq!(table_value(TABLE, "Cl", None), Ok(0.4448));
         assert_eq!(table_value(TABLE, "Cd", None), Ok(0.0094));
         assert_eq!(table_value(TABLE, "CmPitch", None), Ok(-0.1151));
-        assert!(table_value(TABLE, "Cs", None).unwrap_err().contains("no column Cs"));
+        assert!(table_value(TABLE, "Cs", None)
+            .unwrap_err()
+            .contains("no column Cs"));
         let cut = TABLE.replace("\t-0.1151", "");
         assert!(table_value(&cut, "Cl", None)
             .unwrap_err()
@@ -512,9 +514,11 @@ mod tests {
             \x20 0.0e+00   6.0e-01   0.0e+00   0.0e+00\n\
             \x20 1.6e+01   6.0e-01   2.2e-05   8.1e-04";
         assert_eq!(table_value(table, "Displacement1", None), Ok(8.1e-4));
-        assert!(table_value(&table[..table.find('\n').unwrap()], "Time", None)
-            .unwrap_err()
-            .contains("no row"));
+        assert!(
+            table_value(&table[..table.find('\n').unwrap()], "Time", None)
+                .unwrap_err()
+                .contains("no row")
+        );
     }
 
     /// `surfaceFieldValue` writes a vector as `(x y z)`. Thus the words of a row do not match the
