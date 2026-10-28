@@ -16,13 +16,16 @@
 //! (H(T) - H(T_previous)) / dt, so the energy balance is exact for each step.
 //!
 //! The iteration is Newton on the residual R(T) = K(T) T - f - q_rad(T) + rate(T), with a
-//! backtracking line search on |R|. The tangent has the radiation and the capacity terms, and
-//! K(T) without the term of dk/dT: that term makes the tangent unsymmetric, and the solvers of
-//! the crate are for symmetric positive definite matrices. Thus the iteration converges
-//! quadratically for the radiation and the capacity, and linearly (the Picard rate) for k(T).
-//! Each iteration makes a new solver, so the multigrid preconditioner is of the current tangent.
-//! The steady iteration starts at the mean ambient of the radiation faces: then the first
-//! iteration is the linear solve with the film coefficient 4 eps sigma T_amb^3.
+//! backtracking line search on |R|. The tangent has the radiation and the capacity terms, K(T),
+//! and the term of dk/dT: a cell e with n_e points and the mean temperature T_m adds
+//! k'(T_m) / n_e (K_e T_e)_a to each column of each row a of the cell, with the element matrix
+//! K_e of a unit conductivity. That term makes the tangent unsymmetric, so flexible GMRES solves
+//! it, with the solver of the symmetric part (K(T) and the diagonal terms) as the preconditioner.
+//! With no table of the conductivity, the preconditioner is the tangent, and GMRES takes 1
+//! iteration. Thus the iteration converges quadratically. Each iteration makes a new solver, so
+//! the multigrid preconditioner is of the current tangent. The steady iteration starts at the
+//! mean ambient of the radiation faces: then the first iteration is the linear solve with the
+//! film coefficient 4 eps sigma T_amb^3.
 //!
 //! Sources: F. P. Incropera, D. P. DeWitt, T. L. Bergman and A. S. Lavine, Fundamentals of Heat
 //! and Mass Transfer, 6th ed., Wiley 2007, chapter 1 (radiation exchange with large
@@ -33,10 +36,12 @@
 //! gray surface); K. J. Bathe, MIT 2.094 Finite Element Analysis of Solids and Fluids, lecture
 //! notes "Field problems" (the Newton iteration of nonlinear heat transfer); J. E. Dennis and
 //! R. B. Schnabel, Numerical Methods for Unconstrained Optimization and Nonlinear Equations,
-//! SIAM 1996, section 6.3 (the backtracking line search).
+//! SIAM 1996, section 6.3 (the backtracking line search); Y. Saad, Iterative Methods for Sparse
+//! Linear Systems, 2nd ed., SIAM 2003, sections 6.5 (restarted GMRES with Givens rotations) and
+//! 9.4.1 (flexible GMRES, with a preconditioner that is an inner iteration).
 
 use crate::heat::Mesh;
-use crate::solve::{Method, Solver};
+use crate::solve::{Method, Solver, PCG_TOL};
 use crate::sparse::Csr;
 
 /// A property against the temperature, with linear interpolation between the rows and the end
@@ -83,6 +88,17 @@ impl Table {
         vs[i] + f * (vs[i + 1] - vs[i])
     }
 
+    /// The derivative of the value at the temperature `t`: the slope of the row interval that
+    /// holds `t`, and 0 beyond the ends.
+    pub fn slope(&self, t: f64) -> f64 {
+        let (ts, vs) = (&self.temperature, &self.value);
+        if !(t >= ts[0]) || t >= ts[ts.len() - 1] {
+            return 0.0;
+        }
+        let i = ts.partition_point(|&x| x <= t) - 1;
+        (vs[i + 1] - vs[i]) / (ts[i + 1] - ts[i])
+    }
+
     /// The integral of the value from the first temperature to `t`.
     pub fn integral(&self, t: f64) -> f64 {
         let (ts, vs) = (&self.temperature, &self.value);
@@ -100,15 +116,22 @@ impl Table {
     }
 }
 
-/// Newton stops when the largest change of a temperature is below this fraction of the largest
-/// temperature. Reason: the slab with radiation (test `radiation_slab`) needs its face
-/// temperature to 1e-8 of the root of the scalar equation, and the PCG solve of each iteration
-/// has the relative residual 1e-10.
+/// Newton stops when the norm of the residual on the free points is below this fraction of the
+/// gross heat flow (`Nonlinear::gross`), which does not grow with the number of points. Reason: the slab with radiation (test
+/// `a_slab_that_radiates_has_the_root_of_its_energy_balance`) needs its face temperature to 1e-8
+/// of the root of the scalar equation, and the linear solve of each iteration has the relative
+/// residual 1e-10.
 const TOL: f64 = 1e-10;
 
-/// The most Newton iterations of 1 solve. Reason: the tests converge in 4 to 25 iterations; a
-/// solve that needs more does not converge.
+/// The most Newton iterations of 1 solve. Reason: the tests and the validation cases converge in
+/// 2 to 6 iterations; a solve that needs more does not converge.
 const MAX_ITERATIONS: usize = 100;
+
+/// The Krylov vectors of GMRES before a restart, and the most GMRES iterations of 1 Newton
+/// iteration. Reason: the tests take 1 to 8 GMRES iterations for each Newton iteration, so 30
+/// vectors hold them with no restart.
+const RESTART: usize = 30;
+const GMRES_MAX_ITERATIONS: usize = 300;
 
 /// The terms of a nonlinear model on its mesh.
 pub(crate) struct Nonlinear<'a> {
@@ -151,8 +174,8 @@ pub(crate) struct State {
 pub(crate) struct Report {
     pub iterations: usize,
     pub method: Method,
-    /// The largest change of a temperature in the last iteration.
-    pub change: f64,
+    /// The norm of the residual on the free points over the gross heat flow.
+    pub residual: f64,
 }
 
 impl Nonlinear<'_> {
@@ -200,8 +223,9 @@ impl Nonlinear<'_> {
         }
     }
 
-    /// The tangent of the residual at `t` on the free points.
-    fn tangent(&self, state: &State, t: &[f64], dt: Option<f64>) -> Csr {
+    /// The symmetric part of the tangent of the residual at `t` on the free points, and the
+    /// tangent.
+    fn tangent(&self, state: &State, t: &[f64], dt: Option<f64>) -> (Csr, Csr) {
         let mut j = state.matrix.clone();
         let mut add = |i: usize, v: f64| {
             let d = j.find(i, i).expect("a diagonal");
@@ -218,7 +242,24 @@ impl Nonlinear<'_> {
                 add(v as usize, w * table.at(t[v as usize]) / dt);
             }
         }
-        j.submatrix(self.free)
+        let symmetric = j.submatrix(self.free);
+        for &(e, table) in &self.cells {
+            let nodes = self.mesh.cell(e);
+            let m = nodes.len();
+            let mean = nodes.iter().map(|&v| t[v as usize]).sum::<f64>() / m as f64;
+            let slope = table.slope(mean) / m as f64;
+            if slope == 0.0 {
+                continue;
+            }
+            let ke = (self.element)(e);
+            let mut de = vec![0.0; m * m];
+            for a in 0..m {
+                let flow: f64 = (0..m).map(|b| ke[a * m + b] * t[nodes[b] as usize]).sum();
+                de[a * m..(a + 1) * m].fill(slope * flow);
+            }
+            j.add_element(nodes, &de);
+        }
+        (symmetric, j.submatrix(self.free))
     }
 
     fn norm(&self, state: &State) -> f64 {
@@ -227,6 +268,25 @@ impl Nonlinear<'_> {
             .map(|&i| state.residual[i] * state.residual[i])
             .sum::<f64>()
             .sqrt()
+    }
+
+    /// The gross heat flow: the sum of the absolute heat flows into the body from the loads,
+    /// the radiation and the fixed temperatures, and of the rate of the stored heat.
+    fn gross(&self, state: &State) -> f64 {
+        let mut fixed = vec![true; state.residual.len()];
+        for &i in self.free {
+            fixed[i] = false;
+        }
+        (0..fixed.len())
+            .map(|i| {
+                let reaction = if fixed[i] {
+                    state.residual[i].abs()
+                } else {
+                    0.0
+                };
+                self.load[i].abs() + state.radiation[i].abs() + state.rate[i].abs() + reaction
+            })
+            .sum()
     }
 
     /// Solve R(T) = 0 for the free points of `t`, from `t`. `solver` makes the linear solver of
@@ -240,12 +300,22 @@ impl Nonlinear<'_> {
     ) -> Result<(State, Report), String> {
         let mut state = self.state(t, previous);
         let mut trial = t.to_vec();
-        let mut change = f64::INFINITY;
+        let mut residual = f64::INFINITY;
         for iteration in 1..=MAX_ITERATIONS {
-            let s = solver(self.tangent(&state, t, previous.map(|p| p.1)))?;
+            let (symmetric, tangent) = self.tangent(&state, t, previous.map(|p| p.1));
+            let s = solver(symmetric)?;
             let rhs: Vec<f64> = self.free.iter().map(|&i| -state.residual[i]).collect();
             let mut dx = vec![0.0; rhs.len()];
-            s.solve(&rhs, &mut dx, cancelled)?;
+            gmres(
+                &tangent,
+                &rhs,
+                &mut dx,
+                &|v, z| {
+                    z.fill(0.0);
+                    s.solve(v, z, cancelled).map(|_| ())
+                },
+                cancelled,
+            )?;
             let r0 = self.norm(&state);
             let mut alpha = 1.0;
             let next = loop {
@@ -260,22 +330,119 @@ impl Nonlinear<'_> {
             };
             t.copy_from_slice(&trial);
             state = next;
-            change = alpha * dx.iter().fold(0.0f64, |m, v| m.max(v.abs()));
-            let size = t.iter().fold(0.0f64, |m, v| m.max(v.abs()));
-            if change <= TOL * size || r0 == 0.0 {
+            let (norm, gross) = (self.norm(&state), self.gross(&state));
+            residual = if gross > 0.0 { norm / gross } else { norm };
+            if norm <= TOL * gross {
                 let report = Report {
                     iterations: iteration,
                     method: s.method(),
-                    change,
+                    residual,
                 };
                 return Ok((state, report));
             }
         }
         Err(format!(
             "the nonlinear solve did not converge in {MAX_ITERATIONS} Newton iterations (the last \
-             change of a temperature is {change:.2e}). With a radiation, give the temperatures in \
-             kelvin; for a transient step, use a smaller dt"
+             residual is {residual:.2e} of the gross heat flow). With a radiation, give the \
+             temperatures in kelvin; for a transient step, use a smaller dt"
         ))
+    }
+}
+
+/// z = M^-1 v of a preconditioner M.
+type Preconditioner<'a> = dyn Fn(&[f64], &mut [f64]) -> Result<(), String> + 'a;
+
+/// Solve A x = b by restarted flexible GMRES with the preconditioner `m` (z = M^-1 v), from the
+/// start `x`, to the relative residual of the PCG solves. The answer is the number of iterations.
+/// `cancelled` is checked at each restart.
+fn gmres(
+    a: &Csr,
+    b: &[f64],
+    x: &mut [f64],
+    m: &Preconditioner,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<usize, String> {
+    let n = b.len();
+    let norm = |v: &[f64]| v.iter().map(|e| e * e).sum::<f64>().sqrt();
+    let bnorm = norm(b);
+    if bnorm == 0.0 {
+        x.fill(0.0);
+        return Ok(0);
+    }
+    let mut done = 0;
+    let mut w = vec![0.0; n];
+    loop {
+        if cancelled() {
+            return Err("cancelled".into());
+        }
+        a.mul(x, &mut w);
+        let r: Vec<f64> = b.iter().zip(&w).map(|(p, q)| p - q).collect();
+        let beta = norm(&r);
+        if beta <= PCG_TOL * bnorm {
+            return Ok(done);
+        }
+        if done >= GMRES_MAX_ITERATIONS {
+            return Err(format!(
+                "GMRES did not converge in {GMRES_MAX_ITERATIONS} iterations: the residual is \
+                 {:.1e} of the right side",
+                beta / bnorm
+            ));
+        }
+        // The Krylov vectors, their preconditioned vectors, the Hessenberg matrix by columns
+        // after the rotations, the rotations, and the right side of the least squares problem.
+        let mut v: Vec<Vec<f64>> = vec![r.iter().map(|e| e / beta).collect()];
+        let mut z: Vec<Vec<f64>> = Vec::new();
+        let mut h: Vec<Vec<f64>> = Vec::new();
+        let mut rot: Vec<(f64, f64)> = Vec::new();
+        let mut g = vec![beta];
+        for j in 0..RESTART {
+            let mut zj = vec![0.0; n];
+            m(&v[j], &mut zj)?;
+            a.mul(&zj, &mut w);
+            z.push(zj);
+            let mut col = Vec::with_capacity(j + 2);
+            for vi in &v {
+                let hij: f64 = vi.iter().zip(&w).map(|(p, q)| p * q).sum();
+                for (p, q) in w.iter_mut().zip(vi) {
+                    *p -= hij * q;
+                }
+                col.push(hij);
+            }
+            let hn = norm(&w);
+            col.push(hn);
+            for (i, &(c, s)) in rot.iter().enumerate() {
+                let (p, q) = (col[i], col[i + 1]);
+                col[i] = c * p + s * q;
+                col[i + 1] = c * q - s * p;
+            }
+            let (p, q) = (col[j], col[j + 1]);
+            let d = p.hypot(q);
+            let (c, s) = (p / d, q / d);
+            col[j] = d;
+            col[j + 1] = 0.0;
+            rot.push((c, s));
+            g.push(-s * g[j]);
+            g[j] *= c;
+            h.push(col);
+            done += 1;
+            let converged = g[j + 1].abs() <= PCG_TOL * bnorm;
+            if converged || done >= GMRES_MAX_ITERATIONS || hn == 0.0 {
+                break;
+            }
+            v.push(w.iter().map(|e| e / hn).collect());
+        }
+        // y = H^-1 g, then x += Z y.
+        let k = h.len();
+        let mut y = vec![0.0; k];
+        for i in (0..k).rev() {
+            let s: f64 = (i + 1..k).map(|c| h[c][i] * y[c]).sum();
+            y[i] = (g[i] - s) / h[i][i];
+        }
+        for (zk, yk) in z.iter().zip(&y) {
+            for (p, q) in x.iter_mut().zip(zk) {
+                *p += q * yk;
+            }
+        }
     }
 }
 
@@ -297,11 +464,34 @@ mod tests {
         assert_eq!(t.integral(350.0), 625.0);
         assert_eq!(t.integral(600.0), 1500.0 + 3000.0);
         assert_eq!(t.integral(650.0), 4500.0 + 500.0);
+        assert_eq!(t.slope(250.0), 0.0);
+        assert_eq!(t.slope(300.0), 0.1);
+        assert_eq!(t.slope(500.0), -0.05);
+        assert_eq!(t.slope(600.0), 0.0);
         assert!(t.check().is_ok());
         let bad = Table {
             temperature: vec![300.0, 300.0],
             value: vec![1.0, 1.0],
         };
         assert!(bad.check().is_err());
+    }
+
+    #[test]
+    fn gmres_solves_a_nonsymmetric_matrix() {
+        let mut a = Csr::pattern(3, std::iter::once(&[0u32, 1, 2][..]));
+        a.add_element(&[0, 1, 2], &[4.0, 1.0, 0.0, -2.0, 3.0, 1.0, 1.0, -1.0, 5.0]);
+        let exact = [1.0, -2.0, 3.0];
+        let mut b = vec![0.0; 3];
+        a.mul(&exact, &mut b);
+        let mut x = vec![0.0; 3];
+        let identity = |v: &[f64], z: &mut [f64]| {
+            z.copy_from_slice(v);
+            Ok(())
+        };
+        let iterations = gmres(&a, &b, &mut x, &identity, &|| false).unwrap();
+        assert!(iterations <= 3, "{iterations}");
+        for (p, q) in x.iter().zip(exact) {
+            assert!((p - q).abs() < 1e-9, "{p} against {q}");
+        }
     }
 }

@@ -569,10 +569,10 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
                     system.solve(&mut temperature, None, &solver, &|| events.cancelled())?;
                 method = report.method;
                 events.progress(&format!(
-                    "{} solver, Newton {} iterations, last change {:.1e}",
+                    "{} solver, Newton {} iterations, residual {:.1e}",
                     name(method),
                     report.iterations,
-                    report.change
+                    report.residual
                 ));
                 let energy = energy_of(&temperature, None, &state.kt, &state.radiation);
                 emit(0.0, &temperature, energy, &scale(&state), events)?;
@@ -1399,7 +1399,8 @@ fn check(model: &Model) -> Result<(), String> {
                 }
                 if !(*ambient > 0.0 && ambient.is_finite()) {
                     return Err(
-                        "a radiation needs an ambient temperature above 0: the absolute                          temperature, in kelvin"
+                        "a radiation needs an ambient temperature above 0: the absolute \
+                         temperature, in kelvin"
                             .into(),
                     );
                 }

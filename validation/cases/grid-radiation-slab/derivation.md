@@ -28,4 +28,4 @@ The face temperature T2 is the root of this scalar equation in (T_amb, T1). Bise
 
 ## Error
 
-The exact field is linear in z, and the linear cells hold a linear field exactly. The face has 1 temperature, so the lumped radiation of its points is exact. Thus the only errors are the stop of the Newton iteration (a change below 1e-10 of the largest temperature) and the direct solve. The solve took 6 Newton iterations from the start at T_amb, and its results equal the exact values to all 11 printed digits. The tolerance is 1e-8 of each value.
+The exact field is linear in z, and the linear cells hold a linear field exactly. The face has 1 temperature, so the lumped radiation of its points is exact. Thus the only errors are the stop of the Newton iteration (a residual below 1e-10 of the gross heat flow) and the direct solve. The solve took 5 Newton iterations from the start at T_amb, and its results equal the exact values to all 11 printed digits. The tolerance is 1e-8 of each value.

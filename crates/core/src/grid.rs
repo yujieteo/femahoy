@@ -1119,7 +1119,6 @@ pub(crate) fn as_number(item: &Item) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
-/// A list of finite numbers.
 /// The table `{ temperature = [...], value = [...] }` of the key `key`, or `None` when the key
 /// is missing or is not a table.
 fn temperature_table(
@@ -1143,6 +1142,7 @@ fn temperature_table(
     }))
 }
 
+/// A list of finite numbers.
 pub(crate) fn numbers(item: &Item) -> Option<Vec<f64>> {
     item.as_array()?
         .iter()

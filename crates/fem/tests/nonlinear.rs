@@ -13,13 +13,16 @@ const SIGMA: f64 = 5.670374419e-8;
 #[derive(Default)]
 struct Record {
     frames: Vec<Frame>,
+    progress: Vec<String>,
 }
 
 impl Events for Record {
     fn mesh(&mut self, _: &Mesh) -> Result<(), String> {
         Ok(())
     }
-    fn progress(&mut self, _: &str) {}
+    fn progress(&mut self, line: &str) {
+        self.progress.push(line.into());
+    }
     fn frame(&mut self, frame: &Frame) -> Result<(), String> {
         self.frames.push(frame.clone());
         Ok(())
@@ -199,6 +202,51 @@ fn a_conductivity_linear_in_the_temperature_gives_the_kirchhoff_profile() {
     for f in &frames[0].flux {
         assert!((f[2] - q).abs() < 1e-7 * q, "{} against {q}", f[2]);
     }
+}
+
+#[test]
+fn a_strong_conductivity_converges_quadratically() {
+    // k = k0 (1 + beta T) with beta T from 2 to 5: a tangent with no dk/dT term converges
+    // slowly here.
+    let (k0, beta, length, t1, t2) = (2.0, 0.01, 1.0, 500.0, 200.0);
+    let table = Table {
+        temperature: vec![t2, t1],
+        value: vec![k0 * (1.0 + beta * t2), k0 * (1.0 + beta * t1)],
+    };
+    let phi = |t: f64| k0 * (t + 0.5 * beta * t * t);
+    let exact = |z: f64| {
+        let p = phi(t1) + (phi(t2) - phi(t1)) * z / length;
+        (-1.0 + (1.0 + 2.0 * beta * p / k0).sqrt()) / beta
+    };
+    let mut m = material(1.0);
+    m.conductivity_table = Some(table);
+    let loads = vec![
+        Load::Temperature {
+            faces: 0,
+            value: t1,
+        },
+        Load::Temperature {
+            faces: 1,
+            value: t2,
+        },
+    ];
+    let mut model = slab(length, length / 20.0, m, loads);
+    model.probes = vec![probe("a", 0.25), probe("b", 0.5), probe("c", 0.8)];
+    let mut r = Record::default();
+    solve(&model, &mut r).unwrap();
+    for (p, z) in r.frames[0].probes.iter().zip([0.25, 0.5, 0.8]) {
+        assert!(
+            (p - exact(z)).abs() < 1e-8 * exact(z),
+            "{p} against {}",
+            exact(z)
+        );
+    }
+    let iterations: usize = r
+        .progress
+        .iter()
+        .find_map(|l| l.split("Newton ").nth(1)?.split(' ').next()?.parse().ok())
+        .expect("a progress line with the Newton iterations");
+    assert!(iterations <= 8, "{iterations} Newton iterations");
 }
 
 #[test]

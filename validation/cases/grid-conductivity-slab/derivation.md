@@ -25,6 +25,6 @@ Phi(z) = Phi(T1) + (Phi(T2) − Phi(T1)) z / L, and T(z) = (−1 + sqrt(1 + 2 be
 
 ## Error
 
-The solver gives each cell the conductivity at the mean temperature of its points. In a slab, the flux of a cell is then k(T_m) (T_a − T_b) / h. When k is linear in T, this equals the Kirchhoff flux (Phi(T_a) − Phi(T_b)) / h, so the solution is exact at the points. The solve took 8 iterations, and `quarter` and `middle` equal the exact values to 1e-11. The iteration converges linearly, because its tangent has no dk/dT term (see `crates/fem/src/nonlinear.rs`).
+The solver gives each cell the conductivity at the mean temperature of its points. In a slab, the flux of a cell is then k(T_m) (T_a − T_b) / h. When k is linear in T, this equals the Kirchhoff flux (Phi(T_a) − Phi(T_b)) / h, so the solution is exact at the points. The solve took 4 Newton iterations, and `quarter` and `middle` equal the exact values to 1e-11. The iteration converges quadratically, because its tangent has the dk/dT term (see `crates/fem/src/nonlinear.rs`). A tangent with no dk/dT term took 10 iterations on a stronger table (beta T from 2 to 5, the test `a_strong_conductivity_converges_quadratically`), and the full tangent took 6.
 
 Between 2 points, the result is the linear interpolation of the curved exact profile. Its error is h^2 / 8 |T''| = 4.4e-5 of the value at `cell_middle` (computed 359.635153, exact 359.651092). The tolerance 1e-4 holds it with a margin of a factor of 2. The budget of the method was 0.5 % at 20 cells: the case is 50 times tighter.
