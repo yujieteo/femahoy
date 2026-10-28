@@ -3,7 +3,7 @@
 //! linear solvers and the refusals.
 
 use fh_fem::eigen;
-use fh_fem::elastic::{self, Load, Material, Thermal};
+use fh_fem::elastic::{self, Load, Material, Thermal, LAPTOP};
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{FaceSet, Mesh};
 use fh_fem::hex::Orthotropic;
@@ -33,7 +33,7 @@ impl Events for Record {
 
 fn run(model: &Model, method: Option<Method>) -> (Summary, Vec<Mode>) {
     let mut r = Record::default();
-    let s = solve_within(model, method, &mut r).unwrap();
+    let s = solve_within(model, method, LAPTOP, elastic::DIRECT_ENTRIES, &mut r).unwrap();
     (s, r.modes)
 }
 

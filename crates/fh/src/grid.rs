@@ -7,8 +7,8 @@
 //! surfaces (see `fh guide grid`). A model of boxes is solved on the box grid; a model with a
 //! prism part, and each electromagnetic model, on a mesh of tetrahedra (10-node for a static
 //! step). [`run_with`] reads it, solves it with the crate `fh-fem` and writes, for a heat step
-//! (steady or transient), with the reader and the result grid of `fh_core::grid`, which the
-//! browser solve of the viewer also uses:
+//! (steady or transient), with the reader and the result grids of `fh_core::grid`, which the
+//! browser solve of the viewer also uses (also for a static step and the modes of a structure):
 //!
 //! - `step-N.vtu` and `results.pvd` in the run folder: for heat, the temperature `NT` at each
 //!   point, the heat flux `HFL` and the part number `part` of each cell, at each output time;
@@ -73,10 +73,10 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use fh_core::grid::{
-    dc_grid, dc_probes_text, em_frame_grid, frame_grid, is_line, matrix_text, modes_row,
-    ports_head, ports_row, probe_head, probe_row, read, sparams_head, sparams_row,
-    structure_modes_row, terminals_text, touchstone_head, touchstone_rows, vtk_type, Case,
-    MODES_HEAD, STRUCTURE_MODES_HEAD,
+    dc_grid, dc_probes_text, em_frame_grid, frame_grid, is_line, matrix_text, mode_grid, modes_row,
+    ports_head, ports_row, probe_head, probe_row, read, real, row, sparams_head, sparams_row,
+    static_grid, static_probes_text, structure_modes_row, terminals_text, touchstone_head,
+    touchstone_rows, vtk_type, Case, MODES_HEAD, STRUCTURE_MODES_HEAD,
 };
 use fh_core::line;
 use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry};
@@ -599,19 +599,6 @@ impl Output<'_> {
     }
 }
 
-/// A header line and 1 row.
-fn row(columns: &[(String, String)]) -> String {
-    let (names, values): (Vec<&str>, Vec<&str>) = columns
-        .iter()
-        .map(|(n, v)| (n.as_str(), v.as_str()))
-        .unzip();
-    format!("# {}\n{}\n", names.join(" "), values.join(" "))
-}
-
-fn real(v: f64) -> String {
-    format!("{v:.10e}")
-}
-
 impl Events for Output<'_> {
     fn cancelled(&self) -> bool {
         Output::cancelled(self)
@@ -821,9 +808,13 @@ impl modes::Events for Modal<'_, '_> {
             "mode {k}: {:.6e} Hz, effective mass fraction x {:.4} y {:.4} z {:.4}",
             mode.frequency, m[0], m[1], m[2]
         ));
-        let shape = mode.shape.iter().flatten().copied().collect();
-        self.out
-            .vtu(k as f64, vec![Field::f64("U", 3, shape)], Vec::new())
+        let mesh = self
+            .out
+            .mesh
+            .as_ref()
+            .expect("the mesh comes before a result");
+        let grid = mode_grid(mesh, mode);
+        write_step(&self.out.dir, &mut self.out.entries, k as f64, &grid)
     }
 }
 
@@ -846,32 +837,14 @@ impl elastic::Events for Static<'_, '_> {
 
     fn solution(&mut self, s: &Solution) -> Result<(), String> {
         let model = self.1;
-        let flat = |v: &[[f64; 6]]| v.iter().flatten().copied().collect::<Vec<_>>();
-        let mut fields = vec![
-            Field::f64("U", 3, s.displacement.iter().flatten().copied().collect()),
-            Field::f64("S", 6, flat(&s.stress)),
-            Field::f64("E", 6, flat(&s.strain)),
-            Field::f64("MISES", 1, s.mises.clone()),
-            Field::f64("SP", 3, s.principal.iter().flatten().copied().collect()),
-        ];
-        if let Some(t) = &s.temperature {
-            fields.push(Field::f64("NT", 1, t.clone()));
-        }
-        self.0.vtu(1.0, fields, Vec::new())?;
-        let mut columns = Vec::new();
-        for (p, v) in model.probes.iter().zip(&s.probes) {
-            let names = [
-                "ux", "uy", "uz", "sxx", "syy", "szz", "sxy", "syz", "sxz", "mises",
-            ];
-            let values = v.displacement.iter().chain(&v.stress).chain([&v.mises]);
-            for (n, &x) in names.iter().zip(values) {
-                columns.push((format!("{}.{n}", p.name), real(x)));
-            }
-            if s.temperature.is_some() {
-                columns.push((format!("{}.t", p.name), real(v.temperature)));
-            }
-        }
-        self.0.probes = row(&columns);
+        let mesh = self
+            .0
+            .mesh
+            .as_ref()
+            .expect("the mesh comes before a result");
+        let grid = static_grid(mesh, s);
+        write_step(&self.0.dir, &mut self.0.entries, 1.0, &grid)?;
+        self.0.probes = static_probes_text(model, s);
         let mut columns = Vec::new();
         for shape in &s.surfaces {
             let n = &shape.name;

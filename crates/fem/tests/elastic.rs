@@ -4,7 +4,7 @@
 
 use fh_fem::elastic::{
     solve, solve_within, Events, Load, Material, Model, Singular, Solution, Summary, Surface,
-    Thermal,
+    Thermal, LAPTOP,
 };
 use fh_fem::grid::{Part, Side, Spacing};
 use fh_fem::heat::{FaceSet, Mesh, Probe};
@@ -427,13 +427,13 @@ fn a_factor_above_the_ceiling_gives_multigrid() {
     let m = cantilever(20.0, 10.0, 1.0, 2.0, 2, 1.0);
     let (sd, d) = run(&m);
     let mut r = Record::default();
-    let sm = solve_within(&m, 0, PCG_MAX_ITER, &mut r).unwrap();
+    let sm = solve_within(&m, LAPTOP, 0, PCG_MAX_ITER, &mut r).unwrap();
     let mg = r.solution.unwrap();
     assert_eq!((sd.method, sm.method), (Method::Direct, Method::Multigrid));
     let (wd, wm) = (d.probes[0].displacement[2], mg.probes[0].displacement[2]);
     assert!((wd - wm).abs() < 1e-6 * wd.abs(), "{wd} {wm}");
 
-    let e = solve_within(&m, 0, 1, &mut Record::default()).unwrap_err();
+    let e = solve_within(&m, LAPTOP, 0, 1, &mut Record::default()).unwrap_err();
     assert!(e.contains("did not converge"), "{e}");
     assert!(e.contains("The cells of part beam are 4 times"), "{e}");
     assert!(

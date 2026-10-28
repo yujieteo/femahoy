@@ -3,15 +3,19 @@
 //! the lists of [`results::Results::receive`]. `fh run` uses the same reader, result grid and
 //! probe table (`fh_core::grid`), so the same case gives the same probes. A case with a `[line]`
 //! table is a transmission line (`fh_core::line`): its answer is the table of `grid/line.txt`.
+//! The answer of a static step is the table of `grid/probes.txt`, and of the modes of a
+//! structure the table of `grid/modes.txt`.
 
 use fh_core::grid::{
-    em_frame_grid, frame_grid, is_line, modes_row, probe_head, probe_row, read, sparams_head,
-    sparams_row, Case, MODES_HEAD,
+    em_frame_grid, frame_grid, is_line, mode_grid, modes_row, probe_head, probe_row, read,
+    sparams_head, sparams_row, static_grid, static_probes_text, structure_modes_row, Case,
+    MODES_HEAD, STRUCTURE_MODES_HEAD,
 };
 use fh_core::line;
 use fh_core::vtu::PvdEntry;
 use fh_fem::em;
 use fh_fem::heat::{self, Events, Frame, Limit, Mesh};
+use fh_fem::{elastic, modes};
 
 use crate::results::Loader;
 
@@ -33,17 +37,21 @@ pub const BROWSER: Limits = Limits {
         memory: MEMORY,
         direct: 25_000,
     },
+    structure: Limit {
+        points: 75_000,
+        tet_points: 62_500,
+        memory: MEMORY,
+    },
 };
 
-/// The case `text` that the browser solves (heat or electromagnetics) and its unit system. A
-/// static, a structural modes, a homogenize, a conduction or an electrostatic step gets an error
-/// that names `fh run`.
+/// The case `text` that the browser solves (heat, a structure or electromagnetics) and its unit
+/// system. A homogenize, a conduction or an electrostatic step gets an error that names `fh run`.
 pub fn read_case(text: &str) -> Result<(Case, String), String> {
     match read(text)? {
-        (Case::Elastic(_) | Case::Modes(_) | Case::Homogenize(_) | Case::Dc(_), _) => Err("the \
-             browser solves only heat steps (steady or transient) and electromagnetic steps \
-             (frequency or modes). Solve a static, a structural modes, a homogenize, a conduction \
-             or an electrostatic step with fh run"
+        (Case::Homogenize(_) | Case::Dc(_), _) => Err("the browser solves only heat steps \
+             (steady or transient), static and modes steps of a structure, and electromagnetic \
+             steps (frequency or modes). Solve a homogenize, a conduction or an electrostatic \
+             step with fh run"
             .into()),
         case => Ok(case),
     }
@@ -55,16 +63,29 @@ pub fn read_case(text: &str) -> Result<(Case, String), String> {
 /// measurement of the line solve in wasm32.
 pub const BROWSER_LINE_POINTS: usize = 250_000;
 
+/// The most entries of the direct factor of a structure in the browser: a quarter of
+/// `elastic::DIRECT_ENTRIES` (about 0.5 GB), the ratio of the structure limits. Above it the
+/// solver is multigrid. Reason: the native ceiling of 2 GB of factor, with the subspace vectors of
+/// 100 modes and the matrices, can pass the 4 GiB of wasm32.
+pub const BROWSER_DIRECT_ENTRIES: u64 = elastic::DIRECT_ENTRIES / 4;
+
 const MEMORY: &str = "the 4 GiB memory of wasm32 in a browser";
 
-/// The largest models of a solve: heat, and electromagnetics. Reason for the electromagnetic
-/// limits: natively, the direct factor of a mesh of 31,415 points has 84,931,624 complex entries
-/// (1.4 GB), so 25,000 points use about 1 GB of the 4 GiB of wasm32. The iterative solve of
-/// 39,818 points used 1.16 GB. There is no measurement in wasm32.
+/// The largest models of a solve: heat, electromagnetics, and a structure (static and modes).
+/// Reason for the electromagnetic limits: natively, the direct factor of a mesh of 31,415 points
+/// has 84,931,624 complex entries (1.4 GB), so 25,000 points use about 1 GB of the 4 GiB of
+/// wasm32. The iterative solve of 39,818 points used 1.16 GB. Reason for the structure limits: a
+/// quarter of the native limits (`elastic::LAPTOP`), the ratio of the heat limits of the box
+/// grid. The native limit of 300,000 points of the grid needs about 3 GB, and a static solve of
+/// 183,000 points of 10-node tetrahedra used 2.3 GB, so the browser limits, with a direct factor
+/// of at most `BROWSER_DIRECT_ENTRIES`, use about 1 GB. The subspace vectors of 100 modes of
+/// 75,000 points use 1.1 GB more, below the 2 GB refusal of `fh_fem::eigen::fits`. There is no
+/// measurement in wasm32.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limits {
     pub heat: Limit,
     pub em: em::Limit,
+    pub structure: Limit,
 }
 
 /// Solve the case `text` (the text of `grid.toml`). `on_line` gets each line of progress and
@@ -83,10 +104,14 @@ pub fn solve(
     let (case, units) = read_case(text).map_err(|e| format!("grid.toml: {e}"))?;
     let model = match case {
         Case::Em(model) => return solve_em(&model, &units, limits.em, on_line, on_step),
-        Case::Heat(model) => model,
-        Case::Elastic(_) | Case::Modes(_) | Case::Homogenize(_) | Case::Dc(_) => {
-            unreachable!("read_case refuses them")
+        Case::Elastic(model) => {
+            return solve_static(&model, &units, limits.structure, on_line, on_step)
         }
+        Case::Modes(model) => {
+            return solve_modes(&model, &units, limits.structure, on_line, on_step)
+        }
+        Case::Heat(model) => model,
+        Case::Homogenize(_) | Case::Dc(_) => unreachable!("read_case refuses them"),
     };
     let limit = limits.heat;
     let mut out = Output {
@@ -154,6 +179,149 @@ fn solve_line(
     };
     on_step(loader.push_and_send(entry, line::solution_grid(&solution))?);
     Ok(line::table_text(&model, &solution))
+}
+
+/// The error `e` of a structure larger than `limit`, with the native limits.
+fn structure_refusal(e: String, limit: Limit) -> String {
+    if e.contains(limit.memory) {
+        format!(
+            "{e}, or solve the case with fh run (up to {} points of a box grid and {} of a mesh \
+             of 10-node tetrahedra)",
+            elastic::LAPTOP.points,
+            elastic::LAPTOP.tet_points
+        )
+    } else {
+        e
+    }
+}
+
+/// Solve a static step of a structure: 1 output with the fields, and the probe table.
+fn solve_static(
+    model: &elastic::Model,
+    units: &str,
+    limit: Limit,
+    on_line: &mut dyn FnMut(&str),
+    on_step: &mut dyn FnMut(Vec<Vec<u8>>),
+) -> Result<String, String> {
+    struct Static<'a> {
+        model: &'a elastic::Model,
+        mesh: Option<Mesh>,
+        loader: Loader,
+        probes: String,
+        on_line: &'a mut dyn FnMut(&str),
+        on_step: &'a mut dyn FnMut(Vec<Vec<u8>>),
+    }
+    impl elastic::Events for Static<'_> {
+        fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
+            self.mesh = Some(mesh.clone());
+            Ok(())
+        }
+        fn progress(&mut self, text: &str) {
+            (self.on_line)(text);
+        }
+        fn solution(&mut self, s: &elastic::Solution) -> Result<(), String> {
+            let mesh = self.mesh.as_ref().ok_or("the mesh comes before a result")?;
+            let entry = PvdEntry {
+                time: 1.0,
+                file: "step-1".into(),
+            };
+            (self.on_step)(self.loader.push_and_send(entry, static_grid(mesh, s))?);
+            self.probes = static_probes_text(self.model, s);
+            Ok(())
+        }
+    }
+    let mut out = Static {
+        model,
+        mesh: None,
+        loader: Loader::stream(units),
+        probes: String::new(),
+        on_line,
+        on_step,
+    };
+    let summary = elastic::solve_within(
+        model,
+        limit,
+        BROWSER_DIRECT_ENTRIES,
+        fh_fem::solve::PCG_MAX_ITER,
+        &mut out,
+    )
+    .map_err(|e| structure_refusal(e, limit))?;
+    (out.on_line)(&format!(
+        "{} cells, {} points, {} unknowns, force imbalance {:.1e}",
+        summary.cells, summary.points, summary.unknowns, summary.imbalance
+    ));
+    for w in &summary.warnings {
+        (out.on_line)(&format!("warning: {w}"));
+    }
+    Ok(out.probes)
+}
+
+/// Solve the modes of a structure: 1 output with the shape of each mode, with the mode number as
+/// the time, and the mode table.
+fn solve_modes(
+    model: &modes::Model,
+    units: &str,
+    limit: Limit,
+    on_line: &mut dyn FnMut(&str),
+    on_step: &mut dyn FnMut(Vec<Vec<u8>>),
+) -> Result<String, String> {
+    struct Modal<'a> {
+        mesh: Option<Mesh>,
+        loader: Loader,
+        table: String,
+        count: usize,
+        on_line: &'a mut dyn FnMut(&str),
+        on_step: &'a mut dyn FnMut(Vec<Vec<u8>>),
+    }
+    impl modes::Events for Modal<'_> {
+        fn mesh(&mut self, mesh: &Mesh) -> Result<(), String> {
+            self.mesh = Some(mesh.clone());
+            Ok(())
+        }
+        fn progress(&mut self, text: &str) {
+            (self.on_line)(text);
+        }
+        fn mode(&mut self, mode: &modes::Mode) -> Result<(), String> {
+            self.count += 1;
+            let k = self.count;
+            self.table.push_str(&structure_modes_row(k, mode));
+            let m = mode.mass_fraction;
+            (self.on_line)(&format!(
+                "mode {k}: {:.6e} Hz, effective mass fraction x {:.4} y {:.4} z {:.4}",
+                mode.frequency, m[0], m[1], m[2]
+            ));
+            let mesh = self.mesh.as_ref().ok_or("the mesh comes before a mode")?;
+            let entry = PvdEntry {
+                time: k as f64,
+                file: format!("step-{k}"),
+            };
+            (self.on_step)(self.loader.push_and_send(entry, mode_grid(mesh, mode))?);
+            Ok(())
+        }
+    }
+    let mut out = Modal {
+        mesh: None,
+        loader: Loader::stream(units),
+        table: STRUCTURE_MODES_HEAD.to_owned(),
+        count: 0,
+        on_line,
+        on_step,
+    };
+    let summary = modes::solve_within(model, None, limit, BROWSER_DIRECT_ENTRIES, &mut out)
+        .map_err(|e| structure_refusal(e, limit))?;
+    (out.on_line)(&format!(
+        "{} cells, {} points, {} unknowns, {} modes in {} iterations, mass {:.6e}",
+        summary.cells,
+        summary.points,
+        summary.unknowns,
+        model.count,
+        summary.iterations,
+        summary.mass
+    ));
+    for w in &summary.warnings {
+        (out.on_line)(&format!("warning: {w}"));
+    }
+    Ok(out.table)
 }
 
 /// Solve an electromagnetic case.
@@ -312,7 +480,7 @@ mod tests {
                 points: 10,
                 ..BROWSER.heat
             },
-            em: BROWSER.em,
+            ..BROWSER
         };
         let e = solve(WALL, small, &mut |_| {}, &mut |_| {}).unwrap_err();
         assert!(
@@ -321,12 +489,59 @@ mod tests {
         );
     }
 
-    /// A static step gets an error that names fh run, not a solve.
+    const BLOCK: &str =
+        include_str!("../../../validation/cases/grid-constrained-block/block/grid.toml");
+
+    /// A static step gives the probe table of `fh run` and the stress fields, and a larger grid
+    /// than the limit is refused before the solve, with the limit, the memory and fh run.
     #[test]
-    fn a_static_step_is_refused_with_fh_run_in_the_text() {
-        const BLOCK: &str =
-            include_str!("../../../validation/cases/grid-constrained-block/block/grid.toml");
-        let e = solve(BLOCK, BROWSER, &mut |_| {}, &mut |_| panic!("no output")).unwrap_err();
+    fn the_page_gets_the_stress_and_a_large_structure_is_refused() {
+        let mut results = Results::default();
+        let probes = solve(BLOCK, BROWSER, &mut |_| {}, &mut |s| {
+            results.receive(&s[..]).unwrap()
+        })
+        .unwrap();
+        assert!(probes.starts_with("# centre.ux "), "{probes}");
+        assert_eq!(probes.lines().count(), 2, "{probes}");
+        assert_eq!(results.steps.len(), 1);
+        for f in ["U magnitude", "MISES", "S11", "NT"] {
+            assert!(results.steps[0].field(f).is_some(), "{f}");
+        }
+        let small = Limits {
+            structure: Limit {
+                points: 10,
+                ..BROWSER.structure
+            },
+            ..BROWSER
+        };
+        let e = solve(BLOCK, small, &mut |_| {}, &mut |_| {}).unwrap_err();
+        assert!(
+            e.contains("more than 10 points") && e.contains("wasm32") && e.contains("fh run"),
+            "{e}"
+        );
+    }
+
+    /// The modes of a structure give the mode table and the shape of each mode.
+    #[test]
+    fn the_page_gets_the_modes_of_a_structure() {
+        const BEAM: &str =
+            include_str!("../../../validation/cases/grid-frequency-cantilever/beam/grid.toml");
+        let mut results = Results::default();
+        let table = solve(BEAM, BROWSER, &mut |_| {}, &mut |s| {
+            results.receive(&s[..]).unwrap()
+        })
+        .unwrap();
+        assert!(table.starts_with(STRUCTURE_MODES_HEAD), "{table}");
+        assert_eq!(table.lines().count(), 2, "{table}");
+        assert_eq!(results.steps.len(), 1);
+        assert!(results.steps[0].field("U magnitude").is_some());
+    }
+
+    /// A conduction step gets an error that names fh run, not a solve.
+    #[test]
+    fn a_conduction_step_is_refused_with_fh_run_in_the_text() {
+        const BAR: &str = include_str!("../../../validation/cases/grid-resistor-bar/bar/grid.toml");
+        let e = solve(BAR, BROWSER, &mut |_| {}, &mut |_| panic!("no output")).unwrap_err();
         assert!(e.contains("heat steps") && e.contains("fh run"), "{e}");
     }
 

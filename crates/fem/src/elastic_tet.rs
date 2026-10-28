@@ -68,31 +68,43 @@ pub const MULTIGRID_ASPECT: f64 = 8.0;
 /// of Williams is above 0.9).
 const SMOOTH: f64 = 0.866;
 
+/// The error of a mesh with more points than `limit.tet_points`.
+pub(crate) fn refusal(limit: heat::Limit) -> String {
+    let why = if limit.tet_points < MAX_POINTS {
+        format!("{} solves", limit.memory)
+    } else {
+        "a laptop solves in a few minutes".to_string()
+    };
+    format!(
+        "the mesh of 10-node tetrahedra has more than {} points, the most that {why}: use a \
+         larger max_cell or a larger max_growth",
+        limit.tet_points
+    )
+}
+
 /// Solve the model on the tetrahedral mesh: the direct solver on a small model or on flat cells,
 /// else PCG with p-multigrid, also when the direct factor has more than `entries` entries; at
-/// most `iterations`.
+/// most `iterations`. A mesh with more points than `limit.tet_points` is refused.
 pub(crate) fn solve(
     model: &Model,
     stiffness: &[Stiffness],
+    limit: heat::Limit,
     entries: u64,
     iterations: usize,
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
     let mut warnings = Vec::new();
-    let refusal = format!(
-        "the mesh of 10-node tetrahedra has more than {MAX_POINTS} points, the most that a laptop \
-         solves in a few minutes: use a larger max_cell or a larger max_growth"
-    );
+    let refusal = refusal(limit);
     let tm = prism::mesh(
         &model.parts,
         model.axis,
         model.spacing,
-        MAX_POINTS,
+        limit.tet_points,
         &refusal,
         false,
     )?;
     let q = Quadratic::new(&tm.points, &tm.tets);
-    if q.points.len() > MAX_POINTS {
+    if q.points.len() > limit.tet_points {
         return Err(refusal);
     }
     let (nv, n) = (q.corners, q.points.len());
