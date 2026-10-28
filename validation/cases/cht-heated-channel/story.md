@@ -6,4 +6,4 @@ The model also has the correct temperature across the full section at x = 40 mm,
 
 <!--curve profile.csv-->
 
-The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. The view shows the temperature `T`, with a dot at each checked place. Select the station x = 40 mm or the full channel above the view.
+The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. At the station x = 40 mm, the checked temperatures are interface_T = 312.9000 K and heater_T = 313.3800 K. At the outlet x = 90 mm, outlet_T = 329.9998 K.

@@ -8,4 +8,4 @@ The model agrees with the closed form at each time step, not only at the check t
 
 <!--curve torque-error.csv-->
 
-The 3D view shows the crank, the rod and the slider from the top, at the true motion. Move the time slider above the view: the crank turns 2.25 times, 1 turn in each second. At t = 1.125 s, the crank is at 45 degrees, and the dot marks the checked slider position. The colour is U1, the move along x from the start. Thus the slider has U1 = x_slider - 0.4 m.
+The crank turns 2.25 times, 1 turn in each second: theta = 360° × t / 1 s from the dead centre at t = 0. At t = 1.125 s, theta = 405°, so the crank is at 45 degrees, and the checked slider position is x = 0.362258 m. U1 is the move along x from the start. Thus the slider has U1 = x_slider - 0.4 m.

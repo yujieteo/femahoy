@@ -10,4 +10,4 @@ The best hole has almost the same stress at each point of its edge. This agrees 
 
 <!--curve edge.csv-->
 
-The 3D view shows the von Mises stress near the best hole, from the top. The colour on the edge is almost the same from the x axis to the y axis. The dots mark the peak, 1.4992 at 8.4 degrees from the x axis, and the end of the y axis, 1.4977.
+The von Mises stress on the edge of the best hole is almost the same from the x axis to the y axis. The peak is 1.4992 at 8.4 degrees from the x axis, and the value at the end of the y axis is 1.4977.

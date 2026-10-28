@@ -150,7 +150,7 @@ def main(out, folders):
             log=True, gaps=True, note="foam/log.simpleFoam (initial residuals)")
     csv(out, "cp", "Pressure on the upper and lower surfaces", "-Cp [1]",
         [f"{f[2]} {surface}" for f in FLAPS for surface in ("upper", "lower")], cp_rows,
-        note="Solid: upper surface. Dashed: lower surface. Hinge: x / c = 0.8. Cp = 2p for this case.")
+        note="Hinge: x / c = 0.8. Cp = 2p for this case.")
     csv(out, "lift", "Lift against the flap angle", "Cl [1]", ["model Cl", "reference Cl"],
         [[r[0], r[1], r[2]] for r in load_rows], points=["reference Cl"],
         note="Only the 3 marked angles have solved results. Positive flap angle is down.")

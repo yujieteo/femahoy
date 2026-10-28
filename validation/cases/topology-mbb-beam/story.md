@@ -2,7 +2,18 @@
 
 The topology loop of fh gives the compliance of the published SIMP code for the half MBB beam. After 106 iterations, the loop gives c = 216.8137 with 50 % of the volume. Andreassen et al. (2011) give 216.81. The difference is 0.002 %, less than 1 % of the tolerance of 0.2 %.
 
-The model view shows the density of each element: 1 is material and 0 is void. Move the design slider above the view. It shows the design at the iterations 1, 2, 4, 8, 16, 32 and 64, and the final design at iteration 106. The slider also gives c of each iteration. The marks show the load at the top left corner and the roller at the bottom right corner. The left edge is the symmetry plane.
+The result is the density of each element: 1 is material and 0 is void. The load 1 is down at the top left corner, and the roller is at the bottom right corner. The left edge is the symmetry plane. The compliance c at some iterations is:
+
+| Iteration | c |
+|---|---|
+| 1, the uniform start | 1007.0 |
+| 2 | 583.6 |
+| 4 | 351.0 |
+| 8 | 307.1 |
+| 16 | 258.6 |
+| 32 | 220.0 |
+| 64 | 218.1 |
+| 106, the final design | 216.81 |
 
 <!--curve history.csv-->
 

@@ -2,7 +2,7 @@
 
 ccx builds the column in 10 lifts with element birth and gives the settlement of the lift theory. At mid-height (z = 5 m), ccx gives 0.02315179 mm, and the lift theory gives 0.0231516 mm. The difference is 8.2e-6 of the reference, and the tolerance is 1e-4. At the top of each lift, the largest difference is 2.0e-7 mm.
 
-The 3D view shows the column after each lift, with the settlement U3 in mm. Each step shows only the lifts in the model in that step.
+The run has 1 step for each of the 10 lifts. Each step has only the lifts in the model in that step. After lift 10, the settlement at mid-height is u_mid = -0.02315179 mm.
 
 <!--curve settlement.csv-->
 

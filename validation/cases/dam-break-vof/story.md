@@ -4,4 +4,11 @@ The surge front of the interFoam model follows the front that Martin and Moyce (
 
 <!--curve front.csv-->
 
-The model view shows the water. `alpha.water` is 1 in the water and 0 in the air. Move the time slider above the view: the dot marks the front at each time of the run. The front is the largest x of a cell centre with alpha.water above 0.5, and Z = x / a with a = 2.25 in.
+`alpha.water` is 1 in the water and 0 in the air. The front is the largest x of a cell centre with alpha.water above 0.5, and Z = x / a with a = 2.25 in. The front at each time of the run is:
+
+| t [s] | Z |
+|---|---|
+| 0, the release | 0.99 |
+| 0.06 | 1.61 |
+| 0.12 | 2.89 |
+| 0.18 | 4.51 |

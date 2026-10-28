@@ -8,4 +8,9 @@ Each velocity maximum of the model is at the position of Table V, within 0.003. 
 
 <!--curve v.csv-->
 
-The hot wall heats the air, and the air turns clockwise in the cavity. At Ra = 1e5 the buoyancy is 10 times larger. The average Nusselt number is 2.0 times larger. The largest vertical velocity is 3.5 times larger and nearer to the hot wall. Select a Rayleigh number above the view. The field list has the temperature `T` for the Nusselt number, and `U1` and `U2` for the 2 velocity checks. The dots mark the largest u on x = 0.5 and the largest v on y = 0.5.
+The hot wall heats the air, and the air turns clockwise in the cavity. At Ra = 1e5 the buoyancy is 10 times larger. The average Nusselt number is 2.0 times larger. The largest vertical velocity is 3.5 times larger and nearer to the hot wall. The results have the temperature `T` for the Nusselt number, and `U1` and `U2` for the 2 velocity checks. The largest u on x = 0.5 and the largest v on y = 0.5 are:
+
+| Ra | Largest u on x = 0.5 | Largest v on y = 0.5 |
+|---|---|---|
+| 1e4 | 16.18 at y = 0.8256 | 19.63 at x = 0.1202 |
+| 1e5 | 34.75 at y = 0.8566 | 68.66 at x = 0.0659 |

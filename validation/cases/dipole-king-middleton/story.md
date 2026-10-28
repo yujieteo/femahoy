@@ -10,4 +10,4 @@ Above the resonance, the difference of R increases: +5.8 % at beta h = 1.6 and +
 
 The far field agrees with the far field of a half-wave dipole. At beta h = pi / 2, the directivity is 1.652 against 1.641 for a sinusoidal current (+0.7 %), and the radiated power is 0.9994 of the power into the port.
 
-The 3D view shows the pattern: a surface at the distance D(theta, phi) from the centre. The dipole is on the z axis. D is near 0 on the axis. In the plane z = 0, D is 1.651 to 1.652 in all directions, and the dot marks the largest value.
+The pattern D(theta, phi) at beta h = pi / 2: the dipole is on the z axis. D is near 0 on the axis. In the plane z = 0, D is 1.651 to 1.652 in all directions. The largest value is D = 1.652.

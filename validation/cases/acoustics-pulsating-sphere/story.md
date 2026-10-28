@@ -12,4 +12,4 @@ The difference is largest on the outer sphere r = 0.5 m, where the mesh is coars
 
 gmsh of another version can make another mesh of the same sizes. Thus the values of this run can differ a little from the tables below, which come from the check mesh of derivation.md. The section "Tolerance" expects up to 0.68 % from another mesh.
 
-The 3D view shows the pressure in the air of the octant model, between the sphere r = a and the outer sphere r = 0.5 m. The amplitude |p| is constant on each sphere about the centre. It falls from 0.27 Pa at the sphere to 0.056 Pa at the outer sphere. Select the real or the imaginary part above the view to see the phase change with r. The dot is the check point.
+The octant model holds the air between the sphere r = a and the outer sphere r = 0.5 m. The amplitude |p| is constant on each sphere about the centre. It falls from 0.27 Pa at the sphere to 0.056 Pa at the outer sphere. The check point is at r = 0.3 m.

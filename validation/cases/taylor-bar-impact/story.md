@@ -8,4 +8,17 @@ The radius increases fast in the first 30 µs and stops at about 50 µs. The len
 
 A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below), 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.
 
-The 3D view shows the true shape of the quarter bar. Move the time slider above the view: the dots mark the length and the mushroom radius at each time, 1 step each 10 µs. The colour is `PEEQ`, the equivalent plastic strain.
+The model is the quarter bar, with 1 step each 10 µs. The length and the mushroom radius at each time are:
+
+| t [µs] | Length [mm] | Radius [mm] |
+|---|---|---|
+| 10 | 30.14 | 4.96 |
+| 20 | 28.06 | 5.86 |
+| 30 | 26.18 | 6.40 |
+| 40 | 24.54 | 6.68 |
+| 50 | 23.17 | 6.72 |
+| 60 | 22.10 | 6.73 |
+| 70 | 21.43 | 6.72 |
+| 80, the time of the checks | 21.29 (DYNA3D 21.66) | 6.72 (DYNA3D 7.02) |
+
+`PEEQ` is the equivalent plastic strain.

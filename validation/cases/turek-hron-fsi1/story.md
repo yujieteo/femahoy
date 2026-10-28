@@ -4,7 +4,7 @@ The coupled model of OpenFOAM, CalculiX and preCICE passes FSI1 of Turek and Hro
 
 The coarse mesh of the check causes most of the difference in the displacement. On the finer meshes of the mesh study, the drag and the displacements move to the reference. The lift stays within 0.18 % of it. At zero cell size, the drag and ux are within 0.13 % of the reference, and uy is 0.70 % below it. The coupling is necessary: a rigid flag gives a lift 46 % above the reference (see "Tolerance").
 
-The flow around the cylinder bends the flag up to a steady shape. Point A, the middle of the free end of the flag, moves 0.81 mm up. The view shows the displacement 20 times larger, thus the end of the flag is 16 mm above the dot. The dot marks point A before the deformation. The colour is the pressure `p`, which gives 92 % of the lift.
+The flow around the cylinder bends the flag up to a steady shape. Point A, the middle of the free end of the flag, moves 0.81 mm up. Point A before the deformation is at x = 0.6 m, y = 0.2 m. The pressure `p` gives 92 % of the lift.
 
 The coupling converges to a steady state. The inlet velocity increases in the first 2 time windows. From window 28 to window 30, uy changes by 0.011 %, and the other values by 0.0011 % or less. The section "Mesh study" estimates the rest of the change after window 30 as +0.05 % in uy.
 

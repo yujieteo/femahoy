@@ -9,4 +9,4 @@ The model passes, and it is above the test of Ladson (1988) by the known amount 
 
 <!--curve drag.csv-->
 
-The far field is 500 chords from the airfoil. The view shows only the airfoil and the flow near it. Select an angle of attack above the view to see the pressure `p`, which gives the lift.
+The far field is 500 chords from the airfoil. The run solves the angles of attack -0.05, 4.04 and 10.12 degrees. The pressure `p` gives the lift.

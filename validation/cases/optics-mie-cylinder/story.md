@@ -8,4 +8,4 @@ The largest difference is -0.59 % at x = 2.70. There Q falls fast after the reso
 
 <!--curve error.csv-->
 
-The 3D view shows the real part of the total field Ez at x = 2.5, from the top. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. Move the phase slider above the view: each step is 1/8 of the period T = 2 pi / x = 2.51 a / c. The crests move to the right. |Ez| is largest at the back surface of the cylinder, at the dot, at the phases 90° and 270°.
+The result is the total field Ez at x = 2.5. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. The period is T = 2 pi / x = 2.51 a / c. The crests move to the right. |Ez| is largest at the back surface of the cylinder, at the phases 90° and 270°.

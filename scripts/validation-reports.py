@@ -20,7 +20,8 @@ cases. For each case:
    case. A case that does not pass shows the table of the checks before the story. The plot of
    a curve goes in place of the mark `<!--curve NAME-->` of the story or of the mesh trend,
    where the path of the curve ends with NAME, else at the end of the report. Each plot is the
-   SVG file validation/reports/CASE/NAME.svg, which `fh report` draws. In the story,
+   SVG file validation/reports/CASE/NAME.svg, which `fh report` draws, and a table of its
+   original values. In the story,
    `<!--hand-check CHECK UNIT-->...<!--/hand-check-->` puts its formula and scope below the
    table of the checks. UNIT comes from the case. The table gives the difference in that unit,
    and "Not specified" for the unit of each other check.
@@ -274,7 +275,17 @@ def svg(figure):
             f'<rect width="100%" height="100%" fill="{SIDE}"/>{plot}{"".join(keys)}</svg>\n')
     tail = figure[figure.index("</svg>"):]
     lines = [html.unescape(p) for p in re.findall(r"<p>(.*?)</p>", tail[tail.find("</div></div>"):])]
-    return title, file, lines
+    return title, file, lines, values(tail)
+
+
+def values(figure):
+    """The table of the original values of a plot (the "Show values" table of curve.rs) as a
+    Markdown table in a `details` block."""
+    found = re.search(r"<table><caption>(.*?)</caption>(.*?)</table>", figure, re.S)
+    cell = lambda c: html.unescape(re.sub(r"<[^>]+>", "", c))
+    rows = [[cell(c) for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr)] for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", found[2], re.S)]
+    return (f"<details><summary>Values of the plot</summary>\n\n{cell(found[1])}\n\n"
+            + table(rows[0], rows[1:], 0) + "\n\n</details>")
 
 
 def plots(case, page, curves, env, tmp):
@@ -295,10 +306,10 @@ def plots(case, page, curves, env, tmp):
         if r.returncode != 0:
             raise RuntimeError(f"fh report {curve.name}: {r.stderr.strip()}")
         figure = re.search(r"<figure class=\"curve\">.*?</figure>", draft.with_suffix(".report.html").read_text(), re.S)[0]
-        title, file, lines = svg(figure)
+        title, file, lines, samples = svg(figure)
         folder.mkdir(exist_ok=True)
         (folder / f"{name}.svg").write_text(file)
-        plot = "\n\n".join([f"**{title}**", f"![{title}]({case}/{name}.svg)", *lines])
+        plot = "\n\n".join([f"**{title}**", f"![{title}]({case}/{name}.svg)", *lines, samples])
         if marks:
             page = page.replace(f"<!--curve {marks[0]}-->", plot, 1)
         else:
