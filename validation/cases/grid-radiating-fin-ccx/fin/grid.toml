@@ -1,0 +1,39 @@
+# A square steel pin fin in vacuum: 600 K at the base, and a radiation to surroundings at 300 K
+# on all other faces. The conductivity changes with the temperature. See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.001
+
+[material.steel]
+conductivity = { temperature = [300.0, 500.0, 700.0], value = [14.0, 17.5, 20.0] }
+
+[part.fin]
+material = "steel"
+x = [0.0, 0.004]
+y = [0.0, 0.004]
+z = [0.0, 0.05]
+
+[face.base]
+side = "z-"
+
+[face.radiating]
+side = ["x-", "x+", "y-", "y+", "z+"]
+
+[[load]]
+temperature = 600.0
+face = "base"
+
+[[load]]
+emissivity = 0.9
+ambient = 300.0
+face = "radiating"
+
+[step]
+type = "steady"
+
+[probe.tip]
+point = [0.002, 0.002, 0.05]
+
+[probe.middle]
+point = [0.002, 0.002, 0.025]

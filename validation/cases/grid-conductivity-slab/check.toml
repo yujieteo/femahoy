@@ -1,0 +1,27 @@
+# A slab with a conductivity linear in the temperature, against the exact profile of the
+# Kirchhoff transform (derivation.md). Tolerance budget: with the conductivity of each cell at its
+# mean temperature, the linear cells are exact at the points (`quarter`, `middle`), to the stop
+# of the Newton iteration (below 1e-9 of the value). Between 2 points (`cell_middle`, halfway),
+# the linear interpolation of the curved profile is off by h^2 / 8 |T''| = 4.4e-5 of the value
+# at 20 cells. The tolerance 1e-4 holds it with a margin of a factor of 2, and is far inside the
+# budget of 0.5 % at 20 cells of the method.
+rel_tol = 1e-4
+abs_tol = 0.0
+
+[quarter]
+value = 453.939201417
+case = "slab"
+file = "probes.txt"
+column = "quarter"
+
+[middle]
+value = 405.538513814
+case = "slab"
+file = "probes.txt"
+column = "middle"
+
+[cell_middle]
+value = 359.651092013
+case = "slab"
+file = "probes.txt"
+column = "cell_middle"

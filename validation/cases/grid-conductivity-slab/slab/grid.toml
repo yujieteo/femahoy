@@ -1,0 +1,41 @@
+# A slab 1 m thick at 500 K on 1 face and 300 K on the other, with the conductivity
+# k = 2 (1 + 0.002 T) W/(m K), 20 cells through the thickness. See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.05
+
+[material.solid]
+conductivity = { temperature = [300.0, 500.0], value = [3.2, 4.0] }
+
+[part.slab]
+material = "solid"
+x = [0.0, 0.05]
+y = [0.0, 0.05]
+z = [0.0, 1.0]
+
+[face.hot]
+side = "z-"
+
+[face.cold]
+side = "z+"
+
+[[load]]
+temperature = 500.0
+face = "hot"
+
+[[load]]
+temperature = 300.0
+face = "cold"
+
+[step]
+type = "steady"
+
+[probe.quarter]
+point = [0.025, 0.025, 0.25]
+
+[probe.middle]
+point = [0.025, 0.025, 0.5]
+
+[probe.cell_middle]
+point = [0.025, 0.025, 0.725]

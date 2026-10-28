@@ -1,0 +1,39 @@
+# A slab 0.1 m thick at 1000 K on 1 face. The other face radiates to surroundings at 300 K. The
+# heat flows along z only. See ../derivation.md.
+units = "SI-m"
+
+[grid]
+max_cell = 0.01
+
+[material.solid]
+conductivity = 10.0
+
+[part.slab]
+material = "solid"
+x = [0.0, 0.01]
+y = [0.0, 0.01]
+z = [0.0, 0.1]
+
+[face.hot]
+side = "z-"
+
+[face.radiating]
+side = "z+"
+
+[[load]]
+temperature = 1000.0
+face = "hot"
+
+[[load]]
+emissivity = 0.8
+ambient = 300.0
+face = "radiating"
+
+[step]
+type = "steady"
+
+[probe.face]
+point = [0.005, 0.005, 0.1]
+
+[probe.middle]
+point = [0.005, 0.005, 0.05]

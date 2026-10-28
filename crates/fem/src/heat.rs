@@ -1,9 +1,11 @@
 //! Steady and transient heat conduction on the box grid with 8-node hex elements, or on the
 //! 2.5D tetrahedral mesh (`prism`) with 4-node tetrahedra when a part has a footprint.
 //!
-//! The model is linear: each material has a constant conductivity (1 value, or 1 value for each
-//! axis), density and specific heat. The loads are a fixed temperature, a heat flux into the
-//! body and a convection on named faces, and a heat source in the volume of a part. Parts that
+//! Each material has a constant conductivity (1 value, or 1 value for each axis), density and
+//! specific heat, or a table of the conductivity and of the specific heat against the
+//! temperature. The loads are a fixed temperature, a heat flux into the body, a convection and a
+//! radiation to the ambient on named faces, and a heat source in the volume of a part. A model
+//! with a table or a radiation is nonlinear, and `nonlinear` solves it. Parts that
 //! touch share their nodes, so the heat crosses with no contact resistance. A transient step is
 //! backward Euler with a lumped capacity, so a large step gives no oscillation.
 //!
@@ -27,6 +29,7 @@
 
 use crate::grid::{tol, Face, Grid, Part, Side, Spacing, VOID};
 use crate::multigrid::Level;
+use crate::nonlinear::{Nonlinear, Table};
 use crate::prism::{self, BoundaryFace, TetMesh};
 use crate::solve::{
     Crossover, Method, Solver, Unknowns, STEADY_DIRECT_LIMIT, TRANSIENT_DIRECT_LIMIT,
@@ -40,6 +43,25 @@ pub struct Material {
     pub conductivity: [f64; 3],
     /// Density times specific heat. A transient step needs it above 0 in each part.
     pub capacity: f64,
+    /// The conductivity against the temperature, in place of `conductivity`.
+    pub conductivity_table: Option<Table>,
+    /// Density times specific heat against the temperature, in place of `capacity`.
+    pub capacity_table: Option<Table>,
+}
+
+impl Material {
+    /// The conductivity of the element matrices: a table material has 1, and the nonlinear
+    /// solve multiplies it by the table value.
+    fn base(&self) -> [f64; 3] {
+        match self.conductivity_table {
+            Some(_) => [1.0; 3],
+            None => self.conductivity,
+        }
+    }
+
+    fn is_nonlinear(&self) -> bool {
+        self.conductivity_table.is_some() || self.capacity_table.is_some()
+    }
 }
 
 /// A named selection of the faces of the model.
@@ -65,6 +87,14 @@ pub enum Load {
     Flux { faces: usize, value: f64 },
     /// A convection to a fluid at the temperature `sink` with the film coefficient `film`.
     Convection { faces: usize, film: f64, sink: f64 },
+    /// A radiation to large surroundings at the absolute temperature `ambient`, with the
+    /// emissivity of the face and the Stefan-Boltzmann constant in the units of the model.
+    Radiation {
+        faces: usize,
+        emissivity: f64,
+        ambient: f64,
+        stefan_boltzmann: f64,
+    },
     /// A heat source (power per volume) in a part.
     Source { part: usize, value: f64 },
 }
@@ -162,6 +192,7 @@ pub struct Energy {
     pub source: f64,
     pub flux: f64,
     pub convection: f64,
+    pub radiation: f64,
     /// The heat that the fixed temperatures put in.
     pub fixed: f64,
     /// The rate of the stored heat.
@@ -172,9 +203,10 @@ pub struct Energy {
 }
 
 impl Energy {
-    /// (source + flux + convection + fixed - stored) / gross.
+    /// (source + flux + convection + radiation + fixed - stored) / gross.
     pub fn imbalance(&self) -> f64 {
-        let sum = self.source + self.flux + self.convection + self.fixed - self.stored;
+        let sum =
+            self.source + self.flux + self.convection + self.radiation + self.fixed - self.stored;
         if self.gross == 0.0 {
             0.0
         } else {
@@ -273,8 +305,10 @@ type UnknownsOf = Box<dyn Fn(&[usize]) -> Unknowns>;
 /// A model on its mesh: what the solve loop needs from the box grid or the tetrahedral mesh.
 struct Discrete {
     mesh: Mesh,
-    /// The conductivity matrix.
+    /// The conductivity matrix, at a unit conductivity in each cell of a table material.
     k: Csr,
+    /// The element matrix of cell e at the conductivity of `k`.
+    element: Box<dyn Fn(usize) -> Vec<f64>>,
     /// The volume of each cell.
     volume: Vec<f64>,
     /// The faces of each face set of the model.
@@ -313,6 +347,7 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
     let Discrete {
         mesh,
         mut k,
+        element,
         volume,
         faces,
         probes,
@@ -325,10 +360,13 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
     events.progress(&line);
     let n = mesh.points.len();
     let per = mesh.kind.nodes() as f64;
-    // The lumped capacity and the volume sources.
+    // The lumped capacity and the volume sources, and the cells and the points of the table
+    // materials.
     let mut capacity = vec![0.0; n];
     let mut source = vec![0.0; n];
     let mut part_source = vec![0.0; model.parts.len()];
+    let mut table_cells = Vec::new();
+    let mut heat = Vec::new();
     for load in &model.loads {
         if let Load::Source { part, value } = load {
             part_source[*part] += value;
@@ -337,8 +375,14 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
     for e in 0..mesh.len() {
         let p = mesh.part[e] as usize;
         let m = &model.materials[model.parts[p].material];
+        if let Some(table) = &m.conductivity_table {
+            table_cells.push((e, table));
+        }
         for &node in mesh.cell(e) {
-            capacity[node as usize] += m.capacity * volume[e] / per;
+            match &m.capacity_table {
+                Some(table) => heat.push((node, table, volume[e] / per)),
+                None => capacity[node as usize] += m.capacity * volume[e] / per,
+            }
             source[node as usize] += part_source[p] * volume[e] / per;
         }
     }
@@ -347,12 +391,15 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
     let mut fixed: Vec<Option<(f64, usize)>> = vec![None; n];
     // The convection faces: the nodes, the area, the film coefficient and the sink.
     let mut convection: Vec<(&[u32], f64, f64, f64)> = Vec::new();
+    // The radiation points: eps sigma times the share of the face area, and the ambient.
+    let mut radiation: Vec<(u32, f64, f64)> = Vec::new();
     for load in &model.loads {
         let set = match load {
             Load::Source { .. } => continue,
             Load::Temperature { faces, .. }
             | Load::Flux { faces, .. }
-            | Load::Convection { faces, .. } => *faces,
+            | Load::Convection { faces, .. }
+            | Load::Radiation { faces, .. } => *faces,
         };
         for face in &faces[set] {
             let nodes = face.nodes();
@@ -387,6 +434,16 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
                     }
                     convection.push((nodes, face.area, *h, *t));
                 }
+                Load::Radiation {
+                    emissivity,
+                    ambient,
+                    stefan_boltzmann,
+                    ..
+                } => {
+                    for &node in nodes {
+                        radiation.push((node, emissivity * stefan_boltzmann * share, *ambient));
+                    }
+                }
                 Load::Source { .. } => unreachable!("skipped above"),
             }
         }
@@ -399,11 +456,21 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
                 held[v as usize] = true;
             }
         }
+        for &(v, ..) in &radiation {
+            held[v as usize] = true;
+        }
         check_supports(model, &mesh, &held)?;
     }
     let load: Vec<f64> = (0..n).map(|i| source[i] + flux[i] + film[i]).collect();
     let free: Vec<usize> = (0..n).filter(|&i| fixed[i].is_none()).collect();
+    let nonlinear = !radiation.is_empty() || model.materials.iter().any(Material::is_nonlinear);
     let mut temperature: Vec<f64> = match model.step {
+        // The mean ambient of the radiation: the first Newton iteration is the solve with the
+        // radiation linearized at the ambient.
+        Step::Steady if !radiation.is_empty() => {
+            let mean = radiation.iter().map(|r| r.2).sum::<f64>() / radiation.len() as f64;
+            vec![mean; n]
+        }
         Step::Steady => vec![0.0; n],
         Step::Transient { initial, .. } => vec![initial; n],
     };
@@ -412,7 +479,9 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
             temperature[i] = v;
         }
     }
-    let energy_of = |t: &[f64], previous: &[f64], dt: Option<f64>, kt: &[f64]| -> Energy {
+    // The heat flows of the temperatures `t`, with the rate of the stored heat `rate` of a
+    // transient step, K T at each point `kt` and the radiation into each point `rad`.
+    let energy_of = |t: &[f64], rate: Option<&[f64]>, kt: &[f64], rad: &[f64]| -> Energy {
         let mut e = Energy {
             source: source.iter().sum(),
             flux: flux.iter().sum(),
@@ -426,12 +495,14 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
             e.gross += q.abs();
         }
         for i in 0..n {
-            let rate = dt.map_or(0.0, |dt| capacity[i] * (t[i] - previous[i]) / dt);
+            let rate = rate.map_or(0.0, |r| r[i]);
             e.stored += rate;
             e.gross += rate.abs();
+            e.radiation += rad[i];
+            e.gross += rad[i].abs();
             if fixed[i].is_some() {
                 // The heat that the fixed point takes from the body, minus the loads on it.
-                let q = kt[i] + rate - load[i];
+                let q = kt[i] + rate - load[i] - rad[i];
                 e.fixed += q;
                 e.gross += q.abs();
             }
@@ -439,92 +510,190 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
         e
     };
     let mut imbalance: f64 = 0.0;
-    let mut emit = |time: f64, t: &[f64], energy: Energy, events: &mut dyn Events| {
-        imbalance = imbalance.max(energy.imbalance().abs());
-        let frame = Frame {
-            time,
-            temperature: t.to_vec(),
-            flux: cell_flux(t),
-            probes: probes
-                .iter()
-                .map(|w| w.iter().map(|&(v, f)| f * t[v as usize]).sum())
-                .collect(),
-            energy,
+    // `scale` is the conductivity of each cell of a table material.
+    let mut emit =
+        |time: f64, t: &[f64], energy: Energy, scale: &[(usize, f64)], events: &mut dyn Events| {
+            imbalance = imbalance.max(energy.imbalance().abs());
+            let mut flux = cell_flux(t);
+            for &(e, k) in scale {
+                flux[e] = flux[e].map(|q| k * q);
+            }
+            let frame = Frame {
+                time,
+                temperature: t.to_vec(),
+                flux,
+                probes: probes
+                    .iter()
+                    .map(|w| w.iter().map(|&(v, f)| f * t[v as usize]).sum())
+                    .collect(),
+                energy,
+            };
+            events.frame(&frame)
         };
-        events.frame(&frame)
-    };
+    let no_radiation = vec![0.0; n];
     let mut kt = vec![0.0; n];
     let method;
-    match model.step {
-        Step::Steady => {
-            let a = k.submatrix(&free);
-            let solver = Solver::new(
+    if nonlinear {
+        let system = Nonlinear {
+            mesh: &mesh,
+            k: &k,
+            cells: table_cells,
+            element: &*element,
+            load: &load,
+            capacity: &capacity,
+            heat,
+            radiation,
+            free: &free,
+        };
+        let solver = |a: Csr| {
+            Solver::new(
                 a,
                 unknowns(&free),
                 model.method,
                 Crossover::Unknowns(STEADY_DIRECT_LIMIT),
                 None,
-            )?;
-            method = solver.method();
-            events.progress(&format!("{} unknowns, {} solver", free.len(), name(method)));
-            let rhs = reduced_rhs(&k, &load, &temperature, &free, None);
-            let mut x = vec![0.0; free.len()];
-            let stats = solver.solve(&rhs, &mut x, &|| events.cancelled())?;
-            events.progress(&match stats.iterations {
-                0 => format!("residual {:.1e}", stats.residual),
-                i => format!("PCG {i} iterations, residual {:.1e}", stats.residual),
-            });
-            for (k, &i) in free.iter().enumerate() {
-                temperature[i] = x[k];
+            )
+        };
+        let scale = |state: &crate::nonlinear::State| -> Vec<(usize, f64)> {
+            system
+                .cells
+                .iter()
+                .map(|c| c.0)
+                .zip(state.scale.iter().copied())
+                .collect()
+        };
+        match model.step {
+            Step::Steady => {
+                events.progress(&format!("{} unknowns, nonlinear (Newton)", free.len()));
+                let (state, report) =
+                    system.solve(&mut temperature, None, &solver, &|| events.cancelled())?;
+                method = report.method;
+                events.progress(&format!(
+                    "{} solver, Newton {} iterations, residual {:.1e}",
+                    name(method),
+                    report.iterations,
+                    report.residual
+                ));
+                let energy = energy_of(&temperature, None, &state.kt, &state.radiation);
+                emit(0.0, &temperature, energy, &scale(&state), events)?;
             }
-            k.mul(&temperature, &mut kt);
-            let energy = energy_of(&temperature, &temperature, None, &kt);
-            emit(0.0, &temperature, energy, events)?;
-        }
-        Step::Transient {
-            end,
-            dt,
-            output_every,
-            ..
-        } => {
-            let steps = (end / dt).round() as usize;
-            let mut a_full = k.clone();
-            for i in 0..n {
-                let d = a_full.find(i, i).expect("a diagonal");
-                a_full.val[d] += capacity[i] / dt;
-            }
-            let solver = Solver::new(
-                a_full.submatrix(&free),
-                unknowns(&free),
-                model.method,
-                Crossover::Unknowns(TRANSIENT_DIRECT_LIMIT),
-                None,
-            )?;
-            method = solver.method();
-            events.progress(&format!(
-                "{} unknowns, {} solver, {steps} time steps",
-                free.len(),
-                name(method)
-            ));
-            // The first output has no rates: the heat flows start at time 0.
-            emit(0.0, &temperature, Energy::default(), events)?;
-            let mut x: Vec<f64> = free.iter().map(|&i| temperature[i]).collect();
-            for s in 1..=steps {
-                if events.cancelled() {
-                    return Err("cancelled".into());
+            Step::Transient {
+                end,
+                dt,
+                output_every,
+                ..
+            } => {
+                let steps = (end / dt).round() as usize;
+                events.progress(&format!(
+                    "{} unknowns, nonlinear (Newton), {steps} time steps",
+                    free.len()
+                ));
+                emit(0.0, &temperature, Energy::default(), &[], events)?;
+                let mut iterations = 0;
+                let mut used = Method::Direct;
+                for s in 1..=steps {
+                    if events.cancelled() {
+                        return Err("cancelled".into());
+                    }
+                    let previous = temperature.clone();
+                    let (state, report) =
+                        system.solve(&mut temperature, Some((&previous, dt)), &solver, &|| {
+                            events.cancelled()
+                        })?;
+                    iterations += report.iterations;
+                    used = report.method;
+                    if s % output_every.max(1) == 0 || s == steps {
+                        let time = s as f64 * dt;
+                        events.progress(&format!(
+                            "time {time:.6e} step {s} of {steps}, Newton {iterations} iterations \
+                             since the last output"
+                        ));
+                        iterations = 0;
+                        let energy =
+                            energy_of(&temperature, Some(&state.rate), &state.kt, &state.radiation);
+                        emit(time, &temperature, energy, &scale(&state), events)?;
+                    }
                 }
-                let previous = temperature.clone();
-                let rhs = reduced_rhs(&a_full, &load, &temperature, &free, Some((&capacity, dt)));
-                solver.solve(&rhs, &mut x, &|| events.cancelled())?;
+                method = used;
+            }
+        }
+    } else {
+        match model.step {
+            Step::Steady => {
+                let a = k.submatrix(&free);
+                let solver = Solver::new(
+                    a,
+                    unknowns(&free),
+                    model.method,
+                    Crossover::Unknowns(STEADY_DIRECT_LIMIT),
+                    None,
+                )?;
+                method = solver.method();
+                events.progress(&format!("{} unknowns, {} solver", free.len(), name(method)));
+                let rhs = reduced_rhs(&k, &load, &temperature, &free, None);
+                let mut x = vec![0.0; free.len()];
+                let stats = solver.solve(&rhs, &mut x, &|| events.cancelled())?;
+                events.progress(&match stats.iterations {
+                    0 => format!("residual {:.1e}", stats.residual),
+                    i => format!("PCG {i} iterations, residual {:.1e}", stats.residual),
+                });
                 for (k, &i) in free.iter().enumerate() {
                     temperature[i] = x[k];
                 }
                 k.mul(&temperature, &mut kt);
-                let energy = energy_of(&temperature, &previous, Some(dt), &kt);
-                if s % output_every.max(1) == 0 || s == steps {
-                    let time = s as f64 * dt;
-                    events.progress(&format!("time {time:.6e} step {s} of {steps}"));
-                    emit(time, &temperature, energy, events)?;
+                let energy = energy_of(&temperature, None, &kt, &no_radiation);
+                emit(0.0, &temperature, energy, &[], events)?;
+            }
+            Step::Transient {
+                end,
+                dt,
+                output_every,
+                ..
+            } => {
+                let steps = (end / dt).round() as usize;
+                let mut a_full = k.clone();
+                for i in 0..n {
+                    let d = a_full.find(i, i).expect("a diagonal");
+                    a_full.val[d] += capacity[i] / dt;
+                }
+                let solver = Solver::new(
+                    a_full.submatrix(&free),
+                    unknowns(&free),
+                    model.method,
+                    Crossover::Unknowns(TRANSIENT_DIRECT_LIMIT),
+                    None,
+                )?;
+                method = solver.method();
+                events.progress(&format!(
+                    "{} unknowns, {} solver, {steps} time steps",
+                    free.len(),
+                    name(method)
+                ));
+                // The first output has no rates: the heat flows start at time 0.
+                emit(0.0, &temperature, Energy::default(), &[], events)?;
+                let mut x: Vec<f64> = free.iter().map(|&i| temperature[i]).collect();
+                let mut rate = vec![0.0; n];
+                for s in 1..=steps {
+                    if events.cancelled() {
+                        return Err("cancelled".into());
+                    }
+                    let previous = temperature.clone();
+                    let rhs =
+                        reduced_rhs(&a_full, &load, &temperature, &free, Some((&capacity, dt)));
+                    solver.solve(&rhs, &mut x, &|| events.cancelled())?;
+                    for (k, &i) in free.iter().enumerate() {
+                        temperature[i] = x[k];
+                    }
+                    k.mul(&temperature, &mut kt);
+                    for i in 0..n {
+                        rate[i] = capacity[i] * (temperature[i] - previous[i]) / dt;
+                    }
+                    let energy = energy_of(&temperature, Some(&rate), &kt, &no_radiation);
+                    if s % output_every.max(1) == 0 || s == steps {
+                        let time = s as f64 * dt;
+                        events.progress(&format!("time {time:.6e} step {s} of {steps}"));
+                        emit(time, &temperature, energy, &[], events)?;
+                    }
                 }
             }
         }
@@ -562,7 +731,8 @@ fn grid_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
             model.loads.iter().any(|l| match l {
                 Load::Temperature { faces, .. }
                 | Load::Flux { faces, .. }
-                | Load::Convection { faces, .. } => *faces == f,
+                | Load::Convection { faces, .. }
+                | Load::Radiation { faces, .. } => *faces == f,
                 Load::Source { .. } => false,
             })
         })
@@ -615,7 +785,7 @@ fn grid_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
     for (e, &cell) in cell_of.iter().enumerate() {
         let m = &model.materials[model.parts[grid.part[cell] as usize].material];
         let size = grid.size(cell);
-        k.add_element(mesh.cell(e), &conduction(size, m.conductivity));
+        k.add_element(mesh.cell(e), &conduction(size, m.base()));
         volume.push(size[0] * size[1] * size[2]);
     }
     let facets: Vec<Vec<Facet>> = faces
@@ -648,13 +818,15 @@ fn grid_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
     };
     let conductivity: Vec<[f64; 3]> = cell_of
         .iter()
-        .map(|&c| model.materials[model.parts[grid.part[c] as usize].material].conductivity)
+        .map(|&c| model.materials[model.parts[grid.part[c] as usize].material].base())
         .collect();
     let sizes: Vec<[f64; 3]> = cell_of.iter().map(|&c| grid.size(c)).collect();
     let cells_flat = mesh.cells.clone();
+    let (element_sizes, element_k) = (sizes.clone(), conductivity.clone());
     Ok(Discrete {
         mesh,
         k,
+        element: Box::new(move |e| conduction(element_sizes[e], element_k[e]).to_vec()),
         volume,
         faces: facets,
         probes,
@@ -716,16 +888,29 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
     let mut volume = Vec::with_capacity(mesh.len());
     // The gradients of the 4 shape functions of each tetrahedron, times its conductivity.
     let mut grads: Vec<[[f64; 3]; 4]> = Vec::with_capacity(mesh.len());
-    for (e, tet) in tm.tets.iter().enumerate() {
-        let c = model.materials[model.parts[tm.part[e] as usize].material].conductivity;
-        let (g, v) = tet_gradients(tet.map(|i| tm.points[i as usize]));
-        let mut ke = [0.0; 16];
-        for i in 0..4 {
-            for j in 0..4 {
-                ke[i * 4 + j] = v * (0..3).map(|d| c[d] * g[i][d] * g[j][d]).sum::<f64>();
+    let base: Vec<[f64; 3]> = tm
+        .part
+        .iter()
+        .map(|&p| model.materials[model.parts[p as usize].material].base())
+        .collect();
+    let element = {
+        let (tets, points, base) = (tm.tets.clone(), tm.points.clone(), base.clone());
+        move |e: usize| {
+            let c = base[e];
+            let (g, v) = tet_gradients(tets[e].map(|i| points[i as usize]));
+            let mut ke = vec![0.0; 16];
+            for i in 0..4 {
+                for j in 0..4 {
+                    ke[i * 4 + j] = v * (0..3).map(|d| c[d] * g[i][d] * g[j][d]).sum::<f64>();
+                }
             }
+            ke
         }
-        k.add_element(tet, &ke);
+    };
+    for (e, tet) in tm.tets.iter().enumerate() {
+        let c = base[e];
+        let (g, v) = tet_gradients(tet.map(|i| tm.points[i as usize]));
+        k.add_element(tet, &element(e));
         volume.push(v);
         grads.push(g.map(|gi| std::array::from_fn(|d| c[d] * gi[d])));
     }
@@ -747,6 +932,7 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
     Ok(Discrete {
         mesh,
         k,
+        element: Box::new(element),
         volume,
         faces,
         probes,
@@ -817,7 +1003,8 @@ fn tet_faces(model: &Model, tm: &TetMesh) -> Result<Vec<Vec<Facet>>, String> {
             model.loads.iter().any(|l| match l {
                 Load::Temperature { faces, .. }
                 | Load::Flux { faces, .. }
-                | Load::Convection { faces, .. } => model.faces[*faces].name == set.name,
+                | Load::Convection { faces, .. }
+                | Load::Radiation { faces, .. } => model.faces[*faces].name == set.name,
                 Load::Source { .. } => false,
             })
         })
@@ -1147,7 +1334,19 @@ pub(crate) fn locate_probe(
 /// The checks of the model that the grid does not need.
 fn check(model: &Model) -> Result<(), String> {
     for m in &model.materials {
-        if m.conductivity.iter().any(|k| !(k.is_finite() && *k > 0.0)) {
+        for (table, what) in [
+            (&m.conductivity_table, "conductivity"),
+            (&m.capacity_table, "specific heat"),
+        ] {
+            if let Some(table) = table {
+                table
+                    .check()
+                    .map_err(|e| format!("material {}: the {what} table: {e}", m.name))?;
+            }
+        }
+        if m.conductivity_table.is_none()
+            && m.conductivity.iter().any(|k| !(k.is_finite() && *k > 0.0))
+        {
             return Err(format!(
                 "material {}: the conductivity must be above 0",
                 m.name
@@ -1189,6 +1388,24 @@ fn check(model: &Model) -> Result<(), String> {
                 }
                 film.is_finite() && sink.is_finite()
             }
+            Load::Radiation {
+                emissivity,
+                ambient,
+                stefan_boltzmann,
+                ..
+            } => {
+                if !(*emissivity > 0.0 && *emissivity <= 1.0) {
+                    return Err("a radiation needs an emissivity above 0 and at most 1".into());
+                }
+                if !(*ambient > 0.0 && ambient.is_finite()) {
+                    return Err(
+                        "a radiation needs an ambient temperature above 0: the absolute \
+                         temperature, in kelvin"
+                            .into(),
+                    );
+                }
+                stefan_boltzmann.is_finite() && *stefan_boltzmann > 0.0
+            }
         };
         if !finite {
             return Err("each load needs finite numbers".into());
@@ -1217,7 +1434,7 @@ fn check(model: &Model) -> Result<(), String> {
         }
         for p in &model.parts {
             let m = &model.materials[p.material];
-            if !(m.capacity > 0.0) {
+            if !(m.capacity > 0.0) && m.capacity_table.is_none() {
                 return Err(format!(
                     "part {}: a transient step needs the density and the specific heat of \
                      material {}",

@@ -10,18 +10,24 @@ use fh_fem::heat::{Cell, FaceSet, Frame, Load, Material, Mesh, Model, Probe, Ste
 use fh_fem::hex::Orthotropic;
 use fh_fem::homog;
 use fh_fem::mtl;
+use fh_fem::nonlinear::Table;
 use fh_fem::prism::{Footprint, Outline};
 use toml_edit::{Document, Item, TableLike};
 
 use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_TETRA};
 
 /// The text of an error about a key that the heat, stress and unit cell solver does not have.
-const CLASS: &str = "The built-in grid solver solves linear heat conduction, linear static \
-    thermo-elasticity and linear frequency-domain electromagnetics (`[step] type = \"frequency\"` \
-    or `\"modes\"`), in boxes and in prisms of polygons and circles along 1 axis, the \
-    homogenized material of a periodic unit cell, and with a [line] table the per-length \
-    parameters of a transmission line. For other curved or sloped shapes, contact, radiation, plasticity, large deformation, vibration or \
-    temperature-dependent materials, use gmsh and CalculiX (fh guide grid)";
+const CLASS: &str = "The built-in grid solver solves heat conduction (with a radiation to the \
+    ambient and a conductivity and a specific heat that change with the temperature), linear \
+    static thermo-elasticity and linear frequency-domain electromagnetics (`[step] type = \
+    \"frequency\"` or `\"modes\"`), in boxes and in prisms of polygons and circles along 1 \
+    axis, the homogenized material of a periodic unit cell, and with a [line] table the \
+    per-length parameters of a transmission line. For other curved or sloped shapes, contact, \
+    radiation between surfaces, plasticity, large deformation, vibration or elastic materials \
+    that change with the temperature, use gmsh and CalculiX (fh guide grid)";
+
+/// The Stefan-Boltzmann constant in W/(m2 K4) (CODATA 2018, exact in the SI of 2019).
+const STEFAN_BOLTZMANN: f64 = 5.670374419e-8;
 
 /// True when the case `text` is a transmission line: it has a `[line]` table (`crate::line`).
 pub fn is_line(text: &str) -> bool {
@@ -181,25 +187,52 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             ],
             CLASS,
         )?;
+        let conductivity_table = temperature_table(item, "conductivity", &where_)?;
+        let heat_table = temperature_table(item, "specific_heat", &where_)?;
+        if is_cell && (conductivity_table.is_some() || heat_table.is_some()) {
+            return Err(format!(
+                "{where_}: a homogenize step needs a conductivity and a specific heat that do not \
+                 change with the temperature"
+            ));
+        }
         let conductivity = match item.get("conductivity") {
             None => None,
+            Some(_) if conductivity_table.is_some() => Some([0.0; 3]),
             Some(k) => Some(match numbers(k) {
                 Some(v) if v.len() == 3 => [v[0], v[1], v[2]],
                 _ => {
                     let v = number(item, "conductivity", &where_).map_err(|_| {
-                        format!("{where_}: `conductivity` must be a number or 3 numbers (x, y, z)")
+                        format!(
+                            "{where_}: `conductivity` must be a number, 3 numbers (x, y, z) or a \
+                             table {{ temperature = [...], value = [...] }}"
+                        )
                     })?;
                     [v; 3]
                 }
             }),
         };
         let density = optional(item, "density", &where_)?;
-        let heat = optional(item, "specific_heat", &where_)?;
+        let heat = match heat_table {
+            Some(_) => None,
+            None => optional(item, "specific_heat", &where_)?,
+        };
+        let capacity_table = match (heat_table, density) {
+            (Some(t), Some(r)) => Some(Table {
+                value: t.value.iter().map(|c| r * c).collect(),
+                ..t
+            }),
+            (Some(_), None) => {
+                return Err(format!(
+                    "{where_}: give both density and specific_heat, or neither"
+                ))
+            }
+            (None, _) => None,
+        };
         let capacity = match (density, heat) {
             (Some(r), Some(c)) => r * c,
             (None, None) => 0.0,
             // A static step uses the density alone, for gravity, and a unit cell for its mean.
-            (Some(_), None) if is_static || is_cell => 0.0,
+            (Some(_), None) if is_static || is_cell || capacity_table.is_some() => 0.0,
             _ => {
                 return Err(format!(
                     "{where_}: give both density and specific_heat, or neither"
@@ -221,6 +254,8 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             name: name.to_owned(),
             conductivity: conductivity.unwrap_or([0.0; 3]),
             capacity,
+            conductivity_table,
+            capacity_table,
         });
         elastic.push(Elastic {
             youngs: one_or_three(item, "youngs_modulus", &where_)?,
@@ -299,6 +334,19 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                     film: number(item, "convection", &where_)?,
                     sink: number(item, "sink", &where_)?,
                 });
+            } else if item.contains_key("emissivity") {
+                only(item, &where_, &["emissivity", "ambient", "face"], CLASS)?;
+                loads.push(Load::Radiation {
+                    faces: face_index(item, &where_)?,
+                    emissivity: number(item, "emissivity", &where_)?,
+                    ambient: number(item, "ambient", &where_)?,
+                    // In W/(m2 K4), or in mW/(mm2 K4) = 1e-3 W/m2 per K4.
+                    stefan_boltzmann: if units == "SI-mm" {
+                        STEFAN_BOLTZMANN * 1e-3
+                    } else {
+                        STEFAN_BOLTZMANN
+                    },
+                });
             } else if item.contains_key("source") {
                 only(item, &where_, &["source", "part"], CLASS)?;
                 loads.push(Load::Source {
@@ -348,7 +396,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             } else {
                 only(item, &where_, &[], CLASS)?;
                 return Err(format!(
-                    "{where_}: a load needs temperature, flux, convection or source{}",
+                    "{where_}: a load needs temperature, flux, convection, emissivity or source{}",
                     if is_static {
                         ", or ux, uy, uz, pressure, traction, gravity or body_force"
                     } else {
@@ -487,7 +535,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
         (Some(_), false) => {
             return Err(
                 "[step]: give `temperature` or heat loads (temperature, flux, convection, \
-                 source), not both"
+                 emissivity, source), not both"
                     .into(),
             )
         }
@@ -1071,6 +1119,29 @@ pub(crate) fn as_number(item: &Item) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
+/// The table `{ temperature = [...], value = [...] }` of the key `key`, or `None` when the key
+/// is missing or is not a table.
+fn temperature_table(
+    item: &dyn TableLike,
+    key: &str,
+    where_: &str,
+) -> Result<Option<Table>, String> {
+    let Some(t) = item.get(key).and_then(Item::as_table_like) else {
+        return Ok(None);
+    };
+    let at = format!("{where_} {key}");
+    only(t, &at, &["temperature", "value"], CLASS)?;
+    let list = |k: &str| {
+        t.get(k)
+            .and_then(numbers)
+            .ok_or_else(|| format!("{at}: `{k}` must be a list of numbers"))
+    };
+    Ok(Some(Table {
+        temperature: list("temperature")?,
+        value: list("value")?,
+    }))
+}
+
 /// A list of finite numbers.
 pub(crate) fn numbers(item: &Item) -> Option<Vec<f64>> {
     item.as_array()?
@@ -1394,6 +1465,13 @@ type = "homogenize"
         for (text, key) in [
             (cell.replace("[step]", "[face.all]\n\n[step]"), "no `face`"),
             (
+                cell.replace(
+                    "conductivity = [1.0, 1.0, 3.0]",
+                    "conductivity = { temperature = [0, 1], value = [1, 2] }",
+                ),
+                "do not change with the temperature",
+            ),
+            (
                 cell.replace("max_cell = 0.5", "max_cell = 0.5\nsymmetry = [\"x\"]"),
                 "symmetry",
             ),
@@ -1454,6 +1532,42 @@ type = "homogenize"
             (model.parts.len(), model.materials.len(), model.probes.len()),
             (3, 3, 4)
         );
+    }
+
+    /// A radiation load and the tables of a material, and the Stefan-Boltzmann constant of
+    /// each unit system.
+    #[test]
+    fn the_reader_reads_a_radiation_and_temperature_tables() {
+        let fin = include_str!("../../../validation/cases/grid-radiating-fin-ccx/fin/grid.toml");
+        let m = heat_case(fin);
+        let table = m.materials[0].conductivity_table.as_ref().unwrap();
+        assert_eq!(table.temperature, [300.0, 500.0, 700.0]);
+        assert_eq!(table.value, [14.0, 17.5, 20.0]);
+        let sigma = |m: &Model| match m.loads[1] {
+            Load::Radiation {
+                emissivity,
+                ambient,
+                stefan_boltzmann,
+                ..
+            } => (emissivity, ambient, stefan_boltzmann),
+            ref other => panic!("{other:?}"),
+        };
+        assert_eq!(sigma(&m), (0.9, 300.0, 5.670374419e-8));
+        let mm = heat_case(&fin.replace("units = \"SI-m\"", "units = \"SI-mm\""));
+        assert!((sigma(&mm).2 - 5.670374419e-11).abs() < 1e-24);
+        let transient = fin
+            .replace(
+                "[part.fin]",
+                "density = 7900.0\nspecific_heat = { temperature = [300.0, 700.0], value = \
+                 [480.0, 560.0] }\n\n[part.fin]",
+            )
+            .replace(
+                "type = \"steady\"",
+                "type = \"transient\"\nend = 1.0\ndt = 0.5\ninitial = 300.0",
+            );
+        let m = heat_case(&transient);
+        let c = m.materials[0].capacity_table.as_ref().unwrap();
+        assert_eq!(c.value, [7900.0 * 480.0, 7900.0 * 560.0]);
     }
 
     /// A key out of the class of the solver gives the text that names gmsh and CalculiX, not a

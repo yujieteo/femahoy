@@ -1,0 +1,26 @@
+# A slab with a fixed temperature on 1 face and a radiation to the ambient on the other, against
+# the root of the scalar energy balance (derivation.md). Tolerance budget: the field is linear,
+# so the linear cells hold it exactly, and the only errors are the stop of the Newton iteration
+# (a residual below 1e-10 of the gross heat flow, or a Newton step below 1e-10 of the largest
+# temperature) and the direct solve (below 1e-12). The measured error is below 1e-11 of each
+# value. The tolerance 1e-8 is the budget of the case.
+rel_tol = 1e-8
+abs_tol = 0.0
+
+[face]
+value = 809.185667706
+case = "slab"
+file = "probes.txt"
+column = "face"
+
+[middle]
+value = 904.592833853
+case = "slab"
+file = "probes.txt"
+column = "middle"
+
+[radiation]
+value = -1.908143323
+case = "slab"
+file = "energy.txt"
+column = "radiation"
