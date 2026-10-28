@@ -236,15 +236,9 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             ));
         }
         electric.push((
-            match one_or_three(item, "electric_conductivity", &where_)?.or(one_or_three(
-                item,
-                "relative_permittivity",
-                &where_,
-            )?) {
-                Some(v) if v.len() == 3 => Some([v[0], v[1], v[2]]),
-                Some(v) => Some([v[0]; 3]),
-                None => None,
-            },
+            optional(item, "electric_conductivity", &where_)?
+                .or(optional(item, "relative_permittivity", &where_)?)
+                .map(|v| [v; 3]),
             optional(item, "temperature_coefficient", &where_)?.unwrap_or(0.0),
         ));
         let conductivity = match item.get("conductivity") {

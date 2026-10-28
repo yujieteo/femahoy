@@ -203,10 +203,13 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Solution, String>
             }
         }
     }
-    let held: Vec<bool> = owner.iter().map(Option::is_some).collect();
+    let held: Vec<bool> = owner
+        .iter()
+        .map(|o| o.is_some_and(|t| matches!(model.terminals[t].drive, Drive::Voltage(_))))
+        .collect();
     if let Some(p) = heat::loose_part(mesh, &held) {
         return Err(format!(
-            "part {} has no terminal on it or on a part that it touches, so its potential has no \
+            "part {} has no voltage on it or on a part that it touches, so its potential has no \
              unique value: add a voltage on a face of it, or remove the part",
             model.parts[p].name
         ));

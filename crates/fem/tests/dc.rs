@@ -1,6 +1,6 @@
 //! DC conduction on the box grid: the exact resistance of a bar, a current terminal, the Joule
 //! heat of a bar against the exact temperature, the coupling of a temperature-dependent
-//! conductivity, and the refusals of thermal runaway and of a model with no reference.
+//! conductivity, and the refusals of thermal runaway and of a model or a part with no reference.
 
 use fh_fem::dc::{solve, Drive, Events, Kind, Material, Model, Solution, Terminal};
 use fh_fem::grid::{Part, Side, Spacing};
@@ -208,6 +208,38 @@ fn a_model_with_no_voltage_is_refused() {
     )
     .unwrap_err();
     assert!(e.contains("reference of the potential"), "{e}");
+}
+
+#[test]
+fn a_part_with_only_current_terminals_is_refused() {
+    // A second bar, apart from the first, with current terminals on its ends and no voltage.
+    let mut model = bar(0.3, 2.0, Drive::Voltage(1.0), Drive::Voltage(0.0));
+    let mut other = model.parts[0].clone();
+    other.name = "loose".into();
+    other.lo[1] = 0.03;
+    other.hi[1] = 0.04;
+    model.parts.push(other);
+    for (f, s) in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+        let mut set = model.faces[f].clone();
+        set.name = format!("{}{s}", set.name);
+        set.parts = vec![s];
+        model.faces.push(set);
+    }
+    model.terminals = [
+        Drive::Voltage(1.0),
+        Drive::Voltage(0.0),
+        Drive::Current(1.0),
+        Drive::Current(-1.0),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, drive)| Terminal {
+        faces: 3 + i,
+        drive,
+    })
+    .collect();
+    let e = solve(&model, &mut Quiet).unwrap_err();
+    assert!(e.contains("part loose has no voltage"), "{e}");
 }
 
 #[test]
