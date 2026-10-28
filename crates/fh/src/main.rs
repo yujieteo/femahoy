@@ -8,7 +8,7 @@ mod validate;
 use std::process::ExitCode;
 
 fn usage() -> &'static str {
-    "usage: fh [-h | --help] <command>\n\ncommands:\n  \
+    "usage: fh [-h | --help] [-V | --version] <command>\n\ncommands:\n  \
          mesh      mesh a .step file into CalculiX nodes, elements and sets (fh mesh FILE [options] [-o OUT.inp])\n  \
          validate  run the validation suite of DIR/validation/cases, DIR is . by default (fh validate [--root DIR])\n  \
          run       solve a CalculiX input, or an OpenFOAM, GetDP, preCICE, Chrono, LAMMPS, Meep, openEMS, grid, topology or shape optimization case (fh run MODEL.inp|CASE [--timeout SECONDS])\n  \
@@ -45,6 +45,10 @@ fn main() -> ExitCode {
     let outcome = match first {
         None | Some("-h" | "--help") if args.len() <= 1 => {
             print!("{}", usage());
+            return ExitCode::SUCCESS;
+        }
+        Some("-V" | "--version") if args.len() == 1 => {
+            println!("fh {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
         Some("mesh") => mesh::run(&args[1..]),

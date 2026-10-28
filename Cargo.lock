@@ -624,7 +624,7 @@ checksum = "b97b65636e5b9ef369943878ac74335ba1c55c1cb6adbf1e2c293c624248d693"
 
 [[package]]
 name = "fh"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "fh-core",
  "fh-fem",
@@ -635,7 +635,7 @@ dependencies = [
 
 [[package]]
 name = "fh-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "fh-fem",
  "toml_edit",
@@ -643,18 +643,18 @@ dependencies = [
 
 [[package]]
 name = "fh-fem"
-version = "0.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "fh-quine"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "fh",
 ]
 
 [[package]]
 name = "fh-viewer"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bytemuck",
  "eframe",
