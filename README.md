@@ -49,23 +49,23 @@ The agent has instructions for each analysis type in this table. Validation case
 
 | Analysis type | Example case | The case checks |
 |---|---|---|
-| Structures | [contact-hertz](validation/reports/contact-hertz.html) | The largest contact pressure of a steel ball on a flat steel block, against the Hertz theory |
-| CFD | [naca23012-flap](validation/reports/naca23012-flap.html) | The lift and the pitching moment of an airfoil with a plain flap at 3 flap angles, against wind tunnel tests |
-| Electromagnetics | [team7-eddy-current](validation/reports/team7-eddy-current.html) | The eddy currents at 50 Hz in an aluminium plate with a hole under a coil, against measurements |
-| Acoustics | [acoustics-pulsating-sphere](validation/reports/acoustics-pulsating-sphere.html) | The sound that a pulsating sphere radiates into air at 500 Hz, against the analytical solution |
-| Fluid-structure interaction | [turek-hron-fsi1](validation/reports/turek-hron-fsi1.html) | The steady shape of a soft flag behind a cylinder in a channel flow, against the Turek-Hron benchmark |
-| Topology optimization | [topology-mbb-beam](validation/reports/topology-mbb-beam.html) | The minimum compliance of the half MBB beam with 50 % of the volume, against a published SIMP code |
-| Shape and parameter optimization | [shape-hole-biaxial](validation/reports/shape-hole-biaxial.html) | The hole of minimum stress concentration in a plate under biaxial stress, against the exact optimum |
-| Random vibration | [random-vibration-cantilever](validation/reports/random-vibration-cantilever.html) | The RMS tip acceleration of a cantilever on a shaker, against the modal sum of the beam theory |
-| Multibody dynamics | [slider-crank](validation/reports/slider-crank.html) | The motion of a slider-crank with a motor, against the closed-form solution |
-| Particles (SPH, DEM) | [dam-break-martin-moyce](validation/reports/dam-break-martin-moyce.html) | The surge front of a 2D dam break, against the measurements of Martin and Moyce |
-| Explicit dynamics (impact) | [taylor-bar-impact](validation/reports/taylor-bar-impact.html) | The final length and the mushroom radius of a copper bar after an impact on a rigid wall, against a published benchmark |
-| Optics and photonics | [optics-mie-cylinder](validation/reports/optics-mie-cylinder.html) | The scatter of a plane wave of light on a dielectric cylinder, against the analytical series solution |
-| Antennas | [dipole-king-middleton](validation/reports/dipole-king-middleton.html) | The input impedance and the far field of a centre-fed dipole, against the theory of King and Middleton |
+| Structures | [contact-hertz](validation/reports/contact-hertz.md) | The largest contact pressure of a steel ball on a flat steel block, against the Hertz theory |
+| CFD | [naca23012-flap](validation/reports/naca23012-flap.md) | The lift and the pitching moment of an airfoil with a plain flap at 3 flap angles, against wind tunnel tests |
+| Electromagnetics | [team7-eddy-current](validation/reports/team7-eddy-current.md) | The eddy currents at 50 Hz in an aluminium plate with a hole under a coil, against measurements |
+| Acoustics | [acoustics-pulsating-sphere](validation/reports/acoustics-pulsating-sphere.md) | The sound that a pulsating sphere radiates into air at 500 Hz, against the analytical solution |
+| Fluid-structure interaction | [turek-hron-fsi1](validation/reports/turek-hron-fsi1.md) | The steady shape of a soft flag behind a cylinder in a channel flow, against the Turek-Hron benchmark |
+| Topology optimization | [topology-mbb-beam](validation/reports/topology-mbb-beam.md) | The minimum compliance of the half MBB beam with 50 % of the volume, against a published SIMP code |
+| Shape and parameter optimization | [shape-hole-biaxial](validation/reports/shape-hole-biaxial.md) | The hole of minimum stress concentration in a plate under biaxial stress, against the exact optimum |
+| Random vibration | [random-vibration-cantilever](validation/reports/random-vibration-cantilever.md) | The RMS tip acceleration of a cantilever on a shaker, against the modal sum of the beam theory |
+| Multibody dynamics | [slider-crank](validation/reports/slider-crank.md) | The motion of a slider-crank with a motor, against the closed-form solution |
+| Particles (SPH, DEM) | [dam-break-martin-moyce](validation/reports/dam-break-martin-moyce.md) | The surge front of a 2D dam break, against the measurements of Martin and Moyce |
+| Explicit dynamics (impact) | [taylor-bar-impact](validation/reports/taylor-bar-impact.md) | The final length and the mushroom radius of a copper bar after an impact on a rigid wall, against a published benchmark |
+| Optics and photonics | [optics-mie-cylinder](validation/reports/optics-mie-cylinder.md) | The scatter of a plane wave of light on a dielectric cylinder, against the analytical series solution |
+| Antennas | [dipole-king-middleton](validation/reports/dipole-king-middleton.md) | The input impedance and the far field of a centre-fed dipole, against the theory of King and Middleton |
 
 Other structures cases check buckling, plasticity, rubber, cracks, composite laminates, shells, natural frequencies, a sudden load, heat transfer and measured warpage. Other CFD cases check natural convection, conjugate heat transfer, a free surface and a supersonic shock.
 
-`validation/reports/index.html` links the report of each case: the checks, the derivation and a 3D view of the runs. Each report is 1 HTML file that `fh report` wrote. In a clone, open it in a browser. `scripts/validation-reports.py` makes the reports again. In the root of the clone, `fh validate` runs all the cases.
+`validation/reports/index.md` links the report of each case: the checks, the derivation and the plots of the runs. Each report is 1 Markdown file, with each plot as an SVG file. `scripts/validation-reports.py` makes the reports again. In the root of the clone, `fh validate` runs all the cases.
 
 The table in section 6 of `DESIGN.md` gives the solver and the input of each analysis type.
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 def mesh_report():
-    """The plots and compact tables use the mesh evidence already in derivation.md."""
+    """The plots and compact Markdown tables use the mesh evidence already in derivation.md."""
     text = (Path(__file__).resolve().parent / "derivation.md").read_text()
     mesh, study = text.split("## Mesh study", 1)
     counts = {int(m[1]): int(m[2]) for m in re.finditer(r"^\| ([123])(?: \(the check\))? \| (\d+) \|", mesh, re.M)}
@@ -26,10 +26,10 @@ def mesh_report():
             for n, raw in values:
                 v = float(raw)
                 change = "First mesh" if previous is None else f"{v - previous:+.5f} ({100 * (v - previous) / abs(previous):+.2f} %)"
-                trs.append(f"<tr><td>{n}</td><td>{raw}</td><td>{change}</td></tr>")
+                trs.append(f"| {n} | {raw} | {change} |")
                 previous = v
-            note = "<p>No extrapolation: the change grows between the last 2 meshes.</p>" if angle == 0 else ""
-            panels.append(f"<section><h3>{title}</h3><!--curve {name}-->"
-                          f"<table><thead><tr><th>Cells</th><th>{metric} [1]</th><th>Change from previous mesh</th></tr></thead>"
-                          f"<tbody>{''.join(trs)}</tbody></table>{note}</section>")
-    return '<div data-mesh-trend>' + "".join(panels) + '</div>', curves
+            note = "\n\nNo extrapolation: the change grows between the last 2 meshes." if angle == 0 else ""
+            panels.append(f"### {title}\n\n<!--curve {name}-->\n\n"
+                          f"| Cells | {metric} [1] | Change from previous mesh |\n|---|---|---|\n"
+                          + "\n".join(trs) + note)
+    return "\n\n".join(panels), curves

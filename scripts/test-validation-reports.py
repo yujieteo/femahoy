@@ -1,4 +1,4 @@
-"""Protect explicit units, zero references, and separate mesh series in reports."""
+"""Protect explicit units, zero references, separate mesh series and plot files in reports."""
 import importlib.util
 from pathlib import Path
 import unittest
@@ -11,8 +11,8 @@ spec.loader.exec_module(reports)
 
 class ReportResults(unittest.TestCase):
     def test_hand_check_has_explicit_units_and_current_values(self):
-        page = reports.text('contact-hertz', 'pass', [['p0', 6379.47, 6363.06, 190.8918, 174.4818]], [], ['job'], 'test')
-        self.assertIn('MPa', page.split('<h2>Result</h2>')[1].split('<h2>Source</h2>')[0])
+        page = reports.text('contact-hertz', 'pass', [['p0', 6379.47, 6363.06, 190.8918, 174.4818]], 'test')
+        self.assertIn('MPa', page.split('## Result')[1].split('## Source')[0])
         self.assertIn('+16.41 MPa', page)
         self.assertIn('+0.257895 %', page)
         self.assertEqual(page.count('E* = 210000'), 1)
@@ -29,7 +29,7 @@ class ReportResults(unittest.TestCase):
 
     def test_not_run_mesh_trend_has_a_file_for_each_curve_mark(self):
         import re, tempfile
-        page = reports.text('naca23012-flap', 'not run: OpenFOAM is not installed', [], None, [], 'test')
+        page = reports.text('naca23012-flap', 'not run: OpenFOAM is not installed', [], 'test')
         with tempfile.TemporaryDirectory() as tmp:
             files = reports.mesh_curves('naca23012-flap', Path(tmp))
             self.assertEqual(sorted(re.findall(r'<!--curve (mesh-\S+)-->', page)), [f.name for f in files])
@@ -39,6 +39,18 @@ class ReportResults(unittest.TestCase):
         self.assertEqual(reports.difference(2, 0, 'mm'), '+2 mm (absolute)')
         self.assertEqual(reports.difference(-2, -4, 'MPa'), '+2 MPa (+50 %)')
         self.assertEqual(reports.difference(2, 1, ''), '+1 (+100 %)')
+
+    def test_plot_file_is_standalone_with_legend_and_notes(self):
+        figure = ('<figure class="curve"><figcaption>Front &amp; time</figcaption><svg viewBox="0 0 640 360" role="img">'
+                  '<polyline style="stroke:var(--s2)" points="1,2"/></svg><div data-control="values" hidden><div hidden>'
+                  '<p class="keys">keys</p></div></div><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li>'
+                  '<li><i class="point" style="background:var(--s2)"></i>measured</li></ul><p>measured: Martin</p><p>A note.</p></figure>')
+        title, file, lines = reports.svg(figure)
+        self.assertEqual(title, 'Front & time')
+        self.assertEqual(lines, ['measured: Martin', 'A note.'])
+        self.assertNotIn('var(--', file)
+        self.assertIn('viewBox="0 0 640 404"', file)
+        self.assertIn('>measured</text>', file)
 
 
 if __name__ == '__main__':
