@@ -78,8 +78,9 @@ const MEMORY: &str = "the 4 GiB memory of wasm32 in a browser";
 /// quarter of the native limits (`elastic::LAPTOP`), the ratio of the heat limits of the box
 /// grid. The native limit of 300,000 points of the grid needs about 3 GB, and a static solve of
 /// 183,000 points of 10-node tetrahedra used 2.3 GB, so the browser limits, with a direct factor
-/// of at most `BROWSER_DIRECT_ENTRIES`, use about 1 GB. The subspace vectors of 100 modes of 75,000 points use 1.1 GB more, below the 2 GB refusal of
-/// `fh_fem::eigen::fits`. There is no measurement in wasm32.
+/// of at most `BROWSER_DIRECT_ENTRIES`, use about 1 GB. The subspace vectors of 100 modes of
+/// 75,000 points use 1.1 GB more, below the 2 GB refusal of `fh_fem::eigen::fits`. There is no
+/// measurement in wasm32.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Limits {
     pub heat: Limit,
