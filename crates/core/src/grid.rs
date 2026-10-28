@@ -1687,6 +1687,80 @@ pub fn structure_modes_row(k: usize, mode: &modes::Mode) -> String {
     format!("{k} {}", line(&values))
 }
 
+/// The result grid of mode `mode` of a structure: its shape `U` at each point, and the part
+/// number `part` (from 1) of each cell.
+pub fn mode_grid(mesh: &Mesh, mode: &modes::Mode) -> Grid {
+    let shape = mode.shape.iter().flatten().copied().collect();
+    mesh_grid(mesh, vec![Field::f64("U", 3, shape)])
+}
+
+/// The result grid of a static step: the displacement `U`, the stress `S`, the strain `E`, the
+/// von Mises stress `MISES`, the principal stresses `SP` (and with a thermal load the temperature
+/// `NT`) at each point, and the part number `part` (from 1) of each cell.
+pub fn static_grid(mesh: &Mesh, s: &elastic::Solution) -> Grid {
+    let flat = |v: &[[f64; 6]]| v.iter().flatten().copied().collect::<Vec<_>>();
+    let mut fields = vec![
+        Field::f64("U", 3, s.displacement.iter().flatten().copied().collect()),
+        Field::f64("S", 6, flat(&s.stress)),
+        Field::f64("E", 6, flat(&s.strain)),
+        Field::f64("MISES", 1, s.mises.clone()),
+        Field::f64("SP", 3, s.principal.iter().flatten().copied().collect()),
+    ];
+    if let Some(t) = &s.temperature {
+        fields.push(Field::f64("NT", 1, t.clone()));
+    }
+    mesh_grid(mesh, fields)
+}
+
+/// The grid of `mesh` with the fields `point_data` and the part number `part` (from 1) of each
+/// cell.
+fn mesh_grid(mesh: &Mesh, point_data: Vec<Field>) -> Grid {
+    Grid {
+        points: mesh.points.clone(),
+        cell_types: vec![vtk_type(mesh.kind); mesh.len()],
+        cells: (0..mesh.len()).map(|e| mesh.cell(e).to_vec()).collect(),
+        point_data,
+        cell_data: vec![Field::f64(
+            "part",
+            1,
+            mesh.part.iter().map(|&p| f64::from(p) + 1.0).collect(),
+        )],
+    }
+}
+
+/// The probe table of a static step (`probes.txt`): 1 row with the displacement, the stress and
+/// the von Mises stress (and with a thermal load the temperature) of each probe.
+pub fn static_probes_text(model: &elastic::Model, s: &elastic::Solution) -> String {
+    let mut columns = Vec::new();
+    for (p, v) in model.probes.iter().zip(&s.probes) {
+        let names = [
+            "ux", "uy", "uz", "sxx", "syy", "szz", "sxy", "syz", "sxz", "mises",
+        ];
+        let values = v.displacement.iter().chain(&v.stress).chain([&v.mises]);
+        for (n, &x) in names.iter().zip(values) {
+            columns.push((format!("{}.{n}", p.name), real(x)));
+        }
+        if s.temperature.is_some() {
+            columns.push((format!("{}.t", p.name), real(v.temperature)));
+        }
+    }
+    row(&columns)
+}
+
+/// A header line and 1 row.
+pub fn row(columns: &[(String, String)]) -> String {
+    let (names, values): (Vec<&str>, Vec<&str>) = columns
+        .iter()
+        .map(|(n, v)| (n.as_str(), v.as_str()))
+        .unzip();
+    format!("# {}\n{}\n", names.join(" "), values.join(" "))
+}
+
+/// A number of a table.
+pub fn real(v: f64) -> String {
+    format!("{v:.10e}")
+}
+
 /// The reference impedance of the Touchstone file (ohm).
 const TOUCHSTONE_OHM: f64 = 50.0;
 

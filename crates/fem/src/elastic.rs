@@ -249,10 +249,11 @@ pub struct Summary {
 /// A grid with more points than this needs more memory or time than a laptop has. Reason: the
 /// ignored test `crossover` (Apple M-series, 1 thread) factored a thin plate of 361,800
 /// unknowns in 10 s with 1.2e8 factor entries (1 GB). The factor of a thin model grows about
-/// as n log n, so 300,000 points (900,000 unknowns) need about 3 GB and a few minutes.
-pub(crate) const MAX_POINTS: heat::Limit = heat::Limit {
+/// as n log n, so 300,000 points (900,000 unknowns) need about 3 GB and a few minutes. The
+/// limit of a mesh of 10-node tetrahedra is `elastic_tet::MAX_POINTS`.
+pub const LAPTOP: heat::Limit = heat::Limit {
     points: 300_000,
-    tet_points: 0,
+    tet_points: crate::elastic_tet::MAX_POINTS,
     memory: "the memory of a laptop",
 };
 
@@ -278,20 +279,21 @@ pub(crate) const IMBALANCE: f64 = 1e-6;
 
 /// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
-    solve_within(model, DIRECT_ENTRIES, PCG_MAX_ITER, events)
+    solve_within(model, LAPTOP, DIRECT_ENTRIES, PCG_MAX_ITER, events)
 }
 
-/// Solve the model, use multigrid when the direct factor has more than `entries` entries, and
-/// stop multigrid after `iterations`.
+/// Solve the model, refuse a model with more points than `limit`, use multigrid when the direct
+/// factor has more than `entries` entries, and stop multigrid after `iterations`.
 pub fn solve_within(
     model: &Model,
+    limit: heat::Limit,
     entries: u64,
     iterations: usize,
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
     let stiffness = check(model)?;
     if model.parts.iter().any(|p| p.footprint.is_some()) {
-        return crate::elastic_tet::solve(model, &stiffness, entries, iterations, events);
+        return crate::elastic_tet::solve(model, &stiffness, limit, entries, iterations, events);
     }
     let mut warnings = Vec::new();
     let used: Vec<bool> = (0..model.faces.len())
@@ -333,7 +335,7 @@ pub fn solve_within(
             names.join(" and ")
         ));
     }
-    let numbering = number(&grid, MAX_POINTS)?;
+    let numbering = number(&grid, limit)?;
     let (mesh, ijk, cell_of) = (&numbering.mesh, &numbering.ijk, &numbering.cell_of);
     let hexes: Vec<[u32; 8]> = mesh
         .cells

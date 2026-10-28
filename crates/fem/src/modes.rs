@@ -24,7 +24,7 @@
 
 use crate::eigen;
 use crate::elastic::{self, check, fix_node, grid_point, Load, Thermal};
-use crate::elastic_tet::{corner_at, MAX_POINTS as TET_MAX_POINTS};
+use crate::elastic_tet::{corner_at, refusal};
 use crate::heat::{self, build_grid, number, select_tet_faces, Cell, Mesh};
 use crate::hex::{self, Hex};
 use crate::multigrid::{Cells, Level};
@@ -109,13 +109,15 @@ pub const MAX_MODES: usize = 100;
 
 /// Solve the model on a laptop.
 pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Summary, String> {
-    solve_within(model, None, events)
+    solve_within(model, None, elastic::LAPTOP, events)
 }
 
-/// Solve the model with the linear solver `method`, else the size of the model chooses it.
+/// Solve the model with the linear solver `method`, else the size of the model chooses it, and
+/// refuse a model with more points than `limit`.
 pub fn solve_within(
     model: &Model,
     method: Option<Method>,
+    limit: heat::Limit,
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
     let s = &model.structure;
@@ -157,9 +159,9 @@ pub fn solve_within(
     }
     let method = method.or(s.method);
     let assembly = if s.parts.iter().any(|p| p.footprint.is_some()) {
-        tet_assembly(s, &stiffness, events)?
+        tet_assembly(s, &stiffness, limit, events)?
     } else {
-        grid_assembly(s, &stiffness, events)?
+        grid_assembly(s, &stiffness, limit, events)?
     };
     let Assembly {
         mesh,
@@ -311,6 +313,7 @@ fn used_faces(s: &elastic::Model) -> Vec<bool> {
 fn grid_assembly<'a>(
     s: &'a elastic::Model,
     stiffness: &'a [hex::Stiffness],
+    limit: heat::Limit,
     events: &mut dyn Events,
 ) -> Result<Assembly<'a>, String> {
     let keys = vec![Vec::new(); s.parts.len()];
@@ -323,7 +326,7 @@ fn grid_assembly<'a>(
         &keys,
         "the materials of the parts",
     )?;
-    let numbering = number(&grid, elastic::MAX_POINTS)?;
+    let numbering = number(&grid, limit)?;
     let (mesh, ijk, cell_of) = (&numbering.mesh, &numbering.ijk, &numbering.cell_of);
     let n = ijk.len();
     let dims = grid.dims();
@@ -409,15 +412,20 @@ fn grid_assembly<'a>(
 fn tet_assembly<'a>(
     s: &'a elastic::Model,
     stiffness: &[hex::Stiffness],
+    limit: heat::Limit,
     events: &mut dyn Events,
 ) -> Result<Assembly<'a>, String> {
-    let refusal = format!(
-        "the mesh of 10-node tetrahedra has more than {TET_MAX_POINTS} points, the most that a \
-         laptop solves in a few minutes: use a larger max_cell or a larger max_growth"
-    );
-    let tm = prism::mesh(&s.parts, s.axis, s.spacing, TET_MAX_POINTS, &refusal, false)?;
+    let refusal = refusal(limit);
+    let tm = prism::mesh(
+        &s.parts,
+        s.axis,
+        s.spacing,
+        limit.tet_points,
+        &refusal,
+        false,
+    )?;
     let q = Quadratic::new(&tm.points, &tm.tets);
-    if q.points.len() > TET_MAX_POINTS {
+    if q.points.len() > limit.tet_points {
         return Err(refusal);
     }
     let n = q.points.len();
