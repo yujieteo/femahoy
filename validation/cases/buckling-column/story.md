@@ -1,0 +1,7 @@
+## Conclusion
+
+The solid model gives the critical load of the column 0.10 % above the theory of Timoshenko and Gere (1961). The model gives 10806.05 N, and the theory gives 10794.88 N. The tolerance is 1 %.
+
+Mode 2 is at 10806.44 N, 0.004 % above mode 1. The square section has the same critical load in 2 directions, as derivation.md says.
+
+A finer mesh gives +0.06 %: the size 3.3 mm in derivation.md, and the size 2.5 mm in the chat run. Thus about 0.06 % is the difference between the solid and the theory, not a mesh error. The theory has no shear deformation, and the fixed base face of the solid stops the Poisson contraction there (derivation.md).

@@ -410,7 +410,7 @@ fn cfd_data_cannot_close_its_data_element() {
 }
 
 #[test]
-fn flap_report_data_preserves_surfaces_residuals_and_fluid_boundaries() {
+fn flap_curves_preserve_surfaces_and_residuals() {
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../validation/cases/naca23012-flap/test_curves.py");
     let result = Command::new("python3").arg(script).output().unwrap();

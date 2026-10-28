@@ -18,8 +18,7 @@
 //!   uses the same viewer. With `--viewer FILE`, the report has no viewer files: it loads the
 //!   script FILE, a path from the folder of the report. FILE sets `window.fhViewer` to an object
 //!   with each viewer file as raw deflate in base64, under its daemon path (for example
-//!   `/viewer/fh_viewer.js`). Many reports in 1 folder then share 1 copy of the viewer
-//!   (`scripts/validation-reports.py`).
+//!   `/viewer/fh_viewer.js`). Many reports in 1 folder then share 1 copy of the viewer.
 //! - For each run, the files that the viewer fetches from the daemon: the input, `results.pvd`
 //!   and each step file. With `--one-step`, only the steps of each run that the elements of the
 //!   text for the run open: each step number of an element, each step of a slider, and the

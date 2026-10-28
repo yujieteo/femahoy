@@ -3,11 +3,9 @@
     python3 curves.py OUT d-10=FOLDER d0=FOLDER d10=FOLDER
 
 FOLDER is the output folder of the run of each input. The script writes Cp, lift, moment, force history, and initial residual CSV files.
-OUT/cfd.json holds the source data for the optional report controls. The reference values
-come from Table I of Abbott and Greenberg (1939). Only the Python standard library.
+The reference values come from Table I of Abbott and Greenberg (1939). Only the Python standard library.
 """
 
-import json
 import math
 import re
 import sys
@@ -61,7 +59,7 @@ def split_wall(loop):
             raise ValueError("wall geometry has no main-element surface")
         return sum(main) / len(main)
     branches.sort(key=height, reverse=True)
-    return {name: [[x, cp] for x, y, cp in branch] for name, branch in zip(("upper", "lower"), branches)}, [[x, y] for x, y, cp in loop]
+    return {name: [[x, cp] for x, y, cp in branch] for name, branch in zip(("upper", "lower"), branches)}
 
 
 def force_history(foam):
@@ -107,90 +105,6 @@ def residual_history(text):
     return [[t, rows[t]] for t in sorted(rows)]
 
 
-def cross(a, b):
-    return a[0] * b[1] - a[1] * b[0]
-
-
-def fluid_polygons(foam):
-    """Project the extruded cells. Shared vertex edges preserve solid and outer boundaries."""
-    mesh = foam / "constant/polyMesh"
-    points = [tuple(map(float, p.strip("()").split())) for p in foam_list(mesh / "points")]
-    faces = [list(map(int, f[f.index("(") + 1 : -1].split())) for f in foam_list(mesh / "faces")]
-    owner = [int(o) for o in foam_list(mesh / "owner")]
-    neighbour = [int(o) for o in foam_list(mesh / "neighbour")]
-    vertices = [set() for _ in range(max(owner + neighbour) + 1)]
-    for i, face in enumerate(faces):
-        vertices[owner[i]].update(points[p][:2] for p in face)
-        if i < len(neighbour):
-            vertices[neighbour[i]].update(points[p][:2] for p in face)
-    polygons = []
-    for cell in vertices:
-        x = sum(p[0] for p in cell) / len(cell)
-        y = sum(p[1] for p in cell) / len(cell)
-        polygons.append(sorted(cell, key=lambda p: math.atan2(p[1] - y, p[0] - x)))
-    return polygons
-
-
-def traces(polygons, velocity, seeds, limit=4000):
-    """Trace the piecewise constant cell velocity without any step across a boundary."""
-    edges, adjacent = {}, {}
-    for i, poly in enumerate(polygons):
-        for a, b in zip(poly, poly[1:] + poly[:1]):
-            key = tuple(sorted((a, b)))
-            if key in edges:
-                j = edges[key]
-                adjacent[i, key], adjacent[j, key] = j, i
-            else:
-                edges[key] = i
-    def inside(poly, p):
-        return all(cross((b[0]-a[0], b[1]-a[1]), (p[0]-a[0], p[1]-a[1])) >= -1e-12
-                   for a, b in zip(poly, poly[1:] + poly[:1]))
-    output = []
-    for seed in seeds:
-        cell = next((i for i, poly in enumerate(polygons) if inside(poly, seed)), None)
-        path, reason, visits = [list(seed)], "outside mesh", set()
-        for _ in range(limit):
-            if cell is None:
-                break
-            u = velocity[cell][:2]
-            speed = math.hypot(*u)
-            if speed < 1e-10:
-                reason = "near zero speed"
-                break
-            d = (u[0]/speed, u[1]/speed)
-            p = path[-1]
-            hits = []
-            poly = polygons[cell]
-            for a, b in zip(poly, poly[1:] + poly[:1]):
-                edge = (b[0]-a[0], b[1]-a[1])
-                den = cross(d, edge)
-                if abs(den) < 1e-14:
-                    continue
-                ap = (a[0]-p[0], a[1]-p[1])
-                t, q = cross(ap, edge)/den, cross(ap, d)/den
-                if t > 1e-10 and -1e-10 <= q <= 1+1e-10:
-                    hits.append((t, tuple(sorted((a,b)))))
-            if not hits:
-                reason = "cell boundary"
-                break
-            t, key = min(hits)
-            path.append([p[0]+t*d[0], p[1]+t*d[1]])
-            next_cell = adjacent.get((cell, key))
-            if next_cell is None:
-                reason = "wall or outer boundary"
-                break
-            if (cell, next_cell) in visits:
-                reason = "closed trace"
-                break
-            visits.add((cell, next_cell))
-            # An opposing velocity in the next cell gives no forward hit, so the trace stops at "cell boundary".
-            cell = next_cell
-        else:
-            reason = "step limit"
-        output.append({"points": path, "stop": reason})
-    return output
-
-
 def csv(out, name, title, y, labels, rows, log=False, gaps=False, points=(), note=""):
     if not rows:
         return
@@ -213,32 +127,15 @@ def main(out, folders):
     out = Path(out)
     runs = dict(f.split("=", 1) for f in folders)
     test = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
-    data = {"version": 1, "runs": {}, "ranges": {},
-            "cpSeries": [{"angle": f[1], "surface": surface} for f in FLAPS for surface in ("upper", "lower")]}
     cp_rows, load_rows = [], []
-    all_p, all_speed = [], []
     for k, (name, angle, label, cl_test, cm_test) in enumerate(FLAPS):
         foam = Path(runs[name]) / "foam"
-        surfaces, wall = wall_surfaces(foam)
+        surfaces = wall_surfaces(foam)
         history = force_history(foam)
         residuals = residual_history((foam / "log.simpleFoam").read_text()) if (foam / "log.simpleFoam").is_file() else []
-        last = last_time(foam)
-        pressure = [float(v) for v in foam_list(last / "p")]
-        velocity = [tuple(map(float, v.strip("()").split())) for v in foam_list(last / "U")]
-        all_p.extend(pressure)
-        all_speed.extend(math.sqrt(sum(x*x for x in v)) for v in velocity)
-        polygons = fluid_polygons(foam)
-        seeds = [(-0.1, y) for y in (-0.18, -0.1, -0.04, 0.04, 0.1, 0.18)]
-        run = {"angle": angle, "coefficients": history[-1][1:] if history else None, "cp": surfaces, "wall": wall, "history": history, "residuals": residuals,
-               "reference": [test[cl_test]["value"], test[cm_test]["value"]],
-               "flow": traces(polygons, velocity, seeds),
-               "flapFlow": traces(polygons, velocity, [(0.82, 0.09)]),
-               "source": "foam/postProcessing/forceCoeffs/0/coefficient.dat",
-               "residualSource": "foam/log.simpleFoam (initial residuals)",
-               "flowSource": f"foam/{last.name}/U and constant/polyMesh (cell velocity)"}
-        data["runs"][str(angle)] = run
+        reference = [test[cl_test]["value"], test[cm_test]["value"]]
         if history:
-            load_rows.append([angle, history[-1][1], run["reference"][0], history[-1][2], run["reference"][1]])
+            load_rows.append([angle, history[-1][1], reference[0], history[-1][2], reference[1]])
         for j, surface in enumerate(("upper", "lower")):
             for x, cp in surfaces[surface]:
                 row = [None] * 6
@@ -246,16 +143,14 @@ def main(out, folders):
                 cp_rows.append([x, *row])
         for field, index, title in (("cl", 1, "Lift"), ("cm", 2, "Moment")):
             csv(out, f"history-{name}-{field}", f"{title} history, {label}", f"{field} [1]", [field],
-                [[row[0], row[index]] for row in history], note=run["source"])
+                [[row[0], row[index]] for row in history], note="foam/postProcessing/forceCoeffs/0/coefficient.dat")
         equations = [eq for eq in ("p", "Ux", "Uy", "Uz", "nuTilda") if any(eq in row[1] for row in residuals)]
         csv(out, f"residuals-{name}", f"Initial residuals, {label}", "initial residual [1]", equations,
             [[t, *[values.get(eq) for eq in equations]] for t, values in residuals] if equations else [],
-            log=True, gaps=True, note=run["residualSource"])
-    data["ranges"] = {"p": [min(all_p), max(all_p)], "U magnitude": [min(all_speed), max(all_speed)]}
-    (out / "cfd.json").write_text(json.dumps(data, allow_nan=False, separators=(",", ":")))
+            log=True, gaps=True, note="foam/log.simpleFoam (initial residuals)")
     csv(out, "cp", "Pressure on the upper and lower surfaces", "-Cp [1]",
         [f"{f[2]} {surface}" for f in FLAPS for surface in ("upper", "lower")], cp_rows,
-        note="Solid: upper surface. Dashed: lower surface. Hinge: x / c = 0.8. Cp = 2p for this case.")
+        note="Hinge: x / c = 0.8. Cp = 2p for this case.")
     csv(out, "lift", "Lift against the flap angle", "Cl [1]", ["model Cl", "reference Cl"],
         [[r[0], r[1], r[2]] for r in load_rows], points=["reference Cl"],
         note="Only the 3 marked angles have solved results. Positive flap angle is down.")

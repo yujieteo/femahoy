@@ -1,0 +1,15 @@
+## Conclusion
+
+The GetDP model gives the analytical spherical wave of the pulsating sphere: at each node of the mesh, p is within 0.39 % of the analytical p. The radiation impedance z is within 0.11 %, and p at the check point (r = 0.3 m) is within 0.32 %. The tolerance is 1 %.
+
+<!--curve pressure.csv-->
+
+The dots of the model lie on the lines of the analytical p. At r = a, p is the pressure on the sphere, rho c U z = 0.188 + j 0.205 Pa. Away from the sphere, |p| decreases as a / r, and the phase decreases by k (r - a), with the wavelength 0.686 m.
+
+<!--curve error.csv-->
+
+The difference is largest on the outer sphere r = 0.5 m, where the mesh is coarsest: 0.39 %. At the other nodes it is 0.25 % or less.
+
+gmsh of another version can make another mesh of the same sizes. Thus the values of this run can differ a little from the tables below, which come from the check mesh of derivation.md. The section "Tolerance" expects up to 0.68 % from another mesh.
+
+The octant model holds the air between the sphere r = a and the outer sphere r = 0.5 m. The amplitude |p| is constant on each sphere about the centre. It falls from 0.27 Pa at the sphere to 0.056 Pa at the outer sphere. The check point is at r = 0.3 m.

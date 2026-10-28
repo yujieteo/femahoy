@@ -34,26 +34,12 @@ smoothSolver: Solving for nuTilda, Initial residual = 1e-7, Final residual = 0, 
 
     def test_wall_geometry_keeps_two_values_near_the_hinge(self):
         loop = [(1,0,0), (.79,.03,1.2), (.3,.08,.4), (0,0,0), (.3,-.04,-.2), (.79,-.02,-.8)]
-        surfaces, wall = curves.split_wall(loop)
+        surfaces = curves.split_wall(loop)
         self.assertIn([.79,1.2], surfaces["upper"])
         self.assertIn([.79,-.8], surfaces["lower"])
-        reverse, _ = curves.split_wall(list(reversed(loop)))
+        reverse = curves.split_wall(list(reversed(loop)))
         self.assertIn([.79,1.2], reverse["upper"])
         self.assertIn([.79,-.8], reverse["lower"])
-
-    def test_uniform_velocity_crosses_only_shared_fluid_edges(self):
-        cells = [[(0,0),(1,0),(1,1),(0,1)], [(1,0),(2,0),(2,1),(1,1)]]
-        trace = curves.traces(cells, [(1,0,0)]*2, [(0.25,0.5)])[0]
-        self.assertEqual(trace["points"], [[0.25,0.5],[1.0,0.5],[2.0,0.5]])
-        self.assertEqual(trace["stop"], "wall or outer boundary")
-
-    def test_thin_wall_stops_trace_before_other_fluid_cell(self):
-        cells = [[(0,0),(1,0),(1,1),(0,1)], [(1.000001,0),(2,0),(2,1),(1.000001,1)]]
-        trace = curves.traces(cells, [(1,0,0)]*2, [(0.25,0.5)])[0]
-        self.assertEqual(trace["points"][-1], [1.0,0.5])
-        self.assertEqual(trace["stop"], "wall or outer boundary")
-        self.assertEqual(curves.traces(cells, [(0,0,0)]*2, [(0.25,0.5)])[0]["stop"], "near zero speed")
-        self.assertEqual(curves.traces(cells, [(1,0,0)]*2, [(3,0.5)])[0]["stop"], "outside mesh")
 
 
 if __name__ == "__main__":

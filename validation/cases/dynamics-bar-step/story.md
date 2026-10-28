@@ -1,0 +1,7 @@
+## Conclusion
+
+The solid bar gives the end displacement at t = 2L/c 1.57 % below the 1D wave theory of Graff (1975). The mean u1 of the end face is 0.0187484 mm, and the theory gives 0.0190476 mm. The tolerance is 3 %.
+
+At t = 2L/c = 77.337 µs, the wave comes back from the fixed end, and the 1D theory has a sharp peak. The 3D bar has lateral inertia, and the mesh cannot carry a step. Thus the solid has a round peak with a lower value.
+
+The mesh causes only about 0.2 % of the difference: the 2 finest former C3D10 meshes of derivation.md give -1.36 % and -1.38 %. The run prints u1 only at the end of the step, after 504 explicit increments. Thus this report has no plot of the history.
