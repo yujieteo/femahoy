@@ -14,8 +14,9 @@
 //! solve j is the residual of the rows of its points (as in `line`): the conductance matrix G_ij
 //! (or the Maxwell capacitance matrix C_ij), with I = G V. The voltages of the current terminals
 //! then solve G_cc V_c = I_c - G_cv V_v, so each current terminal is 1 shared unknown, and a
-//! floating conductor is a terminal with 0 charge. A model needs 1 voltage terminal or more: it
-//! sets the reference of the potential.
+//! floating conductor is a terminal with 0 charge. Each piece of the mesh, joined through the
+//! points of its terminals, needs 1 voltage terminal or more: it sets the reference of the
+//! potential.
 //!
 //! The Joule heat of cell e is u_e^T K_e u_e, with its element matrix K_e and its point voltages
 //! u_e: the sum over the cells is exactly sum_i V_i I_i. Each point of the cell gets an equal

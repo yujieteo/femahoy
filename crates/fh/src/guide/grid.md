@@ -101,7 +101,7 @@ Use `[step] type = "conduction"` for a DC current in conductors, and `type = "el
 2. `[grid]`: as for heat, with no `symmetry`.
 3. `[material.NAME]`: `electric_conductivity` (S/m, 1 number) for each material of a conduction step. Add `conductivity` (the thermal conductivity) for the Joule heat, and `temperature_coefficient` (alpha, 1/K) for a resistivity ρ0 (1 + alpha (T − T_ref)). For an electrostatic step, `relative_permittivity` (1 by default). Space with no part has no field: give the air or the dielectric around the conductors as a part. A conductor of an electrostatic step is a hole or the outside of the dielectric, with a voltage on its face set.
 4. `[[load]]`: each load makes 1 terminal: a face set at 1 potential. Give each terminal its own face set. 2 terminals must not touch.
-   - `voltage` with `face`: a fixed voltage. A model needs 1 voltage or more.
+   - `voltage` with `face`: a fixed voltage. Each part needs a voltage on it, on a part that it touches, or on a terminal that it shares with such a part.
    - `current` with `face` (conduction): a total current into the part through the face set, which has 1 unknown voltage.
    - `charge` with `face` (electrostatic): a total charge on a conductor at 1 unknown voltage. A floating conductor has `charge = 0.0`.
    - Heat loads (`temperature`, `flux`, `convection`, `source`) in a conduction step: then the solver also solves the steady temperature with the Joule heat as a source. A face with no heat load is adiabatic.
