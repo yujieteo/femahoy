@@ -8,6 +8,18 @@ publish.workspace = true
 [dependencies]
 fh-core = { path = "../core" }
 fh-fem = { path = "../fem" }
-fh-viewer = { path = "../viewer" }
+fh-viewer = { path = "../viewer", optional = true }
 miniz_oxide = "0.9.1"
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
+
+# The daemon, its HTTP server and `fh report` need the viewer, and the viewer does not build for
+# wasm32-unknown-emscripten. Reason: `fh-quine` builds the solvers and the validation without
+# them for that target (docs/reference/quine.md).
+[features]
+default = ["server"]
+server = ["dep:fh-viewer"]
+
+[[bin]]
+name = "fh"
+path = "src/main.rs"
+required-features = ["server"]

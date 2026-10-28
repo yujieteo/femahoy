@@ -1,6 +1,7 @@
 # The Rust toolchain of femahoy. rustup reads this file, so cargo works in the repository
 # with no rustup default and no RUSTUP_TOOLCHAIN. The wasm32 target builds the browser
-# viewer (scripts/build-viewer.sh).
+# viewer (scripts/build-viewer.sh). The wasm32-unknown-emscripten target builds the HTML files of
+# the validation cases (scripts/build-quine.sh).
 [toolchain]
 channel = "1.97.0"
-targets = ["wasm32-unknown-unknown"]
+targets = ["wasm32-unknown-unknown", "wasm32-unknown-emscripten"]

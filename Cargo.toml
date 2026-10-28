@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/fem",
     "crates/fh",
+    "crates/quine",
     "crates/viewer",
 ]
 

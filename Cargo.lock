@@ -646,6 +646,13 @@ name = "fh-fem"
 version = "0.0.0"
 
 [[package]]
+name = "fh-quine"
+version = "0.0.0"
+dependencies = [
+ "fh",
+]
+
+[[package]]
 name = "fh-viewer"
 version = "0.0.0"
 dependencies = [

@@ -10,7 +10,7 @@
 //! case that cannot run gives exit code 1. A case whose solver does not start cannot run, and its
 //! line tells how to install that solver.
 
-use fh::validation::{load_all, run_case_with, Case, Outcome, Report, Subprocess};
+use fh::validation::{load_all, run_case_with, summary, Case, Report, Subprocess};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -41,35 +41,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
 
 /// Print one line for each case, the quantity tables, and the summary. Exit code 1 on a failure.
 fn print_reports(reports: &[(&Case, Report)]) -> ExitCode {
-    let (mut pass, mut fail) = (0, 0);
-    let mut lines = String::new();
-    let mut tables = String::new();
-    for (case, report) in reports {
-        let status = match &report.outcome {
-            Outcome::Pass => {
-                pass += 1;
-                "pass".to_owned()
-            }
-            Outcome::Fail(why) => {
-                fail += 1;
-                if why.contains("cannot run") {
-                    format!("cannot run: {why}")
-                } else {
-                    format!("fail: {why}")
-                }
-            }
-        };
-        lines.push_str(&format!("{}\t{status}\n", case.id));
-        for r in &report.rows {
-            tables.push_str(&format!(
-                "  {}\t{}\tcomputed={:.10e}\treference={:.10e}\ttolerance={:.3e}\tmargin={:.3e}\n",
-                case.id, r.name, r.computed, r.reference, r.tolerance, r.margin
-            ));
-        }
-    }
-    print!("{lines}{tables}");
-    println!("{} cases: {pass} pass, {fail} fail", reports.len());
-    if fail == 0 && pass > 0 {
+    let (text, passed) = summary(reports);
+    print!("{text}");
+    if passed {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
