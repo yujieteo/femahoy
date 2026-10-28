@@ -238,8 +238,10 @@ fn report(
                  homogenize step {0}/{7} (the effective tensors of the unit cell) and {0}/{8} (the \
                  effective material for a grid.toml), or for electromagnetics {0}/{9} (the \
                  S-parameters), {0}/{10} (beta and the impedance of each port), \
-                 {0}/sparams.sNp (Touchstone) or {0}/{11} (the frequency and Q of each mode), and \
-                 {0}/log.txt (the grid, the solver and the warnings)",
+                 {0}/sparams.sNp (Touchstone) or {0}/{11} (the frequency and Q of each mode), or \
+                 for a conduction or an electrostatic step {0}/{12} (the voltage and the current \
+                 or the charge of each terminal) and {0}/{13} or {0}/{14} (the matrix of the \
+                 terminals), and {0}/log.txt (the grid, the solver and the warnings)",
                 out.join(grid::WORK).display(),
                 grid::PROBES,
                 grid::ENERGY,
@@ -251,7 +253,10 @@ fn report(
                 grid::MATERIAL,
                 grid::SPARAMS,
                 grid::PORTS,
-                grid::MODES
+                grid::MODES,
+                grid::TERMINALS,
+                grid::CONDUCTANCE,
+                grid::CAPACITANCE
             ),
             "",
         ),

@@ -22,6 +22,9 @@
 //!   4-node tetrahedra on the extruded mesh, and `nonlinear`: the Newton iteration of a
 //!   radiation to the ambient and of a conductivity and a specific heat that change with the
 //!   temperature.
+//! - `dc`: DC current conduction (the resistance, the current density and the Joule heat, with
+//!   a steady heat solve and a temperature-dependent conductivity) and electrostatics (the
+//!   capacitance matrix) on the meshes of `heat`.
 //! - `hex`: the 8-node hex with incompatible modes for elasticity, and the orthotropic material.
 //! - `elastic`: linear static thermo-elasticity on the grid, and `elastic_tet` on the extruded
 //!   mesh with 10-node tetrahedra (`tet10`).
@@ -39,6 +42,7 @@
 
 pub mod cholesky;
 pub mod complex;
+pub mod dc;
 pub mod elastic;
 pub mod elastic_tet;
 pub mod em;

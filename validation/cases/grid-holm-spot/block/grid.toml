@@ -1,0 +1,54 @@
+# A circular contact spot of radius 1 mm at 1 V on the top face of a round copper block of
+# radius 20 mm and height 20 mm. The bottom and the round side of the block are at 0 V
+# (../derivation.md). The parts `spot`, `inner` and `ring` are copper too: their circles and the
+# thin part `spot` make small cells at the rim of the spot, where the current density is
+# singular.
+units = "SI-mm"
+
+[grid]
+max_cell = 4.0
+
+[material.copper]
+electric_conductivity = 5.8e7
+
+[part.spot]
+material = "copper"
+circle = [0.0, 0.0, 1.0]
+z = [-0.02, 0.0]
+priority = 2
+
+[part.inner]
+material = "copper"
+circle = [0.0, 0.0, 0.98]
+z = [-20.0, 0.0]
+priority = 3
+
+[part.ring]
+material = "copper"
+circle = [0.0, 0.0, 1.02]
+z = [-20.0, 0.0]
+priority = 1
+
+[part.block]
+material = "copper"
+circle = [0.0, 0.0, 20.0]
+z = [-20.0, 0.0]
+
+[face.spot]
+side = "z+"
+parts = ["spot", "inner"]
+
+# All outer faces below the top face: the bottom and the round side.
+[face.ground]
+box = [-30.0, -30.0, -30.0, 30.0, 30.0, -0.001]
+
+[[load]]
+voltage = 1.0
+face = "spot"
+
+[[load]]
+voltage = 0.0
+face = "ground"
+
+[step]
+type = "conduction"

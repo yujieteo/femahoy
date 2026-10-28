@@ -1,5 +1,6 @@
-//! The built-in solvers of femahoy (heat conduction, linear elasticity, unit cells, transmission
-//! lines and frequency-domain electromagnetics), in the process of `fh`.
+//! The built-in solvers of femahoy (heat conduction, linear elasticity, unit cells, DC
+//! conduction and electrostatics, transmission lines and frequency-domain electromagnetics), in
+//! the process of `fh`.
 //!
 //! A grid case is a folder with `grid.toml`: the parts as boxes or as prisms of a polygon or a
 //! circle with holes, the materials, the named face sets, the loads, the step, the probes and the
@@ -20,6 +21,11 @@
 //!   propagation constant and the impedance of each port, and the Touchstone file, 1 row for
 //!   each frequency; `<run-dir>/grid/modes.txt`: the frequency and Q of each mode;
 //! - `<run-dir>/grid/log.txt`: the lines of progress and the warnings.
+//!
+//! For a conduction or an electrostatic step: `step-1.vtu` with the potential `V` (and `NT` with
+//! heat loads) at each point and `J` and `JOULE` (or `E`) of each cell, and in
+//! `<run-dir>/grid/` the terminal table `terminals.txt`, the matrix of the terminals
+//! `conductance.txt` or `capacitance.txt`, `probes.txt` and `log.txt`.
 //!
 //! For a static step:
 //!
@@ -60,11 +66,13 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use fh_core::grid::{
-    em_frame_grid, frame_grid, is_line, modes_row, ports_head, ports_row, probe_head, probe_row,
-    read, sparams_head, sparams_row, touchstone_head, touchstone_rows, vtk_type, Case, MODES_HEAD,
+    dc_grid, dc_probes_text, em_frame_grid, frame_grid, is_line, matrix_text, modes_row,
+    ports_head, ports_row, probe_head, probe_row, read, sparams_head, sparams_row, terminals_text,
+    touchstone_head, touchstone_rows, vtk_type, Case, MODES_HEAD,
 };
 use fh_core::line;
 use fh_core::vtu::{Field, Grid as VtuGrid, PvdEntry};
+use fh_fem::dc;
 use fh_fem::elastic::{self, Solution};
 use fh_fem::em;
 use fh_fem::heat::{self, Events, Frame, Mesh};
@@ -84,6 +92,11 @@ pub const LINE: &str = "line.txt";
 pub const SPARAMS: &str = "sparams.txt";
 pub const PORTS: &str = "ports.txt";
 pub const MODES: &str = "modes.txt";
+/// The voltage and the current (or the charge) of each terminal of a conduction or an
+/// electrostatic case, and their conductance or capacitance matrix.
+pub const TERMINALS: &str = "terminals.txt";
+pub const CONDUCTANCE: &str = "conductance.txt";
+pub const CAPACITANCE: &str = "capacitance.txt";
 
 pub const SURFACES: &str = "surfaces.txt";
 pub const REACTIONS: &str = "reactions.txt";
@@ -122,6 +135,9 @@ pub fn run_with(
     let model = match case_model {
         Case::Em(model) => {
             return run_em(&model, &units, &run_dir, timeout, cancel, on_line);
+        }
+        Case::Dc(model) => {
+            return run_dc(&model, &units, &run_dir, timeout, cancel, on_line);
         }
         model => model,
     };
@@ -178,7 +194,7 @@ pub fn run_with(
                 warnings,
             ))
         }),
-        Case::Em(_) => unreachable!("run_em solves an electromagnetic case"),
+        Case::Em(_) | Case::Dc(_) => unreachable!("run_em and run_dc solve these cases"),
     };
     let (summary, warnings) = stopped(result, cancel, out.end, timeout)?;
     out.line(&summary);
@@ -366,6 +382,76 @@ fn run_em(
     }
     write("log.txt", &out.log)?;
     finish_pvd(run_dir, &out.entries, units)
+}
+
+/// Solve a conduction or an electrostatic case and write its tables and fields.
+fn run_dc(
+    model: &dc::Model,
+    units: &str,
+    run_dir: &Path,
+    timeout: Option<Duration>,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<(), String> {
+    let mut out = DcOutput {
+        log: String::new(),
+        on_line,
+        cancel,
+        end: timeout.map(|t| Instant::now() + t),
+    };
+    let result = dc::solve(model, &mut out);
+    let s = stopped(result, cancel, out.end, timeout)?;
+    out.line(&format!(
+        "{} cells, {} points, {} unknowns, {} iterations",
+        s.mesh.len(),
+        s.mesh.points.len(),
+        s.unknowns,
+        s.iterations
+    ));
+    for w in &s.warnings {
+        out.line(&format!("warning: {w}"));
+    }
+    let work = run_dir.join(WORK);
+    let write = |name: &str, text: &str| {
+        fs::write(work.join(name), text).map_err(|e| format!("{name}: {e}"))
+    };
+    write(TERMINALS, &terminals_text(model, &s))?;
+    let matrix = match model.kind {
+        dc::Kind::Conduction => CONDUCTANCE,
+        dc::Kind::Electrostatic => CAPACITANCE,
+    };
+    write(matrix, &matrix_text(model, &s))?;
+    write(PROBES, &dc_probes_text(model, &s))?;
+    write("log.txt", &out.log)?;
+    let mut entries = Vec::new();
+    write_step(run_dir, &mut entries, 1.0, &dc_grid(model, &s))?;
+    finish_pvd(run_dir, &entries, units)
+}
+
+/// The log of a conduction or an electrostatic solve.
+struct DcOutput<'a> {
+    log: String,
+    on_line: &'a mut dyn FnMut(&str),
+    cancel: &'a CancelToken,
+    end: Option<Instant>,
+}
+
+impl DcOutput<'_> {
+    fn line(&mut self, text: &str) {
+        self.log.push_str(text);
+        self.log.push('\n');
+        (self.on_line)(text);
+    }
+}
+
+impl dc::Events for DcOutput<'_> {
+    fn cancelled(&self) -> bool {
+        self.cancel.is_cancelled() || self.end.is_some_and(|end| Instant::now() >= end)
+    }
+
+    fn progress(&mut self, text: &str) {
+        self.line(text);
+    }
 }
 
 /// The writer of the results of an electromagnetic solve while it runs.

@@ -32,8 +32,8 @@ use std::collections::HashMap;
 
 use crate::elastic::{
     check_supports, fit_shape, fix_node, mises, peak_warnings, principal, reactions, reorder,
-    tensor_strain, Events, Fixed, HeatRun, Load, Model, Peak, ProbeValue, Singular, Solution,
-    Summary, Surface, SurfaceShape, Thermal,
+    solve_thermal, tensor_strain, Events, Fixed, Load, Model, Peak, ProbeValue, Singular, Solution,
+    Summary, Surface, SurfaceShape,
 };
 use crate::heat::{self, face_normal, select_tet_faces, tet_gradients, Cell, Mesh};
 use crate::hex::Stiffness;
@@ -112,27 +112,7 @@ pub(crate) fn solve(
     ));
 
     // The temperature at each corner.
-    let temperature: Option<Vec<f64>> = match &model.thermal {
-        Thermal::None => None,
-        Thermal::Uniform(t) => Some(vec![*t; nv]),
-        Thermal::Heat(h) => {
-            let mut run = HeatRun {
-                outer: events,
-                temperature: None,
-            };
-            let summary = heat::solve(h, &mut run)?;
-            for w in summary.warnings {
-                warnings.push(format!("heat: {w}"));
-            }
-            let t = run
-                .temperature
-                .ok_or("the heat solve gave no temperature")?;
-            if t.len() != nv {
-                return Err("the heat model has other parts or another mesh".into());
-            }
-            Some(t)
-        }
-    };
+    let temperature = solve_thermal(&model.thermal, nv, events, &mut warnings)?;
     let dt: Vec<f64> = match &temperature {
         Some(t) => t.iter().map(|t| t - model.reference).collect(),
         None => vec![0.0; nv],

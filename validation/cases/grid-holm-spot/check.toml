@@ -1,0 +1,15 @@
+# The constriction resistance of a circular spot on a round block (derivation.md). Tolerance
+# budget: the exact resistance of this block is between 0.9682 and 0.9775 of Holm's 1 / (4 sigma
+# a) (bounds for the finite block, derivation.md), so the reference is the middle of the bounds
+# with an uncertainty of 0.48 %. The run gives 0.9545: below the lower bound, as a finite element
+# resistance with fixed voltages must be, by 1.4 % to 2.4 %, from the singular current density
+# at the rim of the spot (a mesh study in derivation.md). The tolerance 3 % holds the largest
+# error, 2.4 %, with a margin of 0.6 %.
+rel_tol = 0.03
+abs_tol = 0.0
+
+[resistance]
+value = 4.1932267e-6
+case = "block"
+file = "terminals.txt"
+column = "resistance"

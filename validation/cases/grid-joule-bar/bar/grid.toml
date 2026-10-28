@@ -1,0 +1,44 @@
+# A steel bar 0.2 m long with 0.01 V across its ends. Its Joule heat flows out of the 2 ends,
+# which are at 20 C; the 4 long sides are adiabatic (../derivation.md).
+units = "SI-m"
+
+[grid]
+max_cell = 0.01
+
+[material.steel]
+electric_conductivity = 1.0e6
+conductivity = 50.0
+
+[part.bar]
+material = "steel"
+x = [0.0, 0.2]
+y = [0.0, 0.01]
+z = [0.0, 0.01]
+
+[face.left]
+side = "x-"
+
+[face.right]
+side = "x+"
+
+[[load]]
+voltage = 0.01
+face = "left"
+
+[[load]]
+voltage = 0.0
+face = "right"
+
+[[load]]
+temperature = 20.0
+face = "left"
+
+[[load]]
+temperature = 20.0
+face = "right"
+
+[probe.middle]
+point = [0.1, 0.005, 0.005]
+
+[step]
+type = "conduction"

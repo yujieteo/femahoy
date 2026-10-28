@@ -281,7 +281,7 @@ const MAX_TET_POINTS: usize = 400_000;
 const IMBALANCE: f64 = 1e-6;
 
 /// A face on the outside of the model, with a load on it.
-struct Facet {
+pub(crate) struct Facet {
     /// The points: 4 of a box face, or 3 of a triangle (the 4th is unused).
     nodes: [u32; 4],
     count: usize,
@@ -291,35 +291,37 @@ struct Facet {
 }
 
 impl Facet {
-    fn nodes(&self) -> &[u32] {
+    pub fn nodes(&self) -> &[u32] {
         &self.nodes[..self.count]
     }
 }
 
-/// The heat flux at the centre of each cell, from the point temperatures.
-type FluxOf = Box<dyn Fn(&[f64]) -> Vec<[f64; 3]>>;
+/// The gradient at the centre of each cell, from the point values.
+type GradientOf = Box<dyn Fn(&[f64]) -> Vec<[f64; 3]>>;
+
+/// The conductivity matrix of cell `e` with the conductivity `k` (x, y, z), row-major.
+type ElementOf = Box<dyn Fn(usize, [f64; 3]) -> Vec<f64>>;
 
 /// The unknowns of the linear solver from the free points.
-type UnknownsOf = Box<dyn Fn(&[usize]) -> Unknowns>;
+pub(crate) type UnknownsOf = Box<dyn Fn(&[usize]) -> Unknowns>;
 
 /// A model on its mesh: what the solve loop needs from the box grid or the tetrahedral mesh.
-struct Discrete {
-    mesh: Mesh,
+pub(crate) struct Discrete {
+    pub mesh: Mesh,
     /// The conductivity matrix, at a unit conductivity in each cell of a table material.
-    k: Csr,
-    /// The element matrix of cell e at the conductivity of `k`.
-    element: Box<dyn Fn(usize) -> Vec<f64>>,
+    pub k: Csr,
     /// The volume of each cell.
-    volume: Vec<f64>,
+    pub volume: Vec<f64>,
     /// The faces of each face set of the model.
-    faces: Vec<Vec<Facet>>,
+    pub faces: Vec<Vec<Facet>>,
     /// The points and the weights of the interpolation of each probe.
-    probes: Vec<Vec<(u32, f64)>>,
-    flux: FluxOf,
-    unknowns: UnknownsOf,
+    pub probes: Vec<Vec<(u32, f64)>>,
+    pub gradient: GradientOf,
+    pub element: ElementOf,
+    pub unknowns: UnknownsOf,
     /// The line that tells the mesh.
-    line: String,
-    warnings: Vec<String>,
+    pub line: String,
+    pub warnings: Vec<String>,
 }
 
 /// Solve the model on a laptop.
@@ -333,17 +335,37 @@ pub fn solve_within(
     limit: Limit,
     events: &mut dyn Events,
 ) -> Result<Summary, String> {
-    check(model)?;
-    let d = if model.parts.iter().any(|p| p.footprint.is_some()) {
-        tet_model(model, limit)?
-    } else {
-        grid_model(model, limit)?
-    };
-    run(model, d, events)
+    run(model, discrete(model, limit)?, None, events)
 }
 
-/// The steady solve or the time steps of the model `model` on its mesh `d`.
-fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, String> {
+/// Solve the steady or transient model with the heat `source` at each point of its mesh in
+/// addition to its loads (power, for example the Joule heat of `dc`).
+pub(crate) fn solve_with_source(
+    model: &Model,
+    source: &[f64],
+    events: &mut dyn Events,
+) -> Result<Summary, String> {
+    run(model, discrete(model, LAPTOP)?, Some(source), events)
+}
+
+/// The checked model on its box grid or its tetrahedral mesh.
+pub(crate) fn discrete(model: &Model, limit: Limit) -> Result<Discrete, String> {
+    check(model)?;
+    if model.parts.iter().any(|p| p.footprint.is_some()) {
+        tet_model(model, limit)
+    } else {
+        grid_model(model, limit)
+    }
+}
+
+/// The steady solve or the time steps of the model `model` on its mesh `d`, with the heat
+/// `extra` at each point.
+fn run(
+    model: &Model,
+    d: Discrete,
+    extra: Option<&[f64]>,
+    events: &mut dyn Events,
+) -> Result<Summary, String> {
     let Discrete {
         mesh,
         mut k,
@@ -351,11 +373,23 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
         volume,
         faces,
         probes,
-        flux: cell_flux,
+        gradient,
         unknowns,
         line,
         mut warnings,
+        ..
     } = d;
+    // The conductivity of `k` in each cell.
+    let conductivity: Vec<[f64; 3]> = (0..mesh.len())
+        .map(|e| model.materials[model.parts[mesh.part[e] as usize].material].base())
+        .collect();
+    let cell_flux = |t: &[f64]| -> Vec<[f64; 3]> {
+        gradient(t)
+            .iter()
+            .zip(&conductivity)
+            .map(|(g, k)| std::array::from_fn(|d| -k[d] * g[d]))
+            .collect()
+    };
     events.mesh(&mesh)?;
     events.progress(&line);
     let n = mesh.points.len();
@@ -363,7 +397,11 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
     // The lumped capacity and the volume sources, and the cells and the points of the table
     // materials.
     let mut capacity = vec![0.0; n];
-    let mut source = vec![0.0; n];
+    let mut source = match extra {
+        Some(q) if q.len() == n => q.to_vec(),
+        Some(_) => return Err("the heat source has another mesh".into()),
+        None => vec![0.0; n],
+    };
     let mut part_source = vec![0.0; model.parts.len()];
     let mut table_cells = Vec::new();
     let mut heat = Vec::new();
@@ -538,7 +576,7 @@ fn run(model: &Model, d: Discrete, events: &mut dyn Events) -> Result<Summary, S
             mesh: &mesh,
             k: &k,
             cells: table_cells,
-            element: &*element,
+            element: &|e| element(e, conductivity[e]),
             load: &load,
             capacity: &capacity,
             heat,
@@ -816,21 +854,17 @@ fn grid_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
         points: Vec::new(),
         comp: Vec::new(),
     };
-    let conductivity: Vec<[f64; 3]> = cell_of
-        .iter()
-        .map(|&c| model.materials[model.parts[grid.part[c] as usize].material].base())
-        .collect();
     let sizes: Vec<[f64; 3]> = cell_of.iter().map(|&c| grid.size(c)).collect();
     let cells_flat = mesh.cells.clone();
-    let (element_sizes, element_k) = (sizes.clone(), conductivity.clone());
+    let sizes_element = sizes.clone();
     Ok(Discrete {
         mesh,
         k,
-        element: Box::new(move |e| conduction(element_sizes[e], element_k[e]).to_vec()),
         volume,
         faces: facets,
         probes,
-        flux: Box::new(move |t| cell_flux(&cells_flat, &sizes, &conductivity, t)),
+        gradient: Box::new(move |t| cell_gradient(&cells_flat, &sizes, t)),
+        element: Box::new(move |e, k| conduction(sizes_element[e], k).to_vec()),
         unknowns: Box::new(move |free| {
             Unknowns::Grid(Level {
                 planes: level.planes.clone(),
@@ -886,33 +920,14 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
     );
     let mut k = Csr::pattern(n, (0..mesh.len()).map(|e| mesh.cell(e)));
     let mut volume = Vec::with_capacity(mesh.len());
-    // The gradients of the 4 shape functions of each tetrahedron, times its conductivity.
+    // The gradients of the 4 shape functions of each tetrahedron.
     let mut grads: Vec<[[f64; 3]; 4]> = Vec::with_capacity(mesh.len());
-    let base: Vec<[f64; 3]> = tm
-        .part
-        .iter()
-        .map(|&p| model.materials[model.parts[p as usize].material].base())
-        .collect();
-    let element = {
-        let (tets, points, base) = (tm.tets.clone(), tm.points.clone(), base.clone());
-        move |e: usize| {
-            let c = base[e];
-            let (g, v) = tet_gradients(tets[e].map(|i| points[i as usize]));
-            let mut ke = vec![0.0; 16];
-            for i in 0..4 {
-                for j in 0..4 {
-                    ke[i * 4 + j] = v * (0..3).map(|d| c[d] * g[i][d] * g[j][d]).sum::<f64>();
-                }
-            }
-            ke
-        }
-    };
     for (e, tet) in tm.tets.iter().enumerate() {
-        let c = base[e];
+        let c = model.materials[model.parts[tm.part[e] as usize].material].base();
         let (g, v) = tet_gradients(tet.map(|i| tm.points[i as usize]));
-        k.add_element(tet, &element(e));
+        k.add_element(tet, &tet_conduction(&g, v, c));
         volume.push(v);
-        grads.push(g.map(|gi| std::array::from_fn(|d| c[d] * gi[d])));
+        grads.push(g);
     }
     let faces = tet_faces(model, &tm)?;
     let probes = model
@@ -929,27 +944,40 @@ fn tet_model(model: &Model, limit: Limit) -> Result<Discrete, String> {
         .collect::<Result<_, _>>()?;
     let tets = tm.tets.clone();
     let points = tm.points;
+    let (grads_element, volume_element) = (grads.clone(), volume.clone());
     Ok(Discrete {
         mesh,
         k,
-        element: Box::new(element),
         volume,
         faces,
         probes,
-        flux: Box::new(move |t| {
+        gradient: Box::new(move |t| {
             tets.iter()
                 .zip(&grads)
                 .map(|(tet, g)| {
-                    std::array::from_fn(|d| {
-                        -(0..4).map(|i| g[i][d] * t[tet[i] as usize]).sum::<f64>()
-                    })
+                    std::array::from_fn(|d| (0..4).map(|i| g[i][d] * t[tet[i] as usize]).sum())
                 })
                 .collect()
+        }),
+        element: Box::new(move |e, c| {
+            tet_conduction(&grads_element[e], volume_element[e], c).to_vec()
         }),
         unknowns: Box::new(move |free| Unknowns::Points(free.iter().map(|&i| points[i]).collect())),
         line,
         warnings: Vec::new(),
     })
+}
+
+/// The 4 x 4 conductivity matrix V G^T K G of a tetrahedron of volume `v` with the gradients `g`
+/// of its shape functions and the conductivity `k`, row-major.
+fn tet_conduction(g: &[[f64; 3]; 4], v: f64, k: [f64; 3]) -> [f64; 16] {
+    let mut ke = [0.0; 16];
+    for i in 0..4 {
+        for j in 0..4 {
+            ke[i * 4 + j] = v * (0..3).map(|d| k[d] * g[i][d] * g[j][d]).sum::<f64>();
+        }
+    }
+    ke
 }
 
 /// The gradients of the 4 shape functions of a tetrahedron and its volume.
@@ -1264,19 +1292,18 @@ fn face_mass(a: f64, b: f64, h: f64) -> [f64; 16] {
     m
 }
 
-/// The heat flux -k grad T at the centre of each box cell.
-fn cell_flux(cells: &[u32], sizes: &[[f64; 3]], k: &[[f64; 3]], t: &[f64]) -> Vec<[f64; 3]> {
+/// The gradient of T at the centre of each box cell.
+fn cell_gradient(cells: &[u32], sizes: &[[f64; 3]], t: &[f64]) -> Vec<[f64; 3]> {
     cells
         .chunks_exact(8)
         .zip(sizes)
-        .zip(k)
-        .map(|((nodes, s), k)| {
+        .map(|(nodes, s)| {
             let v: Vec<f64> = nodes.iter().map(|&i| t[i as usize]).collect();
             // The mean of the differences across each axis.
             let gx = (v[1] - v[0] + v[2] - v[3] + v[5] - v[4] + v[6] - v[7]) / (4.0 * s[0]);
             let gy = (v[3] - v[0] + v[2] - v[1] + v[7] - v[4] + v[6] - v[5]) / (4.0 * s[1]);
             let gz = (v[4] - v[0] + v[5] - v[1] + v[6] - v[2] + v[7] - v[3]) / (4.0 * s[2]);
-            [-k[0] * gx, -k[1] * gy, -k[2] * gz]
+            [gx, gy, gz]
         })
         .collect()
 }
@@ -1582,6 +1609,19 @@ fn select(grid: &Grid, all: &[Face], set: &FaceSet) -> Vec<Face> {
 /// temperature has no unique value.
 /// `held` marks each point with a fixed temperature or a convection.
 fn check_supports(model: &Model, mesh: &Mesh, held: &[bool]) -> Result<(), String> {
+    match loose_part(mesh, held) {
+        None => Ok(()),
+        Some(p) => Err(format!(
+            "part {} has no fixed temperature and no convection on it or on a part that \
+             it touches, so a steady temperature has no unique value: add a fixed temperature \
+             or a convection, or use a transient step",
+            model.parts[p].name
+        )),
+    }
+}
+
+/// The part of a cell of a connected piece of the mesh with no point that `held` marks.
+pub(crate) fn loose_part(mesh: &Mesh, held: &[bool]) -> Option<usize> {
     let n = mesh.points.len();
     let mut root: Vec<usize> = (0..n).collect();
     fn find(root: &mut [usize], mut i: usize) -> usize {
@@ -1604,16 +1644,7 @@ fn check_supports(model: &Model, mesh: &Mesh, held: &[bool]) -> Result<(), Strin
         let r = find(&mut root, i);
         piece_held[r] = true;
     }
-    for e in 0..mesh.len() {
-        let r = find(&mut root, mesh.cell(e)[0] as usize);
-        if !piece_held[r] {
-            let part = &model.parts[mesh.part[e] as usize].name;
-            return Err(format!(
-                "part {part} has no fixed temperature and no convection on it or on a part that \
-                 it touches, so a steady temperature has no unique value: add a fixed temperature \
-                 or a convection, or use a transient step"
-            ));
-        }
-    }
-    Ok(())
+    (0..mesh.len())
+        .find(|&e| !piece_held[find(&mut root, mesh.cell(e)[0] as usize)])
+        .map(|e| mesh.part[e] as usize)
 }

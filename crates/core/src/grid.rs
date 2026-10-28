@@ -3,6 +3,7 @@
 //! viewer use the same code, so the same case gives the same results.
 
 use fh_fem::complex::{Matrix, C64};
+use fh_fem::dc;
 use fh_fem::elastic::{self, Surface, Thermal};
 use fh_fem::em;
 use fh_fem::grid::{Part, Side, Spacing};
@@ -19,12 +20,14 @@ use crate::vtu::{Field, Grid, VTK_HEXAHEDRON, VTK_QUADRATIC_TETRA, VTK_TETRA};
 /// The text of an error about a key that the heat, stress and unit cell solver does not have.
 const CLASS: &str = "The built-in grid solver solves heat conduction (with a radiation to the \
     ambient and a conductivity and a specific heat that change with the temperature), linear \
-    static thermo-elasticity and linear frequency-domain electromagnetics (`[step] type = \
-    \"frequency\"` or `\"modes\"`), in boxes and in prisms of polygons and circles along 1 \
-    axis, the homogenized material of a periodic unit cell, and with a [line] table the \
-    per-length parameters of a transmission line. For other curved or sloped shapes, contact, \
-    radiation between surfaces, plasticity, large deformation, vibration or elastic materials \
-    that change with the temperature, use gmsh and CalculiX (fh guide grid)";
+    static thermo-elasticity, DC current conduction with its Joule heat (also with an electric \
+    conductivity that changes with the temperature), electrostatics with the capacitance matrix, \
+    and linear frequency-domain electromagnetics (`[step] type = \"frequency\"` or \
+    `\"modes\"`), in boxes and in prisms of polygons and circles along 1 axis, the homogenized \
+    material of a periodic unit cell, and with a [line] table the per-length parameters of a \
+    transmission line. For other curved or sloped shapes, contact, radiation between surfaces, \
+    plasticity, large deformation, vibration or elastic materials that change with the \
+    temperature, use gmsh and CalculiX (fh guide grid)";
 
 /// The Stefan-Boltzmann constant in W/(m2 K4) (CODATA 2018, exact in the SI of 2019).
 const STEFAN_BOLTZMANN: f64 = 5.670374419e-8;
@@ -52,6 +55,8 @@ pub enum Case {
     Homogenize(homog::Model),
     /// A frequency sweep with wave ports, or the resonant modes.
     Em(em::Model),
+    /// A DC current conduction (with its Joule heat) or an electrostatic field.
+    Dc(dc::Model),
 }
 
 /// The keys of a material that a static step reads.
@@ -143,12 +148,24 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
     let units = units(top)?;
     let step = table(top, "step")?;
     let kind = string(step, "type", "[step]")?;
-    if !["steady", "transient", "static", "homogenize"].contains(&kind.as_str()) {
+    let kinds = [
+        "steady",
+        "transient",
+        "static",
+        "homogenize",
+        "conduction",
+        "electrostatic",
+    ];
+    if !kinds.contains(&kind.as_str()) {
         return Err(format!(
-            "[step]: `type` must be steady, transient, static or homogenize, not {kind}. {CLASS}"
+            "[step]: `type` must be steady, transient, static, homogenize, conduction or \
+             electrostatic, not {kind}. {CLASS}"
         ));
     }
     let is_static = kind == "static";
+    let is_charge = kind == "electrostatic";
+    // The steps that take a voltage and a current.
+    let is_current = kind == "conduction" || is_static;
     let is_cell = kind == "homogenize";
     if is_cell {
         only(step, "[step]", &["type"], CLASS)?;
@@ -171,6 +188,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
     let mut conductive = Vec::new();
     let mut elastic = Vec::new();
     let mut cell_materials = Vec::new();
+    let mut electric = Vec::new();
     for (name, item) in named(top, "material")? {
         let where_ = format!("[material.{name}]");
         only(
@@ -184,6 +202,9 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                 "poisson_ratio",
                 "shear_modulus",
                 "expansion",
+                "electric_conductivity",
+                "temperature_coefficient",
+                "relative_permittivity",
             ],
             CLASS,
         )?;
@@ -195,6 +216,37 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                  change with the temperature"
             ));
         }
+        let wrong = match kind.as_str() {
+            "electrostatic" => ["electric_conductivity", "temperature_coefficient"].as_slice(),
+            "conduction" | "static" => &["relative_permittivity"],
+            _ => &[
+                "electric_conductivity",
+                "temperature_coefficient",
+                "relative_permittivity",
+            ],
+        };
+        if let Some(key) = wrong.iter().find(|k| item.contains_key(k)) {
+            return Err(format!(
+                "{where_}: `{key}` is a key of a {} step",
+                if *key == "relative_permittivity" {
+                    "electrostatic"
+                } else {
+                    "conduction or static"
+                }
+            ));
+        }
+        electric.push((
+            match one_or_three(item, "electric_conductivity", &where_)?.or(one_or_three(
+                item,
+                "relative_permittivity",
+                &where_,
+            )?) {
+                Some(v) if v.len() == 3 => Some([v[0], v[1], v[2]]),
+                Some(v) => Some([v[0]; 3]),
+                None => None,
+            },
+            optional(item, "temperature_coefficient", &where_)?.unwrap_or(0.0),
+        ));
         let conductivity = match item.get("conductivity") {
             None => None,
             Some(_) if conductivity_table.is_some() => Some([0.0; 3]),
@@ -293,6 +345,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
     };
     let mut loads = Vec::new();
     let mut forces = Vec::new();
+    let mut terminals = Vec::new();
     if let Some(list) = top.get("load") {
         let list = list
             .as_array_of_tables()
@@ -315,7 +368,36 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                     "{where_}: `{key}` is a load of a static step: [step] type = \"static\""
                 ));
             }
-            if item.contains_key("temperature") {
+            let terminal = ["voltage", "current", "charge"]
+                .into_iter()
+                .find(|k| item.contains_key(k));
+            if let Some(key) = terminal {
+                let fits = match key {
+                    "voltage" => is_current || is_charge,
+                    "current" => is_current,
+                    _ => is_charge,
+                };
+                if !fits {
+                    return Err(format!(
+                        "{where_}: `{key}` is a load of {}",
+                        match key {
+                            "voltage" => "a conduction, electrostatic or static step",
+                            "current" => "a conduction or static step",
+                            _ => "an electrostatic step",
+                        }
+                    ));
+                }
+                only(item, &where_, &[key, "face"], CLASS)?;
+                let value = number(item, key, &where_)?;
+                terminals.push(dc::Terminal {
+                    faces: face_index(item, &where_)?,
+                    drive: if key == "voltage" {
+                        dc::Drive::Voltage(value)
+                    } else {
+                        dc::Drive::Current(value)
+                    },
+                });
+            } else if item.contains_key("temperature") {
                 only(item, &where_, &["temperature", "face"], CLASS)?;
                 loads.push(Load::Temperature {
                     faces: face_index(item, &where_)?,
@@ -396,11 +478,17 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             } else {
                 only(item, &where_, &[], CLASS)?;
                 return Err(format!(
-                    "{where_}: a load needs temperature, flux, convection, emissivity or source{}",
-                    if is_static {
-                        ", or ux, uy, uz, pressure, traction, gravity or body_force"
-                    } else {
-                        ""
+                    "{where_}: a load needs {}",
+                    match kind.as_str() {
+                        "static" =>
+                            "temperature, flux, convection, emissivity or source, or ux, uy, \
+                                     uz, pressure, traction, gravity or body_force, or voltage or \
+                                     current",
+                        "conduction" =>
+                            "voltage or current, or temperature, flux, convection, \
+                                         emissivity or source",
+                        "electrostatic" => "voltage or charge",
+                        _ => "temperature, flux, convection, emissivity or source",
                     }
                 ));
             }
@@ -498,15 +586,29 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                 },
             }
         }
-        "steady" => {
+        "steady" | "electrostatic" => {
             only(step, "[step]", &["type"], CLASS)?;
+            Step::Steady
+        }
+        "conduction" => {
+            only(
+                step,
+                "[step]",
+                &["type", "electric_reference_temperature"],
+                CLASS,
+            )?;
             Step::Steady
         }
         _ => {
             only(
                 step,
                 "[step]",
-                &["type", "reference_temperature", "temperature"],
+                &[
+                    "type",
+                    "reference_temperature",
+                    "temperature",
+                    "electric_reference_temperature",
+                ],
                 CLASS,
             )?;
             Step::Steady
@@ -520,15 +622,98 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
         symmetry,
         faces: faces.clone(),
         loads: loads.clone(),
-        step: heat_step,
+        step: heat_step.clone(),
         probes,
         method: None,
     };
-    if !is_static {
+    // The conduction or the electrostatic model, with the heat model of its Joule heat.
+    let dc_model = |probes: Vec<Probe>| -> Result<dc::Model, String> {
+        let mut list = Vec::new();
+        for ((value, coefficient), m) in electric.iter().zip(&materials) {
+            let where_ = format!("[material.{}]", m.name);
+            let value = match value {
+                Some(v) => *v,
+                None if is_charge => [1.0; 3],
+                None => return Err(format!("{where_}: missing key `electric_conductivity`")),
+            };
+            if *coefficient != 0.0 && loads.is_empty() {
+                return Err(format!(
+                    "{where_}: `temperature_coefficient` needs heat loads (temperature, flux, \
+                     convection), for the temperature of the conductivity"
+                ));
+            }
+            list.push(dc::Material {
+                name: m.name.clone(),
+                value,
+                coefficient: *coefficient,
+            });
+        }
+        let heat = if loads.is_empty() {
+            None
+        } else if is_charge {
+            return Err(
+                "an electrostatic step has no heat loads: it has voltage and charge".into(),
+            );
+        } else {
+            if let Some(e) = missing(", for the Joule heat") {
+                return Err(e);
+            }
+            Some(Box::new(heat_model(Vec::new())))
+        };
+        let reference = optional(step, "electric_reference_temperature", "[step]")?;
+        if list.iter().any(|m| m.coefficient != 0.0) && reference.is_none() {
+            return Err(
+                "[step]: missing key `electric_reference_temperature`, the temperature of the \
+                 electric_conductivity of a material with a temperature_coefficient"
+                    .into(),
+            );
+        }
+        if symmetry.iter().any(|&s| s) {
+            return Err(format!(
+                "[grid]: a {kind} step has no `symmetry`: give the full model"
+            ));
+        }
+        if terminals.is_empty() {
+            return Err(format!(
+                "a {kind} step needs a voltage on 1 face set or more{}",
+                if is_static { "" } else { " ([[load]] voltage)" }
+            ));
+        }
+        Ok(dc::Model {
+            parts: parts.clone(),
+            materials: list,
+            spacing,
+            axis,
+            faces: faces.clone(),
+            terminals: terminals.clone(),
+            kind: if is_charge {
+                dc::Kind::Electrostatic
+            } else {
+                dc::Kind::Conduction
+            },
+            scale: if units == "SI-mm" { 1e-3 } else { 1.0 },
+            heat,
+            reference: reference.unwrap_or(0.0),
+            probes,
+            method: None,
+        })
+    };
+    if is_current || is_charge {
+        if !is_static {
+            return Ok((Case::Dc(dc_model(probes)?), units));
+        }
+    } else {
         if let Some(e) = missing("") {
             return Err(e);
         }
         return Ok((Case::Heat(heat_model(probes)), units));
+    }
+    if !terminals.is_empty() && loads.is_empty() {
+        return Err(
+            "the voltage and the current of a static step load it with their Joule heat: give \
+             heat loads (temperature, flux, convection) for the temperature"
+                .into(),
+        );
     }
     let uniform = optional(step, "temperature", "[step]")?;
     let thermal = match (uniform, loads.is_empty()) {
@@ -540,6 +725,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
             )
         }
         (Some(t), true) => Thermal::Uniform(t),
+        (None, false) if !terminals.is_empty() => Thermal::Joule(Box::new(dc_model(Vec::new())?)),
         (None, false) => {
             if let Some(e) = missing(", for the heat loads") {
                 return Err(e);
@@ -1200,6 +1386,90 @@ pub fn frame_grid(mesh: &Mesh, frame: &Frame) -> Grid {
     }
 }
 
+/// The result grid of a conduction or an electrostatic solution: the potential `V` (and with heat
+/// loads the temperature `NT`) at each point, and the current density `J` and the Joule power
+/// density `JOULE` (or the electric field `E`) and the part number `part` (from 1) of each cell.
+pub fn dc_grid(model: &dc::Model, s: &dc::Solution) -> Grid {
+    let mesh = &s.mesh;
+    let mut point_data = vec![Field::f64("V", 1, s.potential.clone())];
+    if let Some(t) = &s.temperature {
+        point_data.push(Field::f64("NT", 1, t.clone()));
+    }
+    let field = s.field.iter().flatten().copied().collect();
+    let mut cell_data = match model.kind {
+        dc::Kind::Conduction => vec![
+            Field::f64("J", 3, field),
+            Field::f64("JOULE", 1, s.joule.clone()),
+        ],
+        dc::Kind::Electrostatic => vec![Field::f64("E", 3, field)],
+    };
+    cell_data.push(Field::f64(
+        "part",
+        1,
+        mesh.part.iter().map(|&p| f64::from(p) + 1.0).collect(),
+    ));
+    Grid {
+        points: mesh.points.clone(),
+        cell_types: vec![vtk_type(mesh.kind); mesh.len()],
+        cells: (0..mesh.len()).map(|e| mesh.cell(e).to_vec()).collect(),
+        point_data,
+        cell_data,
+    }
+}
+
+/// The terminal table of a conduction or an electrostatic solution: 1 row with `NAME.v` and
+/// `NAME.i` (or `NAME.q`) of each terminal (the name of its face set). A conduction also has the
+/// Joule power `power`, and with 2 terminals the resistance `resistance` between them.
+pub fn terminals_text(model: &dc::Model, s: &dc::Solution) -> String {
+    let flow = match model.kind {
+        dc::Kind::Conduction => "i",
+        dc::Kind::Electrostatic => "q",
+    };
+    let mut names = Vec::new();
+    let mut values = Vec::new();
+    for (t, (v, i)) in model.terminals.iter().zip(&s.terminals) {
+        let name = &model.faces[t.faces].name;
+        names.extend([format!("{name}.v"), format!("{name}.{flow}")]);
+        values.extend([*v, *i]);
+    }
+    if model.kind == dc::Kind::Conduction {
+        names.push("power".into());
+        values.push(s.power());
+        if let [(va, ia), (vb, _)] = s.terminals[..] {
+            names.push("resistance".into());
+            values.push((va - vb) / ia);
+        }
+    }
+    format!("# {}\n{}", names.join(" "), line(&values))
+}
+
+/// The matrix table of a conduction or an electrostatic solution: 1 row with `A.B`, the
+/// conductance (S) or the Maxwell capacitance (F) between the terminals A and B, for each pair.
+pub fn matrix_text(model: &dc::Model, s: &dc::Solution) -> String {
+    let m = model.terminals.len();
+    let name = |k: usize| &model.faces[model.terminals[k].faces].name;
+    let names: Vec<String> = (0..m * m)
+        .map(|k| format!("{}.{}", name(k / m), name(k % m)))
+        .collect();
+    format!("# {}\n{}", names.join(" "), line(&s.matrix))
+}
+
+/// The probe table of a conduction or an electrostatic solution: 1 row with `NAME.v` (and with
+/// heat loads `NAME.t`) of each probe.
+pub fn dc_probes_text(model: &dc::Model, s: &dc::Solution) -> String {
+    let mut names = Vec::new();
+    let mut values = Vec::new();
+    for (p, (v, t)) in model.probes.iter().zip(&s.probes) {
+        names.push(format!("{}.v", p.name));
+        values.push(*v);
+        if s.temperature.is_some() {
+            names.push(format!("{}.t", p.name));
+            values.push(*t);
+        }
+    }
+    format!("# {}\n{}", names.join(" "), line(&values))
+}
+
 /// The first line of the probe table: `# time` and the name of each probe.
 pub fn probe_head(model: &Model) -> String {
     let names: Vec<&str> = model.probes.iter().map(|p| p.name.as_str()).collect();
@@ -1587,6 +1857,83 @@ type = "homogenize"
         ] {
             let e = read(&text).unwrap_err();
             assert!(e.contains(key) && e.contains("CalculiX"), "{e}");
+        }
+    }
+
+    const JOULE: &str = include_str!("../../../validation/cases/grid-joule-bar/bar/grid.toml");
+
+    fn dc_case(text: &str) -> dc::Model {
+        match read(text) {
+            Ok((Case::Dc(m), _)) => m,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A conduction step with heat loads has the heat model of its Joule heat, and a static step
+    /// with a voltage takes the temperature of the Joule heat.
+    #[test]
+    fn the_reader_reads_a_conduction_step() {
+        let m = dc_case(JOULE);
+        assert_eq!(
+            (m.kind, m.terminals.len(), m.scale),
+            (dc::Kind::Conduction, 2, 1.0)
+        );
+        assert_eq!(m.materials[0].value, [1e6; 3]);
+        assert_eq!(m.heat.as_ref().map(|h| h.loads.len()), Some(2));
+        let alpha = JOULE.replace(
+            "conductivity = 50.0",
+            "conductivity = 50.0\ntemperature_coefficient = 0.004",
+        );
+        let m = dc_case(&alpha.replace(
+            "type = \"conduction\"",
+            "type = \"conduction\"\nelectric_reference_temperature = 20.0",
+        ));
+        assert_eq!((m.materials[0].coefficient, m.reference), (0.004, 20.0));
+        let stress = JOULE
+            .replace(
+                "conductivity = 50.0",
+                "conductivity = 50.0\nyoungs_modulus = 2e11\npoisson_ratio = 0.3",
+            )
+            .replace(
+                "type = \"conduction\"",
+                "type = \"static\"\nreference_temperature = 20.0",
+            );
+        let Thermal::Joule(j) = elastic(&stress).thermal else {
+            panic!("the Joule heat")
+        };
+        assert!(j.heat.is_some());
+        for (text, key) in [
+            (alpha.clone(), "electric_reference_temperature"),
+            (
+                JOULE.replace("type = \"conduction\"", "type = \"steady\""),
+                "a key of a conduction",
+            ),
+            (
+                WALL.replace(
+                    "[[load]]",
+                    "[[load]]\nvoltage = 1.0\nface = \"inside\"\n\n[[load]]",
+                ),
+                "a load of a conduction",
+            ),
+            (
+                JOULE.replace("electric_conductivity = 1.0e6\n", ""),
+                "electric_conductivity",
+            ),
+            (
+                JOULE.replace("type = \"conduction\"", "type = \"electrostatic\""),
+                "a key of a conduction",
+            ),
+            (
+                JOULE.replace("max_cell = 0.01", "max_cell = 0.01\nsymmetry = [\"y\"]"),
+                "symmetry",
+            ),
+            (
+                JOULE.replace("voltage = 0.01", "charge = 0.01"),
+                "a load of an electrostatic",
+            ),
+        ] {
+            let e = read(&text).unwrap_err();
+            assert!(e.contains(key), "{key}: {e}");
         }
     }
 
