@@ -16,7 +16,99 @@ exact is the pressure of the incompressible tube of Haughton and Ogden (1979) fr
 
 The largest difference of the model is -0.018 %, at λ_a = 4.000.
 
-The model view shows the true shape of the quarter tube, with the magnitude of the displacement U. Move the inflation slider above the view through the 40 increments. The inner radius grows from 10 mm to 40 mm. The slider gives λ_a and the pressure p of the model at each increment. Of the 40 increments, p is largest at λ_a = 2.575, the increment nearest the maximum. After it, p decreases. At λ_a = 4.0, the mark gives the displacement u(B) of the outer face.
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| λ_a = a / A [1] | model (p [MPa]) | exact (p [MPa]) |
+| ---: | ---: | ---: |
+| 1.075 | 0.042163 | 0.042164 |
+| 1.15 | 0.076672 | 0.076675 |
+| 1.225 | 0.105047 | 0.105051 |
+| 1.3 | 0.128451 | 0.128456 |
+| 1.375 | 0.147792 | 0.147798 |
+| 1.45 | 0.163786 | 0.163793 |
+| 1.525 | 0.17701 | 0.177018 |
+| 1.6 | 0.187927 | 0.187937 |
+| 1.675 | 0.196918 | 0.196928 |
+| 1.75 | 0.204294 | 0.204305 |
+| 1.825 | 0.210313 | 0.210326 |
+| 1.9 | 0.21519 | 0.215204 |
+| 1.975 | 0.219105 | 0.219119 |
+| 2.05 | 0.222208 | 0.222223 |
+| 2.125 | 0.224626 | 0.224642 |
+| 2.2 | 0.226466 | 0.226483 |
+| 2.275 | 0.227821 | 0.227838 |
+| 2.35 | 0.228767 | 0.228785 |
+| 2.425 | 0.22937 | 0.229389 |
+| 2.5 | 0.229688 | 0.229708 |
+| 2.575 | 0.229765 | 0.229789 |
+| 2.65 | 0.229653 | 0.229674 |
+| 2.725 | 0.229377 | 0.229399 |
+| 2.8 | 0.228973 | 0.228995 |
+| 2.875 | 0.228466 | 0.228489 |
+| 2.95 | 0.22788 | 0.227904 |
+| 3.025 | 0.227235 | 0.227259 |
+| 3.1 | 0.226547 | 0.226573 |
+| 3.175 | 0.225833 | 0.225859 |
+| 3.25 | 0.225105 | 0.225132 |
+| 3.325 | 0.224375 | 0.224403 |
+| 3.4 | 0.223652 | 0.223681 |
+| 3.475 | 0.222946 | 0.222976 |
+| 3.55 | 0.222264 | 0.222295 |
+| 3.625 | 0.221613 | 0.221645 |
+| 3.7 | 0.220998 | 0.221032 |
+| 3.775 | 0.220426 | 0.22046 |
+| 3.85 | 0.219899 | 0.219936 |
+| 3.925 | 0.219424 | 0.219461 |
+| 4 | 0.219002 | 0.219041 |
+
+</details>
+
+The model is the quarter tube, through 40 increments. The inner radius grows from 10 mm to 40 mm. Of the 40 increments, p is largest at λ_a = 2.575, the increment nearest the maximum. After it, p decreases. At λ_a = 4.0, the displacement of the outer face is u(B) = 23.590 mm, and the exact value is 23.589 mm. The pressure p of the model at each increment is:
+
+| λ_a | p [MPa] |
+|---|---|
+| 1.075 | 0.04216 |
+| 1.150 | 0.07667 |
+| 1.225 | 0.10505 |
+| 1.300 | 0.12845 |
+| 1.375 | 0.14779 |
+| 1.450 | 0.16379 |
+| 1.525 | 0.17701 |
+| 1.600 | 0.18793 |
+| 1.675 | 0.19692 |
+| 1.750 | 0.20429 |
+| 1.825 | 0.21031 |
+| 1.900 | 0.21519 |
+| 1.975 | 0.21910 |
+| 2.050 | 0.22221 |
+| 2.125 | 0.22463 |
+| 2.200 | 0.22647 |
+| 2.275 | 0.22782 |
+| 2.350 | 0.22877 |
+| 2.425 | 0.22937 |
+| 2.500 | 0.22969, check `f_25` |
+| 2.575 | 0.22976, the largest p |
+| 2.650 | 0.22965 |
+| 2.725 | 0.22938 |
+| 2.800 | 0.22897 |
+| 2.875 | 0.22847 |
+| 2.950 | 0.22788 |
+| 3.025 | 0.22723 |
+| 3.100 | 0.22655 |
+| 3.175 | 0.22583 |
+| 3.250 | 0.22510 |
+| 3.325 | 0.22437 |
+| 3.400 | 0.22365 |
+| 3.475 | 0.22295 |
+| 3.550 | 0.22226 |
+| 3.625 | 0.22161 |
+| 3.700 | 0.22100 |
+| 3.775 | 0.22043 |
+| 3.850 | 0.21990 |
+| 3.925 | 0.21942 |
+| 4.000 | 0.21900, checks `f_40` and `u_outer` |
 
 The checks find a wrong rubber model. A Neo-Hooke rubber with the same shear modulus at small strain gives a force 14.2 % too large at λ_a = 2.5. At λ_a = 4.0, the force is 28.8 % too large (see "Wrong models").
 
@@ -30,7 +122,7 @@ The checks find a wrong rubber model. A Neo-Hooke rubber with the same shear mod
 | `f_40` | Not specified | 8.76008 | 8.76165 | -0.00156918 (-0.0179096 %) | 0.01752 | 0.01595 |
 | `u_outer` | Not specified | 23.5898 | 23.589 | +0.00079 (+0.00334902 %) | 0.04718 | 0.04639 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the inflation of a thick rubber tube past its pressure maximum (units SI-mm).
 The rubber is the Ogden model with 3 terms that Ogden fitted to the tests of Treloar. The deformation is large and not uniform: the inner radius grows to 4 times its first value.

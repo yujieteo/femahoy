@@ -15,13 +15,37 @@ test: Ladson (1988), NASA TM-4074, Table IX, 80-W grit
 
 The lift of the test at -0.05 degrees is not a check: it is an offset of the test (see Sources).
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| angle of attack [degrees] | model (cl [1]) | test (cl [1]) |
+| ---: | ---: | ---: |
+| -0.05 | -0.00556 | -0.0126 |
+| 4.04 | 0.44494 | 0.4316 |
+| 10.12 | 1.08233 | 1.0707 |
+
+</details>
+
 **The drag against the angle of attack**
 
 ![The drag against the angle of attack](naca0012-ladson/drag.svg)
 
 test: Ladson (1988), NASA TM-4074, Table IX, 80-W grit
 
-The far field is 500 chords from the airfoil. The view shows only the airfoil and the flow near it. Select an angle of attack above the view to see the pressure `p`, which gives the lift.
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| angle of attack [degrees] | model (cd [1]) | test (cd [1]) |
+| ---: | ---: | ---: |
+| -0.05 | 0.009126 | 0.00809 |
+| 4.04 | 0.0095 | 0.00823 |
+| 10.12 | 0.01303 | 0.01201 |
+
+</details>
+
+The far field is 500 chords from the airfoil. The run solves the angles of attack -0.05, 4.04 and 10.12 degrees. The pressure `p` gives the lift.
 
 ## Result
 
@@ -35,7 +59,7 @@ The far field is 500 chords from the airfoil. The view shows only the airfoil an
 | `cl_a10` | Not specified | 1.08233 | 1.0707 | +0.0116254 (+1.08578 %) | 0.04433 | 0.0327 |
 | `cd_a10` | Not specified | 0.01303 | 0.01201 | +0.00102005 (+8.49332 %) | 0.00198 | 0.0009604 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the CFD path: an OpenFOAM case through `fh validate`, `simpleFoam` with the Spalart-Allmaras (SA) model, and the force coefficients of `forceCoeffs`.
 It is the plain NACA 0012 airfoil, before a case with a flap.

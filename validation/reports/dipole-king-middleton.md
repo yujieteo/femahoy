@@ -18,13 +18,71 @@ The model is a strip of width 1.2 mm, 4 cells across its width (openEMS). beta h
 
 The X of AN-SOF is within 1.2 ohm of King-Middleton. The plot does not show it.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| beta h [1] | R model (Z = R + j X [ohm]) | X model (Z = R + j X [ohm]) | R King-Middleton (Z = R + j X [ohm]) | X King-Middleton (Z = R + j X [ohm]) | R AN-SOF (Z = R + j X [ohm]) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1.1074 | 29.522 | -239.892 | — | — | — |
+| 1.1237 | 30.717 | -228.715 | — | — | — |
+| 1.14 | 31.968 | -217.691 | — | — | — |
+| 1.1562 | 33.264 | -206.818 | — | — | — |
+| 1.1725 | 34.594 | -196.083 | — | — | — |
+| 1.1888 | 35.955 | -185.465 | — | — | — |
+| 1.2051 | 37.351 | -174.945 | — | — | — |
+| 1.2214 | 38.795 | -164.511 | — | — | — |
+| 1.2377 | 40.299 | -154.159 | — | — | — |
+| 1.2539 | 41.867 | -143.89 | — | — | — |
+| 1.2702 | 43.498 | -133.703 | — | — | — |
+| 1.2865 | 45.188 | -123.596 | — | — | — |
+| 1.3028 | 46.931 | -113.558 | — | — | — |
+| 1.3191 | 48.729 | -103.576 | — | — | — |
+| 1.3354 | 50.585 | -93.638 | — | — | — |
+| 1.3517 | 52.508 | -83.736 | — | — | — |
+| 1.3679 | 54.505 | -73.864 | — | — | — |
+| 1.3842 | 56.583 | -64.02 | — | — | — |
+| 1.4005 | 58.744 | -54.205 | — | — | — |
+| 1.4168 | 60.987 | -44.413 | — | — | — |
+| 1.4331 | 63.313 | -34.639 | — | — | — |
+| 1.4494 | 65.722 | -24.875 | — | — | — |
+| 1.4657 | 68.218 | -15.112 | — | — | — |
+| 1.482 | 70.808 | -5.34 | — | — | — |
+| 1.4982 | 73.5 | 4.446 | — | — | — |
+| 1.5145 | 76.302 | 14.25 | — | — | — |
+| 1.5308 | 79.222 | 24.075 | — | — | — |
+| 1.5471 | 82.263 | 33.919 | — | — | — |
+| 1.5634 | 85.427 | 43.788 | — | — | — |
+| 1.5797 | 88.716 | 53.686 | — | — | — |
+| 1.5959 | 92.134 | 63.623 | — | — | — |
+| 1.6122 | 95.687 | 73.609 | — | — | — |
+| 1.6285 | 99.389 | 83.652 | — | — | — |
+| 1.6448 | 103.254 | 93.757 | — | — | — |
+| 1.6611 | 107.292 | 103.922 | — | — | — |
+| 1.6774 | 111.512 | 114.147 | — | — | — |
+| 1.6937 | 115.918 | 124.43 | — | — | — |
+| 1.7099 | 120.512 | 134.779 | — | — | — |
+| 1.7262 | 125.301 | 145.204 | — | — | — |
+| 1.7425 | 130.297 | 155.717 | — | — | — |
+| 1.7588 | 135.52 | 166.327 | — | — | — |
+| 1.7751 | 140.992 | 177.036 | — | — | — |
+| 1.7914 | 146.731 | 187.839 | — | — | — |
+| 1.2 | — | — | 37.13 | -185.7 | 36.4 |
+| 1.3 | — | — | 46.27 | -121.6 | 45.82 |
+| 1.4 | — | — | 57.39 | -60.07 | 57.48 |
+| 1.5 | — | — | 71.02 | 0.27 | 72.02 |
+| 1.6 | — | — | 87.9 | 60.62 | 90.37 |
+| 1.7 | — | — | 109.2 | 122.2 | 113.7 |
+
+</details>
+
 The X curve of the model is 5.2 to 7.5 ohm above the reference from beta h = 1.2 to 1.7. Thus the first resonance (X = 0) of the model is at beta h = 1.491, 0.6 % below the resonance of the reference, 1.4996. The model is a flat strip, and the reference is a round tube. The section "Tolerance" below gives the strip as the largest cause, up to 3.8 % in X at beta h = 1.2. The mesh error is 0.3 % or less.
 
 Above the resonance, the difference of R increases: +5.8 % at beta h = 1.6 and +7.8 % at beta h = 1.7. These 2 points are not checks. There the 2 references also differ: the R of AN-SOF, a method-of-moments solution of the same dipole, is 2.8 % and 4.1 % above King-Middleton.
 
 The far field agrees with the far field of a half-wave dipole. At beta h = pi / 2, the directivity is 1.652 against 1.641 for a sinusoidal current (+0.7 %), and the radiated power is 0.9994 of the power into the port.
 
-The 3D view shows the pattern: a surface at the distance D(theta, phi) from the centre. The dipole is on the z axis. D is near 0 on the axis. In the plane z = 0, D is 1.651 to 1.652 in all directions, and the dot marks the largest value.
+The pattern D(theta, phi) at beta h = pi / 2: the dipole is on the z axis. D is near 0 on the axis. In the plane z = 0, D is 1.651 to 1.652 in all directions. The largest value is D = 1.652.
 
 ## Result
 
@@ -32,12 +90,12 @@ The 3D view shows the pattern: a surface at the distance D(theta, phi) from the 
 
 | Check | Unit | Computed | Reference | Difference | Tolerance | Margin |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `X12` | Not specified | -178.238 | -185.7 | +7.462 (+4.01831 %) | 11.14 | 3.68 |
-| `R15` | Not specified | 73.7972 | 71.02 | +2.7772 (+3.91045 %) | 4.261 | 1.484 |
-| `D` | Not specified | 1.65175 | 1.641 | +0.01075 (+0.655088 %) | 0.09846 | 0.08771 |
-| `eff` | Not specified | 0.999384 | 1 | -0.000616 (-0.0616 %) | 0.06 | 0.05938 |
+| `X12` | Not specified | -178.225 | -185.7 | +7.475 (+4.02531 %) | 11.14 | 3.667 |
+| `R15` | Not specified | 73.8 | 71.02 | +2.78 (+3.91439 %) | 4.261 | 1.481 |
+| `D` | Not specified | 1.65178 | 1.641 | +0.01078 (+0.656917 %) | 0.09846 | 0.08768 |
+| `eff` | Not specified | 0.999353 | 1 | -0.000647 (-0.0647 %) | 0.06 | 0.05935 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the antenna path: the input impedance and the far field of a centre-fed dipole, solved with openEMS (FDTD).
 The impedance reference is the published second-order theory of King and Middleton. The directivity reference is analytical.

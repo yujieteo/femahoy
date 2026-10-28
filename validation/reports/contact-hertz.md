@@ -23,7 +23,7 @@ E* = 210000 / (2 · 0.91) = 115384.6 MPa, a = 0.86624 mm and p0 = 6363.06 MPa.
 
 Scope: Hertz theory uses 2 half-spaces. The model uses finite bodies and penalty contact. The result is the largest contact pressure at step 2.
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the largest contact pressure of a steel ball on a flat steel block (units SI-mm).
 

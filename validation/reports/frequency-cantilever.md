@@ -20,6 +20,18 @@ The direction of a mode is the direction of its largest effective modal mass in 
 
 The beam theory is f_r = f1 (λ_r / λ_1)^2 with f1 = 417.758 Hz of check.toml and λ_r of Blevins (1979), Table 8-1. For a bend in y, the beam is 10 mm deep in place of 5 mm, thus f_r is 2 times larger.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| bending mode r [1] | bend in z (f solid / f beam theory [1]) | bend in y (f solid / f beam theory [1]) | beam theory (f solid / f beam theory [1]) |
+| ---: | ---: | ---: | ---: |
+| 1 | 1.003268 | 0.995718 | 1 |
+| 2 | 0.991881 | 0.953056 | 1 |
+| 3 | 0.974764 | — | 1 |
+
+</details>
+
 Mode 1 is the only mode above the beam theory. The other bending modes are below it, and the difference increases with r. In z, r = 2 is 0.81 % lower and r = 3 is 2.5 % lower. In y, the beam is 10 mm deep in place of 5 mm. There the solid is 0.43 % lower at r = 1 and 4.7 % lower at r = 2. derivation.md names the effects that the beam theory does not have: shear deformation, rotary inertia and the Poisson effect across the width.
 
 ## Result
@@ -30,7 +42,7 @@ Mode 1 is the only mode above the beam theory. The other bending modes are below
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `f1` | Not specified | 419.123 | 417.758 | +1.3654 (+0.32684 %) | 4.178 | 2.812 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the first natural frequency of a clamped steel beam (units SI-mm).
 

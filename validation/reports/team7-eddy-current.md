@@ -10,7 +10,7 @@ The eddy currents in the plate cause a large change of Bz. Without the plate, th
 
 gmsh of another version can make another mesh of the same sizes. Thus the values of this run can differ a little from the tables below, which come from the check mesh of derivation.md.
 
-The 3D view shows the eddy current density |j| in the plate in A/m^2. At omega t = 0, the coil current is at its peak. |j| is largest at the corner of the hole at x = y = 126 mm, the corner nearest to the coil: 1.98e6 A/m^2. Move the phase slider above the view to omega t = 90 degrees. The coil current is then 0, thus the 90 degree values of Bz come only from the eddy currents. |j| is largest at the same corner: 1.83e6 A/m^2. The other 3 dots are the checked points on A1-B1, 15 mm above the plate.
+The eddy current density |j| in the plate is in A/m^2. At omega t = 0, the coil current is at its peak. |j| is largest at the corner of the hole at x = y = 126 mm, the corner nearest to the coil: 1.98e6 A/m^2. At omega t = 90 degrees, the coil current is 0, thus the 90 degree values of Bz come only from the eddy currents. |j| is largest at the same corner: 1.83e6 A/m^2. The checked points are on A1-B1, 15 mm above the plate, at x = 36, 126 and 162 mm.
 
 ## Result
 
@@ -25,7 +25,7 @@ The 3D view shows the eddy current density |j| in the plate in A/m^2. At omega t
 | `bz0_162` | Not specified | 0.0058953 | 0.006044 | -0.000148699 (-2.46027 %) | 0.0004626 | 0.0003139 |
 | `bz90_162` | Not specified | 0.00148154 | 0.001415 | +6.6536e-05 (+4.70219 %) | 0.0001849 | 0.0001184 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the electromagnetic path: 3D eddy currents at 50 Hz in an aluminium plate with a hole, under a coil.
 The reference is a measurement with no stated uncertainty. Thus the tolerance comes from the agreement of an independent code with the same data and from the mesh study of the model.

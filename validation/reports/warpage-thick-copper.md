@@ -14,7 +14,7 @@ The solve agrees with the theory of the same inputs: the plate form of the bilay
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `warpage` | Not specified | -0.0270991 | -0.028 | +0.00090088 (+3.21743 %) | 0.00336 | 0.002459 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 The reference is a measured value, not a theory.
 Source: M. Calabretta, A. Sitta, S. M. Oliveri and G. Sequenzia, *Warpage Behavior on Silicon Semiconductor Device: The Impact of Thick Copper Metallization*, Applied Sciences 11 (2021) 5140.

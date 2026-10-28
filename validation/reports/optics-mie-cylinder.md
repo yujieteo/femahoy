@@ -12,6 +12,56 @@ exact series: Bohren and Huffman (1983), chapter 8, the series solution (referen
 
 Meep: 1 pulse, 40 grid points per a. The dots are the exact Q at the same size parameters, so the Meep line shows between them.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| x = 2 pi a / wavelength [1] | Meep (Q = C / (2 a) [1]) | exact series (Q = C / (2 a) [1]) |
+| ---: | ---: | ---: |
+| 1 | 2.863836 | 2.86293 |
+| 1.05 | 3.30065 | 3.299311 |
+| 1.1 | 3.79395 | 3.792469 |
+| 1.15 | 4.217398 | 4.216066 |
+| 1.2 | 4.466969 | 4.46597 |
+| 1.25 | 4.529142 | 4.528474 |
+| 1.3 | 4.459685 | 4.459244 |
+| 1.35 | 4.326483 | 4.326121 |
+| 1.4 | 4.180214 | 4.179811 |
+| 1.45 | 4.053758 | 4.053235 |
+| 1.5 | 3.971716 | 3.970961 |
+| 1.55 | 3.96056 | 3.9594 |
+| 1.6 | 4.056326 | 4.054483 |
+| 1.65 | 4.300462 | 4.297625 |
+| 1.7 | 4.69579 | 4.692059 |
+| 1.75 | 5.115804 | 5.112409 |
+| 1.8 | 5.331479 | 5.33007 |
+| 1.85 | 5.253187 | 5.254028 |
+| 1.9 | 4.983141 | 4.985483 |
+| 1.95 | 4.640055 | 4.643206 |
+| 2 | 4.289743 | 4.293232 |
+| 2.05 | 3.96804 | 3.971476 |
+| 2.1 | 3.699015 | 3.702071 |
+| 2.15 | 3.499855 | 3.502251 |
+| 2.2 | 3.388808 | 3.390165 |
+| 2.25 | 3.401025 | 3.400614 |
+| 2.3 | 3.597969 | 3.594777 |
+| 2.35 | 3.980472 | 3.97587 |
+| 2.4 | 4.231712 | 4.232902 |
+| 2.45 | 4.031586 | 4.040425 |
+| 2.5 | 3.601924 | 3.613747 |
+| 2.55 | 3.169133 | 3.18177 |
+| 2.6 | 2.774369 | 2.787467 |
+| 2.65 | 2.411584 | 2.424783 |
+| 2.7 | 2.089639 | 2.102037 |
+| 2.75 | 1.835238 | 1.845712 |
+| 2.8 | 1.674302 | 1.682099 |
+| 2.85 | 1.624854 | 1.629485 |
+| 2.9 | 1.726852 | 1.726768 |
+| 2.95 | 2.090403 | 2.082513 |
+| 3 | 2.58328 | 2.582972 |
+
+</details>
+
 The largest difference is -0.59 % at x = 2.70. There Q falls fast after the resonance at x = 2.405. The waves on the grid are a little slower than c, thus the resonances of the model are at a little smaller x (see "Spectrum" below). The differences at the 4 checks are +0.03 % at x = 1, -0.08 % at x = 2, -0.33 % at x = 2.5 and +0.01 % at x = 3.
 
 **Difference of the Meep Q from the exact Q**
@@ -20,7 +70,57 @@ The largest difference is -0.59 % at x = 2.70. There Q falls fast after the reso
 
 rel_tol of check.toml is 1 %. It applies to the 4 checks at x = 1, 2, 2.5 and 3.
 
-The 3D view shows the real part of the total field Ez at x = 2.5, from the top. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. Move the phase slider above the view: each step is 1/8 of the period T = 2 pi / x = 2.51 a / c. The crests move to the right. |Ez| is largest at the back surface of the cylinder, at the dot, at the phases 90° and 270°.
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| x = 2 pi a / wavelength [1] | Meep ((Q Meep - Q exact) / Q exact [%]) | +rel_tol ((Q Meep - Q exact) / Q exact [%]) | -rel_tol ((Q Meep - Q exact) / Q exact [%]) |
+| ---: | ---: | ---: | ---: |
+| 1 | 0.0316 | 1 | -1 |
+| 1.05 | 0.0406 | 1 | -1 |
+| 1.1 | 0.0391 | 1 | -1 |
+| 1.15 | 0.0316 | 1 | -1 |
+| 1.2 | 0.0224 | 1 | -1 |
+| 1.25 | 0.0148 | 1 | -1 |
+| 1.3 | 0.0099 | 1 | -1 |
+| 1.35 | 0.0084 | 1 | -1 |
+| 1.4 | 0.0096 | 1 | -1 |
+| 1.45 | 0.0129 | 1 | -1 |
+| 1.5 | 0.019 | 1 | -1 |
+| 1.55 | 0.0293 | 1 | -1 |
+| 1.6 | 0.0455 | 1 | -1 |
+| 1.65 | 0.066 | 1 | -1 |
+| 1.7 | 0.0795 | 1 | -1 |
+| 1.75 | 0.0664 | 1 | -1 |
+| 1.8 | 0.0264 | 1 | -1 |
+| 1.85 | -0.016 | 1 | -1 |
+| 1.9 | -0.047 | 1 | -1 |
+| 1.95 | -0.0679 | 1 | -1 |
+| 2 | -0.0813 | 1 | -1 |
+| 2.05 | -0.0865 | 1 | -1 |
+| 2.1 | -0.0825 | 1 | -1 |
+| 2.15 | -0.0684 | 1 | -1 |
+| 2.2 | -0.04 | 1 | -1 |
+| 2.25 | 0.0121 | 1 | -1 |
+| 2.3 | 0.0888 | 1 | -1 |
+| 2.35 | 0.1157 | 1 | -1 |
+| 2.4 | -0.0281 | 1 | -1 |
+| 2.45 | -0.2188 | 1 | -1 |
+| 2.5 | -0.3272 | 1 | -1 |
+| 2.55 | -0.3972 | 1 | -1 |
+| 2.6 | -0.4699 | 1 | -1 |
+| 2.65 | -0.5443 | 1 | -1 |
+| 2.7 | -0.5898 | 1 | -1 |
+| 2.75 | -0.5675 | 1 | -1 |
+| 2.8 | -0.4635 | 1 | -1 |
+| 2.85 | -0.2842 | 1 | -1 |
+| 2.9 | 0.0049 | 1 | -1 |
+| 2.95 | 0.3789 | 1 | -1 |
+| 3 | 0.0119 | 1 | -1 |
+
+</details>
+
+The result is the total field Ez at x = 2.5. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. The period is T = 2 pi / x = 2.51 a / c. The crests move to the right. |Ez| is largest at the back surface of the cylinder, at the phases 90° and 270°.
 
 ## Result
 
@@ -33,7 +133,7 @@ The 3D view shows the real part of the total field Ez at x = 2.5, from the top. 
 | `q_x2_5` | Not specified | 3.60192 | 3.61375 | -0.011823 (-0.327167 %) | 0.03614 | 0.02431 |
 | `q_x3` | Not specified | 2.58328 | 2.58297 | +0.000308 (+0.0119242 %) | 0.02583 | 0.02552 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the optics path: a plane wave of light scatters on a dielectric cylinder, solved with Meep.
 The reference is the analytical series solution. Thus the tolerance comes from the grid error and the size of the model, and from the smallest model error that the check must find.

@@ -4,7 +4,7 @@
 
 ccx builds the column in 10 lifts with element birth and gives the settlement of the lift theory. At mid-height (z = 5 m), ccx gives 0.02315179 mm, and the lift theory gives 0.0231516 mm. The difference is 8.2e-6 of the reference, and the tolerance is 1e-4. At the top of each lift, the largest difference is 2.0e-7 mm.
 
-The 3D view shows the column after each lift, with the settlement U3 in mm. Each step shows only the lifts in the model in that step.
+The run has 1 step for each of the 10 lifts. Each step has only the lifts in the model in that step. After lift 10, the settlement at mid-height is u_mid = -0.02315179 mm.
 
 **Column built in 10 lifts, the settlement of the top of each lift at the end**
 
@@ -16,6 +16,26 @@ Lift theory: (rho g h^2 / 2E) (2i (N + 1 - i) - 1) at the top of lift i. All at 
 
 The largest difference of ccx from the lift theory is +2.0e-07 mm, at z = 4 m. With ADD=WITH STRAIN in place of ADD=STRAIN FREE, ccx gives the curve of all at once.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| height z [m] | lift theory (settlement -u_z [mm]) | all at once (settlement -u_z [mm]) | ccx (settlement -u_z [mm]) |
+| ---: | ---: | ---: | ---: |
+| 0 | 0 | 0 | 0 |
+| 1 | 0.0074556 | 0.0074556 | 0.007455683 |
+| 2 | 0.013734 | 0.0141264 | 0.01373414 |
+| 3 | 0.0184428 | 0.0200124 | 0.01844298 |
+| 4 | 0.021582 | 0.0251136 | 0.0215822 |
+| 5 | 0.0231516 | 0.02943 | 0.02315179 |
+| 6 | 0.0231516 | 0.0329616 | 0.02315178 |
+| 7 | 0.021582 | 0.0357084 | 0.02158215 |
+| 8 | 0.0184428 | 0.0376704 | 0.01844291 |
+| 9 | 0.013734 | 0.0388476 | 0.01373408 |
+| 10 | 0.0074556 | 0.03924 | 0.007455639 |
+
+</details>
+
 Each lift goes on the deformed column strain free. Thus the top of lift 5 or 6 settles most, and the top of the column settles only 0.0074556 mm. A column with all lifts at once settles 0.02943 mm at mid-height, 27 % more, and most at the top. ccx with `ADD=WITH STRAIN` gives this curve (derivation.md). Thus the check fails if ccx does not add the lifts strain free.
 
 ## Result
@@ -26,7 +46,7 @@ Each lift goes on the deformed column strain free. Thus the top of lift 5 or 6 s
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `u_mid` | Not specified | -0.0231518 | -0.0231516 | -1.9e-07 (-0.000820678 %) | 2.315e-06 | 2.125e-06 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks element birth: a concrete column built in 10 lifts, each lift added strain free on the deformed column (units SI-mm).
 

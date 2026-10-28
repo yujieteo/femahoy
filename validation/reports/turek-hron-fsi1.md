@@ -6,7 +6,7 @@ The coupled model of OpenFOAM, CalculiX and preCICE passes FSI1 of Turek and Hro
 
 The coarse mesh of the check causes most of the difference in the displacement. On the finer meshes of the mesh study, the drag and the displacements move to the reference. The lift stays within 0.18 % of it. At zero cell size, the drag and ux are within 0.13 % of the reference, and uy is 0.70 % below it. The coupling is necessary: a rigid flag gives a lift 46 % above the reference (see "Tolerance").
 
-The flow around the cylinder bends the flag up to a steady shape. Point A, the middle of the free end of the flag, moves 0.81 mm up. The view shows the displacement 20 times larger, thus the end of the flag is 16 mm above the dot. The dot marks point A before the deformation. The colour is the pressure `p`, which gives 92 % of the lift.
+The flow around the cylinder bends the flag up to a steady shape. Point A, the middle of the free end of the flag, moves 0.81 mm up. Point A before the deformation is at x = 0.6 m, y = 0.2 m. The pressure `p` gives 92 % of the lift.
 
 The coupling converges to a steady state. The inlet velocity increases in the first 2 time windows. From window 28 to window 30, uy changes by 0.011 %, and the other values by 0.0011 % or less. The section "Mesh study" estimates the rest of the change after window 30 as +0.05 % in uy.
 
@@ -17,6 +17,46 @@ The coupling converges to a steady state. The inlet velocity increases in the fi
 reference: Turek and Hron (2006), the results of FSI1
 
 The inlet velocity increases from 0 to its full value in the first 2 windows. The check reads the values of window 30.
+
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| time window [1] | drag (model / reference [1]) | lift (model / reference [1]) | ux of A (model / reference [1]) | uy of A (model / reference [1]) | reference (model / reference [1]) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.43145 | 0.47811 | 0.57579 | 0.4513 | — |
+| 2 | 0.99527 | 0.98822 | 0.96524 | 0.9417 | — |
+| 3 | 0.9967 | 0.99458 | 0.97062 | 0.96492 | — |
+| 4 | 0.9967 | 0.99643 | 0.97026 | 0.96929 | — |
+| 5 | 0.9967 | 0.99712 | 0.97001 | 0.97207 | — |
+| 6 | 0.9967 | 0.99845 | 0.97001 | 0.97206 | — |
+| 7 | 0.9967 | 0.99772 | 0.96971 | 0.97536 | — |
+| 8 | 0.9967 | 0.99841 | 0.96971 | 0.97537 | — |
+| 9 | 0.9967 | 0.99798 | 0.96953 | 0.97722 | — |
+| 10 | 0.9967 | 0.99839 | 0.96953 | 0.97723 | — |
+| 11 | 0.9967 | 0.99811 | 0.96942 | 0.9784 | — |
+| 12 | 0.9967 | 0.99837 | 0.96942 | 0.9784 | — |
+| 13 | 0.9967 | 0.99817 | 0.96935 | 0.97921 | — |
+| 14 | 0.9967 | 0.99835 | 0.96935 | 0.97921 | — |
+| 15 | 0.9967 | 0.9982 | 0.96929 | 0.97979 | — |
+| 16 | 0.9967 | 0.99833 | 0.96929 | 0.97979 | — |
+| 17 | 0.9967 | 0.99822 | 0.96925 | 0.98023 | — |
+| 18 | 0.9967 | 0.99831 | 0.96925 | 0.98023 | — |
+| 19 | 0.9967 | 0.99822 | 0.96922 | 0.98056 | — |
+| 20 | 0.9967 | 0.99829 | 0.96922 | 0.98056 | — |
+| 21 | 0.9967 | 0.99822 | 0.96919 | 0.98082 | — |
+| 22 | 0.9967 | 0.99828 | 0.96919 | 0.98082 | — |
+| 23 | 0.9967 | 0.99822 | 0.96917 | 0.98103 | — |
+| 24 | 0.9967 | 0.99826 | 0.96918 | 0.98103 | — |
+| 25 | 0.9967 | 0.99822 | 0.96916 | 0.9812 | — |
+| 26 | 0.9967 | 0.99825 | 0.96916 | 0.9812 | — |
+| 27 | 0.9967 | 0.99821 | 0.96915 | 0.98133 | — |
+| 28 | 0.9967 | 0.99824 | 0.96915 | 0.98133 | — |
+| 29 | 0.9967 | 0.99821 | 0.96914 | 0.98144 | — |
+| 30 | 0.9967 | 0.99823 | 0.96914 | 0.98144 | — |
+| 30 | — | — | — | — | 1 |
+
+</details>
 
 ## Result
 
@@ -29,7 +69,7 @@ The inlet velocity increases from 0 to its full value in the first 2 windows. Th
 | `ux_a` | Not specified | 2.19994e-05 | 2.27e-05 | -7.00611e-07 (-3.08639 %) | 9.08e-07 | 2.074e-07 |
 | `uy_a` | Not specified | 0.000805663 | 0.0008209 | -1.52369e-05 (-1.85612 %) | 3.284e-05 | 1.76e-05 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the fluid-structure coupling: OpenFOAM for the fluid and CalculiX for the solid, coupled through preCICE.
 The problem is FSI1 of the bench mark of Turek and Hron: a soft elastic flag behind a cylinder in a laminar channel flow. The flag bends to a steady shape.

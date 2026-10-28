@@ -14,9 +14,77 @@ single runs: Martin and Moyce (1952), Table 2, the smallest and the largest T of
 
 The front is the largest x of the water plus dx / 2. T is 1.19 at Z = 1.44, as in the source.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| T = t sqrt(2 g / a) [1] | SPH (Z = x / a, the front [1]) | measured (Z = x / a, the front [1]) | single runs (Z = x / a, the front [1]) |
+| ---: | ---: | ---: | ---: |
+| 0.1624 | 1 | — | — |
+| 0.2617 | 1.009 | — | — |
+| 0.361 | 1.0225 | — | — |
+| 0.4602 | 1.0502 | — | — |
+| 0.5595 | 1.0836 | — | — |
+| 0.6588 | 1.1237 | — | — |
+| 0.7581 | 1.1668 | — | — |
+| 0.8573 | 1.2184 | — | — |
+| 0.9566 | 1.2764 | — | — |
+| 1.0559 | 1.3392 | — | — |
+| 1.1552 | 1.4125 | — | — |
+| 1.19 | 1.4401 | — | — |
+| 1.2544 | 1.4918 | — | — |
+| 1.3537 | 1.5776 | — | — |
+| 1.453 | 1.6737 | — | — |
+| 1.5522 | 1.7713 | — | — |
+| 1.6515 | 1.8757 | — | — |
+| 1.7508 | 1.9839 | — | — |
+| 1.8501 | 2.0913 | — | — |
+| 1.8673 | 2.1101 | — | — |
+| 1.9493 | 2.2012 | — | — |
+| 2.0486 | 2.3165 | — | — |
+| 2.1479 | 2.4346 | — | — |
+| 2.2472 | 2.5542 | — | — |
+| 2.3464 | 2.6787 | — | — |
+| 2.4457 | 2.8057 | — | — |
+| 2.545 | 2.9334 | — | — |
+| 2.5961 | 3.0001 | — | — |
+| 2.6442 | 3.0635 | — | — |
+| 2.7435 | 3.1965 | — | — |
+| 2.8428 | 3.3315 | — | — |
+| 2.9421 | 3.4672 | — | — |
+| 3.0413 | 3.6038 | — | — |
+| 3.1406 | 3.7434 | — | — |
+| 3.2399 | 3.8845 | — | — |
+| 3.2437 | 3.8901 | — | — |
+| 1.19 | — | 1.44 | — |
+| 1.83 | — | 2.11 | — |
+| 1.75 | — | — | 2.11 |
+| 1.88 | — | — | 2.11 |
+| 2.51 | — | 3 | — |
+| 2.38 | — | — | 3 |
+| 2.66 | — | — | 3 |
+| 3.11 | — | 3.89 | — |
+| 2.94 | — | — | 3.89 |
+| 3.25 | — | — | 3.89 |
+
+</details>
+
 The difference increases along the floor. The checks use 29 %, 49 % and 61 % of the tolerance. The section "Studies" below gives a part of the cause: the resolution. With 80 particles across a, the front is earlier, and the values extrapolated to a fine resolution are 1.9 % above the mean.
 
-The 3D view shows the water particles from the top, with the speed of each particle in m/s. Move the time slider above the view: the column falls, and the dot marks the front at each output of the run. The front is the largest x of the water plus dx / 2. T in the labels is the T of the plot. The last output is at t = 0.150 s, Z = 3.47. The run stops at Z = 3.89, at t = 0.166 s, before the next output.
+The front is the largest x of the water plus dx / 2. T is the T of the plot. The front at each output of the run is:
+
+| t [s] | T | Z |
+|---|---|---|
+| 0, the release | 0 | 1.00 |
+| 0.021 | 0.56 | 1.08 |
+| 0.043 | 0.96 | 1.28 |
+| 0.064 | 1.35 | 1.58 |
+| 0.086 | 1.75 | 1.98 |
+| 0.107 | 2.15 | 2.43 |
+| 0.129 | 2.55 | 2.93 |
+| 0.150 | 2.94 | 3.47 |
+
+The last output is at t = 0.150 s, Z = 3.47. The run stops at Z = 3.89, at t = 0.166 s, before the next output.
 
 ## Result
 
@@ -28,7 +96,7 @@ The 3D view shows the water particles from the top, with the speed of each parti
 | `T_300` | Not specified | 2.5961 | 2.51 | +0.0861 (+3.43028 %) | 0.1757 | 0.0896 |
 | `T_389` | Not specified | 3.2437 | 3.11 | +0.1337 (+4.29904 %) | 0.2177 | 0.084 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the particle path: a 2D dam break with smoothed particle hydrodynamics (SPH).
 A water column falls on a dry floor, and the surge front moves along the floor. The reference is a measurement. Thus the tolerance comes from the scatter of the measurement and from the resolution study of the model.

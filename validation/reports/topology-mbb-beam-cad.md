@@ -6,7 +6,18 @@ The CAD check of fh gives the compliance 190.48 for the solid of the final desig
 
 The compliance of the solid is 12.15 % lower than the compliance of the last design of the loop, c = 216.81. A solid with no gray material must be stiffer than the design of the loop. The loop gives an element with the density x the stiffness x^3 E0. In the final design, 588 of the 1200 elements have a density of 0.5 or more, and 259 of these have a density below 0.99. The solid gives all its material the full stiffness E0. It fills 0.510 of the volume.
 
-The model view shows the density of each element of the loop. The CAD makes its solid from the region with a density of 0.5 or more. Move the design slider above the view to see this region at the iterations 1 to 106 of the loop. The slider gives c and the number of elements with a density of 0.5 or more. The marks show the load and the roller. The CAD check puts them on the same corners of the solid. The view does not show the solid: it is `topology/cad/design.step` in the output of the run.
+The result is the density of each element of the loop. The CAD makes its solid from the region with a density of 0.5 or more. The load 1 is down at the top left corner, and the roller is at the bottom right corner. The CAD check puts them on the same corners of the solid. The solid is `topology/cad/design.step` in the output of the run. The compliance c and the region at some iterations are:
+
+| Iteration | c | Elements with a density of 0.5 or more |
+|---|---|---|
+| 1 | 1007.0 | all 1200 elements at 0.5 |
+| 2 | 583.6 | 570 |
+| 4 | 351.0 | 381 |
+| 8 | 307.1 | 430 |
+| 16 | 258.6 | 560 |
+| 32 | 220.0 | 600 |
+| 64 | 218.1 | 590 |
+| 106, the design of the CAD | 216.81 | 588 |
 
 ## Result
 
@@ -16,7 +27,7 @@ The model view shows the density of each element of the loop. The CAD makes its 
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `cad_compliance` | Not specified | 190.476 | 193.27 | -2.79373 (-1.44551 %) | 3.865 | 1.072 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the CAD of a topology run: the solid that `fh run` makes from the last design, and the check of this solid with `ccx`.
 The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the threshold of the same design at 0.5 on the elements of the loop.

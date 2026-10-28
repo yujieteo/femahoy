@@ -14,7 +14,57 @@ The fin theory is Incropera et al. (2007), Table 3.4, case A, with 1 temperature
 
 The largest difference of the model from the fin theory is -0.061 °C, at x = 7.5 mm.
 
-The model view shows the temperature NT in the fin. The base x = 0 is at 100 °C. The 4 sides and the tip give heat to the air at 20 °C. The marks show the checked tip face and the point of the largest difference on the edge of the plot.
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| x [mm] | model (T [°C]) | fin theory (T [°C]) |
+| ---: | ---: | ---: |
+| 0 | 100 | 100 |
+| 2.5 | 98.4267 | 98.481 |
+| 5 | 96.9504 | 97.0111 |
+| 7.5 | 95.5282 | 95.5894 |
+| 10 | 94.1548 | 94.2149 |
+| 12.5 | 92.8282 | 92.8867 |
+| 15 | 91.5471 | 91.6041 |
+| 17.5 | 90.3106 | 90.3663 |
+| 20 | 89.1181 | 89.1725 |
+| 22.5 | 87.9688 | 88.0219 |
+| 25 | 86.862 | 86.9138 |
+| 27.5 | 85.7969 | 85.8475 |
+| 30 | 84.7729 | 84.8224 |
+| 32.5 | 83.7894 | 83.8378 |
+| 35 | 82.8458 | 82.8931 |
+| 37.5 | 81.9414 | 81.9877 |
+| 40 | 81.0757 | 81.1211 |
+| 42.5 | 80.2481 | 80.2927 |
+| 45 | 79.4583 | 79.5019 |
+| 47.5 | 78.7056 | 78.7484 |
+| 50 | 77.9895 | 78.0315 |
+| 52.5 | 77.3096 | 77.3509 |
+| 55 | 76.6656 | 76.7062 |
+| 57.5 | 76.057 | 76.0969 |
+| 60 | 75.4834 | 75.5227 |
+| 62.5 | 74.9445 | 74.9832 |
+| 65 | 74.4399 | 74.4781 |
+| 67.5 | 73.9693 | 74.007 |
+| 70 | 73.5324 | 73.5696 |
+| 72.5 | 73.129 | 73.1658 |
+| 75 | 72.7588 | 72.7951 |
+| 77.5 | 72.4215 | 72.4575 |
+| 80 | 72.117 | 72.1527 |
+| 82.5 | 71.845 | 71.8804 |
+| 85 | 71.6054 | 71.6406 |
+| 87.5 | 71.3981 | 71.4331 |
+| 90 | 71.2229 | 71.2577 |
+| 92.5 | 71.0797 | 71.1143 |
+| 95 | 70.9684 | 71.0029 |
+| 97.5 | 70.8889 | 70.9234 |
+| 100 | 70.8413 | 70.8757 |
+
+</details>
+
+The base x = 0 is at 100 °C. The 4 sides and the tip give heat to the air at 20 °C. On the checked tip face, the mean is 70.878 °C, and the fin theory gives 70.876 °C. On the edge y = 0, z = 0 of the plot, the largest difference is -0.061 °C, at x = 7.5 mm.
 
 The fin theory has 1 temperature in each section. On the tip face of the model, the temperature is 70.841 °C at the corners and 70.905 °C at the centre: only 0.064 °C more. Thus the check uses the mean of the face.
 
@@ -26,7 +76,7 @@ The fin theory has 1 temperature in each section. On the tip face of the model, 
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `t_tip` | Not specified | 70.8776 | 70.8757 | +0.00192108 (+0.00271049 %) | 0.1 | 0.09808 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the steady tip temperature of an aluminium pin fin (units SI-mm).
 

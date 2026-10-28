@@ -18,12 +18,113 @@ The model leaves out the 2 nodes on the ply interfaces z = -4.17 and 4.17 mm. Th
 
 The largest difference of the model from Pagano is +0.233 MPa, at z = 12.50 mm.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| z [mm] | model (σ_xx [MPa]) | Pagano (σ_xx [MPa]) |
+| ---: | ---: | ---: |
+| -12.5 | 11.8667 | — |
+| -11.1111 | 8.5003 | — |
+| -9.7222 | 5.2226 | — |
+| -8.3333 | 3.0819 | — |
+| -6.9444 | 0.9202 | — |
+| -5.5556 | -1.0199 | — |
+| -2.7778 | -0.0996 | — |
+| -1.3889 | -0.0977 | — |
+| 0 | -0.096 | — |
+| 1.3889 | -0.0942 | — |
+| 2.7778 | -0.0993 | — |
+| 5.5556 | 1.4915 | — |
+| 6.9444 | -0.6156 | — |
+| 8.3333 | -2.9751 | — |
+| 9.7222 | -5.3114 | — |
+| 11.1111 | -8.8976 | — |
+| 12.5 | -12.5808 | — |
+| -12.5 | — | 12.0763 |
+| -12.1528 | — | 11.0369 |
+| -11.8056 | — | 10.0664 |
+| -11.4583 | — | 9.159 |
+| -11.1111 | — | 8.309 |
+| -10.7639 | — | 7.5113 |
+| -10.4167 | — | 6.7609 |
+| -10.0694 | — | 6.0533 |
+| -9.7222 | — | 5.384 |
+| -9.375 | — | 4.7489 |
+| -9.0278 | — | 4.1441 |
+| -8.6806 | — | 3.5659 |
+| -8.3333 | — | 3.0106 |
+| -7.9861 | — | 2.4748 |
+| -7.6389 | — | 1.9552 |
+| -7.2917 | — | 1.4485 |
+| -6.9444 | — | 0.9516 |
+| -6.5972 | — | 0.4614 |
+| -6.25 | — | -0.0253 |
+| -5.9028 | — | -0.5113 |
+| -5.5556 | — | -0.9998 |
+| -5.2083 | — | -1.4938 |
+| -4.8611 | — | -1.9964 |
+| -4.5139 | — | -2.5106 |
+| -4.1667 | — | -3.0398 |
+| -4.1667 | — | -0.0998 |
+| -3.8194 | — | -0.0999 |
+| -3.4722 | — | -0.0999 |
+| -3.125 | — | -0.0996 |
+| -2.7778 | — | -0.0993 |
+| -2.4306 | — | -0.0988 |
+| -2.0833 | — | -0.0983 |
+| -1.7361 | — | -0.0977 |
+| -1.3889 | — | -0.0971 |
+| -1.0417 | — | -0.0965 |
+| -0.6944 | — | -0.096 |
+| -0.3472 | — | -0.0955 |
+| 0 | — | -0.0951 |
+| 0.3472 | — | -0.0948 |
+| 0.6944 | — | -0.0946 |
+| 1.0417 | — | -0.0946 |
+| 1.3889 | — | -0.0948 |
+| 1.7361 | — | -0.0951 |
+| 2.0833 | — | -0.0957 |
+| 2.4306 | — | -0.0966 |
+| 2.7778 | — | -0.0977 |
+| 3.125 | — | -0.0992 |
+| 3.4722 | — | -0.101 |
+| 3.8194 | — | -0.1033 |
+| 4.1667 | — | -0.1059 |
+| 4.1667 | — | 3.6808 |
+| 4.5139 | — | 3.1074 |
+| 4.8611 | — | 2.5498 |
+| 5.2083 | — | 2.0046 |
+| 5.5556 | — | 1.4682 |
+| 5.9028 | — | 0.9375 |
+| 6.25 | — | 0.4091 |
+| 6.5972 | — | -0.1204 |
+| 6.9444 | — | -0.6541 |
+| 7.2917 | — | -1.1954 |
+| 7.6389 | — | -1.7476 |
+| 7.9861 | — | -2.3143 |
+| 8.3333 | — | -2.8989 |
+| 8.6806 | — | -3.5051 |
+| 9.0278 | — | -4.1366 |
+| 9.375 | — | -4.7973 |
+| 9.7222 | — | -5.4914 |
+| 10.0694 | — | -6.2231 |
+| 10.4167 | — | -6.9969 |
+| 10.7639 | — | -7.8177 |
+| 11.1111 | — | -8.6904 |
+| 11.4583 | — | -9.6204 |
+| 11.8056 | — | -10.6135 |
+| 12.1528 | — | -11.6756 |
+| 12.5 | — | -12.8134 |
+
+</details>
+
 The plots show the stress at the nodes of the result file. Their largest difference from the exact σ_xx is 0.23 MPa at the top face, 1.8 % of the largest σ_xx. The checks use the stress at the integration points (see "Reference values").
 
-The model view shows the 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm. Choose a result above the model:
+The model has 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm.
 
-- σ_xx in the thick plate: the face x = 110 mm is the symmetry plane x = a/2. On this face, |σ_xx| at the nodes is up to 12.6 MPa in the 2 plies at 0 degrees. In the ply at 90 degrees in the core, it is less than 0.1 MPa. The mark is on the line of the σ_xx plot.
-- Deflection w of the 2 plates: the marks give w at the centre of each plate, the checks `w_thin` and `w_thick`.
+- σ_xx in the thick plate: the face x = 110 mm is the symmetry plane x = a/2. On this face, |σ_xx| at the nodes is up to 12.6 MPa in the 2 plies at 0 degrees. In the ply at 90 degrees in the core, it is less than 0.1 MPa. The σ_xx plot is on the line x = y = a/2 of this face.
+- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`): the thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
 
 The transverse shear stress τ_xz is continuous through the plies. At the supported edge x = 0, the 3D layers follow the exact τ_xz within 0.056 MPa:
 
@@ -36,6 +137,109 @@ model: the nodes of the line x = 0, y = a/2 in the run
 Pagano is the exact 3D solution of Pagano (1970) from pagano.py. τ_xz is continuous at the ply interfaces.
 
 The largest difference of the model from Pagano is -0.056 MPa, at z = 12.50 mm.
+
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| z [mm] | model (τ_xz [MPa]) | Pagano (τ_xz [MPa]) |
+| ---: | ---: | ---: |
+| -12.5 | -0.051 | — |
+| -11.1111 | -0.4508 | — |
+| -9.7222 | -0.842 | — |
+| -8.3333 | -0.9861 | — |
+| -6.9444 | -1.137 | — |
+| -5.5556 | -1.1001 | — |
+| -4.1667 | -1.05 | — |
+| -2.7778 | -1.0341 | — |
+| -1.3889 | -1.0332 | — |
+| 0 | -1.0298 | — |
+| 1.3889 | -1.0266 | — |
+| 2.7778 | -1.0205 | — |
+| 4.1667 | -1.0305 | — |
+| 5.5556 | -1.1038 | — |
+| 6.9444 | -1.1627 | — |
+| 8.3333 | -1.0177 | — |
+| 9.7222 | -0.8802 | — |
+| 11.1111 | -0.4728 | — |
+| 12.5 | -0.056 | — |
+| -12.5 | — | 0 |
+| -12.1528 | — | -0.1346 |
+| -11.8056 | — | -0.2578 |
+| -11.4583 | — | -0.3703 |
+| -11.1111 | — | -0.4728 |
+| -10.7639 | — | -0.566 |
+| -10.4167 | — | -0.6504 |
+| -10.0694 | — | -0.7265 |
+| -9.7222 | — | -0.7947 |
+| -9.375 | — | -0.8555 |
+| -9.0278 | — | -0.9092 |
+| -8.6806 | — | -0.9561 |
+| -8.3333 | — | -0.9966 |
+| -7.9861 | — | -1.0308 |
+| -7.6389 | — | -1.059 |
+| -7.2917 | — | -1.0813 |
+| -6.9444 | — | -1.0979 |
+| -6.5972 | — | -1.1089 |
+| -6.25 | — | -1.1142 |
+| -5.9028 | — | -1.114 |
+| -5.5556 | — | -1.1082 |
+| -5.2083 | — | -1.0968 |
+| -4.8611 | — | -1.0798 |
+| -4.5139 | — | -1.0569 |
+| -4.1667 | — | -1.0281 |
+| -4.1667 | — | -1.0281 |
+| -3.8194 | — | -1.0282 |
+| -3.4722 | — | -1.0282 |
+| -3.125 | — | -1.0281 |
+| -2.7778 | — | -1.0279 |
+| -2.4306 | — | -1.0277 |
+| -2.0833 | — | -1.0273 |
+| -1.7361 | — | -1.0269 |
+| -1.3889 | — | -1.0264 |
+| -1.0417 | — | -1.0258 |
+| -0.6944 | — | -1.0251 |
+| -0.3472 | — | -1.0244 |
+| 0 | — | -1.0236 |
+| 0.3472 | — | -1.0228 |
+| 0.6944 | — | -1.0218 |
+| 1.0417 | — | -1.0208 |
+| 1.3889 | — | -1.0197 |
+| 1.7361 | — | -1.0186 |
+| 2.0833 | — | -1.0173 |
+| 2.4306 | — | -1.016 |
+| 2.7778 | — | -1.0145 |
+| 3.125 | — | -1.0129 |
+| 3.4722 | — | -1.0112 |
+| 3.8194 | — | -1.0094 |
+| 4.1667 | — | -1.0073 |
+| 4.1667 | — | -1.0073 |
+| 4.5139 | — | -1.0433 |
+| 4.8611 | — | -1.0728 |
+| 5.2083 | — | -1.096 |
+| 5.5556 | — | -1.1131 |
+| 5.9028 | — | -1.1241 |
+| 6.25 | — | -1.129 |
+| 6.5972 | — | -1.1279 |
+| 6.9444 | — | -1.1208 |
+| 7.2917 | — | -1.1075 |
+| 7.6389 | — | -1.088 |
+| 7.9861 | — | -1.062 |
+| 8.3333 | — | -1.0296 |
+| 8.6806 | — | -0.9903 |
+| 9.0278 | — | -0.9439 |
+| 9.375 | — | -0.8902 |
+| 9.7222 | — | -0.8287 |
+| 10.0694 | — | -0.7592 |
+| 10.4167 | — | -0.681 |
+| 10.7639 | — | -0.5938 |
+| 11.1111 | — | -0.497 |
+| 11.4583 | — | -0.3899 |
+| 11.8056 | — | -0.2718 |
+| 12.1528 | — | -0.1422 |
+| 12.5 | — | 0 |
+
+</details>
 
 Use composite shells of this material only for a/h of 50 or more. At a/h = 4, the 8 x 8 composite shells give a deflection 26 % too small (see "Composite shell and the span ratio").
 
@@ -51,7 +255,7 @@ Use composite shells of this material only for a/h of 50 or more. At a/h = 4, th
 | `sx_thick` | Not specified | 10.3599 | 10.3419 | +0.01801 (+0.174146 %) | 0.05171 | 0.0337 |
 | `txz_thick` | Not specified | -1.01018 | -1.01034 | +0.00015515 (+0.0153562 %) | 0.005052 | 0.004897 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the 2 CalculiX models of a composite laminate against the exact 3D elasticity solution of Pagano (units SI-mm):
 

@@ -18,7 +18,7 @@ Each of the 39 nodes of `LOAD` has ux = 0.04761905 mm, and the reference is 0.04
 | `rf_x` | Not specified | -20000 | -20000 | -0.0002 (-1e-06 %) | 0.02 | 0.0198 |
 | `u_x_tip` | Not specified | 0.0476191 | 0.047619 | +2.381e-09 (+5.0001e-06 %) | 4.762e-08 | 4.524e-08 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This derivation is for the case `bar-pressure` (units SI-mm).
 

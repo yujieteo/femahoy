@@ -12,6 +12,18 @@ MacNeal and Harder: MacNeal and Harder (1985), the Scordelis-Lo roof, 0.3024 in 
 
 S8R shells. The value at N = 24, the mesh of the case, comes from this run. The other meshes come from the table of derivation.md, "Mesh convergence".
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| elements along each side N [1] | model (uz at TIP [mm]) | MacNeal and Harder (uz at TIP [mm]) |
+| ---: | ---: | ---: |
+| 16 | -301.957 | -302.4 |
+| 24 | -301.923 | -302.4 |
+| 32 | -301.921 | -302.4 |
+
+</details>
+
 The run also solves a second roof, the former S6 mesh of `fh mesh --shell`, 40000 mm away in y. It gives uz = -301.54 mm at TIP_S6, 0.3 % from the published value. This checks the S6 shell path (see "S6 check of the shell path").
 
 The mapped mesh is converged. The 16 x 16 mesh gives -0.15 %, and the 32 x 32 mesh gives -0.16 % (see "Mesh convergence"). The case mesh of 24 x 24 is 0.001 % from the 32 x 32 mesh.
@@ -25,7 +37,7 @@ The mapped mesh is converged. The 16 x 16 mesh gives -0.15 %, and the 32 x 32 me
 | `tip_deflection_z` | Not specified | -301.923 | -302.4 | +0.4765 (+0.157573 %) | 3.024 | 2.548 |
 | `tip_deflection_z_s6` | Not specified | -301.535 | -302.4 | +0.8649 (+0.286012 %) | 3.024 | 2.159 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the mapped `S8R` shell, the `S6` shell of `fh mesh --shell`, `*SHELL SECTION` and `ccx`.
 The roof is a cylinder shell with a published deflection.

@@ -6,10 +6,10 @@ The CalculiX model gives the stress intensity factor K_I of the centre crack 0.1
 
 CalculiX has no output of K for a crack in the mesh. Thus the model gets K_I from the opening v of the crack face at the nodes B and C of the element at the tip. B is at r = L/4 = 0.125 mm from the tip, and C is at r = L = 0.5 mm. K_I = c (4 v_B - v_C), with c = 204513.9 MPa mm^-0.5 (see "K_I from the displacements").
 
-The model view shows the opening displacement U2 in 1/4 of the plate. The crack is on y = 0 from x = 0 to 25 mm. The ligament from x = 25 to 50 mm has uy = 0. Choose a view above the model:
+The model is 1/4 of the plate. The crack is on y = 0 from x = 0 to 25 mm, with the crack tip at x = 25 mm. The ligament from x = 25 to 50 mm has uy = 0.
 
-- The quarter plate: the crack face opens, and the ligament stays on y = 0. The shape shows the displacement 200 times larger.
-- The crack tip: the marks give v at the nodes B and C. Then K_I = 204513.9 × (4 × 0.00256369 - 0.00510462) = 1053.28 MPa mm^0.5. The shape shows the displacement 50 times larger, and the marks are on the moved nodes.
+- The quarter plate: the crack face opens, and the ligament stays on y = 0.
+- The crack tip: the opening at the node B is v = 0.00256369 mm, and at the node C it is v = 0.00510462 mm. Then K_I = 204513.9 × (4 × 0.00256369 - 0.00510462) = 1053.28 MPa mm^0.5.
 
 The opening of each node near the tip gives a value of K_I too. At the node nearest the tip, r = 0.125 mm, it is 0.25 % below the formula. Farther from the tip, the higher terms of the field make it smaller.
 
@@ -21,6 +21,31 @@ model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face, from v 
 
 Tada is the formula of Tada (1971) in check.toml. The check gets K_I of the model from the 2 nodes at r = L/4 and L (derivation.md).
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| r = a - x [mm] | model (K_I [MPa mm^0.5]) | Tada (K_I [MPa mm^0.5]) |
+| ---: | ---: | ---: |
+| 0.125 | 1048.62 | 1051.27 |
+| 0.5 | 1043.97 | 1051.27 |
+| 0.5974 | 1042.91 | 1051.27 |
+| 0.6947 | 1041.94 | 1051.27 |
+| 0.83 | 1040.44 | 1051.27 |
+| 0.9653 | 1038.96 | 1051.27 |
+| 1.1533 | 1036.88 | 1051.27 |
+| 1.3413 | 1034.82 | 1051.27 |
+| 1.6026 | 1031.9 | 1051.27 |
+| 1.8638 | 1029.02 | 1051.27 |
+| 2.2268 | 1024.98 | 1051.27 |
+| 2.5897 | 1020.97 | 1051.27 |
+| 3.0941 | 1015.31 | 1051.27 |
+| 3.5984 | 1009.67 | 1051.27 |
+| 4.2992 | 1001.75 | 1051.27 |
+| 5 | 993.8 | 1051.27 |
+
+</details>
+
 The finer meshes of the mesh study give K_I 0.10 % to 0.16 % above the formula. An error of the method gives a larger difference. For example, E in place of E' gives -9 %.
 
 ## Result
@@ -31,7 +56,7 @@ The finer meshes of the mesh study give K_I 0.10 % to 0.16 % above the formula. 
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `k_i` | Not specified | 1053.28 | 1051.27 | +2.007 (+0.190912 %) | 5.256 | 3.249 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the stress intensity factor K_I of a centre crack in a steel plate in tension (units SI-mm).
 CalculiX has no output of K for a crack in the mesh. Thus the case gets K_I from the displacements of the crack face, as the chat does.

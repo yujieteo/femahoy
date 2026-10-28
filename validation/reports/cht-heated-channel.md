@@ -16,7 +16,77 @@ The exact line is the fully developed solution of derivation.md: the profile of 
 
 The model is the mean of the 2 cell columns at x = 39.9 and 40.1 mm.
 
-The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. The view shows the temperature `T`, with a dot at each checked place. Select the station x = 40 mm or the full channel above the view.
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| y [mm] | model (T [K]) | exact (T [K]) |
+| ---: | ---: | ---: |
+| 0.05 | 309.909 | — |
+| 0.15 | 309.981 | — |
+| 0.25 | 310.123 | — |
+| 0.35 | 310.332 | — |
+| 0.45 | 310.604 | — |
+| 0.55 | 310.934 | — |
+| 0.65 | 311.313 | — |
+| 0.75 | 311.734 | — |
+| 0.85 | 312.187 | — |
+| 0.95 | 312.66 | — |
+| 1.05 | 312.924 | — |
+| 1.15 | 312.972 | — |
+| 1.25 | 313.02 | — |
+| 1.35 | 313.068 | — |
+| 1.45 | 313.116 | — |
+| 1.55 | 313.164 | — |
+| 1.65 | 313.212 | — |
+| 1.75 | 313.26 | — |
+| 1.85 | 313.308 | — |
+| 1.95 | 313.356 | — |
+| 0 | — | 309.9044 |
+| 0.05 | — | 309.9133 |
+| 0.1 | — | 309.9403 |
+| 0.15 | — | 309.985 |
+| 0.2 | — | 310.0474 |
+| 0.25 | — | 310.127 |
+| 0.3 | — | 310.2235 |
+| 0.35 | — | 310.3363 |
+| 0.4 | — | 310.465 |
+| 0.45 | — | 310.6087 |
+| 0.5 | — | 310.7669 |
+| 0.55 | — | 310.9384 |
+| 0.6 | — | 311.1226 |
+| 0.65 | — | 311.3182 |
+| 0.7 | — | 311.5243 |
+| 0.75 | — | 311.7395 |
+| 0.8 | — | 311.9626 |
+| 0.85 | — | 312.1921 |
+| 0.9 | — | 312.4267 |
+| 0.95 | — | 312.6646 |
+| 1 | — | 312.9044 |
+| 1.05 | — | 312.9284 |
+| 1.1 | — | 312.9524 |
+| 1.15 | — | 312.9764 |
+| 1.2 | — | 313.0004 |
+| 1.25 | — | 313.0244 |
+| 1.3 | — | 313.0484 |
+| 1.35 | — | 313.0724 |
+| 1.4 | — | 313.0964 |
+| 1.45 | — | 313.1204 |
+| 1.5 | — | 313.1444 |
+| 1.55 | — | 313.1683 |
+| 1.6 | — | 313.1923 |
+| 1.65 | — | 313.2163 |
+| 1.7 | — | 313.2403 |
+| 1.75 | — | 313.2643 |
+| 1.8 | — | 313.2883 |
+| 1.85 | — | 313.3123 |
+| 1.9 | — | 313.3363 |
+| 1.95 | — | 313.3603 |
+| 2 | — | 313.3843 |
+
+</details>
+
+The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. At the station x = 40 mm, the checked temperatures are interface_T = 312.9000 K and heater_T = 313.3800 K. At the outlet x = 90 mm, outlet_T = 329.9998 K.
 
 ## Result
 
@@ -28,7 +98,7 @@ The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 m
 | `heater_T` | Not specified | 313.38 | 313.384 | -0.00433177 (-0.00138225 %) | 0.006 | 0.001668 |
 | `outlet_T` | Not specified | 330 | 330 | -0.0002002 (-6.06667e-05 %) | 0.006 | 0.0058 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks conjugate heat transfer in the CFD path: a fluid region and a solid region that exchange heat through a common interface.
 Laminar air flows between 2 parallel plastic walls. A heater on the outer face of each wall gives a uniform heat flux. The heat goes through the wall and into the air.

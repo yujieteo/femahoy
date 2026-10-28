@@ -12,11 +12,44 @@ DYNA3D: DYNA3D (Hallquist and Benson 1987), from the Ansys Technology Showcase, 
 
 The length is 32.4 mm plus the mean u3 of the top face. The radius is 3.2 mm plus u1 of the rim node on the wall. ccx writes them each 10 µs.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| t [µs] | length (length or radius [mm]) | radius (length or radius [mm]) | DYNA3D (length or radius [mm]) |
+| ---: | ---: | ---: | ---: |
+| 0 | 32.4 | 3.2 | — |
+| 10 | 30.1411 | 4.9623 | — |
+| 20 | 28.0574 | 5.8551 | — |
+| 30 | 26.1834 | 6.4037 | — |
+| 40 | 24.542 | 6.6802 | — |
+| 50 | 23.166 | 6.7233 | — |
+| 60 | 22.1013 | 6.7253 | — |
+| 70 | 21.428 | 6.723 | — |
+| 80 | 21.294 | 6.7225 | — |
+| 80 | — | — | 21.66 |
+| 80 | — | — | 7.02 |
+
+</details>
+
 The radius increases fast in the first 30 µs and stops at about 50 µs. The length decreases to the end, but from 70 to 80 µs the top moves only 0.13 mm. Thus the bar is almost at rest at 80 µs, the time of the checks.
 
 A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below), 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.
 
-The 3D view shows the true shape of the quarter bar. Move the time slider above the view: the dots mark the length and the mushroom radius at each time, 1 step each 10 µs. The colour is `PEEQ`, the equivalent plastic strain.
+The model is the quarter bar, with 1 step each 10 µs. The length and the mushroom radius at each time are:
+
+| t [µs] | Length [mm] | Radius [mm] |
+|---|---|---|
+| 10 | 30.14 | 4.96 |
+| 20 | 28.06 | 5.86 |
+| 30 | 26.18 | 6.40 |
+| 40 | 24.54 | 6.68 |
+| 50 | 23.17 | 6.72 |
+| 60 | 22.10 | 6.73 |
+| 70 | 21.43 | 6.72 |
+| 80, the time of the checks | 21.29 (DYNA3D 21.66) | 6.72 (DYNA3D 7.02) |
+
+`PEEQ` is the equivalent plastic strain.
 
 ## Result
 
@@ -27,7 +60,7 @@ The 3D view shows the true shape of the quarter bar. Move the time slider above 
 | `length` | Not specified | -11.106 | -10.74 | -0.366036 (-3.40816 %) | 0.8 | 0.434 |
 | `radius` | Not specified | 3.52254 | 3.82 | -0.297456 (-7.78681 %) | 0.8 | 0.5025 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the final length and the mushroom radius of a copper bar after an impact on a rigid wall (units SI-mm). It is the explicit dynamics case: CalculiX `*DYNAMIC, EXPLICIT` with large strains and plasticity.
 

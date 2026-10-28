@@ -6,10 +6,10 @@ The submodel gives σ_xx at the hole 0.029 % above the Kirsch solution (1898). T
 
 The global model has 16 elements in 1/4 of the plate. The submodel is the ring from the hole to the cut at r = 2a = 20 mm, with 288 elements. It gets the displacement of the global model on the cut, and it has no other load. `fh run job.inp` solves `global.inp` first, then `job.inp` in the same folder.
 
-The model view shows σ_xx (`S11`) in the submodel, from the top. Choose a view above the model:
+The result is σ_xx (`S11`) in the submodel:
 
-- The submodel, σ_xx: the stress is highest at the top of the hole, 3 times the tension of 100 MPa. The marks give the nodal S11 at the hole and at the cut. The nodal value is the mean of the elements at the node, 0.14 % above 300 MPa at the hole.
-- The top of the hole: the mark is at the integration point of the check, in the element `TOP`.
+- The submodel, σ_xx: the stress is highest at the top of the hole, 3 times the tension of 100 MPa. The nodal S11 is 300.4 MPa at the hole (Kirsch 300 MPa) and 117.9 MPa at the cut (Kirsch 121.9 MPa). The nodal value is the mean of the elements at the node, 0.14 % above 300 MPa at the hole.
+- The top of the hole: at the integration point of the check, in the element `TOP`, the submodel gives 296.265 MPa, and the Kirsch solution gives 296.179 MPa.
 
 On the line x = 0, the global model is 4.5 % low at the hole and 8 % high at its second node, y = 12.46 mm. The submodel follows the Kirsch solution within 0.4 % from the hole to y = 18 mm:
 
@@ -25,6 +25,126 @@ Kirsch is the exact solution of the infinite plate. The plot shows the nodal S11
 
 At the hole, y = 10 mm, the global model gives 286.5 MPa (-4.50 %) and the submodel 300.4 MPa (+0.14 %). At the cut, y = 20 mm, the submodel gives -3.26 %: there it has the error of the global model.
 
+<details><summary>Values of the plot</summary>
+
+Original values. — means no sample.
+
+| y [mm] | Kirsch (σ_xx [MPa]) | global model (σ_xx [MPa]) | submodel (σ_xx [MPa]) |
+| ---: | ---: | ---: | ---: |
+| 10 | 300 | 286.514 | 300.407 |
+| 10.1263 | 291.4159 | — | 292.032 |
+| 10.2526 | 283.3214 | — | 283.636 |
+| 10.4042 | 274.2042 | — | 274.765 |
+| 10.5 | 268.7568 | — | — |
+| 10.5558 | 265.6899 | — | 265.892 |
+| 10.7377 | 256.2014 | — | 256.709 |
+| 10.9196 | 247.4359 | — | 247.524 |
+| 11 | 243.7743 | — | — |
+| 11.1379 | 237.777 | — | 238.232 |
+| 11.3562 | 228.9609 | — | 228.94 |
+| 11.5 | 223.5702 | — | — |
+| 11.6182 | 219.3676 | — | 219.773 |
+| 11.8801 | 210.7294 | — | 210.609 |
+| 12 | 207.0602 | — | — |
+| 12.1945 | 201.4555 | — | 201.811 |
+| 12.4615 | 194.4008 | 210.48 | — |
+| 12.5 | 193.44 | — | — |
+| 12.5088 | 193.2223 | — | 193.017 |
+| 12.886 | 184.5141 | — | 184.819 |
+| 13 | 182.105 | — | — |
+| 13.2632 | 176.896 | — | 176.626 |
+| 13.5 | 172.5951 | — | — |
+| 13.7158 | 168.9628 | — | 169.206 |
+| 14 | 164.5564 | — | — |
+| 14.1685 | 162.1287 | — | 161.794 |
+| 14.5 | 157.714 | — | — |
+| 14.7117 | 155.1231 | — | 155.338 |
+| 14.9231 | 152.6969 | 140.872 | — |
+| 15 | 151.8519 | — | — |
+| 15.2548 | 149.1851 | — | 148.884 |
+| 15.5 | 146.7992 | — | — |
+| 15.9066 | 143.1918 | — | 143.241 |
+| 16 | 142.4194 | — | — |
+| 16.5 | 138.6029 | — | — |
+| 16.5585 | 138.1889 | — | 137.665 |
+| 17 | 135.2606 | — | — |
+| 17.3406 | 133.2176 | — | 133.541 |
+| 17.5 | 132.3199 | — | — |
+| 18 | 129.7211 | — | — |
+| 18.1228 | 129.1293 | — | 129.587 |
+| 18.5 | 127.4149 | — | — |
+| 18.6154 | 126.9198 | 129.377 | — |
+| 19 | 125.3605 | — | — |
+| 19.0614 | 125.1238 | — | 123.863 |
+| 19.5 | 123.5234 | — | — |
+| 20 | 121.875 | — | 117.906 |
+| 20.5 | 120.391 | — | — |
+| 21 | 119.0507 | — | — |
+| 21.5 | 117.8367 | — | — |
+| 22 | 116.7338 | — | — |
+| 22.3077 | 116.1048 | 112.47 | — |
+| 22.5 | 115.7293 | — | — |
+| 23 | 114.812 | — | — |
+| 23.5 | 113.9722 | — | — |
+| 24 | 113.2017 | — | — |
+| 24.5 | 112.4931 | — | — |
+| 25 | 111.84 | — | — |
+| 25.5 | 111.2369 | — | — |
+| 26 | 110.6789 | — | — |
+| 26.5 | 110.1616 | — | — |
+| 27 | 109.6812 | — | — |
+| 27.5 | 109.2343 | — | — |
+| 27.8462 | 108.9429 | 108.912 | — |
+| 28 | 108.8179 | — | — |
+| 28.5 | 108.4293 | — | — |
+| 29 | 108.0661 | — | — |
+| 29.5 | 107.7261 | — | — |
+| 30 | 107.4074 | — | — |
+| 30.5 | 107.1083 | — | — |
+| 31 | 106.8271 | — | — |
+| 31.5 | 106.5626 | — | — |
+| 32 | 106.3133 | — | — |
+| 32.5 | 106.0782 | — | — |
+| 33 | 105.8562 | — | — |
+| 33.3846 | 105.6937 | 104.565 | — |
+| 33.5 | 105.6463 | — | — |
+| 34 | 105.4477 | — | — |
+| 34.5 | 105.2596 | — | — |
+| 35 | 105.0812 | — | — |
+| 35.5 | 104.9119 | — | — |
+| 36 | 104.7511 | — | — |
+| 36.5 | 104.5982 | — | — |
+| 37 | 104.4527 | — | — |
+| 37.5 | 104.3141 | — | — |
+| 38 | 104.182 | — | — |
+| 38.5 | 104.056 | — | — |
+| 39 | 103.9357 | — | — |
+| 39.5 | 103.8208 | — | — |
+| 40 | 103.7109 | — | — |
+| 40.5 | 103.6058 | — | — |
+| 41 | 103.5053 | — | — |
+| 41.5 | 103.4089 | — | — |
+| 41.6923 | 103.3729 | 103.258 | — |
+| 42 | 103.3165 | — | — |
+| 42.5 | 103.2279 | — | — |
+| 43 | 103.1429 | — | — |
+| 43.5 | 103.0613 | — | — |
+| 44 | 102.9828 | — | — |
+| 44.5 | 102.9075 | — | — |
+| 45 | 102.8349 | — | — |
+| 45.5 | 102.7651 | — | — |
+| 46 | 102.698 | — | — |
+| 46.5 | 102.6332 | — | — |
+| 47 | 102.5709 | — | — |
+| 47.5 | 102.5107 | — | — |
+| 48 | 102.4527 | — | — |
+| 48.5 | 102.3967 | — | — |
+| 49 | 102.3427 | — | — |
+| 49.5 | 102.2905 | — | — |
+| 50 | 102.24 | 101.725 | — |
+
+</details>
+
 Near the cut, the submodel has the error of the global model: -1.0 % at y = 19.06 mm and -3.3 % at the cut. Thus read the results of a submodel away from its cut.
 
 The error of 0.029 % comes from the displacement of the global model on the cut. With the exact Kirsch displacement on the cut, the same submodel gives +0.000 %. A finer global mesh makes the error smaller: 64 elements give +0.016 %, and 256 elements give +0.000 %. An error of the method gives a larger difference. A cut at r = 1.5a gives -1.0 %, and a global model with 6 elements gives -1.7 % (see "Studies").
@@ -37,7 +157,7 @@ The error of 0.029 % comes from the displacement of the global model on the cut.
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `sxx_hole` | Not specified | 296.265 | 296.179 | +0.0863 (+0.0291378 %) | 0.2962 | 0.2099 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks a submodel: a fine model of the region at a hole that gets its displacement on the cut boundary from a coarse global model (units SI-mm).
 The coarse global model alone gives the peak stress at the hole 4.5 % low. The submodel gives it 0.14 % high, and 0.029 % high at the integration point of the check.

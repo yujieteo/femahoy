@@ -8,7 +8,7 @@ At 60 °C, the strain gauges of the paper give -0.168 mm, and the FEM of the pap
 
 The check is at 60 °C only. At 25 °C and 260 °C, the warpage of the model with the former 1 mm C3D10 mesh is 24 % and 22 % smaller than the moiré value (see "Other results" and "Causes of the difference"). Thus this case does not validate the warpage at these temperatures.
 
-The 3D view shows u3, the displacement out of the plane, of the quarter package after it cools from 140 °C to 60 °C. The deformation is 50 times the true size. The package becomes a dome, and the corner moves to -z. The warpage is u3 at the corner relative to the centre. The lowest point of the substrate is not the corner, but a node on the edge x = 27.5 mm at y = 14.65 mm. It is 0.0047 mm lower than the corner.
+u3 is the displacement out of the plane of the quarter package after it cools from 140 °C to 60 °C. The package becomes a dome, and the corner moves to -z. The warpage is u3 at the corner relative to the centre. The lowest point of the substrate is not the corner, but a node on the edge x = 27.5 mm at y = 14.65 mm. It is 0.0047 mm lower than the corner. u3 is 0 at the centre, -0.1453 mm at the corner and -0.1500 mm at the lowest point of the substrate.
 
 ## Result
 
@@ -18,7 +18,7 @@ The 3D view shows u3, the displacement out of the plane, of the quarter package 
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `warpage` | Not specified | -0.145295 | -0.162 | +0.0167046 (+10.3115 %) | 0.02106 | 0.004355 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 The reference is a measured value, not a theory.
 Source: M.-Y. Tsai, Y.-W. Wang and C.-M. Liu, *Thermally-Induced Deformations and Warpages of Flip-Chip and 2.5D IC Packages Measured by Strain Gauges*, Materials 14 (2021) 3723.

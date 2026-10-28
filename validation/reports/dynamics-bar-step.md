@@ -16,7 +16,7 @@ The mesh causes only about 0.2 % of the difference: the 2 finest former C3D10 me
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `u_end` | Not specified | 0.0187484 | 0.0190476 | -0.000299165 (-1.57062 %) | 0.0005714 | 0.0002723 |
 
-Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 5ac0a46.
+Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
 This case checks the end displacement of a steel bar after a sudden end force (units SI-mm).
 
