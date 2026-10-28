@@ -239,17 +239,11 @@ impl Solve for Native {
     }
 }
 
-/// The value in column `name` of the last row of the table of a function object, for example
-/// `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
+/// The value in column `name` of the row `row` (from 1) of a table, else of its last row, for
+/// example `coefficient.dat` of `forceCoeffs`. The last comment line names the columns:
 /// `# Time Cd Cd(f) Cd(r) Cl ...`. A table with no comment line, for example a watch point of
-/// preCICE, names the columns in its first line. Each column holds one number in each row.
-#[cfg(test)]
-fn last_row(text: &str, name: &str) -> Result<f64, String> {
-    table_value(text, name, None)
-}
-
-/// The value in column `name` of the row `row` (from 1) of a table, else of its last row, as in
-/// `last_row`. A mode table of the grid solver has 1 row for each mode.
+/// preCICE, names the columns in its first line. Each column holds one number in each row. A mode
+/// table of the grid solver has 1 row for each mode.
 fn table_value(text: &str, name: &str, row: Option<usize>) -> Result<f64, String> {
     let header = text
         .lines()
@@ -298,7 +292,7 @@ fn block_of(field: &Field) -> (&'static str, usize, usize) {
         Field::S => ("stresses", 2, 6),
         Field::NT => ("temperatures", 1, 1),
         Field::Cstr => ("contact stress", 2, 3),
-        // `mode_value`, `last_row` and `rms_values` read these. They have no block of a set.
+        // `mode_value`, `table_value` and `rms_values` read these. They have no block of a set.
         Field::Freq | Field::Buckle | Field::ARms | Field::Table { .. } => ("", 0, 0),
     }
 }
@@ -472,7 +466,7 @@ fn extract(dat: &str, q: &Quantity) -> Result<f64, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{last_row, table_value};
+    use super::table_value;
 
     const TABLE: &str = "# Force and moment coefficients\n# magUInf : 1\n#\n\
         # Time    \tCd    \tCd(f)  \tCd(r) \tCl    \tCmPitch\n\
@@ -492,21 +486,21 @@ mod tests {
 
     #[test]
     fn a_value_is_the_column_of_its_name_in_the_last_row() {
-        assert_eq!(last_row(TABLE, "Cl"), Ok(0.4448));
-        assert_eq!(last_row(TABLE, "Cd"), Ok(0.0094));
-        assert_eq!(last_row(TABLE, "CmPitch"), Ok(-0.1151));
-        assert!(last_row(TABLE, "Cs").unwrap_err().contains("no column Cs"));
+        assert_eq!(table_value(TABLE, "Cl", None), Ok(0.4448));
+        assert_eq!(table_value(TABLE, "Cd", None), Ok(0.0094));
+        assert_eq!(table_value(TABLE, "CmPitch", None), Ok(-0.1151));
+        assert!(table_value(TABLE, "Cs", None).unwrap_err().contains("no column Cs"));
         let cut = TABLE.replace("\t-0.1151", "");
-        assert!(last_row(&cut, "Cl")
+        assert!(table_value(&cut, "Cl", None)
             .unwrap_err()
             .contains("5 words for 6 columns"));
-        assert!(last_row("# Time Cd\n", "Cd")
+        assert!(table_value("# Time Cd\n", "Cd", None)
             .unwrap_err()
             .contains("no row"));
-        assert!(last_row("# Time Cd\n1 nan\n", "Cd")
+        assert!(table_value("# Time Cd\n1 nan\n", "Cd", None)
             .unwrap_err()
             .contains("not finite"));
-        assert!(last_row("# Time Cd\n1 x\n", "Cd")
+        assert!(table_value("# Time Cd\n1 x\n", "Cd", None)
             .unwrap_err()
             .contains("no number in column Cd"));
     }
@@ -517,8 +511,8 @@ mod tests {
         let table = "  Time  Coordinate0  Displacement0  Displacement1\n\
             \x20 0.0e+00   6.0e-01   0.0e+00   0.0e+00\n\
             \x20 1.6e+01   6.0e-01   2.2e-05   8.1e-04";
-        assert_eq!(last_row(table, "Displacement1"), Ok(8.1e-4));
-        assert!(last_row(&table[..table.find('\n').unwrap()], "Time")
+        assert_eq!(table_value(table, "Displacement1", None), Ok(8.1e-4));
+        assert!(table_value(&table[..table.find('\n').unwrap()], "Time", None)
             .unwrap_err()
             .contains("no row"));
     }
@@ -528,12 +522,12 @@ mod tests {
     #[test]
     fn a_vector_column_is_an_error() {
         let table = "# Time\tmax(U)\tmax(Ux)\n20\t(3.53 0.09 0)\t3.53\n";
-        assert!(last_row(table, "max(Ux)")
+        assert!(table_value(table, "max(Ux)", None)
             .unwrap_err()
             .contains("components"));
         let table = "# Time\tareaNormalAverage(grad(T))\n2000\t4.5308763737e+00\n";
         assert_eq!(
-            last_row(table, "areaNormalAverage(grad(T))"),
+            table_value(table, "areaNormalAverage(grad(T))", None),
             Ok(4.5308763737)
         );
     }

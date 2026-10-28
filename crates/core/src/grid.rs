@@ -536,6 +536,7 @@ fn read_heat(top: &dyn TableLike) -> Result<(Case, String), String> {
                             "voltage or current, or temperature, flux, convection, \
                                          emissivity or source",
                         "electrostatic" => "voltage or charge",
+                        "modes" => "ux, uy or uz held at 0, with face or point",
                         _ => "temperature, flux, convection, emissivity or source",
                     }
                 ));
