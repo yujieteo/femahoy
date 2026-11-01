@@ -357,8 +357,9 @@ impl Chat {
         for line in BufReader::new(out).lines() {
             let Ok(line) = line else { break };
             let Ok(event) = Json::parse(&line) else {
-                if !line.trim().is_empty() {
-                    self.push(&mut self.lock(), "note", &line);
+                let mut log = self.lock();
+                if !line.trim().is_empty() && log.current(pid) {
+                    self.push(&mut log, "note", &line);
                 }
                 continue;
             };
