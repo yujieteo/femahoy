@@ -264,7 +264,7 @@ impl Chat {
         if let Err(e) = sent {
             let why = format!("cannot send the message to the agent: {e}");
             self.push(&mut log, "error", &why);
-            log.input = None;
+            log.end();
             return Err(fail(502, why));
         }
         log.sent += 1;
