@@ -68,11 +68,14 @@ Reason of the solve list: an agent started 4 CalculiX solves in the background a
 
 ### 4.2 Clients
 
-- **Page:** the only UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the style of the site teoyujie.org: the Source Serif 4 and DM Sans fonts, and its colours.
+- **Page:** the main UI. HTML and CSS with a small plain script, served by the daemon, with no build tool and no file from the network. It holds the chat and the list of the runs, in the style of the site teoyujie.org: the Source Serif 4 and DM Sans fonts, and its colours.
+- **Run list:** `fh runs` prints a plain text table of the runs of the state folder: the solver, the status, the wall time and the key result. `fh run` writes the `end` file of the run with these values. `fh runs RUN` prints the folder and the report of 1 run. It is not a full-screen program and needs no library.
 - **wasm viewer:** the 3D viewport in a canvas of the page, built with `eframe` (egui with wgpu). egui draws only the viewport and its controls.
 - **Report:** `fh report` writes 1 HTML file with the text of the agent, the same wasm viewer, the results of the runs and an x-y plot of each curve that the agent names. A report has no fixed form: the agent puts each plot and each control in its text, for the conclusion of the results. A control opens a run with the view that the agent gives: the fields, the viewer controls, the step, the scale, the box of the camera and the marks on the model. The agent also writes the controls of the 3D view in the bar above the viewer, for example a choice of the flap angle or a slider of the time, the phase or the iteration. The viewer shows each of its own controls that applies to the run, or only the controls that the view names in `data-controls`. The switch "Show all controls" shows the others. `fh` draws each plot as inline SVG, with the reference points of the curve over it. The file opens with a double-click and needs no daemon and no network. With `--viewer`, many reports in 1 folder share 1 copy of the viewer. The agent writes no PDF, image, plot or viewer code.
 
 Reason: a chat needs normal text: scrolling, selection and copy. The 3D viewport needs the GPU, and egui hosts it well.
+
+Reason of the run list: the person runs femahoy on the desktop over SSH, where the page is slow or not available, and had no list of the runs in the terminal.
 
 Reason of the plots: many analysis types give a curve, not a field, for example an S11 over the frequency, the front of a dam break over the time or a mesh study. The viewer shows only fields, so a report showed a curve only as a table. `fh` draws the plot, so the agent still writes no image code.
 

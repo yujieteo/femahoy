@@ -19,6 +19,8 @@
 //! <state>/runs/<run>/solving          the start time of a solve that runs, and the step periods
 //!                                     of a CalculiX input. `fh run` locks it during the solve and
 //!                                     removes it at the end
+//! <state>/runs/<run>/end              the status, the wall time in seconds and the key result
+//!                                     of a run that ended, from `fh run`
 //! <state>/previews/<n>/input.inp      the copy of the input of a preview, with its `*INCLUDE` files
 //! <state>/previews/<n>/title          the name of the model in the page
 //! ```
@@ -45,6 +47,7 @@ const TITLE_FILE: &str = "title";
 const IN_DIR: &str = "in";
 const OUT_DIR: &str = "out";
 const SOLVING_FILE: &str = "solving";
+const END_FILE: &str = "end";
 
 /// A run ID: `run-` and 6 or more digits. Run IDs count up in each state folder.
 fn valid_run(id: &str) -> bool {
@@ -171,6 +174,111 @@ pub fn start_solve(run: &Run, periods: &[f64]) -> Result<Solving, String> {
     let path = dir.join(SOLVING_FILE);
     fs::rename(&hidden, &path).map_err(err)?;
     Ok(Solving { path, _file: file })
+}
+
+/// Write the `end` file of `run`: `status` (succeeded, failed or cancelled), the wall time and
+/// the key result in 1 line.
+pub fn end_run(run: &Run, status: &str, seconds: f64, result: &str) -> Result<(), String> {
+    let dir = run.out.parent().expect("a run folder holds out");
+    let err = |e| format!("end record: {e}");
+    let hidden = dir.join(format!(".{END_FILE}-{}", std::process::id()));
+    let result = result
+        .lines()
+        .next()
+        .unwrap_or("")
+        .replace(char::is_control, " ");
+    fs::write(
+        &hidden,
+        format!("status={status}\nseconds={seconds}\nresult={result}\n"),
+    )
+    .map_err(err)?;
+    fs::rename(&hidden, dir.join(END_FILE)).map_err(err)
+}
+
+/// A run of the state folder, for `fh runs`.
+pub struct RunRecord {
+    pub id: String,
+    /// The solver: `ccx`, `openfoam`, `grid` and so on.
+    pub solver: String,
+    /// succeeded, failed or cancelled from the `end` file, running while `fh run` solves it,
+    /// killed when `fh run` stopped with no `end` file, else `-` (a run of an older `fh`).
+    pub status: String,
+    /// The wall time of the run, or the elapsed time of a run that runs now.
+    pub seconds: Option<f64>,
+    pub result: String,
+    /// The path of the input file or the case that the run solves.
+    pub source: String,
+}
+
+/// The value of `key` in the `key=value` lines of `text`.
+fn field<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.lines()
+        .find_map(|l| l.strip_prefix(key)?.strip_prefix('='))
+}
+
+/// The status and the time of the run folder `dir`.
+fn run_state(dir: &Path) -> (String, Option<f64>, String) {
+    if let Ok(text) = fs::read_to_string(dir.join(END_FILE)) {
+        return (
+            field(&text, "status").unwrap_or("-").to_owned(),
+            field(&text, "seconds").and_then(|s| s.parse().ok()),
+            field(&text, "result").unwrap_or("").to_owned(),
+        );
+    }
+    let Ok(mut file) = File::open(dir.join(SOLVING_FILE)) else {
+        return ("-".into(), None, String::new());
+    };
+    if !matches!(file.try_lock_shared(), Err(TryLockError::WouldBlock)) {
+        return ("killed".into(), None, String::new());
+    }
+    let mut text = String::new();
+    let _ = file.read_to_string(&mut text);
+    let started = field(&text, "started").and_then(|s| s.parse::<f64>().ok());
+    let elapsed = started.map(|s| (now() - s).max(0.0));
+    ("running".into(), elapsed, String::new())
+}
+
+/// The runs of the state folder `state`, in run order.
+pub fn run_records(state: &Path) -> Vec<RunRecord> {
+    let dir = state.join(RUNS_DIR);
+    let entries = fs::read_dir(&dir).into_iter().flatten().flatten();
+    let mut names: Vec<String> = entries
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| valid_run(n))
+        .collect();
+    names.sort();
+    names
+        .into_iter()
+        .map(|id| {
+            let path = dir.join(&id);
+            let solver = crate::solver(&path.join(IN_DIR)).unwrap_or(Solver::Ccx);
+            let (status, seconds, result) = run_state(&path);
+            let source = fs::read_to_string(path.join(SOURCE_FILE)).unwrap_or_default();
+            RunRecord {
+                id,
+                solver: format!("{solver:?}").to_lowercase(),
+                status,
+                seconds,
+                result,
+                source,
+            }
+        })
+        .collect()
+}
+
+/// The folder of the run `id` of the state folder `state` and the path of its report, if it
+/// has one. `id` is the run ID or its number.
+pub fn run_paths(state: &Path, id: &str) -> Result<(PathBuf, Option<PathBuf>), String> {
+    let id = match id.parse::<u64>() {
+        Ok(n) => run_id(n),
+        Err(_) => id.to_owned(),
+    };
+    let dir = state.join(RUNS_DIR).join(&id);
+    if !valid_run(&id) || !dir.is_dir() {
+        return Err(format!("no run {id} in {}", state.join(RUNS_DIR).display()));
+    }
+    let report = dir.join("report.html");
+    Ok((dir.clone(), report.is_file().then_some(report)))
 }
 
 /// The solved fraction of a CalculiX solve: the step and the step time of the last line of

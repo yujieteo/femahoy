@@ -49,7 +49,7 @@ use std::time::{Duration, Instant};
 
 use fh::ccx::{result_frames, CancelToken, Ccx};
 use fh::chrono::{self, Chrono};
-use fh::daemon::{default_state_dir, new_preview, new_run, start_solve};
+use fh::daemon::{default_state_dir, end_run, new_preview, new_run, start_solve};
 use fh::foam::{self, Foam};
 use fh::getdp::{self, GetDp};
 use fh::grid;
@@ -459,22 +459,45 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             }
         }
     };
-    Ok(match result {
-        Ok(()) => {
-            let seconds = start.elapsed().as_secs_f64();
+    let seconds = start.elapsed().as_secs_f64();
+    // `fh runs` lists the status, the time and the key result of the run.
+    let (status, key) = match &result {
+        Ok(()) => ("succeeded", key_result(&run.out, end.as_ref())),
+        Err(_) if cancel.is_cancelled() => ("cancelled", String::new()),
+        // The message names the copy of the input. The person knows the input file.
+        Err(e) => (
+            "failed",
+            e.replace(
+                &run.input.display().to_string(),
+                &file.display().to_string(),
+            ),
+        ),
+    };
+    if let Err(e) = end_run(&run, status, seconds, &key) {
+        eprintln!("fh run: {e}");
+    }
+    Ok(match status {
+        "succeeded" => {
             report(&run.id, &run.out, seconds, solver, end.as_ref());
             ExitCode::SUCCESS
         }
-        Err(_) if cancel.is_cancelled() => fail(CANCELLED, &format!("{} was cancelled", run.id)),
-        Err(e) => {
-            // The message names the copy of the input. The person knows the input file.
-            let message = e.replace(
-                &run.input.display().to_string(),
-                &file.display().to_string(),
-            );
-            fail(FAILED, &format!("{} failed: {message}", run.id))
-        }
+        "cancelled" => fail(CANCELLED, &format!("{} was cancelled", run.id)),
+        _ => fail(FAILED, &format!("{} failed: {key}", run.id)),
     })
+}
+
+/// The key result of a run that succeeded, for `fh runs`: the number of output times, and the
+/// compliance of the last design of a topology run.
+fn key_result(out: &Path, topology: Option<&topology::Outcome>) -> String {
+    let steps = match result_frames(out) {
+        0 => "no field".to_owned(),
+        1 => "1 step".to_owned(),
+        n => format!("{n} steps"),
+    };
+    match topology {
+        Some(end) => format!("compliance {:.6e}, {steps}", end.last.compliance),
+        None => steps,
+    }
 }
 
 /// SIGINT (Ctrl+C), SIGTERM and SIGHUP during a run. The handler only sets a flag. A thread
