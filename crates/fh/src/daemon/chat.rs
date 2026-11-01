@@ -357,8 +357,9 @@ impl Chat {
         for line in BufReader::new(out).lines() {
             let Ok(line) = line else { break };
             let Ok(event) = Json::parse(&line) else {
-                if !line.trim().is_empty() {
-                    self.push(&mut self.lock(), "note", &line);
+                let mut log = self.lock();
+                if !line.trim().is_empty() && log.current(pid) {
+                    self.push(&mut log, "note", &line);
                 }
                 continue;
             };
@@ -382,9 +383,11 @@ impl Chat {
                 if ended {
                     log.turn = false;
                 }
-            }
-            for (kind, text) in &entries {
-                self.push(&mut log, kind, text);
+                // Only the current agent shows lines. A late line of a stopped or replaced agent
+                // does not show.
+                for (kind, text) in &entries {
+                    self.push(&mut log, kind, text);
+                }
             }
             drop(log);
             if after_tool {
