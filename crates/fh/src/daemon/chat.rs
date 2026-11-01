@@ -382,9 +382,11 @@ impl Chat {
                 if ended {
                     log.turn = false;
                 }
-            }
-            for (kind, text) in &entries {
-                self.push(&mut log, kind, text);
+                // Only the current agent shows lines. A late line of a stopped or replaced agent
+                // does not show.
+                for (kind, text) in &entries {
+                    self.push(&mut log, kind, text);
+                }
             }
             drop(log);
             if after_tool {
