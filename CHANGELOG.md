@@ -2,6 +2,10 @@
 
 Each entry is 1 release of femahoy. The top entry is the next or the latest release. `scripts/release.sh` uses its text as the notes of the GitHub release.
 
+## Unreleased
+
+- `fh serve` has the page `/reports`. It lists the reports of the runs, newest first, with the name, the model and the date. A tap opens 1 report with a single-use ticket, so a report never gets the daemon token. The page fits phone screens.
+
 ## 0.1.0
 
 The first release. femahoy is a chat for finite element and CFD analyses. Claude Code, with your own Claude subscription, does the work on your computer.

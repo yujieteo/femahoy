@@ -71,7 +71,7 @@ The table in section 6 of `DESIGN.md` gives the solver and the input of each ana
 
 ## Your own model
 
-Give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. In a terminal, for example over SSH, `fh runs` prints the solver, the status, the time and the key result of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX. `fh --help` lists the commands.
+Give `fh run` a CalculiX `.inp` file or the case folder of another analysis type. `fh run` starts the solver itself and needs no daemon. The page of `fh serve` shows the model and the results of each run. Its page `/reports` lists the reports of the runs and opens each one. In a terminal, for example over SSH, `fh runs` prints the solver, the status, the time and the key result of each run. `fh mesh` makes the mesh and the sets from a STEP file. `fh report` writes 1 HTML file with a text, the viewer, the results of runs and plots of curves (CSV files of x-y values). The file opens with a double-click. `fh fit` fits a model to a curve, for example the constants of a rubber for CalculiX. `fh --help` lists the commands.
 
 ## Install
 
