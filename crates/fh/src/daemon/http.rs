@@ -6,7 +6,7 @@
 //! 2. A request with an `Origin` header must come from the daemon's own page,
 //!    `http://127.0.0.1:<port>`. Any other `Origin`, also `null`, fails with 403.
 //! 3. Every request must carry `Authorization: Bearer <token>`. A client with no `Origin`
-//!    needs only the token. Only `GET /`, the page of the daemon, can also
+//!    needs only the token. Only `GET /` and `GET /reports`, the pages of the daemon, can also
 //!    take the token as `?token=<token>`, because a browser that opens a link sends no header.
 //!
 //! A report can use a single-use `ticket` from its token-protected `report-ticket` route.
@@ -22,6 +22,7 @@
 //! | Method and path | Body | Answer |
 //! |---|---|---|
 //! | `GET /` | | the page of the daemon (HTML): the chat, the list of the runs and the wasm viewer |
+//! | `GET /reports` | | the list of the reports, newest first, for a phone. A link asks for a ticket and opens one report |
 //! | `GET /viewer/fh_viewer.js`, `GET /viewer/fh_viewer_bg.wasm` | | the wasm viewer |
 //! | `GET /api/v1/runs` | | one item `<run> <input>` for each run that has results |
 //! | `GET /api/v1/solves` | | one item `<run> <elapsed s> <solved fraction> <time left s> <folder>` for each solve that runs now, with `-` for no fraction (`store` module) |
@@ -86,6 +87,8 @@ enum Reply {
     /// The page, and the nonce of its script.
     Page(String),
     Report(Vec<u8>),
+    /// The list of reports, and the nonce of its script.
+    Html(String, String),
     /// File bytes and their content type.
     Bytes(&'static str, Vec<u8>),
 }
@@ -212,7 +215,7 @@ impl Request {
     }
 
     fn is_page(&self) -> bool {
-        self.method == "GET" && self.path == "/"
+        self.method == "GET" && (self.path == "/" || self.path == "/reports")
     }
 
     fn query_number(&self, key: &str) -> Result<u64, Failure> {
@@ -372,6 +375,11 @@ fn solve_item(s: &store::Solve) -> String {
 }
 
 fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
+    if req.method == "GET" && req.path == "/reports" {
+        let nonce = super::random_hex(16).map_err(|e| fail(500, e))?;
+        let html = super::reports::page(&ctx.store.reports(), &nonce);
+        return Ok(Reply::Html(nonce, html));
+    }
     if req.is_page() {
         return Ok(Reply::Page(
             super::random_hex(16).map_err(|e| fail(500, e))?,
@@ -471,6 +479,12 @@ fn respond(stream: &mut TcpStream, answer: Result<Reply, Failure>, page: bool) -
             PAGE.replace("NONCE", &nonce)
                 .replace("/*UI*/", &super::report::ui_style())
                 .into_bytes(),
+            page_policy(&nonce),
+        ),
+        Ok(Reply::Html(nonce, html)) => (
+            200,
+            "text/html; charset=utf-8",
+            html.into_bytes(),
             page_policy(&nonce),
         ),
         Ok(Reply::Report(bytes)) => (200, "text/html; charset=utf-8", bytes,

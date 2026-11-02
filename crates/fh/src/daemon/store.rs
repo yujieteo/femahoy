@@ -266,6 +266,25 @@ pub fn run_records(state: &Path) -> Vec<RunRecord> {
         .collect()
 }
 
+/// The text of the first `h1` of `html`, with no tag, in 1 line of at most 80 characters.
+fn first_heading(html: &str) -> Option<String> {
+    let start = html.find("<h1")?;
+    let from = start + html[start..].find('>')? + 1;
+    let end = from + html[from..].find("</h1>")?;
+    let mut text = String::new();
+    let mut tag = false;
+    for c in html[from..end].chars() {
+        match c {
+            '<' => tag = true,
+            '>' => tag = false,
+            c if !tag => text.push(c),
+            _ => {}
+        }
+    }
+    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!text.is_empty()).then(|| text.chars().take(80).collect())
+}
+
 /// The folder of the run `id` of the state folder `state` and the path of its report, if it
 /// has one. `id` is the run ID or its number.
 pub fn run_paths(state: &Path, id: &str) -> Result<(PathBuf, Option<PathBuf>), String> {
@@ -534,6 +553,40 @@ impl Store {
             return Err(fail(403, "report path leaves the run"));
         }
         fs::read(path).map_err(|e| fail(500, e.to_string()))
+    }
+
+    /// The runs with a retained report, newest first: the run, the title of the report, the
+    /// input of the run and the time of the report in seconds since 1970. The title is the first
+    /// `h1` of the report, else the run. A run with no report file is not in the list.
+    pub(crate) fn reports(&self) -> Vec<(String, String, String, u64)> {
+        let dir = self.dir.join(RUNS_DIR);
+        let mut found: Vec<_> = fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| {
+                let run = e.file_name().into_string().ok().filter(|n| valid_run(n))?;
+                let path = e.path().join("report.html");
+                let meta = fs::metadata(&path).ok().filter(|m| m.is_file())?;
+                let time = meta
+                    .modified()
+                    .ok()?
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |d| d.as_secs());
+                // The first h1 is near the start, after the style with the fonts.
+                let mut head = Vec::new();
+                File::open(&path)
+                    .ok()?
+                    .take(1 << 20)
+                    .read_to_end(&mut head)
+                    .ok()?;
+                let title = first_heading(&String::from_utf8_lossy(&head)).unwrap_or(run.clone());
+                let model = fs::read_to_string(e.path().join(SOURCE_FILE)).unwrap_or_default();
+                Some((run, title, model, time))
+            })
+            .collect();
+        found.sort_by(|a, b| b.3.cmp(&a.3).then_with(|| b.0.cmp(&a.0)));
+        found
     }
 
     /// The run has a retained report.

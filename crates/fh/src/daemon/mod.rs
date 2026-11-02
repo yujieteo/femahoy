@@ -18,6 +18,7 @@ mod http;
 mod json;
 mod message;
 mod report;
+mod reports;
 mod serve;
 mod store;
 

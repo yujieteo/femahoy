@@ -567,3 +567,101 @@ fn a_port_in_use_stops_the_start() {
     assert!(err.contains(&lab.daemon.port().to_string()), "{err}");
     assert!(err.contains("FH_PORT"), "{err}");
 }
+
+/// `/reports` lists the retained reports newest first behind the daemon token. Its links are
+/// relative and ask for a ticket, so the page and the report never hold the daemon token.
+#[test]
+fn the_report_list_needs_the_token_and_opens_reports_with_tickets() {
+    let lab = Lab::new("report-list");
+    for (n, title) in [(1, "Older &amp; plate"), (2, "Newer plate")] {
+        let run = lab.state().join(format!("runs/run-00000{n}"));
+        fs::create_dir_all(run.join("out")).unwrap();
+        fs::write(run.join("source"), format!("/work/model{n}/plate.inp")).unwrap();
+        fs::write(run.join("report.html"), format!("<h1>{title}</h1>")).unwrap();
+    }
+    // A run with no report is not listed. A report file whose run is gone is not found.
+    fs::create_dir_all(lab.state().join("runs/run-000003/out")).unwrap();
+    let old = fs::File::options()
+        .write(true)
+        .open(lab.state().join("runs/run-000001/report.html"))
+        .unwrap();
+    old.set_modified(std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(86400))
+        .unwrap();
+    drop(old);
+
+    assert_eq!(lab.get("/reports", &[]).status, 401);
+    assert_eq!(
+        lab.get("/reports", &[("Authorization", "Bearer wrong")])
+            .status,
+        401
+    );
+    let bearer = lab.bearer();
+    let list = lab.get("/reports", &[("Authorization", bearer.as_str())]);
+    assert_eq!(list.status, 200);
+    let html = list.text();
+    let (newer, older) = (
+        html.find("Newer plate").unwrap(),
+        html.find("Older &amp;amp; plate").unwrap(),
+    );
+    assert!(newer < older, "newest first");
+    assert!(html.contains("model2/plate.inp · run-000002"));
+    assert!(html.contains("1970-01-02 00:00"));
+    assert!(!html.contains("run-000003"));
+    // The page has no token and no absolute address, and it asks for a ticket.
+    assert!(!html.contains(lab.daemon.token()));
+    assert!(!html.contains("http://") && !html.contains("https://"));
+    assert!(html.contains("\"api/v1/runs/\""));
+    let policy = list.header("Content-Security-Policy").unwrap();
+    assert!(policy.contains("connect-src 'self'") && policy.contains("nonce-"));
+    // A browser that opens the page with the token in the address gets the same page.
+    let with_query = lab.get(&format!("/reports?token={}", lab.daemon.token()), &[]);
+    assert_eq!(with_query.status, 200);
+    // Other routes still refuse the token in the address.
+    assert_eq!(
+        lab.get(&format!("/api/v1/runs?token={}", lab.daemon.token()), &[])
+            .status,
+        401
+    );
+
+    // The ticket opens the report once. The report answer holds no token.
+    let issued = lab.send(
+        "POST",
+        "/api/v1/runs/run-000002/report-ticket",
+        &[("Authorization", bearer.as_str())],
+    );
+    let body = issued.text();
+    let ticket = body
+        .lines()
+        .find_map(|l| l.strip_prefix("ticket="))
+        .unwrap();
+    let url = format!("/api/v1/runs/run-000002/report?ticket={ticket}");
+    let report = lab.get(&url, &[]);
+    assert_eq!(report.status, 200);
+    assert!(
+        !report.text().contains(lab.daemon.token()) && !report.head.contains(lab.daemon.token())
+    );
+    assert_eq!(lab.get(&url, &[]).status, 401);
+    // A ticket of 1 report does not open another report, and the list takes no ticket.
+    let issued = lab.send(
+        "POST",
+        "/api/v1/runs/run-000002/report-ticket",
+        &[("Authorization", bearer.as_str())],
+    );
+    let body = issued.text();
+    let ticket = body
+        .lines()
+        .find_map(|l| l.strip_prefix("ticket="))
+        .unwrap();
+    assert_eq!(
+        lab.get(
+            &format!("/api/v1/runs/run-000001/report?ticket={ticket}"),
+            &[]
+        )
+        .status,
+        401
+    );
+    assert_eq!(
+        lab.get(&format!("/reports?ticket={ticket}"), &[]).status,
+        401
+    );
+}
