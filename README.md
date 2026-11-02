@@ -99,6 +99,7 @@ A solver variable has priority over its line in `solvers.env`. With neither, `fh
 - `FH_CCX_PRECICE`: the `ccx_preCICE` program (CalculiX with the preCICE adapter) of `fh run` and `fh validate`.
 - `FH_LAMMPS`: the `lmp` program of `fh run` and `fh validate`.
 - `FH_OPENEMS`: the Python with openEMS of `fh run` and `fh validate`.
+- `FH_SKEIN`: the `skein` program of `fh run`. The default is `skein` on `PATH`.
 - `FH_STATE`: the state folder of `fh run`, `fh report` and `fh serve`.
 - `FH_VIEWER`: the folder of the wasm viewer of `fh report` and `fh serve`.
 - `FH_PORT`: the port of `fh serve` on 127.0.0.1. The default is 8790.

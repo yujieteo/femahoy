@@ -4,10 +4,10 @@
 //! fake `gmsh` and a fake `getdp`, the Chrono, Meep and openEMS tests a fake Python, and the
 //! LAMMPS tests a fake `lmp`. The grid test needs no solver program.
 mod common;
-use common::{ccx_solver, p, real_gmsh, root, scratch, script, stderr, stdout};
+use common::{ccx_solver, p, real_gmsh, root, scratch, script, skein_solver, stderr, stdout};
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -1076,5 +1076,177 @@ fn a_python_with_no_openems_fails_the_run_with_the_install_step() {
         "{errors}"
     );
     assert!(errors.contains("out/openems/log.python"), "{errors}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A fake `skein`. It writes its arguments and `SKEIN_MEMORY_BUDGET` to CALLS. When `model.skn`
+/// holds BAD, it prints the diagnostics of a unit error as Skein does and fails. Else it writes
+/// the report.
+const FAKE_SKEIN: &str = r#"#!/bin/sh
+echo skein "$@" "budget=$SKEIN_MEMORY_BUDGET" >> CALLS
+if grep -q BAD model.skn; then
+  echo 'diagnostics[1]{class,id,file,line,col,msg,fix}:'
+  echo '  error,unit_mismatch,model.skn,2,17,"a is Length, but the value is Force","use a length"'
+  echo 'summary: errors=1 lints=0'
+  exit 1
+fi
+echo '<html>report</html>' > report.html
+echo 'solve[1]{step,converged}:'
+"#;
+
+const SKEIN_MODEL: &str = "model small: 3d, mm_N_MPa_s\n";
+
+fn fh_run_skein(name: &str, text: &str, exe: Option<&Path>) -> (PathBuf, std::process::Output) {
+    let dir = scratch(name);
+    let case = dir.join("case");
+    fs::create_dir_all(&case).unwrap();
+    fs::write(case.join("model.skn"), text).unwrap();
+    let calls = p(&dir.join("calls")).to_owned();
+    let fake = script(&dir.join("skein"), &FAKE_SKEIN.replace("CALLS", &calls));
+    let out = Command::new(env!("CARGO_BIN_EXE_fh"))
+        .args(["run", p(&case)])
+        .env("FH_STATE", dir.join("state"))
+        .env("FH_SKEIN", exe.unwrap_or(&fake))
+        .output()
+        .unwrap();
+    (dir, out)
+}
+
+/// `fh run CASE` starts `skein report model.skn` with the memory budget, keeps the log in the run
+/// and gives the report to the run folder, where the report ticket of the page reads it.
+#[test]
+fn fh_run_solves_a_skein_case_and_keeps_its_report() {
+    let (dir, out) = fh_run_skein("run-skein", SKEIN_MODEL, None);
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    assert!(shown.contains("  program skein\n"), "{shown}");
+    let calls = fs::read_to_string(dir.join("calls")).unwrap();
+    assert!(
+        calls.starts_with("skein report model.skn -o report.html budget="),
+        "{calls}"
+    );
+    assert!(!calls.trim_end().ends_with("budget="), "{calls}");
+    let run = dir.join("state/runs/run-000001");
+    assert!(run.join("out/skein/log.skein").is_file(), "{shown}");
+    assert_eq!(
+        fs::read_to_string(run.join("report.html")).unwrap(),
+        "<html>report</html>\n"
+    );
+    assert!(fs::metadata(run.join("in/model.skn"))
+        .unwrap()
+        .permissions()
+        .readonly());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// An error of Skein (here a unit error) fails the run, and its message holds the error, so that
+/// the model can be corrected and run again.
+#[test]
+fn a_skein_error_fails_the_run_with_the_error_of_skein() {
+    let (dir, out) = fh_run_skein("run-skein-bad", "BAD\n", None);
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(
+        errors
+            .contains("error,unit_mismatch,model.skn,2,17,\"a is Length, but the value is Force\""),
+        "{errors}"
+    );
+    assert!(errors.contains("out/skein/log.skein"), "{errors}");
+    assert!(!dir.join("state/runs/run-000001/report.html").exists());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// With no `skein`, the run fails and says how to install it.
+#[test]
+fn a_missing_skein_fails_the_run_with_the_install_step() {
+    let (dir, out) = fh_run_skein(
+        "run-skein-missing",
+        SKEIN_MODEL,
+        Some(Path::new("/no/skein")),
+    );
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(errors.contains("cannot start /no/skein"), "{errors}");
+    assert!(
+        errors.contains("put skein on PATH, or set FH_SKEIN"),
+        "{errors}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// A small steady heat model, as the agent writes it from a request in words: a pin fin.
+const PIN_FIN: &str = "model heat_fin: 3d, mm_N_MPa_s
+
+let Lf: Length = 100 mm
+let k_al: Conductivity = 200 W/(m*K)
+let h_air: HeatTransfer = 50 W/(m^2*K)
+let T_air: Temperature = 20 degC
+let dT: Temperature = 80 K
+
+scales Lf, dT, k_al
+
+let fin: Solid = box((0, 0, 0) mm, (Lf, 10 mm, 10 mm))
+let base: Surface = boundary(fin, x == 0 mm)
+let tip: Surface = boundary(fin, x == Lf)
+let skin: Surface = boundary(fin, x > 0 mm)
+
+material alu {
+    k: Conductivity = k_al
+}
+
+mesh m on fin {
+    size: 5 mm
+    cell: tet
+}
+
+physics thermal on fin solves T: Temperature = 20 degC {
+    material alu
+    assume isotropic
+    let q: Vector<HeatFlux> = fourier(k, T)
+    eq div(q) = 0
+}
+
+bc base: T = 100 degC
+bc skin: dot(q, n) = h_air*(T - T_air)
+
+step steady: static {
+    output T
+}
+
+expect t_tip: mean(T, tip) == 70.8757 degC within 0.1 K
+";
+
+/// With the real Skein: a model solves and gives a report. A model with a unit error fails with
+/// the error, and a corrected model solves. A model with a failed `expect` fails and keeps its
+/// report.
+#[test]
+fn the_real_skein_solves_a_model_and_reports_its_errors() {
+    let Some(skein) = skein_solver() else { return };
+    let (dir, out) = fh_run_skein("run-skein-real", PIN_FIN, Some(&skein));
+    let (shown, errors) = (stdout(&out), stderr(&out));
+    assert_eq!(out.status.code(), Some(0), "{shown}{errors}");
+    let run = dir.join("state/runs/run-000001");
+    let report = fs::read_to_string(run.join("report.html")).unwrap();
+    assert!(
+        report.contains("<html") || report.contains("<!DOCTYPE"),
+        "report"
+    );
+    let log = fs::read_to_string(run.join("out/skein/log.skein")).unwrap();
+    assert!(log.contains("t_tip"), "{log}");
+    let _ = fs::remove_dir_all(&dir);
+
+    let wrong = PIN_FIN.replace("let Lf: Length = 100 mm", "let Lf: Length = 100 N");
+    let (dir, out) = fh_run_skein("run-skein-real-bad", &wrong, Some(&skein));
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(errors.contains("unit_mismatch"), "{errors}");
+    let _ = fs::remove_dir_all(&dir);
+
+    let wrong = PIN_FIN.replace("70.8757 degC within 0.1 K", "10 degC within 0.1 K");
+    let (dir, out) = fh_run_skein("run-skein-real-expect", &wrong, Some(&skein));
+    let errors = stderr(&out);
+    assert_eq!(out.status.code(), Some(1), "{errors}");
+    assert!(errors.contains("expect,fail"), "{errors}");
+    assert!(dir.join("state/runs/run-000001/report.html").is_file());
     let _ = fs::remove_dir_all(&dir);
 }

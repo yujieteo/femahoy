@@ -19,6 +19,7 @@ pub mod msh;
 pub mod openems;
 pub mod optimize;
 pub mod precice;
+pub mod skein;
 pub mod step;
 pub mod topology;
 pub mod validation;
@@ -39,6 +40,7 @@ pub enum Solver {
     Lammps,
     Meep,
     OpenEms,
+    Skein,
     Grid,
 }
 
@@ -63,6 +65,8 @@ pub fn solver(dir: &Path) -> Option<Solver> {
         Some(Solver::Meep)
     } else if openems::is_case(dir) {
         Some(Solver::OpenEms)
+    } else if skein::is_case(dir) {
+        Some(Solver::Skein)
     } else if grid::is_case(dir) {
         Some(Solver::Grid)
     } else {

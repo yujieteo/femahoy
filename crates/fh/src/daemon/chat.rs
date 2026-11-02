@@ -27,7 +27,8 @@
 //! The agent works in `STATE/chat`: it can make, change and delete the files there with the file
 //! tools and with file commands such as `mkdir`, `mv`, `rm` and an output redirect
 //! (`--permission-mode acceptEdits`). Its other commands are `fh` and `fh-python` (the Python
-//! of the CAD script). Solves go through `fh run`. `FH_AGENT` names
+//! of the CAD script), and `skein help` and `skein check` (the language card and the check of a
+//! Skein model, which solve nothing). Solves go through `fh run`. `FH_AGENT` names
 //! another agent program, for example a fake agent that prints a recorded event stream in the
 //! tests.
 //!
@@ -51,7 +52,8 @@ use super::store::Store;
 /// The instructions of the agent. They end with the heading of the index of the guides.
 const INSTRUCTIONS: &str = include_str!("agent.md");
 /// The tools that the agent can use with no question to the person.
-const TOOLS: &str = "Bash(fh *),Bash(fh-python *),Read,Write,Edit,\
+const TOOLS: &str =
+    "Bash(fh *),Bash(fh-python *),Bash(skein help *),Bash(skein check *),Read,Write,Edit,\
                      Glob,Grep,WebSearch,WebFetch";
 /// The Bash time limit of the agent in ms: 24 hours. Claude Code stops a Bash command after
 /// 2 minutes by default, and a solve of a large model can take hours.

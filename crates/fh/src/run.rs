@@ -25,6 +25,8 @@
 //!   Meep is `$FH_MEEP`, else `python3` on `PATH`.
 //! - `fh run CASE` gives openEMS the case folder (`openems.py`, see `fh::openems`). The Python of
 //!   openEMS is `$FH_OPENEMS`, else `python3` on `PATH`.
+//! - `fh run CASE` gives Skein the case folder (`model.skn`, see `fh::skein`). Skein is
+//!   `$FH_SKEIN`, else `skein` on `PATH`. The page shows the HTML report of Skein.
 //! - `fh run CASE` solves the grid case folder (`grid.toml`, see `fh::grid`) with the built-in
 //!   heat conduction and linear stress solver of femahoy, or (with a `[line]` table) the
 //!   transmission line solver, in the process of `fh`.
@@ -58,6 +60,7 @@ use fh::meep::{self, Meep};
 use fh::openems::{self, OpenEms};
 use fh::optimize;
 use fh::precice::{self, Precice};
+use fh::skein::{self, Skein};
 use fh::topology;
 use fh::Solver;
 
@@ -86,6 +89,8 @@ CASE is also a Meep case folder with meep_case.py. fh run starts python3 meep_ca
 Python of Meep.\n\
 CASE is also an openEMS case folder with openems.py. fh run starts python3 openems.py, with the \
 Python of openEMS.\n\
+CASE is also a Skein case folder with model.skn. fh run starts skein report model.skn: Skein checks \
+the model (type and unit errors fail the run), solves it and writes an HTML report for the page.\n\
 CASE is also a grid case folder with grid.toml. fh run solves it with the built-in heat \
 conduction and linear stress solver of femahoy, or with a [line] table the transmission line \
 solver, with no other program (fh guide grid).";
@@ -152,7 +157,7 @@ fn resolve(path: &Path) -> Result<PathBuf, String> {
              system/controlDict), a GetDP case folder (with case.pro), a preCICE case folder \
              (with precice-config.xml), a Chrono case folder (with chrono.py), a LAMMPS case \
              folder (with case.lmp), a Meep case folder (with meep_case.py), an openEMS case \
-             folder (with openems.py), a grid case folder (with grid.toml), a topology case folder (with topology.toml) or a shape \
+             folder (with openems.py), a Skein case folder (with model.skn), a grid case folder (with grid.toml), a topology case folder (with topology.toml) or a shape \
              optimization case folder (with optimize.toml)"
         ))
     }
@@ -229,6 +234,16 @@ fn report(
             ),
             "Write a field to a .pos file in openems.py",
         ),
+        Solver::Skein => {
+            let work = out.join(skein::WORK).display().to_string();
+            println!(
+                "fh run: text results {work}/{} (output of Skein: the tables and the checks), the \
+                 report of the page {}",
+                skein::LOG,
+                out.join("..").join("report.html").display()
+            );
+            return;
+        }
         Solver::Grid => (
             format!(
                 "{0}/{1} (the values at each probe), {0}/{2} (the energy balance of a heat \
@@ -414,6 +429,14 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
             openems.timeout = o.timeout;
             openems.run_with(&run.input, &run.out, &cancel, on_program)
         }
+        Solver::Skein => {
+            let mut skein = Skein::new();
+            skein.timeout = o.timeout;
+            let result = skein.run_with(&run.input, &run.out, &cancel, on_program);
+            // A model with a failed expect has a report too.
+            let published = skein::publish_report(&run.out);
+            result.and(published)
+        }
         Solver::Precice => {
             let mut precice = Precice::new();
             precice.foam.timeout = o.timeout;
@@ -489,6 +512,9 @@ pub fn run(args: &[String]) -> Result<ExitCode, String> {
 /// The key result of a run that succeeded, for `fh runs`: the number of output times, and the
 /// compliance of the last design of a topology run.
 fn key_result(out: &Path, topology: Option<&topology::Outcome>) -> String {
+    if out.join(skein::WORK).join(skein::REPORT).is_file() {
+        return "report".to_owned();
+    }
     let steps = match result_frames(out) {
         0 => "no field".to_owned(),
         1 => "1 step".to_owned(),

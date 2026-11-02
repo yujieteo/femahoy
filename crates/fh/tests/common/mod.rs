@@ -202,3 +202,21 @@ pub fn real_gmsh() -> Option<PathBuf> {
         .map(|d| d.join("gmsh"))
         .find(|p| p.is_file())
 }
+
+/// `skein` (`FH_SKEIN`, else `skein` on PATH) when it starts. Else `None` with a message, and the
+/// test does not solve. With `FH_REQUIRE_SKEIN=1`, a missing Skein fails the test.
+pub fn skein_solver() -> Option<PathBuf> {
+    let exe = PathBuf::from(std::env::var_os("FH_SKEIN").unwrap_or_else(|| "skein".into()));
+    let found = Command::new(&exe)
+        .args(["help", "--llm"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !found {
+        assert!(
+            std::env::var_os("FH_REQUIRE_SKEIN").is_none_or(|v| v != "1"),
+            "FH_REQUIRE_SKEIN=1, but skein does not start"
+        );
+        eprintln!("skipped: skein does not start. Set FH_SKEIN");
+    }
+    found.then_some(exe)
+}

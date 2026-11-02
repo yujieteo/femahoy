@@ -13,6 +13,7 @@
 //! <state>/runs/<run>/in/optimize.toml or the read-only copy of an optimization case
 //! <state>/runs/<run>/in/meep_case.py  or the read-only copy of a Meep case
 //! <state>/runs/<run>/in/openems.py .. or the read-only copy of an openEMS case
+//! <state>/runs/<run>/in/model.skn .. or the read-only copy of a Skein case
 //! <state>/runs/<run>/out/             run folder of the solver. `results.pvd` is the last
 //!                                     file that a run writes, so a run has results when it lists
 //!                                     a step
@@ -110,6 +111,7 @@ pub fn new_run(state: &Path, source: &Path) -> Result<Run, String> {
             | Solver::Optimize
             | Solver::Meep
             | Solver::OpenEms
+            | Solver::Skein
             | Solver::Grid,
         ) => {
             getdp::copy_case(source, &dir.join(IN_DIR), true)?;

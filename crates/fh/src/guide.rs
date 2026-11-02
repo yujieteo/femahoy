@@ -35,6 +35,7 @@ pub const GUIDES: &[(&str, &str)] = &[
         "random-vibration",
         include_str!("guide/random-vibration.md"),
     ),
+    ("skein", include_str!("guide/skein.md")),
     ("cfd-report", include_str!("guide/cfd-report.md")),
     ("live-page", include_str!("guide/live-page.md")),
 ];
