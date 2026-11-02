@@ -468,6 +468,20 @@ pub(crate) fn supervise(
     cancel: &CancelToken,
     poll: &mut dyn FnMut(),
 ) -> Result<ExitStatus, String> {
+    supervise_with(program, cmd, limits, cancel, poll, true)
+}
+
+/// [`supervise`]. With `address_limit` false, the kernel gets no limit of address space
+/// (`RLIMIT_AS`) and only the probe of resident memory enforces the memory limit. A program that
+/// reserves a large address space at the start, such as a Goose program, needs this.
+pub(crate) fn supervise_with(
+    program: &Program,
+    cmd: &mut Command,
+    limits: (Instant, Option<Duration>, u64),
+    cancel: &CancelToken,
+    poll: &mut dyn FnMut(),
+    address_limit: bool,
+) -> Result<ExitStatus, String> {
     let (start, timeout, memory_limit) = limits;
     let exe = PathBuf::from(cmd.get_program());
     let cannot_start =
@@ -489,7 +503,11 @@ pub(crate) fn supervise(
         guard,
         solver: None,
     };
-    sys::prepare(cmd, limited.then_some(memory_limit), tree.group.pid());
+    sys::prepare(
+        cmd,
+        (limited && address_limit).then_some(memory_limit),
+        tree.group.pid(),
+    );
     // From here each return and each panic drops `tree`, and the drop kills the group.
     tree.solver = Some(cmd.spawn().map_err(cannot_start)?);
     let mut last_probe = Instant::now();
