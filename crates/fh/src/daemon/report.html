@@ -9,7 +9,7 @@
 <style>
 /* The layout of a report. The tokens (also the series --s1 to --s8 of the plots) and the
    components (the toolbar, the buttons, the menu, the segmented control and the legend) come
-   from the UI layer of femahoy (crates/viewer/src/ui.rs). */
+   from the UI layer of femahoy (crates/viewer/src/ui.rs), in the look of the site teoyujie.org. */
 /*UI*/
 /* Only the text uses the reading size. The viewer scales its panel text by the body size over
    the body token (Dynamic Type), so a larger body size makes the panel larger than in fh serve. */
@@ -17,17 +17,18 @@ body { display: flex; overflow: hidden; }
 #report { display: flex; flex-direction: column; min-width: 0; width: clamp(360px, 42vw, 720px); }
 #report > header { border-bottom: 1px solid var(--line); }
 article { flex: 1; min-height: 0; overflow-y: auto; font-size: var(--read); padding: 1.5rem clamp(1rem, 3vw, 2.5rem) 5rem; background: var(--side); border-right: 1px solid var(--line); }
-article h1 { margin: 0.5rem 0 1rem; font-size: clamp(2rem, 4vw, 2.75rem); letter-spacing: -0.015em; text-wrap: balance; }
-article h2 { margin: 3rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--line); font-size: 1.75rem; }
-/* A rule above the first heading of the text separates nothing. */
-article > h2:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
-article h3 { margin: 2rem 0 0.75rem; font-size: 1.25rem; }
-article p, article li { text-wrap: pretty; }
+/* The text has the look of an essay of the site teoyujie.org: 1 size, and the weight and the
+   space make the headings. */
+article h1 { margin: 0 0 32px; }
+article h2 { margin: 48px 0 20px; font-weight: 550; }
+article > h2:first-child { margin-top: 0; }
+article h3 { margin: 32px 0 12px; }
+article p, article li { line-height: 1.65; text-wrap: pretty; }
 article table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
 article th, article td { padding: 0.375rem 0.75rem; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
 article th { border-bottom-color: var(--text); font-weight: 500; }
-article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: 4px; background: var(--code); }
-article :not(pre) > code { padding: 1px 4px; border-radius: 3px; background: var(--code); overflow-wrap: anywhere; }
+article pre { padding: 0.75rem 1rem; overflow-x: auto; border-radius: var(--radius); background: var(--code); }
+article :not(pre) > code { padding: 2px 3.6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--code); font-size: 0.857143em; overflow-wrap: anywhere; }
 /* A table scrolls on a narrow screen: a name in a cell stays whole and does not break inside a word. */
 article td > code { overflow-wrap: normal; }
 /* The first column (the name of each row) stays in view while the table scrolls sideways. */
@@ -35,7 +36,8 @@ article :is(th, td):first-child { position: sticky; left: 0; background: var(--s
 article button, article select { font-size: var(--body); }
 /* A report with no run has no viewer: the text fills the page. */
 body:not(:has(#model)) #report, body.text-mode #report { width: 100%; flex: 1; }
-body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-4), calc(50% - 32rem)); }
+/* The column of the site: 692 px with a 24 px gutter at each side. */
+body:not(:has(#model)) article, body.text-mode article { padding-inline: max(var(--space-5), calc(50% - 322px)); }
 body.text-mode #model { display: none; }
 #identity { overflow-wrap: anywhere; font-size: var(--small); }
 #solve-log { flex-basis: 100%; }
@@ -64,7 +66,7 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
   #model { height: calc(75svh + var(--fh-panel, 0px)); }
 }
 .curve { margin: 2rem 0; }
-.curve figcaption { font-family: var(--serif); font-size: 1.25rem; }
+.curve figcaption { font-weight: 500; }
 .curve svg { display: block; width: 100%; height: auto; font-size: 12px; }
 .curve text { fill: var(--muted); }
 .curve .label { fill: var(--text); }
@@ -76,8 +78,8 @@ summary { min-height: var(--target); cursor: pointer; padding-block: var(--space
 .curve .legend { font-size: 0.875rem; }
 .curve p { margin: 4px 0; font-size: 0.875rem; color: var(--muted); }
 /* A run in the text is a link: an inline text link needs no larger hit target. */
-[data-run]:not(button, select, option, input) { cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
-@media (hover: hover) { [data-run]:not(button, select, option, input):hover { text-decoration-color: var(--accent); } }
+[data-run]:not(button, select, option, input) { cursor: pointer; text-decoration: underline 0.08em var(--underline); text-underline-position: from-font; }
+@media (hover: hover) and (pointer: fine) { [data-run]:not(button, select, option, input):hover { text-decoration-color: var(--underline-hover); } }
 output { margin-left: var(--space-2); }
 #model { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 #bar { display: contents; }

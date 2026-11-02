@@ -133,21 +133,17 @@ fn base64(out: &mut String, bytes: &[u8]) {
 }
 
 /// The style of the UI layer for the mark `/*UI*/` of the page of `fh serve` and of a report:
-/// the `@font-face` rules of the fonts of the site style (`fonts/`, SIL Open Font License 1.1),
-/// Source Serif 4 for the titles and DM Sans for the text, then the tokens and the components
+/// the `@font-face` rules of the fonts of the site teoyujie.org (`fonts/`, SIL Open Font License
+/// 1.1), Inter for the text and IBM Plex Mono for the code, then the tokens and the components
 /// of `fh_viewer::ui`. The fonts are `data:` URLs, so the page and a report load no font file.
 pub(super) fn ui_style() -> String {
     let mut css = String::new();
     for (family, weight, bytes) in [
+        ("Inter", "100 900", &include_bytes!("fonts/inter.woff2")[..]),
         (
-            "Source Serif 4",
+            "IBM Plex Mono",
             "400",
-            &include_bytes!("fonts/source-serif-4.woff2")[..],
-        ),
-        (
-            "DM Sans",
-            "100 1000",
-            &include_bytes!("fonts/dm-sans.woff2")[..],
+            &include_bytes!("fonts/ibm-plex-mono.woff2")[..],
         ),
     ] {
         css.push_str(&format!(
@@ -157,7 +153,7 @@ pub(super) fn ui_style() -> String {
         base64(&mut css, bytes);
         css.push_str(") format(\"woff2\"); }\n");
     }
-    css.push_str(":root { --serif: \"Source Serif 4\", Georgia, serif; --sans: \"DM Sans\", system-ui, sans-serif; }\n");
+    css.push_str(":root { --sans: \"Inter\", Arial, sans-serif; --monospace: \"IBM Plex Mono\", ui-monospace, monospace; }\n");
     css + &fh_viewer::ui::css()
 }
 

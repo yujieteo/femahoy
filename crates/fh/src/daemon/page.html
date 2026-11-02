@@ -7,7 +7,8 @@
 <title>femahoy</title>
 <style>
 /* The layout of the page of fh serve. The tokens and the components (the toolbar, the buttons,
-   the menu and the help row) come from the UI layer of femahoy (crates/viewer/src/ui.rs). */
+   the menu and the help row) come from the UI layer of femahoy (crates/viewer/src/ui.rs), in the
+   look of the site teoyujie.org. */
 /*UI*/
 [data-omit="true"] { display: none !important; }
 body { display: flex; overflow: hidden; }
@@ -16,13 +17,13 @@ body { display: flex; overflow: hidden; }
   display: flex; flex: none; flex-direction: column; width: clamp(320px, 30vw, 440px);
   background: var(--side); border-right: 1px solid var(--line);
 }
-#chat .toolbar { font: var(--title)/1.2 var(--serif); }
+#chat .toolbar { font-weight: 500; }
 #log {
   display: flex; flex: 1; flex-direction: column; gap: var(--space-3); overflow-y: auto;
   padding: var(--space-1) var(--space-4) var(--space-4); scrollbar-width: thin; scrollbar-color: var(--raised) transparent;
 }
 #empty { margin: auto 0; padding: 0 var(--space-2); text-align: center; color: var(--muted); }
-#empty strong { display: block; margin-bottom: var(--space-2); font: 1.75rem/1.15 var(--serif); color: var(--text); text-wrap: balance; }
+#empty strong { display: block; margin-bottom: var(--space-2); font-weight: 500; color: var(--text); text-wrap: balance; }
 .you { align-self: flex-end; max-width: 88%; padding: var(--space-2) 14px; border-radius: 18px; background: var(--raised); }
 .you, .say, pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 details { font-size: var(--small); color: var(--muted); }
@@ -31,9 +32,9 @@ summary {
   border-radius: var(--radius); list-style: none; cursor: pointer;
 }
 summary::-webkit-details-marker { display: none; }
-summary::before { content: "\203A"; flex: none; width: 8px; transition: transform 0.15s; }
+summary::before { content: "\203A"; flex: none; width: 8px; transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1); }
 details[open] > summary::before { transform: rotate(90deg); }
-@media (hover: hover) { summary:hover { background: var(--raised); color: var(--text); } }
+@media (hover: hover) and (pointer: fine) { summary:hover { background: var(--raised); color: var(--text); } }
 summary code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
 /* A tool row shows a file path: when it is too long, its start changes to an ellipsis, so the file name stays. */
 summary code.tail { direction: rtl; text-align: left; }
@@ -87,7 +88,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #model:not([data-empty]) > .toolbar > * { pointer-events: auto; }
 #model:not([data-empty]) > .toolbar > :is(details, button, label, p) {
   max-width: 100%; padding-inline: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius);
-  background: var(--bg); box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+  background: var(--bg); box-shadow: var(--shadow);
 }
 #model:not([data-empty]) > .toolbar > details > summary { margin: 0; padding: 0; }
 #model:not([data-empty]) > .toolbar > details[open] { flex-basis: auto; width: min(560px, 100%); padding-bottom: var(--space-2); }
@@ -100,7 +101,7 @@ details pre { margin-top: 6px; padding: 10px var(--space-3); max-height: 360px; 
 #to-chat { display: none; }
 #runs { min-width: 0; font-weight: 500; }
 /* Runs and Files are navigation, as is Open report: the same size and colour as a button. */
-#model > .toolbar > details > summary { font-size: var(--body); color: var(--text); }
+#model > .toolbar > details > summary { font-size: var(--button-size); font-weight: 500; color: var(--text); }
 /* With no run open, an open list takes a full header row. Else the other summaries go to its side, at its vertical centre. */
 #model[data-empty] > .toolbar > details[open] { flex-basis: 100%; }
 /* The search field fills the rest of its row, as an iOS search field does. */
@@ -136,7 +137,7 @@ body.linked #fh-b-camera-controls { display: none; }
   padding: var(--space-1) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
 }
 /* A result that the agent opened while the model is out of view (a phone with a long chat). */
-#new-result { position: fixed; z-index: 3; left: 50%; bottom: calc(var(--target) + 6 * var(--space-4)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 2 * var(--space-4)); box-shadow: 0 4px 16px rgb(0 0 0 / 0.3); }
+#new-result { position: fixed; z-index: 3; left: 50%; bottom: calc(var(--target) + 6 * var(--space-4)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 2 * var(--space-4)); box-shadow: var(--shadow); }
 @media (max-width: 900px) { #chat { width: 320px; } #pair { flex-direction: column; } }
 /* A phone, also in landscape: the chat is above the model, and the page scrolls. */
 @media (max-width: 700px), (pointer: coarse) and (max-height: 500px) {
@@ -200,7 +201,7 @@ body.linked #fh-b-camera-controls { display: none; }
   <div id="solves" aria-label="Solves that run" hidden></div>
   <p id="error" hidden></p>
   <button type="button" id="rerun" data-control="prepare-rerun" hidden>Prepare rerun</button>
-  <button type="button" id="new-result" class="primary" hidden></button>
+  <button type="button" id="new-result" hidden></button>
   <form id="composer">
     <textarea id="input" rows="1" placeholder="A message for the agent" aria-label="A message for the agent"></textarea>
     <div class="row">
@@ -208,7 +209,7 @@ body.linked #fh-b-camera-controls { display: none; }
       <button type="button" class="icon" id="stop" title="Stop the agent and the commands that it started" aria-label="Stop agent and commands" hidden>
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor"/></svg>
       </button>
-      <button type="submit" class="icon primary" id="send" aria-label="Send" disabled>
+      <button type="submit" class="icon" id="send" aria-label="Send" disabled>
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
