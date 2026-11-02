@@ -486,8 +486,9 @@ impl Shown {
     }
 }
 
-/// The colour of a mark: the accent colour of the light appearance of the page.
-const MARK: u32 = crate::ui::LIGHT.accent;
+/// The colour of a mark: the second series colour of the light appearance. The accent of the
+/// page is gray, and a gray mark is hard to see on the gray mesh.
+const MARK: u32 = crate::ui::LIGHT.series[1];
 
 /// The place of the point `x` on the view `rect` with the matrix `m`, or `None` behind the eye.
 fn screen(m: &camera::Mat4, rect: egui::Rect, x: [f32; 3]) -> Option<egui::Pos2> {

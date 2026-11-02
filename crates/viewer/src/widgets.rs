@@ -10,9 +10,9 @@ use crate::results::{self, Location, BANDS, BAND_COLORS};
 use crate::ui::{self, Colors};
 use crate::view;
 
-/// The font of the controls: DM Sans (SIL Open Font License 1.1, `fonts/OFL.txt`), the sans
-/// font of the page.
-const DM_SANS: &[u8] = include_bytes!("../fonts/DMSans.ttf");
+/// The font of the controls: Inter (SIL Open Font License 1.1, `fonts/OFL.txt`), the font of
+/// the page. It is the `inter.woff2` of the page, decompressed to TrueType for egui.
+const INTER: &[u8] = include_bytes!("../fonts/Inter.ttf");
 
 /// The id of a flag in the egui memory: the results panel is in the page flow (a phone).
 pub const IN_FLOW: &str = "results in the page flow";
@@ -41,16 +41,16 @@ fn colors(ui: &egui::Ui) -> &'static Colors {
     }
 }
 
-/// The look of the page in the light and the dark appearance: the DM Sans font, and the
+/// The look of the page in the light and the dark appearance: the Inter font, and the
 /// colours, type sizes, spacing, radius and hit target of the tokens. No widget moves: egui
 /// has no reduced motion setting of the browser, so it has no animation. The type sizes are
 /// times `scale`, so that the panel text follows the iOS Dynamic Type size of the page text.
 pub fn style(ctx: &egui::Context, scale: f32) {
     let mut fonts = egui::FontDefinitions::default();
-    let sans = egui::FontData::from_static(DM_SANS);
-    fonts.font_data.insert("DM Sans".into(), Arc::new(sans));
+    let sans = egui::FontData::from_static(INTER);
+    fonts.font_data.insert("Inter".into(), Arc::new(sans));
     if let Some(family) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
-        family.insert(0, "DM Sans".into());
+        family.insert(0, "Inter".into());
     }
     ctx.set_fonts(fonts);
     for (theme, c) in [
@@ -62,7 +62,7 @@ pub fn style(ctx: &egui::Context, scale: f32) {
             s.text_styles = [
                 (TextStyle::Small, FontId::proportional(scale * ui::SMALL)),
                 (TextStyle::Body, FontId::proportional(scale * ui::BODY)),
-                (TextStyle::Button, FontId::proportional(scale * ui::BODY)),
+                (TextStyle::Button, FontId::proportional(scale * ui::BUTTON)),
                 (TextStyle::Heading, FontId::proportional(scale * ui::TITLE)),
                 (TextStyle::Monospace, FontId::monospace(scale * ui::MONO)),
             ]
@@ -77,26 +77,27 @@ pub fn style(ctx: &egui::Context, scale: f32) {
             v.window_fill = hex(c.bg);
             v.window_stroke.color = hex(c.line);
             v.error_fg_color = hex(c.error);
-            v.selection.bg_fill = hex(c.accent).gamma_multiply(0.35);
+            v.selection.bg_fill = hex(c.select);
             v.selection.stroke.color = hex(c.text);
             v.widgets.noninteractive.bg_stroke.color = hex(c.line);
             v.override_text_color = Some(hex(c.text));
             // The egui weak text (60% of the text colour) has 4.3:1 on the light page.
             v.weak_text_color = Some(hex(c.muted));
-            for (w, fill) in [
-                (&mut v.widgets.inactive, c.bg),
-                (&mut v.widgets.hovered, c.raised),
-                (&mut v.widgets.active, c.raised),
-                (&mut v.widgets.open, c.raised),
+            // The fills and the borders of the button of the page (`ui.css`).
+            for (w, fill, line) in [
+                (&mut v.widgets.inactive, c.button, c.button_line),
+                (&mut v.widgets.hovered, c.button_hover, c.button_hover_line),
+                (&mut v.widgets.active, c.button_line, c.button_on_line),
+                (&mut v.widgets.open, c.button_line, c.button_on_line),
             ] {
                 w.bg_fill = hex(fill);
                 w.weak_bg_fill = hex(fill);
-                w.bg_stroke = egui::Stroke::new(1.0, hex(c.line));
+                w.bg_stroke = egui::Stroke::new(1.0, hex(line));
                 w.corner_radius = egui::CornerRadius::same(ui::RADIUS as u8);
             }
             // The rail of a slider has the fill of an inactive widget and no border. A button
             // has the weak fill.
-            v.widgets.inactive.bg_fill = hex(c.raised);
+            v.widgets.inactive.bg_fill = hex(c.line);
         });
     }
 }
@@ -143,7 +144,7 @@ pub fn checkbox(ui: &mut egui::Ui, on: &mut bool, text: &str) -> egui::Response 
         ] {
             w.bg_fill = hex(fill);
             w.bg_stroke = egui::Stroke::new(1.5, hex(line));
-            w.fg_stroke = egui::Stroke::new(2.0, hex(c.on_button));
+            w.fg_stroke = egui::Stroke::new(2.0, hex(c.on_accent));
             w.corner_radius = egui::CornerRadius::same(4);
         }
         ui.checkbox(on, text)
