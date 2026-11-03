@@ -56,9 +56,7 @@ pub struct Group {
 
 #[cfg(unix)]
 mod os {
-    use super::{
-        address_limits, address_space_limit, solver_threads, vm_rss_bytes, Command, Group,
-    };
+    use super::{Command, Group};
     use std::os::unix::process::CommandExt;
 
     extern "C" {
@@ -82,7 +80,10 @@ mod os {
             if unsafe { getrlimit(9, &raw mut inherited) } != 0 {
                 inherited = [u64::MAX; 2];
             }
-            let limit = address_limits(address_space_limit(bytes, solver_threads()), inherited[1]);
+            let limit = super::address_limits(
+                super::address_space_limit(bytes, super::solver_threads()),
+                inherited[1],
+            );
             // SAFETY: `setrlimit` is async-signal-safe.
             unsafe {
                 cmd.pre_exec(move || {
@@ -127,7 +128,7 @@ mod os {
                 // Not the rss of `stat`: it counts pages, and the page size is not
                 // always 4 KiB (for example 16 KiB or 64 KiB on arm64).
                 let status = std::fs::read_to_string(entry.path().join("status"));
-                total += vm_rss_bytes(&status.unwrap_or_default());
+                total += super::vm_rss_bytes(&status.unwrap_or_default());
             }
         }
         Ok(total)
