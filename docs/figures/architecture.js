@@ -6,7 +6,7 @@
 // Each label comes from README.md and the diagram in section 4 of DESIGN.md.
 import * as E from './emil.js';
 
-export const figure = { width: 72, height: 74, name: 'architecture', format: 'journal' };
+export const figure = { width: 56, height: 108, name: 'architecture', format: 'journal' };
 
 export default function draw(F, L) {
   const { r, line, text } = E.useEmil(F, L, 'web');
@@ -22,41 +22,44 @@ export default function draw(F, L) {
   };
   const note = (x, y, str, anchor = 'start') =>
     L.text(root, m(x), m(y), str, { anchor, valign: 'middle', size: text.small, color: G[1100] });
-  const arrow = (a, b, kind) => { F.relate(a, b, kind); L.connect(F, a, b, { stroke: ink, width: line.normal, gap0: 1.5, gap1: 1.5 }); };
+  const arrow = (a, b, kind, via) => {
+    F.relate(a, b, kind);
+    L.connect(F, a, b, { stroke: ink, width: line.normal, gap0: 1.5, gap1: 1.5, via, radius: m(2) });
+  };
 
-  // columns and rows (mm)
-  const xl = 5, xr = 41, w = 26, h = 13;
-  const yB = 3, y1 = 29, y2 = 55;
+  // one column of cards, so that the figure stays narrow and its text stays legible on a phone (mm)
+  const x = 3, w = 36, h = 12, cx = x + w / 2, xLoop = 48;
+  const yB = 2, y1 = 25, y2 = 47, y3 = 69, y4 = 91;
 
   // the browser: on the computer, or on a phone over an SSH port forward
-  card('browser', xl, yB, 62, h, 'Browser', 'chat and 3D viewer');
+  card('browser', x, yB, 50, 11, 'Browser', 'chat and 3D viewer');
 
   // everything below runs on your computer
-  L.rect(root, m(2), m(23), m(68), m(49), { fill: 'none', stroke: G[800], width: line.thin, dash: [2, 1.5], r: r.card });
-  L.text(root, m(67), m(26.5), 'your computer', { anchor: 'end', valign: 'middle', size: text.small, color: G[1100] });
+  L.rect(root, m(1), m(19), m(54), m(87), { fill: 'none', stroke: G[800], width: line.thin, dash: [2, 1.5], r: r.card });
+  L.text(root, m(53), m(22), 'your computer', { anchor: 'end', valign: 'middle', size: text.small, color: G[1100] });
 
-  card('serve', xl, y1, w, h, 'fh serve', 'daemon');
-  card('agent', xr, y1, w, h, 'Claude Code', 'your own login', 'violet');
-  card('state', xl, y2, w, h, 'State folder', 'runs and results');
-  card('fh', xr, y2, w, h, 'fh commands', 'mesh, solve, report');
+  card('serve', x, y1, w, h, 'fh serve', 'daemon');
+  card('agent', x, y2, w, h, 'Claude Code', 'your own login', 'violet');
+  card('fh', x, y3, w, h, 'fh commands', 'mesh, solve, report');
+  card('state', x, y4, w, h, 'State folder', 'runs and results');
 
   // relations, in the direction of each action
-  const browserFoot = [m(xl + w / 2), m(yB + h)];
-  F.anchor('browser.foot', root, ...browserFoot);
+  F.anchor('browser.foot', root, m(cx), m(yB + 11));
   arrow('browser.foot', 'serve.top', 'request');
-  note(xl + w / 2 + 2, yB + h + 3.3, 'HTTP, 127.0.0.1:8790, token');
+  note(cx + 2, yB + 11 + 3, 'HTTP, 127.0.0.1:8790, token');
 
-  arrow('serve.right', 'agent.left', 'starts');
-  note((xl + w + xr) / 2, y1 + h / 2 - 2.6, 'starts', 'middle');
+  arrow('serve.bottom', 'agent.top', 'starts');
+  note(cx + 2, (y1 + h + y2) / 2, 'starts');
 
   arrow('agent.bottom', 'fh.top', 'runs');
-  note(xr + w / 2 + 2, (y1 + h + y2) / 2, 'runs');
+  note(cx + 2, (y2 + h + y3) / 2, 'runs');
 
-  arrow('fh.left', 'state.right', 'writes');
-  note((xl + w + xr) / 2, y2 + h / 2 - 2.6, 'writes', 'middle');
+  arrow('fh.bottom', 'state.top', 'writes');
+  note(cx + 2, (y3 + h + y4) / 2, 'writes');
 
-  arrow('state.top', 'serve.bottom', 'reads');
-  note(xl + w / 2 - 2, (y1 + h + y2) / 2, 'reads', 'end');
+  // the loop back on the right: fh serve reads the state folder
+  arrow('state.right', 'serve.right', 'reads', [[m(xLoop), m(y4 + h / 2)], [m(xLoop), m(y1 + h / 2)]]);
+  note(xLoop - 1.5, (y2 + h + y3) / 2, 'reads', 'end');
 
   E.emilTheme(F);
 }
