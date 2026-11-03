@@ -7,7 +7,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: desktop
     # CI installs no solver for now: the solver installs downloaded from a slow Ubuntu mirror and
     # stopped at the time limit. Each test that solves skips. The validation cases run by hand
     # (fh validate, DESIGN.md section 7). This limit is about 3 times the time of the job (2 minutes).
