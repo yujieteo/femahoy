@@ -14,6 +14,13 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+      # The desktop runner image has no Rust and no C compiler. rust-toolchain.toml sets the version and targets.
+      - name: Install Rust and a C compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       # These tests protect the units and differences of the validation reports. They need no solver.
       - name: Test the validation reports
         run: python3 scripts/test-validation-reports.py
