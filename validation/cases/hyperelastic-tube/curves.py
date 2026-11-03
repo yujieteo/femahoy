@@ -15,11 +15,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[1]), str(HERE)]
-import vtu  # noqa: E402
+import vtu
 
 with contextlib.redirect_stdout(io.StringIO()):
     # reference.py prints the reference values when it loads.
-    from reference import A, T, pressure  # noqa: E402
+    from reference import A, T, pressure
 
 
 def forces(dat):

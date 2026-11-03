@@ -34,7 +34,9 @@ def main(out, folders):
     if abs(-lifts(5) / reference - 1) > 1e-6:
         sys.exit(f"curves.py: the lift theory gives {-lifts(5)} at mid-height, check.toml gives {reference}")
     z = {}
-    nodes = re.search(r"\*NODE[^\n]*\n(.*?)\n\*", (HERE / "job.inp").read_text(), re.S)[1]
+    found = re.search(r"\*NODE[^\n]*\n(.*?)\n\*", (HERE / "job.inp").read_text(), re.S)
+    assert found, "job.inp has no *NODE block"
+    nodes = found[1]
     for line in nodes.splitlines():
         n, *xyz = line.split(",")
         z[int(n)] = float(xyz[2])

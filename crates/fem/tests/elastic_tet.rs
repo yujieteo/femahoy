@@ -392,7 +392,7 @@ fn a_model_with_no_unique_solution_is_refused() {
 /// several thicknesses, for the choice of the solver. Run with `cargo test --release -p fh-fem
 /// --test elastic_tet crossover -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a timing run by hand, with --ignored --nocapture"]
 fn crossover() {
     let time = |name: &str, m: &Model| {
         let mut out = Vec::new();

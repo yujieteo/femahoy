@@ -135,9 +135,10 @@ fn fixed_text(fixed: &BTreeMap<u8, f64>, length_unit: &str) -> String {
 /// A value with 4 significant digits and no zeros at the end, for a label.
 fn short(v: f64) -> String {
     let s = format_value(v);
-    match s.contains('.') && !s.contains(['e', 'E']) {
-        true => s.trim_end_matches('0').trim_end_matches('.').to_owned(),
-        false => s,
+    if s.contains('.') && !s.contains(['e', 'E']) {
+        s.trim_end_matches('0').trim_end_matches('.').to_owned()
+    } else {
+        s
     }
 }
 
@@ -145,16 +146,15 @@ fn short(v: f64) -> String {
 fn direction(f: [f64; 3]) -> String {
     let size = length(f);
     let axes: Vec<usize> = (0..3).filter(|&k| f[k].abs() > 1e-9 * size).collect();
-    match axes[..] {
-        [k] => format!(
+    if let [k] = axes[..] {
+        format!(
             "{}{}",
             if f[k] < 0.0 { "-" } else { "+" },
             ["x", "y", "z"][k]
-        ),
-        _ => {
-            let u = f.map(|x| short(x / size));
-            format!("({}, {}, {})", u[0], u[1], u[2])
-        }
+        )
+    } else {
+        let u = f.map(|x| short(x / size));
+        format!("({}, {}, {})", u[0], u[1], u[2])
     }
 }
 
@@ -367,11 +367,12 @@ pub fn build(model: &Model, units: &str) -> Preview {
             for (t, tri) in mesh.triangles.iter().enumerate() {
                 let nodes = tri.map(|p| mesh.source_node[p as usize]);
                 let cell = mesh.triangle_cell[t];
-                let inside = match d.surface {
-                    true => d.faces.get(&cell).is_some_and(|faces| {
+                let inside = if d.surface {
+                    d.faces.get(&cell).is_some_and(|faces| {
                         faces.iter().any(|f| nodes.iter().all(|n| f.contains(n)))
-                    }),
-                    false => nodes.iter().all(|n| d.nodes.contains(n)),
+                    })
+                } else {
+                    nodes.iter().all(|n| d.nodes.contains(n))
                 };
                 if !inside {
                     continue;
@@ -439,7 +440,7 @@ pub fn build(model: &Model, units: &str) -> Preview {
             it.label = format!("{}: {text}", it.name);
             let count = match it.kind {
                 Kind::Support => &mut supports,
-                _ => &mut loads,
+                Kind::Load => &mut loads,
             };
             it.color = 1 + 4 * usize::from(it.kind != Kind::Support) + *count % 4;
             *count += 1;
@@ -489,9 +490,10 @@ impl Preview {
         let c = item.center.map(|x| x as f32);
         let step: [f32; 3] = std::array::from_fn(|k| dir[k] * ARROW * radius);
         // A push ends on the face. A pull or a shear starts on it.
-        Some(match dot(item.force, item.outward) < 0.0 {
-            true => (std::array::from_fn(|k| c[k] - step[k]), c),
-            false => (c, std::array::from_fn(|k| c[k] + step[k])),
+        Some(if dot(item.force, item.outward) < 0.0 {
+            (std::array::from_fn(|k| c[k] - step[k]), c)
+        } else {
+            (c, std::array::from_fn(|k| c[k] + step[k]))
         })
     }
 

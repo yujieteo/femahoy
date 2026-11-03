@@ -1,8 +1,9 @@
 """Print the frequency of each mode from the job.dat of the *FREQUENCY step of CalculiX (argument 1)."""
 import sys
+from pathlib import Path
 
 inside = False
-for line in open(sys.argv[1]):
+for line in Path(sys.argv[1]).read_text().splitlines(keepends=True):
     if "E I G E N V A L U E   O U T P U T" in line:
         inside = True
         continue

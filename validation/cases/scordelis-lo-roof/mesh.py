@@ -7,8 +7,8 @@ NODE_SETS = {"END0": lambda x,y,z: abs(x)<1e-7,
              "END1": lambda x,y,z: abs(x-50000)<1e-7,
              "TIP": lambda x,y,z: abs(x-25000)<1e-7 and y>16069}
 
-import sys
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 

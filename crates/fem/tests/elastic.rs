@@ -447,7 +447,7 @@ fn a_factor_above_the_ceiling_gives_multigrid() {
 fn panel(n: usize) -> Model {
     let mut parts = vec![part("skin", 0, [0.0, 0.0, 0.0], [1.0, 0.5, 0.002])];
     for r in 0..4 {
-        let y = 0.06 + 0.12 * r as f64;
+        let y = 0.06 + 0.12 * f64::from(r);
         parts.push(part(
             &format!("rib{r}"),
             0,
@@ -486,7 +486,7 @@ fn panel(n: usize) -> Model {
 /// layers and the panel. Run with
 /// `cargo test --release -p fh-fem --test elastic crossover -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a timing run by hand, with --ignored --nocapture"]
 fn crossover() {
     let cube = |n: usize| {
         let mut m = cantilever(1.0, 1.0, 1.0, 1.0 / n as f64, 2, 0.0);

@@ -23,3 +23,6 @@ server = ["dep:fh-viewer"]
 name = "fh"
 path = "src/main.rs"
 required-features = ["server"]
+
+[lints]
+workspace = true

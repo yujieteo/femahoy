@@ -30,11 +30,11 @@ with open(MESH) as f:
                 section = "node"
             elif key.startswith("*ELEMENT"):
                 section = "element"
-                kind = [p.split("=")[1] for p in key.replace(" ", "").split(",") if p.startswith("TYPE=")][0]
+                kind = next(p.split("=")[1] for p in key.replace(" ", "").split(",") if p.startswith("TYPE="))
                 if kind != "C3D10":
                     section = None
                     continue
-                elset = [p.split("=")[1] for p in key.replace(" ", "").split(",") if p.startswith("ELSET=")][0]
+                elset = next(p.split("=")[1] for p in key.replace(" ", "").split(",") if p.startswith("ELSET="))
             continue
         if section == "node":
             v = [x for x in s.split(",") if x.strip()]

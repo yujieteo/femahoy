@@ -105,43 +105,44 @@ impl MeshGpu {
         let depth_format = egui_wgpu::depth_format_from_bits(DEPTH_BITS, 0);
         let line_attrs = wgpu::vertex_attr_array![0 => Float32x3];
         let face_attrs = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32];
-        let pipeline = |topology, bias: i32, entry: &str, layout_v: wgpu::VertexBufferLayout| {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("fh-viewer pipeline"),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &module,
-                    entry_point: Some(entry),
-                    compilation_options: Default::default(),
-                    buffers: &[Some(layout_v)],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &module,
-                    entry_point: Some("fs_main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(rs.target_format.into())],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology,
-                    ..Default::default()
-                },
-                // Push the faces back so the edges drawn on them pass the depth test.
-                depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
-                    format,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
-                    stencil: Default::default(),
-                    bias: wgpu::DepthBiasState {
-                        constant: bias,
-                        slope_scale: bias as f32,
-                        clamp: 0.0,
+        let pipeline =
+            |topology, bias: i32, entry: &str, layout_v: wgpu::VertexBufferLayout<'_>| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("fh-viewer pipeline"),
+                    layout: Some(&layout),
+                    vertex: wgpu::VertexState {
+                        module: &module,
+                        entry_point: Some(entry),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        buffers: &[Some(layout_v)],
                     },
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            })
-        };
+                    fragment: Some(wgpu::FragmentState {
+                        module: &module,
+                        entry_point: Some("fs_main"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        targets: &[Some(rs.target_format.into())],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology,
+                        ..Default::default()
+                    },
+                    // Push the faces back so the edges drawn on them pass the depth test.
+                    depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
+                        format,
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState {
+                            constant: bias,
+                            slope_scale: bias as f32,
+                            clamp: 0.0,
+                        },
+                    }),
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
         let face_pipeline = pipeline(
             wgpu::PrimitiveTopology::TriangleList,
             2,
@@ -167,7 +168,7 @@ impl MeshGpu {
         let layer = |indices: &[u32]| {
             let uniforms = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("fh-viewer uniforms"),
-                size: std::mem::size_of::<Uniforms>() as u64,
+                size: size_of::<Uniforms>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });

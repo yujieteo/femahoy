@@ -313,7 +313,7 @@ fn build_indexed(points: &[[f64; 3]], elements: &[Option<(&str, Vec<u32>)>]) -> 
         for (k, face) in el_faces.iter().enumerate() {
             match index.entry(sorted_key(&face.corners)) {
                 std::collections::hash_map::Entry::Occupied(e) => {
-                    seen[*e.get() as usize].count += 1
+                    seen[*e.get() as usize].count += 1;
                 }
                 std::collections::hash_map::Entry::Vacant(v) => {
                     v.insert(seen.len() as u32);
@@ -498,7 +498,7 @@ mod tests {
         let mut nodes: Vec<Node> = (corners.iter().enumerate())
             .map(|(i, p)| node(i as u32 + 1, p[0], p[1], p[2]))
             .collect();
-        let mut mids = std::collections::HashMap::new();
+        let mut mids = HashMap::new();
         let mut elements = Vec::new();
         for (e, t) in list.iter().enumerate() {
             let mut ids = t.to_vec();

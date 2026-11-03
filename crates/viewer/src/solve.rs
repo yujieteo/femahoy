@@ -452,7 +452,7 @@ mod tests {
         let mut results = Results::default();
         let coarse = COAX.replace("max_cell = 4e-5", "max_cell = 2e-4");
         let table = solve(&coarse, BROWSER, &mut |_| {}, &mut |s| {
-            results.receive(&s[..]).unwrap()
+            results.receive(&s[..]).unwrap();
         })
         .unwrap();
         assert!(table.contains("# f R1_1 L1_1"), "{table}");
@@ -467,7 +467,7 @@ mod tests {
         let mut results = Results::default();
         let mut lines = Vec::new();
         let probes = solve(WALL, BROWSER, &mut |l| lines.push(l.to_owned()), &mut |s| {
-            results.receive(&s[..]).unwrap()
+            results.receive(&s[..]).unwrap();
         })
         .unwrap();
         assert_eq!(probes.lines().count(), 2, "{probes}");
@@ -498,7 +498,7 @@ mod tests {
     fn the_page_gets_the_stress_and_a_large_structure_is_refused() {
         let mut results = Results::default();
         let probes = solve(BLOCK, BROWSER, &mut |_| {}, &mut |s| {
-            results.receive(&s[..]).unwrap()
+            results.receive(&s[..]).unwrap();
         })
         .unwrap();
         assert!(probes.starts_with("# centre.ux "), "{probes}");
@@ -528,7 +528,7 @@ mod tests {
             include_str!("../../../validation/cases/grid-frequency-cantilever/beam/grid.toml");
         let mut results = Results::default();
         let table = solve(BEAM, BROWSER, &mut |_| {}, &mut |s| {
-            results.receive(&s[..]).unwrap()
+            results.receive(&s[..]).unwrap();
         })
         .unwrap();
         assert!(table.starts_with(STRUCTURE_MODES_HEAD), "{table}");
@@ -553,7 +553,7 @@ mod tests {
     fn the_page_gets_the_s_parameters_and_the_fields_of_a_waveguide() {
         let mut results = Results::default();
         let table = solve(GUIDE, BROWSER, &mut |_| {}, &mut |s| {
-            results.receive(&s[..]).unwrap()
+            results.receive(&s[..]).unwrap();
         })
         .unwrap();
         assert!(table.starts_with("# frequency S11_re"), "{table}");

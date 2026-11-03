@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import vtu  # noqa: E402
+import vtu
 
 # derivation.md, "Model": L = 100 mm, mL = 1, h / mk = 0.025, the base at 100 °C, the air at 20 °C.
 L, ML, HMK, TB, TAIR = 100.0, 1.0, 0.025, 100.0, 20.0

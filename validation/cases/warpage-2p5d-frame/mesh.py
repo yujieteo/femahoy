@@ -4,6 +4,7 @@ Each material boundary cuts the whole grid. The UF2 fillet has 3 steps,
 each 0.3 mm wide, as in the mesh audit. Adjacent blocks share nodes.
 """
 
+import itertools
 import math
 import sys
 from pathlib import Path
@@ -40,7 +41,7 @@ for j in range(3):
 def axis(k):
     cuts = sorted({round(b[i], 10) for b in BOXES.values() for i in (k, k + 3)})
     values = []
-    for a, b in zip(cuts, cuts[1:]):
+    for a, b in itertools.pairwise(cuts):
         n = max(1, math.ceil((b - a) / H - 1e-9))
         if k == 2 and a == 0:
             n = 4  # The audit uses 4 elements through the substrate.
@@ -62,9 +63,9 @@ def node(p):
 
 EDGES = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
          (0, 4), (1, 5), (2, 6), (3, 7)]
-for x0, x1 in zip(X, X[1:]):
-    for y0, y1 in zip(Y, Y[1:]):
-        for z0, z1 in zip(Z, Z[1:]):
+for x0, x1 in itertools.pairwise(X):
+    for y0, y1 in itertools.pairwise(Y):
+        for z0, z1 in itertools.pairwise(Z):
             centre = ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
             names = [name for name, b in BOXES.items()
                      if all(b[k] < centre[k] < b[k + 3] for k in range(3))]

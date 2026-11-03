@@ -18,7 +18,7 @@ import tomllib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import vtu  # noqa: E402
+import vtu
 
 # derivation.md: the ellipse with a/b = sx/sy = 2 (power 2) has the hoop stress sx + sy = 1.5 at
 # each point of its edge. No hole gives a lower peak. check.toml has the 3 values.

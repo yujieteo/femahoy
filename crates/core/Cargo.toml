@@ -8,3 +8,6 @@ publish.workspace = true
 [dependencies]
 fh-fem = { path = "../fem" }
 toml_edit = { version = "0.25.17", default-features = false, features = ["parse"] }
+
+[lints]
+workspace = true

@@ -209,7 +209,7 @@ impl View {
                         .map_err(|_| "range needs 2 finite limits in ascending order")?;
                     match v[..] {
                         [lo, hi] if lo.is_finite() && hi.is_finite() && lo < hi => {
-                            view.range = Some([lo, hi])
+                            view.range = Some([lo, hi]);
                         }
                         _ => return Err("range needs 2 finite limits in ascending order".into()),
                     }
@@ -219,7 +219,7 @@ impl View {
                         "true" => true,
                         "false" => false,
                         _ => return Err("mesh needs true or false".into()),
-                    })
+                    });
                 }
                 "quantity" => match value {
                     "velocity" | "kinematic-pressure" => view.quantity = Some(value.into()),
@@ -459,8 +459,10 @@ impl ViewState {
                         .ranges
                         .iter()
                         .find(|(n, l, _, _)| n == &field.name && *l == field.location)
-                        .map(|(_, _, lo, hi)| (*lo, *hi))
-                        .unwrap_or_else(|| results::contour_range(field)),
+                        .map_or_else(
+                            || results::contour_range(field),
+                            |(_, _, lo, hi)| (*lo, *hi),
+                        ),
                     _ => results::contour_range(field),
                 };
                 Contour::On { field, lo, hi }

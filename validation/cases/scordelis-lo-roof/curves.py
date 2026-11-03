@@ -20,7 +20,9 @@ N = 24  # the elements along each side of part.inp (derivation.md)
 def main(out, folders):
     runs = dict(f.split("=", 1) for f in folders)
     dat = (Path(runs["job.inp"]) / "ccx/job.dat").read_text()
-    uz = float(re.search(r"for set TIP and time\s+\S+\n\n\s+\d+\s+\S+\s+\S+\s+(\S+)", dat)[1])
+    found = re.search(r"for set TIP and time\s+\S+\n\n\s+\d+\s+\S+\s+\S+\s+(\S+)", dat)
+    assert found, "job.dat has no displacement of the set TIP"
+    uz = float(found[1])
     study = {int(n): float(u) for n, u in re.findall(r"^\| (\d+) x \d+[^|]* \| \d+ \| \d+ \| (\S+) \|", (HERE / "derivation.md").read_text(), re.M)}
     study[N] = uz
     reference = tomllib.loads((HERE / "check.toml").read_text())["tip_deflection_z"]["value"]

@@ -342,14 +342,15 @@ impl SolveWorker {
             let inbox = inbox.clone();
             Closure::<dyn FnMut(JsValue)>::new(move |event: JsValue| {
                 let field = |key: &str| js_sys::Reflect::get(&event, &key.into()).ok();
-                let message = match error {
-                    false => field("data").ok_or_else(|| "a message with no data".to_owned()),
-                    true => Err(format!(
+                let message = if error {
+                    Err(format!(
                         "the browser solver stopped: {}",
                         field("message")
                             .and_then(|m| m.as_string())
                             .unwrap_or_default()
-                    )),
+                    ))
+                } else {
+                    field("data").ok_or_else(|| "a message with no data".to_owned())
                 };
                 let mut inbox = inbox.borrow_mut();
                 inbox.queue.push_back(message);
@@ -405,7 +406,7 @@ async fn solve_case(
     if fh_core::grid::is_line(&text) {
         fh_core::line::read(&text).map(|_| ())
     } else {
-        crate::solve::read_case(&text).map(|_| ())
+        solve::read_case(&text).map(|_| ())
     }
     .map_err(|e| format!("{name}: {e}"))?;
     let script = self::text(get(token, SCRIPT_PATH, signal).await?, SCRIPT_PATH)?;
@@ -451,7 +452,7 @@ async fn solve_case(
     }
     drop(worker);
     let mut loads = preview::build(&fh_core::inp::parse(""), "");
-    loads.title = name.to_owned();
+    name.clone_into(&mut loads.title);
     let view = view::View::parse("").map_err(|e| format!("{name}: the view: {e}"))?;
     Ok(Content::Results(
         Box::new(results),
@@ -469,7 +470,7 @@ async fn model(
 ) -> Result<Box<preview::Preview>, String> {
     let input = text(get(token, path, signal).await?, path)?;
     let mut p = preview::build(&fh_core::inp::parse(&input), &fh_core::inp::units(&input));
-    p.title = name.to_owned();
+    name.clone_into(&mut p.title);
     Ok(Box::new(p))
 }
 

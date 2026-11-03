@@ -30,8 +30,8 @@ def model(dat):
     for (f, real), (f2, imag) in zip(blocks[0::2], blocks[1::2]):
         assert f == f2, (f, f2)
         u3 = [complex(float(a.split()[3]), float(b.split()[3])) for a, b in zip(real.splitlines(), imag.splitlines())]
-        f = float(f)
-        out.append((f, (2 * math.pi * f) ** 4 * sum(abs(u) ** 2 for u in u3) / len(u3) / G**2))
+        hz = float(f)
+        out.append((hz, (2 * math.pi * hz) ** 4 * sum(abs(u) ** 2 for u in u3) / len(u3) / G**2))
     return out
 
 

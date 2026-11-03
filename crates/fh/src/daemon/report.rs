@@ -304,7 +304,7 @@ fn step_at(text: &str, range: &Range<usize>) -> Option<usize> {
 fn check(
     text: &str,
     run: &str,
-    controls: &[&Control],
+    controls: &[&Control<'_>],
     steps: usize,
     results: impl FnOnce() -> Result<fh_viewer::results::Results, String>,
 ) -> Result<(), String> {
@@ -346,7 +346,7 @@ fn check(
 /// The steps (from 0) of a run of `steps` steps that its controls open: each step number of a
 /// control, each step of a slider, and the last step for a control with no `data-step` or a
 /// run with no control. In order, with no step 2 times.
-fn kept_steps(text: &str, controls: &[&Control], steps: usize) -> Vec<usize> {
+fn kept_steps(text: &str, controls: &[&Control<'_>], steps: usize) -> Vec<usize> {
     let last = steps.saturating_sub(1);
     let mut kept = Vec::new();
     for c in controls {
@@ -423,7 +423,7 @@ fn build(o: &Options) -> Result<String, String> {
         let pvd = String::from_utf8_lossy(&store.result_file(run, PVD_FILE).map_err(failed)?)
             .into_owned();
         let mut entries = read_pvd(&pvd).map_err(|e| format!("{run}: {PVD_FILE}: {e}"))?;
-        let mine: Vec<&Control> = found_controls.iter().filter(|c| c.run == run).collect();
+        let mine: Vec<&Control<'_>> = found_controls.iter().filter(|c| c.run == run).collect();
         check(&text, run, &mine, entries.len(), || {
             fh_viewer::results::load(PVD_FILE, &pvd, |file| {
                 store.result_file(run, file).map_err(|(_, m)| m)

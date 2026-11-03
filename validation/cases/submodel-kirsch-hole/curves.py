@@ -19,7 +19,7 @@ def line_x0(path):
     """{y: S11} at the nodes of x = 0 in the result file path. ccx writes each node of a 2D
     element 3 times through the thickness (OUTPUT=3D): the value is the mean of the 3."""
     nodes, s11, block = {}, {}, None
-    for line in open(path):
+    for line in Path(path).read_text().splitlines(keepends=True):
         if line.startswith("    2C"):
             block = "nodes"
         elif line.startswith(" -4  STRESS"):

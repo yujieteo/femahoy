@@ -364,7 +364,7 @@ fn gmres(
     a: &Csr,
     b: &[f64],
     x: &mut [f64],
-    m: &Preconditioner,
+    m: &Preconditioner<'_>,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<usize, String> {
     let n = b.len();

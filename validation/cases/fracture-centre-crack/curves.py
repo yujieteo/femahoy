@@ -14,7 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))
-import vtu  # noqa: E402
+import vtu
 
 # derivation.md: steel E = 210000 MPa, nu = 0.3, plane strain. The tip is at x = a = 25 mm. The
 # 8 rings of the fine mesh go to 5 mm from the tip.

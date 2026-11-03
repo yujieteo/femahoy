@@ -585,7 +585,7 @@ fn the_report_list_needs_the_token_and_opens_reports_with_tickets() {
         .write(true)
         .open(lab.state().join("runs/run-000001/report.html"))
         .unwrap();
-    old.set_modified(std::time::SystemTime::UNIX_EPOCH + Duration::from_secs(86400))
+    old.set_modified(std::time::SystemTime::UNIX_EPOCH + Duration::from_hours(24))
         .unwrap();
     drop(old);
 

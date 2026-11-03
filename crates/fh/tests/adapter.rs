@@ -34,7 +34,7 @@ fn ccx(exe: &Path) -> Ccx {
 
 /// Solve to the end: the error text, or an empty text on success.
 fn run(input: &Path, run: &Path, exe: &Path) -> Result<(), String> {
-    ccx(exe).run(input, run).map_err(|e| e.to_string())
+    ccx(exe).run(input, run).map_err(|e| e.clone())
 }
 
 /// One C3D10 tet, tied at x = 0 and pulled at node 2, x = 1. Nodes 5 to 10 are the midside
@@ -261,7 +261,7 @@ fn staged_frd() -> String {
         frd += &format!("    1PSTEP{step:25}{:12}{step:12}\n", 1);
         frd += &format!(
             "  100CL  1{step:02}{:12.5E}\n -4  DISP        4    1\n",
-            step as f64
+            f64::from(step)
         );
         for id in 1..=12 {
             frd += &format!(" -1{id:10}{:12.5E}{:12.5E}{:12.5E}\n", 0.0, 0.0, 0.0);

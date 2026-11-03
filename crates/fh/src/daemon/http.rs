@@ -314,7 +314,10 @@ fn authorize(req: &Request, port: u16, ctx: &Ctx) -> Result<(), Failure> {
     // A ticket permits one navigation to one report. The report never receives the daemon token.
     if req.method == "GET" {
         if let Some(ticket) = req.query_value("ticket") {
-            let mut tickets = ctx.report_tickets.lock().unwrap_or_else(|e| e.into_inner());
+            let mut tickets = ctx
+                .report_tickets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             if tickets
                 .get(ticket)
                 .is_some_and(|(path, until)| path == &req.path && *until > Instant::now())
@@ -420,7 +423,10 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
             }
             let ticket = super::random_hex(32).map_err(|e| fail(500, e))?;
             let now = Instant::now();
-            let mut tickets = ctx.report_tickets.lock().unwrap_or_else(|e| e.into_inner());
+            let mut tickets = ctx
+                .report_tickets
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             tickets.retain(|_, (_, until)| *until > now);
             if tickets.len() >= MAX_CONNECTIONS {
                 return Err(fail(503, "too many report requests"));
@@ -429,7 +435,7 @@ fn route(ctx: &Ctx, req: &Request) -> Result<Reply, Failure> {
                 ticket.clone(),
                 (
                     format!("/api/v1/runs/{r}/report"),
-                    now + Duration::from_secs(60),
+                    now + Duration::from_mins(1),
                 ),
             );
             m.set("ticket", ticket);

@@ -319,7 +319,7 @@ impl GetDp {
         let run_dir = prepare_run_dir(run_dir, &case)?;
         let work = run_dir.join(WORK);
         copy_case(&case, &work, false)?;
-        let mut programs: Vec<(Program, PathBuf, Vec<&str>)> = Vec::new();
+        let mut programs: Vec<(Program<'_>, PathBuf, Vec<&str>)> = Vec::new();
         if work.join("case.geo").is_file() {
             let gmsh = Program {
                 name: "gmsh",

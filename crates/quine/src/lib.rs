@@ -46,11 +46,7 @@ pub fn run(args: &[String]) -> i32 {
     {
         eprintln!("fh-quine: {}: {e}", out.join("check.txt").display());
     }
-    if passed {
-        0
-    } else {
-        1
-    }
+    i32::from(!passed)
 }
 
 /// The C entry point. std reads no arguments for this target, so they come from `argv`.

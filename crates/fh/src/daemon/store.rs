@@ -569,7 +569,7 @@ impl Store {
             .filter_map(|e| {
                 let run = e.file_name().into_string().ok().filter(|n| valid_run(n))?;
                 let path = e.path().join("report.html");
-                let meta = fs::metadata(&path).ok().filter(|m| m.is_file())?;
+                let meta = fs::metadata(&path).ok().filter(fs::Metadata::is_file)?;
                 let time = meta
                     .modified()
                     .ok()?

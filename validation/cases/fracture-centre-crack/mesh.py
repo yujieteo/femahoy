@@ -77,7 +77,7 @@ def corner(k, j):
 def mid(n, m, f=0.5):
     """The node at the fraction f of the straight edge from node n to node m."""
     (x0, y0), (x1, y1) = nodes[n - 1], nodes[m - 1]
-    key = ("m", n, m) if f != 0.5 else ("m",) + tuple(sorted((n, m)))
+    key = ("m", n, m) if f != 0.5 else ("m", *tuple(sorted((n, m))))
     return node(key, x0 + f * (x1 - x0), y0 + f * (y1 - y0))
 
 

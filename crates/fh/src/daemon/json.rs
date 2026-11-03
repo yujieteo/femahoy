@@ -35,9 +35,10 @@ impl Json {
         let mut p = Parser(text.as_bytes(), 0);
         let v = p.value(0)?;
         p.space();
-        match p.1 == p.0.len() {
-            true => Ok(v),
-            false => p.fail("text after the value"),
+        if p.1 == p.0.len() {
+            Ok(v)
+        } else {
+            p.fail("text after the value")
         }
     }
 
@@ -120,9 +121,10 @@ impl Parser<'_> {
                 Ok(Json::Object(self.items("}", |p| {
                     p.space();
                     let key = p.string()?;
-                    match p.eat(":") {
-                        true => Ok((key, p.value(depth + 1)?)),
-                        false => p.fail("no ':'"),
+                    if p.eat(":") {
+                        Ok((key, p.value(depth + 1)?))
+                    } else {
+                        p.fail("no ':'")
                     }
                 })?))
             }
@@ -185,19 +187,18 @@ impl Parser<'_> {
                             let hi = self.hex4()?;
                             let pair = (0xD800..0xDC00).contains(&hi)
                                 && self.0[self.1..].starts_with(b"\\u");
-                            let code = match pair {
-                                true => {
-                                    let at = self.1;
-                                    self.1 += 2;
-                                    let lo = self.hex4()?;
-                                    if (0xDC00..0xE000).contains(&lo) {
-                                        0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00)
-                                    } else {
-                                        self.1 = at;
-                                        0xFFFD
-                                    }
+                            let code = if pair {
+                                let at = self.1;
+                                self.1 += 2;
+                                let lo = self.hex4()?;
+                                if (0xDC00..0xE000).contains(&lo) {
+                                    0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00)
+                                } else {
+                                    self.1 = at;
+                                    0xFFFD
                                 }
-                                false => hi,
+                            } else {
+                                hi
                             };
                             char::from_u32(code).unwrap_or('\u{FFFD}')
                         }

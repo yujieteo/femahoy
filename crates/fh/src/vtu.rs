@@ -161,10 +161,10 @@ fn write_vtu_to<W: std::io::Write>(grid: &Grid, w: &mut W) -> Result<(), String>
             Source::Bytes(&grid.cell_types),
         ),
     ];
-    let point_data: Vec<Array> = grid.point_data.iter().map(field_array).collect();
-    let cell_data: Vec<Array> = grid.cell_data.iter().map(field_array).collect();
+    let point_data: Vec<Array<'_>> = grid.point_data.iter().map(field_array).collect();
+    let cell_data: Vec<Array<'_>> = grid.cell_data.iter().map(field_array).collect();
     // Offsets follow from the sizes, so the XML can be written before the data.
-    let mut order: Vec<&Array> = vec![&points];
+    let mut order: Vec<&Array<'_>> = vec![&points];
     order.extend(cells.iter().chain(&point_data).chain(&cell_data));
     let mut offset = 0_u64;
     let mut tag = std::collections::HashMap::new();
@@ -182,7 +182,7 @@ fn write_vtu_to<W: std::io::Write>(grid: &Grid, w: &mut W) -> Result<(), String>
         grid.cells.len()
     );
     let mut next = 0;
-    let mut tags = |xml: &mut String, list: &[Array]| {
+    let mut tags = |xml: &mut String, list: &[Array<'_>]| {
         for a in list {
             let _ = writeln!(
                 xml,

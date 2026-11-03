@@ -71,7 +71,7 @@ def local(text):
 
 
 def fh(*args, env):
-    return subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True)
+    return subprocess.run([str(FH), *map(str, args)], env=env, capture_output=True, text=True, check=False)
 
 
 def not_installed(status):
@@ -144,7 +144,7 @@ def solve(case, tmp, env):
     if script.is_file():
         out = tmp / f"curves-{case}"
         out.mkdir()
-        r = subprocess.run([sys.executable, "-I", str(script), str(out), *folders], capture_output=True, text=True)
+        r = subprocess.run([sys.executable, "-I", str(script), str(out), *folders], capture_output=True, text=True, check=False)
         if r.returncode != 0:
             raise RuntimeError(f"curves.py: {r.stderr.strip()}")
         curves += curve_files(out.glob("*.csv"))
@@ -256,8 +256,10 @@ STYLE = (f"text {{ fill: {MUTED}; }} .label {{ fill: {TEXT}; }} .grid {{ stroke:
 def svg(figure):
     """The title, the SVG file and the lines of text of 1 plot that `fh report` drew: a
     `figure class="curve"` with an inline SVG, a legend and notes (crates/fh/src/curve.rs)."""
-    title = html.unescape(re.search(r"<figcaption>(.*?)</figcaption>", figure)[1])
+    caption = re.search(r"<figcaption>(.*?)</figcaption>", figure)
     inner = re.search(r"<svg viewBox=\"0 0 (\d+) (\d+)\"[^>]*>(.*?)</svg>", figure, re.S)
+    assert caption and inner, figure
+    title = html.unescape(caption[1])
     width, height = int(inner[1]), int(inner[2])
     plot = re.sub(r"var\(--s(\d)\)", lambda m: SERIES[int(m[1]) - 1], inner[3])
     # The legend goes below the plot, 1 series on each line.
@@ -282,6 +284,7 @@ def values(figure):
     """The table of the original values of a plot (the "Show values" table of curve.rs) as a
     Markdown table in a `details` block."""
     found = re.search(r"<table><caption>(.*?)</caption>(.*?)</table>", figure, re.S)
+    assert found, figure
     cell = lambda c: html.unescape(re.sub(r"<[^>]+>", "", c))
     rows = [[cell(c) for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr)] for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", found[2], re.S)]
     return (f"<details><summary>Values of the plot</summary>\n\n{cell(found[1])}\n\n"
@@ -305,7 +308,10 @@ def plots(case, page, curves, env, tmp):
         r = fh("report", draft, "-o", draft.with_suffix(".report.html"), "--curve", curve, env=env)
         if r.returncode != 0:
             raise RuntimeError(f"fh report {curve.name}: {r.stderr.strip()}")
-        figure = re.search(r"<figure class=\"curve\">.*?</figure>", draft.with_suffix(".report.html").read_text(), re.S)[0]
+        report = draft.with_suffix(".report.html").read_text()
+        found = re.search(r"<figure class=\"curve\">.*?</figure>", report, re.S)
+        assert found, report
+        figure = found[0]
         title, file, lines, samples = svg(figure)
         folder.mkdir(exist_ok=True)
         (folder / f"{name}.svg").write_text(file)
@@ -353,7 +359,7 @@ def main(args):
             sys.exit(f"validation-reports: no case {c} in {CASES}")
     if not FH.is_file():
         sys.exit(f"validation-reports: no {FH}. Run cargo build --release -p fh, or set FH_BIN")
-    git = lambda *a: subprocess.run(["git", "-C", ROOT, *a], capture_output=True, text=True).stdout.strip()
+    git = lambda *a: subprocess.run(["git", "-C", ROOT, *a], capture_output=True, text=True, check=False).stdout.strip()
     # A change in validation/reports, the output of this script, does not make the code dirty.
     version = git("rev-parse", "--short", "HEAD")
     if git("status", "--porcelain", "--", ".", ":!validation/reports"):

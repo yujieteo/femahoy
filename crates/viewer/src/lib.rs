@@ -40,5 +40,5 @@ fn load_run(dir: &std::path::Path) -> Result<results::Results, String> {
     results::load(&pvd_path.display().to_string(), &pvd, |file| {
         std::fs::read(dir.join(file)).map_err(|e| e.to_string())
     })
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.clone())
 }

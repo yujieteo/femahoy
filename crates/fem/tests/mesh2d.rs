@@ -176,7 +176,7 @@ fn a_plate_with_a_hole_is_graded_and_has_the_angle_bound() {
                 n += 1;
             }
         }
-        sum / n as f64
+        sum / f64::from(n)
     };
     let near = mean_edge(&|c| (c[0] - 1.0).hypot(c[1] - 1.0) < 0.45);
     let far = mean_edge(&|c| c[0] > 3.5);
@@ -193,7 +193,9 @@ fn crossing_outlines_give_regions_with_the_right_areas() {
     let c = vec![[0.5, 0.0], [1.5, 0.0], [1.0, 2.5]];
     let (p, s) = loops(&[a.clone(), b.clone(), c.clone()]);
     let m = mesh(&p, &s, size(0.25), &|x| {
-        let bits = inside(&a, x) as u32 | (inside(&b, x) as u32) << 1 | (inside(&c, x) as u32) << 2;
+        let bits = u32::from(inside(&a, x))
+            | u32::from(inside(&b, x)) << 1
+            | u32::from(inside(&c, x)) << 2;
         if bits == 0 {
             OUTSIDE
         } else {

@@ -176,7 +176,9 @@ fn least_squares(rows: &[Vec<f64>], ys: &[f64]) -> Result<Vec<f64>, String> {
         return Err(not_fixed());
     }
     for (c, s) in a.iter_mut().zip(&scale) {
-        c.iter_mut().for_each(|v| *v /= s);
+        for v in c.iter_mut() {
+            *v /= s;
+        }
     }
     let mut b = ys.to_vec();
     for k in 0..n {
@@ -405,7 +407,7 @@ pub fn run_case(case: &Path, run_dir: &Path) -> Result<(), String> {
     let text = fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
     let doc = Document::parse(text.as_str()).map_err(|e| format!("{}: {e}", file.display()))?;
     let key = |k: &str| doc.get(k).and_then(|v| v.as_str());
-    for (k, _) in doc.as_table().iter() {
+    for (k, _) in doc.as_table() {
         if !["curve", "model", "series"].contains(&k) {
             return Err(format!("{}: unknown key `{k}`", file.display()));
         }

@@ -962,8 +962,8 @@ fn te10(
     p: usize,
     faces: &[&prism::BoundaryFace],
     points: &[[f64; 3]],
-    edge: &EdgeOf,
-    material: &MaterialOf,
+    edge: &EdgeOf<'_>,
+    material: &MaterialOf<'_>,
     magnetic: &HashSet<u32>,
 ) -> Result<(PortMode, Vec<(u32, f64)>), String> {
     let name = p + 1;
@@ -1063,8 +1063,8 @@ fn tem(
     p: usize,
     faces: &[&prism::BoundaryFace],
     points: &[[f64; 3]],
-    edge: &EdgeOf,
-    material: &MaterialOf,
+    edge: &EdgeOf<'_>,
+    material: &MaterialOf<'_>,
     signal: &[u32],
     ground: &[u32],
 ) -> Result<(PortMode, Vec<(u32, f64)>), String> {
@@ -1393,25 +1393,22 @@ fn sweep(
         for (v, w) in a.val.iter_mut().zip(&m.val) {
             *v -= *w * shift;
         }
-        let solver = match &d.sym {
-            Some(sym) => {
-                drop(m);
-                Solver::Direct(factor(sym, &a).map_err(|e| {
-                    format!(
-                        "{e}. A closed lossless model at one of its resonant frequencies is \
-                         singular: move the frequency, or add a port or a loss"
-                    )
-                })?)
+        let solver = if let Some(sym) = &d.sym {
+            drop(m);
+            Solver::Direct(factor(sym, &a).map_err(|e| {
+                format!(
+                    "{e}. A closed lossless model at one of its resonant frequencies is \
+                     singular: move the frequency, or add a port or a loss"
+                )
+            })?)
+        } else {
+            // P = S + c k0^2 M = A + (c + 1) k0^2 M.
+            let mut p = a.clone();
+            for (v, w) in p.val.iter_mut().zip(&m.val) {
+                *v += *w * (shift * (SHIFT + C64::ONE));
             }
-            None => {
-                // P = S + c k0^2 M = A + (c + 1) k0^2 M.
-                let mut p = a.clone();
-                for (v, w) in p.val.iter_mut().zip(&m.val) {
-                    *v += *w * (shift * (SHIFT + C64::ONE));
-                }
-                drop(m);
-                Solver::Iterative(auxiliary(model, d, omega, p)?)
-            }
+            drop(m);
+            Solver::Iterative(auxiliary(model, d, omega, p)?)
         };
         let mut iterations = Vec::new();
         let mut s = vec![C64::ZERO; np * np];
@@ -1696,7 +1693,7 @@ fn modes(
         // Each mode keeps the new mode nearest to its own vector, so 2 modes with near
         // frequencies stay 2 modes.
         let total = found.len();
-        for (theta, v) in found.iter_mut() {
+        for (theta, v) in &mut found {
             for _ in 0..5 {
                 let f = frequency_of(*theta);
                 let (again, _) = eigen(model, d, f, total, events)?;
@@ -1744,7 +1741,7 @@ fn modes(
         } else {
             C64::ONE
         };
-        for e in field.iter_mut() {
+        for e in &mut field {
             for c in e.iter_mut() {
                 *c *= scale;
             }
@@ -1805,7 +1802,7 @@ fn eigen(
         if events.cancelled() {
             return Err("cancelled".into());
         }
-        for v in x.iter_mut() {
+        for v in &mut x {
             m.mul(v, &mut y);
             factor.solve(&mut y);
             std::mem::swap(v, &mut y);
