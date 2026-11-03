@@ -10,9 +10,8 @@ of the case mesh (24 x 24) gives its own value (ccx/job.dat). Only the Python st
 
 import re
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 N = 24  # the elements along each side of part.inp (derivation.md)

@@ -9,9 +9,8 @@ Only the Python standard library.
 
 import math
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[1]))

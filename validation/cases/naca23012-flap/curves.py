@@ -9,9 +9,8 @@ The reference values come from Table I of Abbott and Greenberg (1939). Only the 
 import math
 import re
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 # The input, the flap angle, the name in the plot and the checks of the input in check.toml.
 FLAPS = [

@@ -8,9 +8,8 @@ solution of derivation.md. Only the Python standard library.
 """
 
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import vtu

@@ -10,9 +10,8 @@ library.
 
 import re
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # derivation.md, "Model": N = 10 lifts of h = 1000 mm, E = 30000 MPa, rho = 2.4e-9 t/mm3, g = 9810 mm/s2.

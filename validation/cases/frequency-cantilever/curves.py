@@ -10,9 +10,8 @@ standard library.
 
 import re
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # Blevins (1979), Table 8-1, the clamped-free beam: lambda_r of the first 3 modes.

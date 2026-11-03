@@ -8,9 +8,8 @@ check.toml. Only the Python standard library.
 """
 
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 CHECKS = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
 NAMES = [("drag", "drag"), ("lift", "lift"), ("ux_a", "ux of A"), ("uy_a", "uy of A")]
