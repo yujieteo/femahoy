@@ -117,14 +117,14 @@ fn a_laminate_has_the_exact_bounds_of_each_direction() {
     close(c[3][3], c44, 1e-8);
     close(c[4][4], c44, 1e-8);
     close(c[5][5], c66, 1e-8);
-    levin(&r, [(ca, aa), (cb, ab)]);
+    levin(&r, &[(ca, aa), (cb, ab)]);
     close(r.fraction[0], f, 1e-12);
     close(r.density.unwrap(), 1.0, 1e-12);
 }
 
 /// Levin's exact relation of 2 phases: alpha* = alpha_1 + (S* - S_1) (S_2 - S_1)^-1 (alpha_2 -
 /// alpha_1), for isotropic phases with each bulk and shear modulus different.
-fn levin(r: &Effective, phases: [([[f64; 6]; 6], f64); 2]) {
+fn levin(r: &Effective, phases: &[([[f64; 6]; 6], f64); 2]) {
     let s = invert6(&r.stiffness.unwrap()).unwrap();
     let s1 = invert6(&phases[0].0).unwrap();
     let s2 = invert6(&phases[1].0).unwrap();
@@ -181,7 +181,7 @@ fn a_fibre_cell_keeps_the_exact_relations() {
     );
     levin(
         &r,
-        [(isotropic(em, nu), 60e-6), (isotropic(ef, nu), -0.5e-6)],
+        &[(isotropic(em, nu), 60e-6), (isotropic(ef, nu), -0.5e-6)],
     );
 }
 

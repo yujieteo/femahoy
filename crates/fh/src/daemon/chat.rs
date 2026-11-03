@@ -198,7 +198,9 @@ impl Chat {
     }
 
     fn lock(&self) -> MutexGuard<'_, Log> {
-        self.log.lock().unwrap_or_else(|e| e.into_inner())
+        self.log
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
     /// Add the entry `setup <text>`: what the person must do before the chat works.
@@ -470,7 +472,7 @@ fn entries(event: &Json) -> Vec<(String, String)> {
                                     .iter()
                                     .find_map(|k| block.text(&["input", k]))
                                     .unwrap_or("");
-                                add("tool", format!("{name} {input}").trim_end().to_owned())
+                                add("tool", format!("{name} {input}").trim_end().to_owned());
                             }
                         }
                     }

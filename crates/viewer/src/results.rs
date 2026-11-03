@@ -1079,7 +1079,8 @@ mod tests {
             source_node: vec![0, 1, 2],
             ..Default::default()
         };
-        let band_of = |t: f32| ((t as f64 * BANDS as f64).floor().max(0.0) as usize).min(BANDS - 1);
+        let band_of =
+            |t: f32| ((f64::from(t) * BANDS as f64).floor().max(0.0) as usize).min(BANDS - 1);
         let mises = ScalarField {
             name: "MISES".into(),
             quantity: Quantity::Stress,

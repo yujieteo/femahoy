@@ -263,12 +263,11 @@ fn clean(points: &[[f64; 2]], segments: &[[u32; 2]]) -> (Vec<[f64; 2]>, Vec<Piec
                     // A proper crossing: the point at the parameter o1 / (o1 - o2) along c-d.
                     let s = o1 / (o1 - o2);
                     let x = [pc[0] + s * (pd[0] - pc[0]), pc[1] + s * (pd[1] - pc[1])];
-                    let v = match new_points.iter().position(|q| dist(*q, x) <= tol) {
-                        Some(k) => (pts.len() + k) as u32,
-                        None => {
-                            new_points.push(x);
-                            (pts.len() + new_points.len() - 1) as u32
-                        }
+                    let v = if let Some(k) = new_points.iter().position(|q| dist(*q, x) <= tol) {
+                        (pts.len() + k) as u32
+                    } else {
+                        new_points.push(x);
+                        (pts.len() + new_points.len() - 1) as u32
                     };
                     cuts[i].push(v);
                     cuts[j].push(v);
@@ -308,18 +307,15 @@ fn clean(points: &[[f64; 2]], segments: &[[u32; 2]]) -> (Vec<[f64; 2]>, Vec<Piec
     let mut out: Vec<Piece> = Vec::new();
     for p in pieces {
         let key = (p.ends[0].min(p.ends[1]), p.ends[0].max(p.ends[1]));
-        match merged.get(&key) {
-            Some(&k) => {
-                for o in p.origin {
-                    if !out[k].origin.contains(&o) {
-                        out[k].origin.push(o);
-                    }
+        if let Some(&k) = merged.get(&key) {
+            for o in p.origin {
+                if !out[k].origin.contains(&o) {
+                    out[k].origin.push(o);
                 }
             }
-            None => {
-                merged.insert(key, out.len());
-                out.push(p);
-            }
+        } else {
+            merged.insert(key, out.len());
+            out.push(p);
         }
     }
     (pts, out)

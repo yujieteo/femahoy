@@ -418,7 +418,7 @@ impl Shown {
         let eye = self.camera.eye();
         match &self.body {
             Body::Preview(p) => {
-                loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false, tags)
+                loads_overlay(painter, rect, m, eye, p, &p.mesh.positions, false, tags);
             }
             Body::Results(r, v, loads, ..) => {
                 if !self.shows(Control::Loads) {
@@ -1035,12 +1035,9 @@ fn probe_controls(
             "Value",
             &format!("{} {}", p.value, view::unit_text(&r.units, field.quantity)),
         );
-        if let Some(at) = p.at {
+        if let Some([x, y, z]) = p.at {
             ui.label(format!(
-                "Model coordinates: {}, {}, {} ({})",
-                at[0],
-                at[1],
-                at[2],
+                "Model coordinates: {x}, {y}, {z} ({})",
                 view::unit_text(&r.units, results::Quantity::Displacement)
             ));
             ui.weak("Surface marker may be hidden by another face.");
@@ -1210,8 +1207,7 @@ impl eframe::App for ViewerApp {
             request.status = self
                 .message
                 .as_ref()
-                .map(|(_, text)| text.clone())
-                .unwrap_or_else(|| self.status_text());
+                .map_or_else(|| self.status_text(), |(_, text)| text.clone());
         }
         // The panels start 16 px from the view edge, the same as the page toolbar
         // (--space-4). The egui default is 8 px.
@@ -1391,7 +1387,7 @@ impl eframe::App for ViewerApp {
             let delta = response.drag_delta();
             // Two fingers pan and pinch. The first finger also drives the pointer, so it must not orbit.
             let touch = ui
-                .input(|i| i.multi_touch())
+                .input(egui::InputState::multi_touch)
                 .filter(|t| rect.contains(t.start_pos));
             let pan = response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)

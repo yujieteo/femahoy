@@ -1,9 +1,10 @@
 """Print the reference values of grid-heated-block-stress-ccx from the job.dat of CalculiX (argument 1)."""
 import sys
+from pathlib import Path
 
 blocks = {}
 name = None
-for line in open(sys.argv[1]):
+for line in Path(sys.argv[1]).read_text().splitlines(keepends=True):
     words = line.split()
     if line.startswith(" displacements") or line.startswith(" temperatures"):
         name = (words[0], words[words.index("set") + 1])

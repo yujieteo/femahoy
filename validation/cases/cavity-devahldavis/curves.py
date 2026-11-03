@@ -8,13 +8,13 @@ horizontal centre line, with the maxima of Table V of de Vahl Davis (1983). Only
 standard library.
 """
 
-import re
 import sys
-import tomllib
 from pathlib import Path
 
+import tomllib
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import vtu  # noqa: E402
+import vtu
 
 RUNS = [("ra1e4", "Ra 1e4"), ("ra1e5", "Ra 1e5")]
 CHECKS = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
@@ -25,7 +25,7 @@ V_MAX = [(0.119, CHECKS["vmax_ra1e4"]["value"]), (0.066, CHECKS["vmax_ra1e5"]["v
 
 
 def last_step(folder):
-    steps = sorted(folder.glob("step-*.vtu"), key=lambda p: int(re.search(r"\d+", p.stem)[0]))
+    steps = sorted(folder.glob("step-*.vtu"), key=lambda p: int(p.stem.removeprefix("step-")))
     return vtu.read(steps[-1])
 
 

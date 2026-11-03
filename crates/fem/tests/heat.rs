@@ -213,7 +213,7 @@ fn a_half_model_gives_the_temperatures_of_the_full_model() {
     for i in 0..3 {
         assert!((a[i] - b[i]).abs() < 1e-8 * a[i].abs(), "{a:?} {b:?}");
     }
-    assert!(quarter.mesh.unwrap().len() * 4 == full.mesh.unwrap().len());
+    assert_eq!(quarter.mesh.unwrap().len() * 4, full.mesh.unwrap().len());
 }
 
 #[test]
@@ -318,7 +318,7 @@ fn laminate(n: usize) -> Model {
 fn panel(n: usize) -> Model {
     let mut parts = vec![part("skin", 0, [0.0, 0.0, 0.0], [1.0, 0.5, 0.002])];
     for r in 0..4 {
-        let y = 0.06 + 0.12 * r as f64;
+        let y = 0.06 + 0.12 * f64::from(r);
         parts.push(part(
             &format!("rib{r}"),
             0,
@@ -359,7 +359,7 @@ fn panel(n: usize) -> Model {
 /// time steps (1 factor or 1 multigrid setup, then 100 solves). Run with
 /// `cargo test --release -p fh-fem --test heat crossover -- --ignored --nocapture`.
 #[test]
-#[ignore]
+#[ignore = "a timing run by hand, with --ignored --nocapture"]
 fn crossover() {
     let cube = |n: usize| {
         let mut m = wall();

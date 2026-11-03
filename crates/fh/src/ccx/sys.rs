@@ -35,7 +35,7 @@ fn address_limits(requested: u64, inherited_hard: u64) -> [u64; 2] {
     allow(dead_code)
 )]
 fn solver_threads() -> usize {
-    std::thread::available_parallelism().map_or(1, |n| n.get())
+    std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
 }
 
 /// Resident memory in bytes from the text of `/proc/<pid>/status`. `VmRSS` is in kB for
@@ -56,7 +56,9 @@ pub struct Group {
 
 #[cfg(unix)]
 mod os {
-    use super::*;
+    use super::{
+        address_limits, address_space_limit, solver_threads, vm_rss_bytes, Command, Group,
+    };
     use std::os::unix::process::CommandExt;
 
     extern "C" {
@@ -77,14 +79,14 @@ mod os {
             // RLIM_INFINITY is all ones, so an unknown limit does not clamp.
             let mut inherited = [u64::MAX; 2];
             // SAFETY: `inherited` is valid for the write of two numbers.
-            if unsafe { getrlimit(9, &mut inherited) } != 0 {
+            if unsafe { getrlimit(9, &raw mut inherited) } != 0 {
                 inherited = [u64::MAX; 2];
             }
             let limit = address_limits(address_space_limit(bytes, solver_threads()), inherited[1]);
             // SAFETY: `setrlimit` is async-signal-safe.
             unsafe {
                 cmd.pre_exec(move || {
-                    if setrlimit(9, &limit) == 0 {
+                    if setrlimit(9, &raw const limit) == 0 {
                         Ok(())
                     } else {
                         Err(std::io::Error::last_os_error())
@@ -402,7 +404,7 @@ mod limit_tests {
         // SAFETY: `setrlimit` is async-signal-safe.
         unsafe {
             cmd.pre_exec(move || {
-                if setrlimit(9, &limit) == 0 {
+                if setrlimit(9, &raw const limit) == 0 {
                     Ok(())
                 } else {
                     Err(std::io::Error::last_os_error())

@@ -14,7 +14,7 @@ from pathlib import Path
 
 # reference.py is in this folder.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from reference import state, w  # noqa: E402
+from reference import state, w
 
 # The time steps from 1 frame of the 3D view to the next (FRAME of chrono.py).
 FRAME = 25

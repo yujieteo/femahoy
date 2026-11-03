@@ -372,7 +372,7 @@ fn a_coaxial_line_has_its_exact_impedance_and_wave() {
 /// The time of the direct solver on a waveguide of growing size (run with `--ignored
 /// --nocapture`): the measurement behind `em::LAPTOP`.
 #[test]
-#[ignore]
+#[ignore = "a timing run by hand, with --ignored --nocapture"]
 fn direct_cost() {
     for max_cell in [2.0e-3, 1.4e-3, 1.0e-3] {
         let model = waveguide(60e-3, max_cell, 10e9);
@@ -412,7 +412,7 @@ fn the_iterative_solver_gives_the_s_parameters_of_the_direct_solver() {
 /// section, on growing meshes (run with `--ignored --nocapture`): the measurement behind the
 /// limit `direct` of `em::LAPTOP`.
 #[test]
-#[ignore]
+#[ignore = "a timing run by hand, with --ignored --nocapture"]
 fn iterative_cost() {
     let cells: Vec<f64> = std::env::var("CELLS")
         .unwrap_or("1.5 1.0".into())

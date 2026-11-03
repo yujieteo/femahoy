@@ -738,8 +738,7 @@ fn run(
     }
     if imbalance > IMBALANCE {
         warnings.push(format!(
-            "the energy balance is off by {:.2e} of the heat flow: the linear solve is not exact",
-            imbalance
+            "the energy balance is off by {imbalance:.2e} of the heat flow: the linear solve is not exact"
         ));
     }
     Ok(Summary {

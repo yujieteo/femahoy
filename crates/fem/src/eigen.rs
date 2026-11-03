@@ -83,7 +83,7 @@ pub fn subspace(
     m: &Csr,
     shift: f64,
     count: usize,
-    solve: &mut Solve,
+    solve: &mut Solve<'_>,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<Pairs, String> {
     let n = k.n;
@@ -155,7 +155,7 @@ pub fn subspace(
         mu = values;
         for j in 0..p {
             let xj = &mut x[j];
-            xj.iter_mut().for_each(|v| *v = 0.0);
+            xj.fill(0.0);
             for (i, b) in bar.iter().enumerate() {
                 let c = q[i * p + j];
                 for (v, w) in xj.iter_mut().zip(b) {

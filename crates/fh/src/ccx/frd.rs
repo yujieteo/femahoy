@@ -160,7 +160,7 @@ pub fn read(text: &str) -> Result<Frd, String> {
             let time = time.ok_or_else(|| bad(n, "bad time"))?;
             // Each block of a frame has this line. A new increment or mode starts a new frame.
             let same = |f: &&Frame| f.step == step && f.increment == increment && f.mode == mode;
-            if frd.frames.last().filter(same).is_none() {
+            if frd.frames.last().as_ref().is_none_or(|x| !same(x)) {
                 frd.frames.push(Frame {
                     step,
                     increment,

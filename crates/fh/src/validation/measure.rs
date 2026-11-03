@@ -301,8 +301,7 @@ fn block_of(field: &Field) -> (&'static str, usize, usize) {
 fn column_of(q: &Quantity) -> Result<usize, String> {
     let column = match (&q.field, q.component) {
         (Field::U | Field::RF | Field::Cstr | Field::ARms, c @ 1..=3) => c as usize - 1,
-        (Field::NT, 1) => 0,
-        (Field::S, 11) => 0,
+        (Field::NT, 1) | (Field::S, 11) => 0,
         (Field::S, 22) => 1,
         (Field::S, 33) => 2,
         (Field::S, 12) => 3,

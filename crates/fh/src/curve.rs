@@ -125,7 +125,7 @@ impl Curve {
             let cells: Vec<&str> = line.split(',').map(str::trim).collect();
             if !header {
                 header = true;
-                curve.x = cells[0].to_owned();
+                cells[0].clone_into(&mut curve.x);
                 for name in &cells[1..] {
                     if name.is_empty() || curve.series.iter().any(|s| s.name == *name) {
                         return Err(at(format!("each series needs its own name, not `{name}`")));
@@ -367,7 +367,7 @@ impl Curve {
             for value in values {
                 svg.push_str(&format!(
                     "<td>{}</td>",
-                    value.map(|v| v.to_string()).unwrap_or_else(|| "—".into())
+                    value.map_or_else(|| "—".into(), |v| v.to_string())
                 ));
             }
             svg.push_str("</tr>");

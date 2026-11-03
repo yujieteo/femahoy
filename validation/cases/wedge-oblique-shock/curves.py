@@ -9,13 +9,13 @@ Only the Python standard library.
 """
 
 import math
-import re
 import sys
-import tomllib
 from pathlib import Path
 
+import tomllib
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import vtu  # noqa: E402
+import vtu
 
 X = 0.755  # the centre of a column of cells, 0.005 after the line x = 0.75 of derivation.md
 WEDGE = 15.0
@@ -26,7 +26,7 @@ BETA, P2, T2, M2 = (CHECKS[k]["value"] for k in ("shock_angle", "pressure_ratio"
 
 def column(folder):
     """(y, p, T, Ma) of the cells of the column at x = X, from the wedge up."""
-    steps = sorted(folder.glob("step-*.vtu"), key=lambda p: int(re.search(r"\d+", p.stem)[0]))
+    steps = sorted(folder.glob("step-*.vtu"), key=lambda p: int(p.stem.removeprefix("step-")))
     step = vtu.read(steps[-1])
     cells = []
     for k, p in enumerate(step.cell["p"]):

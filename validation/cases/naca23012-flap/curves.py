@@ -9,8 +9,9 @@ The reference values come from Table I of Abbott and Greenberg (1939). Only the 
 import math
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 # The input, the flap angle, the name in the plot and the checks of the input in check.toml.
 FLAPS = [
@@ -36,6 +37,7 @@ def wall_surfaces(foam):
     mesh = foam / "constant/polyMesh"
     boundary = (mesh / "boundary").read_text()
     wall = re.search(r"\bwall\s*\{[^}]*?nFaces\s+(\d+);\s*startFace\s+(\d+);", boundary)
+    assert wall, f"{mesh / 'boundary'} has no wall patch"
     count, start = int(wall[1]), int(wall[2])
     points = [tuple(map(float, p.strip("()").split())) for p in foam_list(mesh / "points")]
     faces = [list(map(int, f[f.index("(") + 1 : -1].split())) for f in foam_list(mesh / "faces")[start : start + count]]
@@ -138,7 +140,7 @@ def main(out, folders):
             load_rows.append([angle, history[-1][1], reference[0], history[-1][2], reference[1]])
         for j, surface in enumerate(("upper", "lower")):
             for x, cp in surfaces[surface]:
-                row = [None] * 6
+                row: list[float | None] = [None] * 6
                 row[2*k+j] = cp
                 cp_rows.append([x, *row])
         for field, index, title in (("cl", 1, "Lift"), ("cm", 2, "Moment")):

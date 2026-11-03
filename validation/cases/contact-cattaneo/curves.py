@@ -20,8 +20,9 @@ library.
 
 import math
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 HERE = Path(__file__).resolve().parent
 E, NU, R, MU = 210000.0, 0.3, 20.0, 0.3

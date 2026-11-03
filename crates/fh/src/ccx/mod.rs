@@ -440,7 +440,7 @@ impl Ccx {
         };
         let limits = (start, self.timeout, self.memory_limit);
         let status = supervise(&program, &mut cmd, limits, cancel, &mut || {
-            tail.poll(on_progress)
+            tail.poll(on_progress);
         })?;
         let log = fs::read_to_string(&log_file).unwrap_or_default();
         if !status.success() || log.contains("*ERROR") {
@@ -462,7 +462,7 @@ pub(crate) struct Program<'a> {
 /// time limit, the time limit (`None` for no limit) and the memory limit in bytes (`u64::MAX` for
 /// no limit). `poll` runs each 100 ms and at the end.
 pub(crate) fn supervise(
-    program: &Program,
+    program: &Program<'_>,
     cmd: &mut Command,
     limits: (Instant, Option<Duration>, u64),
     cancel: &CancelToken,
@@ -475,7 +475,7 @@ pub(crate) fn supervise(
 /// (`RLIMIT_AS`) and only the probe of resident memory enforces the memory limit. A program that
 /// reserves a large address space at the start, such as a Goose program, needs this.
 pub(crate) fn supervise_with(
-    program: &Program,
+    program: &Program<'_>,
     cmd: &mut Command,
     limits: (Instant, Option<Duration>, u64),
     cancel: &CancelToken,

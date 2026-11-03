@@ -229,7 +229,9 @@ pub fn solve_within(
             .iter()
             .fold(0.0f64, |a, &v| if v.abs() > a.abs() { v } else { a });
         if big < 0.0 {
-            phi.iter_mut().for_each(|v| *v = -*v);
+            for v in &mut phi {
+                *v = -*v;
+            }
         }
         mf.mul(&phi, &mut mx);
         let mut participation = [0.0; 3];
@@ -383,7 +385,7 @@ fn grid_assembly<'a>(
         &|x| grid_point(&grid, &numbering, &mids, x),
     )?;
     let mesh = mesh.clone();
-    let solver: MakeSolver = Box::new(move |a, free, shift, method, crossover| {
+    let solver: MakeSolver<'_> = Box::new(move |a, free, shift, method, crossover| {
         let level = Level {
             planes: grid.planes.clone(),
             points: free.iter().map(|&i| numbering.ijk[i / 3]).collect(),
@@ -486,7 +488,7 @@ fn tet_assembly<'a>(
         },
         &|x| corner_at(&tm, x),
     )?;
-    let solver: MakeSolver = Box::new(move |a, free, _, method, crossover| {
+    let solver: MakeSolver<'_> = Box::new(move |a, free, _, method, crossover| {
         let (p, coarse) = prolongation(&q.points, q.corners, &q.edges, free);
         Solver::new(
             a,

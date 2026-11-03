@@ -81,7 +81,7 @@ pub struct Multigrid {
 impl Multigrid {
     /// The hierarchy of the matrix `a` whose unknown `k` is the grid point `level.points[k]`.
     /// With `cells` (a displacement), the coarse matrices come from the cells.
-    pub fn new(a: Csr, level: Level, cells: Option<Cells>) -> Result<Multigrid, String> {
+    pub fn new(a: Csr, level: Level, cells: Option<Cells<'_>>) -> Result<Multigrid, String> {
         let mut mats = vec![a];
         let mut ps = Vec::new();
         let mut lines = Vec::new();
@@ -346,7 +346,7 @@ fn coarsen(fine: &Level, a: &Csr) -> Option<(Rect, Level, [Vec<usize>; 3])> {
             k
         };
         planes[d] = keep.iter().map(|&i| p[i]).collect();
-        kept[d] = keep.clone();
+        kept[d].clone_from(&keep);
         let mut c = 0;
         map[d] = (0..n)
             .map(|i| {

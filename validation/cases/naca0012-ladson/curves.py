@@ -8,8 +8,9 @@ Ladson (1988). Only the Python standard library.
 """
 
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 CHECKS = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
 # The input, the angle, then cl and cd of Table IX of the source. The lift at -0.05 degrees is not

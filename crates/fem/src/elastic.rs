@@ -779,7 +779,7 @@ pub(crate) fn reactions(
     k: &Csr,
     u: &[f64],
     force: &[f64],
-    fixed: &Fixed,
+    fixed: &Fixed<'_>,
     scale: ([f64; 3], f64),
     points: &[[f64; 3]],
     warnings: &mut Vec<String>,
@@ -1010,7 +1010,7 @@ pub fn principal(s: &[f64; 6]) -> [f64; 3] {
 /// mirrors of the cells inside.
 fn singular_points(
     grid: &Grid,
-    numbering: &heat::Numbering,
+    numbering: &Numbering,
     material_of: &[usize],
     mids: &[Option<f64>; 3],
     clamp: &[bool],
@@ -1040,7 +1040,7 @@ fn singular_points(
         .map(|p| {
             let mut l = [0u32; 8];
             for (k, b) in BITS.iter().enumerate() {
-                l[k] = label(std::array::from_fn(|d| p[d] as i64 - 1 + b[d] as i64));
+                l[k] = label(std::array::from_fn(|d| i64::from(p[d]) - 1 + b[d] as i64));
             }
             let at = |b: [usize; 3]| l[BITS.iter().position(|x| *x == b).expect("a corner")];
             let varies = (0..3)

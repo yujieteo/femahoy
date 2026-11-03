@@ -11,8 +11,9 @@ standard library.
 import math
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 HERE = Path(__file__).resolve().parent
 E, NU, Y = 210000.0, 0.3, 250.0  # MPa, 1, MPa

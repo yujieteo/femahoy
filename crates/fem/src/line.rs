@@ -632,103 +632,101 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Solution, String>
         }
         let omega = 2.0 * std::f64::consts::PI * f;
         // With no finite conductor, L does not change with the frequency: 1 solve gives Psi / 1.
-        let psi = match (&last, lossy) {
-            (Some(p), false) => p.clone(),
-            _ => {
-                msys.clear();
-                let mut fields: Vec<Vec<C64>> = Vec::with_capacity(n);
-                for (e, dofs) in &melems {
-                    let m = material(*e);
-                    let k = stiffness(corners(*e));
-                    let nu = 1.0 / (MU0 * m.permeability);
-                    let size = dofs.len();
-                    let mut re = vec![0.0; size * size];
-                    let mut im = vec![0.0; size * size];
-                    for a in 0..3 {
-                        for b in 0..3 {
-                            re[a * size + b] = nu * k[a][b];
-                        }
+        let psi = if let (Some(p), false) = (&last, lossy) {
+            p.clone()
+        } else {
+            msys.clear();
+            let mut fields: Vec<Vec<C64>> = Vec::with_capacity(n);
+            for (e, dofs) in &melems {
+                let m = material(*e);
+                let k = stiffness(corners(*e));
+                let nu = 1.0 / (MU0 * m.permeability);
+                let size = dofs.len();
+                let mut re = vec![0.0; size * size];
+                let mut im = vec![0.0; size * size];
+                for a in 0..3 {
+                    for b in 0..3 {
+                        re[a * size + b] = nu * k[a][b];
                     }
-                    if let Conduction::Finite(sigma) = m.conduction {
-                        // omega sigma times the mass matrix of the functions N1, N2, N3, -1.
-                        let area = shape(corners(*e)).0;
-                        let w = omega * sigma * area;
-                        for a in 0..4 {
-                            for b in 0..4 {
-                                im[a * 4 + b] = w * match (a, b) {
-                                    (3, 3) => 1.0,
-                                    (3, _) | (_, 3) => -1.0 / 3.0,
-                                    _ if a == b => 1.0 / 6.0,
-                                    _ => 1.0 / 12.0,
-                                };
-                            }
-                        }
-                    }
-                    msys.add(dofs, &re, &im);
                 }
-                let factor = Ldlt::factor(&msym, &msys.re, &msys.im)
-                    .map_err(|e| format!("the magnetic solve at {f:e} Hz: {e}"))?;
-                let mut psi = Matrix::zeros(n);
-                for j in 0..n {
-                    let mut b = vec![C64::ZERO; na + n];
-                    b[na + j] = C64::ONE;
-                    factor.solve(&mut b);
-                    for i in 0..n {
-                        psi.set(i, j, b[na + i]);
-                    }
-                    fields.push(b);
-                }
-                // The roughness adds (K - 1) times the loss of each rough conductor:
-                // Re sum over its triangles of int sigma omega^2 (Psi - A)_i conj(Psi - A)_j, the loss
-                // int J_i conj(J_j) / sigma.
-                for (e, dofs) in &melems {
-                    let m = material(*e);
-                    let Conduction::Finite(sigma) = m.conduction else {
-                        continue;
-                    };
-                    let value =
-                        |x: &[C64], d: u32| if d == FIXED { C64::ZERO } else { x[d as usize] };
+                if let Conduction::Finite(sigma) = m.conduction {
+                    // omega sigma times the mass matrix of the functions N1, N2, N3, -1.
                     let area = shape(corners(*e)).0;
-                    let rough = if m.roughness > 0.0 {
-                        roughness_factor(m.roughness, skin_depth(f, m.permeability, sigma)) - 1.0
-                    } else {
-                        0.0
-                    };
-                    // u_j = Psi - A at the 3 corners for the current of signal j.
-                    let u: Vec<[C64; 3]> = fields
-                        .iter()
-                        .map(|x| {
-                            let p = value(x, dofs[3]);
-                            std::array::from_fn(|a| p - value(x, dofs[a]))
-                        })
-                        .collect();
-                    if f == freqs.last().unwrap().1 {
-                        for j in 0..n {
-                            let mean = (u[j][0] + u[j][1] + u[j][2]).scale(1.0 / 3.0);
-                            current[j][*e] = omega * sigma * mean.abs();
-                        }
-                    }
-                    if rough == 0.0 {
-                        continue;
-                    }
-                    for i in 0..n {
-                        for j in 0..n {
-                            let mut s = C64::ZERO;
-                            for a in 0..3 {
-                                for b in 0..3 {
-                                    let w = if a == b { 1.0 / 6.0 } else { 1.0 / 12.0 };
-                                    s += (u[i][a] * u[j][b].conj()).scale(w);
-                                }
-                            }
-                            let loss = (s.scale(sigma * omega * omega * area)).re;
-                            // Z = j omega Psi, so R += loss is Psi -= j loss / omega.
-                            let v = psi.at(i, j) - C64::new(0.0, rough * loss / omega);
-                            psi.set(i, j, v);
+                    let w = omega * sigma * area;
+                    for a in 0..4 {
+                        for b in 0..4 {
+                            im[a * 4 + b] = w * match (a, b) {
+                                (3, 3) => 1.0,
+                                (3, _) | (_, 3) => -1.0 / 3.0,
+                                _ if a == b => 1.0 / 6.0,
+                                _ => 1.0 / 12.0,
+                            };
                         }
                     }
                 }
-                psi
+                msys.add(dofs, &re, &im);
             }
+            let factor = Ldlt::factor(&msym, &msys.re, &msys.im)
+                .map_err(|e| format!("the magnetic solve at {f:e} Hz: {e}"))?;
+            let mut psi = Matrix::zeros(n);
+            for j in 0..n {
+                let mut b = vec![C64::ZERO; na + n];
+                b[na + j] = C64::ONE;
+                factor.solve(&mut b);
+                for i in 0..n {
+                    psi.set(i, j, b[na + i]);
+                }
+                fields.push(b);
+            }
+            // The roughness adds (K - 1) times the loss of each rough conductor:
+            // Re sum over its triangles of int sigma omega^2 (Psi - A)_i conj(Psi - A)_j, the loss
+            // int J_i conj(J_j) / sigma.
+            for (e, dofs) in &melems {
+                let m = material(*e);
+                let Conduction::Finite(sigma) = m.conduction else {
+                    continue;
+                };
+                let value = |x: &[C64], d: u32| if d == FIXED { C64::ZERO } else { x[d as usize] };
+                let area = shape(corners(*e)).0;
+                let rough = if m.roughness > 0.0 {
+                    roughness_factor(m.roughness, skin_depth(f, m.permeability, sigma)) - 1.0
+                } else {
+                    0.0
+                };
+                // u_j = Psi - A at the 3 corners for the current of signal j.
+                let u: Vec<[C64; 3]> = fields
+                    .iter()
+                    .map(|x| {
+                        let p = value(x, dofs[3]);
+                        std::array::from_fn(|a| p - value(x, dofs[a]))
+                    })
+                    .collect();
+                if f == freqs.last().unwrap().1 {
+                    for j in 0..n {
+                        let mean = (u[j][0] + u[j][1] + u[j][2]).scale(1.0 / 3.0);
+                        current[j][*e] = omega * sigma * mean.abs();
+                    }
+                }
+                if rough == 0.0 {
+                    continue;
+                }
+                for i in 0..n {
+                    for j in 0..n {
+                        let mut s = C64::ZERO;
+                        for a in 0..3 {
+                            for b in 0..3 {
+                                let w = if a == b { 1.0 / 6.0 } else { 1.0 / 12.0 };
+                                s += (u[i][a] * u[j][b].conj()).scale(w);
+                            }
+                        }
+                        let loss = (s.scale(sigma * omega * omega * area)).re;
+                        // Z = j omega Psi, so R += loss is Psi -= j loss / omega.
+                        let v = psi.at(i, j) - C64::new(0.0, rough * loss / omega);
+                        psi.set(i, j, v);
+                    }
+                }
+            }
+            psi
         };
         last = Some(psi.clone());
         let mut z = Matrix::zeros(n);

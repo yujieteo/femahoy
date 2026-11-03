@@ -20,7 +20,7 @@ def main(out, folders):
     runs = dict(f.split("=", 1) for f in folders)
     text = (Path(runs["job.inp"]) / "ccx/job.dat").read_text()
     blocks = re.findall(r"displacements \(vx,vy,vz\) for set (\w+) and time\s+(\S+)\n\n((?:\s+\d+(?:\s+\S+){3}\n)+)", text)
-    shape = {0.0: [LENGTH, RADIUS]}
+    shape: dict[float, list[float | None]] = {0.0: [LENGTH, RADIUS]}
     for name, time, rows in blocks:
         u = [[float(v) for v in row.split()[1:]] for row in rows.splitlines()]
         values = shape.setdefault(float(time) * 1e6, [None, None])

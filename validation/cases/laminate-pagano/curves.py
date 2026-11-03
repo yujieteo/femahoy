@@ -13,8 +13,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parents[1]), str(HERE)]
-import vtu  # noqa: E402
-from pagano import A, THICK, Exact  # noqa: E402
+import vtu
+from pagano import THICK, A, Exact
 
 # sigma_xx and tau_xz: the components of S in a step file (S11, S22, S33, S12, S23, S13), and of
 # Exact.stress of pagano.py.

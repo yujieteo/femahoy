@@ -244,7 +244,7 @@ pub fn mesh_hollow(
     let nv = flat.points.len();
     let slots = nv
         .checked_mul(planes.len())
-        .filter(|&s| s <= u32::MAX as usize)
+        .filter(|&s| u32::try_from(s).is_ok())
         .ok_or("the mesh has too many points: use a larger max_cell")?;
     let mut number = vec![u32::MAX; slots];
     let mut pts: Vec<[f64; 3]> = Vec::new();
@@ -417,20 +417,19 @@ pub fn footprints(
                 ["x", "y", "z"][axis]
             ));
         }
-        let footprint = match &p.footprint {
-            Some(f) => f.clone(),
-            None => {
-                let (lo, hi) = (across(axis, p.lo), across(axis, p.hi));
-                if !(lo[0] < hi[0] && lo[1] < hi[1]) {
-                    return Err(format!(
-                        "part {}: each range must have the first number smaller",
-                        p.name
-                    ));
-                }
-                Footprint {
-                    outline: Outline::Polygon(vec![lo, [hi[0], lo[1]], hi, [lo[0], hi[1]]]),
-                    holes: Vec::new(),
-                }
+        let footprint = if let Some(f) = &p.footprint {
+            f.clone()
+        } else {
+            let (lo, hi) = (across(axis, p.lo), across(axis, p.hi));
+            if !(lo[0] < hi[0] && lo[1] < hi[1]) {
+                return Err(format!(
+                    "part {}: each range must have the first number smaller",
+                    p.name
+                ));
+            }
+            Footprint {
+                outline: Outline::Polygon(vec![lo, [hi[0], lo[1]], hi, [lo[0], hi[1]]]),
+                holes: Vec::new(),
             }
         };
         let mut rings = Vec::new();
@@ -506,12 +505,11 @@ pub fn footprints(
                 .then(b.cmp(&a))
         });
         let mut c = covers.borrow_mut();
-        match c.iter().position(|l| *l == list) {
-            Some(k) => k as u32,
-            None => {
-                c.push(list);
-                c.len() as u32 - 1
-            }
+        if let Some(k) = c.iter().position(|l| *l == list) {
+            k as u32
+        } else {
+            c.push(list);
+            c.len() as u32 - 1
         }
     };
     let mesh = if periodic {

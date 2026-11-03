@@ -104,6 +104,7 @@ impl Csr {
     }
 
     /// The rows and columns `keep` of the matrix, in that order. `keep` holds each index once.
+    #[must_use]
     pub fn submatrix(&self, keep: &[usize]) -> Csr {
         let mut new = vec![u32::MAX; self.n];
         for (k, &i) in keep.iter().enumerate() {

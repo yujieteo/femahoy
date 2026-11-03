@@ -110,5 +110,6 @@ for i in range(1, len(xp)):
     out += ["2", f"{n}, 1, 1.0, {left}, 1, -1.0"]
     if i < len(xp) - 1:
         out += ["3", f"{n}, 2, 1.0, {left}, 2, {t - 1:.12g}, {right}, 2, {-t:.12g}"]
-open(args.o, "w").write("\n".join(out) + "\n")
+with open(args.o, "w") as file:
+    file.write("\n".join(out) + "\n")
 print(f"{args.o}: {len(nodes)} nodes, {len(elements)} elements")

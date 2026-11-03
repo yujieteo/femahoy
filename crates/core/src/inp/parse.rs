@@ -2,7 +2,10 @@
 //! draw is skipped. A data line that does not parse is skipped too. CalculiX checks the rest.
 
 use super::lexer::{lex, Block};
-use super::model::*;
+use super::model::{
+    Boundary, Cload, Dload, Dsload, Element, ElementChange, ElementSurface, ElementTarget, IdSet,
+    Model, Node, Step, Target,
+};
 
 /// Read the mesh, the sets, the surfaces, the supports and the loads of a CalculiX input.
 /// The text must hold the files of `*INCLUDE` already (see [`flatten`](super::flatten)).
@@ -178,12 +181,11 @@ impl Reader {
                     _ => continue,
                 },
             };
-            match first.parse::<u32>() {
-                Ok(e) => faces.push((e, face)),
-                Err(_) => {
-                    let ids = self.model.elset(first).map(|s| s.ids.clone());
-                    faces.extend(ids.into_iter().flatten().map(|e| (e, face)));
-                }
+            if let Ok(e) = first.parse::<u32>() {
+                faces.push((e, face));
+            } else {
+                let ids = self.model.elset(first).map(|s| s.ids.clone());
+                faces.extend(ids.into_iter().flatten().map(|e| (e, face)));
             }
         }
         self.model.element_surfaces.push(ElementSurface {

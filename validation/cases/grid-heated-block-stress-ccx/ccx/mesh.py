@@ -9,6 +9,7 @@ symmetry hold ux (x = 0.05) and uy (y = 0.05), and the centre of the bottom hold
     ccx job
     python3 result.py job.dat
 """
+import itertools
 import sys
 
 H = float(sys.argv[1])
@@ -22,7 +23,7 @@ def planes(a, b, n):
 def axis(cuts, h):
     """Planes through each cut, with cells of about h."""
     p = [cuts[0]]
-    for a, b in zip(cuts, cuts[1:]):
+    for a, b in itertools.pairwise(cuts):
         n = max(1, round((b - a) / h))
         p += planes(a, b, n)[1:]
     return p
@@ -67,7 +68,7 @@ for k in range(len(zs) - 1):
                 continue
             c = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
                  (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
-            mid = lambda a, b: tuple((p + q) / 2 for p, q in zip(c[a], c[b]))
+            mid = lambda a, b, c=c: tuple((p + q) / 2 for p, q in zip(c[a], c[b]))
             edges = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4),
                      (0, 4), (1, 5), (2, 6), (3, 7)]
             ids = [node(p) for p in c] + [node(mid(a, b)) for a, b in edges]
@@ -86,7 +87,7 @@ with open(OUT, "w") as f:
     for part in ("PLATE", "BLOCK"):
         f.write(f"*ELEMENT, TYPE=C3D20, ELSET={part}\n")
         for e, ids in enumerate(elements[part]):
-            line = [first[part] + e] + ids
+            line = [first[part] + e, *ids]
             f.write(", ".join(map(str, line[:16])) + ",\n")
             f.write(", ".join(map(str, line[16:])) + "\n")
     probes = {"BLOCK_TOP": (0.05, 0.05, 0.03), "PLATE_CORNER": (0.1, 0.1, 0.0),

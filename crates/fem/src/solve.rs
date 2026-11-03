@@ -94,7 +94,7 @@ impl Solver {
         unknowns: Unknowns,
         method: Option<Method>,
         crossover: Crossover,
-        cells: Option<Cells>,
+        cells: Option<Cells<'_>>,
     ) -> Result<Solver, String> {
         let level = match unknowns {
             Unknowns::Grid(level) => level,
@@ -117,15 +117,12 @@ impl Solver {
                             .then_some(sym)
                     }
                 };
-                let inner = match sym {
-                    Some(sym) => {
-                        let chol = Cholesky::factor(&sym, &a)?;
-                        Inner::Direct(a, chol)
-                    }
-                    None => {
-                        let mg = PMultigrid::new(&a, p, &coarse)?;
-                        Inner::PMultigrid(a, mg)
-                    }
+                let inner = if let Some(sym) = sym {
+                    let chol = Cholesky::factor(&sym, &a)?;
+                    Inner::Direct(a, chol)
+                } else {
+                    let mg = PMultigrid::new(&a, p, &coarse)?;
+                    Inner::PMultigrid(a, mg)
                 };
                 return Ok(Solver {
                     inner,
@@ -172,15 +169,12 @@ impl Solver {
                     .then_some(sym)
             }
         };
-        let inner = match sym {
-            Some(sym) => {
-                let chol = Cholesky::factor(&sym, &a)?;
-                Inner::Direct(a, chol)
-            }
-            None => {
-                let mg = Multigrid::new(a.clone(), level, cells)?;
-                Inner::Multigrid(a, mg)
-            }
+        let inner = if let Some(sym) = sym {
+            let chol = Cholesky::factor(&sym, &a)?;
+            Inner::Direct(a, chol)
+        } else {
+            let mg = Multigrid::new(a.clone(), level, cells)?;
+            Inner::Multigrid(a, mg)
         };
         Ok(Solver {
             inner,
@@ -189,6 +183,7 @@ impl Solver {
     }
 
     /// The solver with at most `max_iter` PCG iterations for each solve.
+    #[must_use]
     pub fn with_max_iter(self, max_iter: usize) -> Solver {
         Solver { max_iter, ..self }
     }

@@ -1,10 +1,11 @@
 """Small result-safety checks. No solver process runs."""
 import importlib.util
-from pathlib import Path
-import unittest
 import tempfile
+import unittest
+from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("flap_curves", Path(__file__).with_name("curves.py"))
+assert spec is not None and spec.loader is not None
 curves = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(curves)
 

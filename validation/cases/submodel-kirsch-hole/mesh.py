@@ -174,8 +174,7 @@ if args.exact_cut:
 def shape(xi, eta):
     """The 8 shape functions of a CPE8R element at (xi, eta), in the order of the nodes."""
     n = [(1 + a * xi) * (1 + b * eta) * (a * xi + b * eta - 1) / 4 for a, b in [(-1, -1), (1, -1), (1, 1), (-1, 1)]]
-    return n + [(1 - xi * xi) * (1 - eta) / 2, (1 + xi) * (1 - eta * eta) / 2,
-                (1 - xi * xi) * (1 + eta) / 2, (1 - xi) * (1 - eta * eta) / 2]
+    return [*n, (1 - xi * xi) * (1 - eta) / 2, (1 + xi) * (1 - eta * eta) / 2, (1 - xi * xi) * (1 + eta) / 2, (1 - xi) * (1 - eta * eta) / 2]
 
 
 # CPE8R has 2 x 2 integration points at +-1/sqrt(3). ccx makes a C3D20R of each element, with 2

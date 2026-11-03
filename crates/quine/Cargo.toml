@@ -10,3 +10,6 @@ fh = { path = "../fh", default-features = false }
 
 [lib]
 crate-type = ["staticlib", "rlib"]
+
+[lints]
+workspace = true

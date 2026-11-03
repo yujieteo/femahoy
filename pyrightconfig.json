@@ -1,0 +1,11 @@
+{
+  "include": ["scripts", "validation"],
+  "pythonVersion": "3.11",
+  "executionEnvironments": [
+    {"root": "scripts/cad/bar.py", "reportMissingImports": "none"},
+    {"root": "validation/cases/dipole-king-middleton/omega12.5/openems.py", "reportMissingImports": "none"},
+    {"root": "validation/cases/optics-mie-cylinder/reference.py", "reportMissingImports": "none"},
+    {"root": "validation/cases/optics-mie-cylinder/res40/meep_case.py", "reportMissingImports": "none"},
+    {"root": "validation/cases/slider-crank/60rpm/chrono.py", "reportMissingImports": "none"}
+  ]
+}

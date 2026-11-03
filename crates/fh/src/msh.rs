@@ -217,7 +217,7 @@ fn read(text: &str, shell: bool) -> Result<MshMesh> {
     r.finish()
 }
 
-fn skip(l: &mut Lines, name: &str) -> Result<()> {
+fn skip(l: &mut Lines<'_>, name: &str) -> Result<()> {
     let end = format!("$End{name}");
     loop {
         let (_, t) = l.next()?;
@@ -229,7 +229,7 @@ fn skip(l: &mut Lines, name: &str) -> Result<()> {
 }
 
 impl Reader {
-    fn format(&mut self, l: &mut Lines) -> Result<()> {
+    fn format(&mut self, l: &mut Lines<'_>) -> Result<()> {
         let (line, t) = l.next()?;
         if t[0] != "4.1" {
             return fail(
@@ -247,7 +247,7 @@ impl Reader {
         Ok(())
     }
 
-    fn physical_names(&mut self, l: &mut Lines) -> Result<()> {
+    fn physical_names(&mut self, l: &mut Lines<'_>) -> Result<()> {
         let (line, t) = l.next()?;
         for _ in 0..num::<usize>(&t, 0, line, "name count")? {
             let (line, t) = l.next()?;
@@ -265,7 +265,7 @@ impl Reader {
         Ok(())
     }
 
-    fn read_entities(&mut self, l: &mut Lines) -> Result<()> {
+    fn read_entities(&mut self, l: &mut Lines<'_>) -> Result<()> {
         let (line, t) = l.next()?;
         let mut counts = [0usize; 4];
         for (d, c) in counts.iter_mut().enumerate() {
@@ -291,7 +291,7 @@ impl Reader {
         Ok(())
     }
 
-    fn nodes(&mut self, l: &mut Lines) -> Result<()> {
+    fn nodes(&mut self, l: &mut Lines<'_>) -> Result<()> {
         let (line, t) = l.next()?;
         for _ in 0..num::<usize>(&t, 0, line, "block count")? {
             let (line, t) = l.next()?;
@@ -323,7 +323,7 @@ impl Reader {
         Ok(())
     }
 
-    fn elements(&mut self, l: &mut Lines) -> Result<()> {
+    fn elements(&mut self, l: &mut Lines<'_>) -> Result<()> {
         let (line, t) = l.next()?;
         for _ in 0..num::<usize>(&t, 0, line, "block count")? {
             let (line, t) = l.next()?;
@@ -409,15 +409,14 @@ impl Reader {
                 .get(&(dim, phys))
                 .cloned()
                 .unwrap_or_else(|| format!("PHYS_{dim}_{phys}"));
-            let i = match self.groups.iter().position(|g| g.name == name) {
-                Some(i) => i,
-                None => {
-                    self.groups.push(Group {
-                        name,
-                        ..Group::default()
-                    });
-                    self.groups.len() - 1
-                }
+            let i = if let Some(i) = self.groups.iter().position(|g| g.name == name) {
+                i
+            } else {
+                self.groups.push(Group {
+                    name,
+                    ..Group::default()
+                });
+                self.groups.len() - 1
             };
             self.groups[i].nodes.extend_from_slice(nodes);
             self.groups[i].elements.extend_from_slice(elements);

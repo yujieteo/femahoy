@@ -16,8 +16,8 @@ import math
 ET = 7000.0
 EL, GLT, GTT, NU = 25.0 * ET, 0.5 * ET, 0.2 * ET, 0.25
 A = 100.0
-THIN = dict(h=1.0, q0=0.001, x0=0.0)
-THICK = dict(h=25.0, q0=1.0, x0=60.0)
+THIN = {"h": 1.0, "q0": 0.001, "x0": 0.0}
+THICK = {"h": 25.0, "q0": 1.0, "x0": 60.0}
 # The node and element numbers of THICK start after this offset.
 OFFSET = 100000
 G = 1.0 / math.sqrt(3.0)
@@ -95,7 +95,7 @@ class Exact:
             whole = mul(expm([[x * (z1 - z0) for x in row] for row in m]), whole)
         # Bottom: X = Y = Z = 0. Top: X = Y = 0, Z = -q0.
         k = inverse3([row[:3] for row in whole[3:]])
-        self.bottom = apply(k, [0.0, 0.0, -q0]) + [0.0, 0.0, 0.0]
+        self.bottom = [*apply(k, [0.0, 0.0, -q0]), 0.0, 0.0, 0.0]
 
     def state(self, z):
         """The state and the ply at z, from the bottom up. At an interface, the lower ply."""
@@ -124,8 +124,7 @@ def s8(xi, eta):
     """The shape functions of the 8-node face: 4 corners, then 4 mid-side nodes."""
     n = [0.25 * (1 + xi * a) * (1 + eta * b) * (xi * a + eta * b - 1)
          for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
-    return n + [0.5 * (1 - xi * xi) * (1 - eta), 0.5 * (1 + xi) * (1 - eta * eta),
-                0.5 * (1 - xi * xi) * (1 + eta), 0.5 * (1 - xi) * (1 - eta * eta)]
+    return [*n, 0.5 * (1 - xi * xi) * (1 - eta), 0.5 * (1 + xi) * (1 - eta * eta), 0.5 * (1 - xi * xi) * (1 + eta), 0.5 * (1 - xi) * (1 - eta * eta)]
 
 
 GAUSS4 = [(-0.8611363115940526, 0.3478548451374538), (-0.3399810435848563, 0.6521451548625461),
@@ -257,7 +256,7 @@ def table():
         h = A / s
         ex = Exact(h, 1.0)
         c = A / 2
-        nw = lambda w: 100 * ET * h**3 * abs(w) / A**4
+        nw = lambda w, h=h: 100 * ET * h**3 * abs(w) / A**4
         sx_top = ex.stress(c, c, h / 2)[0] / s**2
         sx_bot = ex.stress(c, c, -h / 2)[0] / s**2
         sy = ex.stress(c, c, h / 6)[1] / s**2

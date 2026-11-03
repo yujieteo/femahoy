@@ -7,13 +7,13 @@ temperature across the half channel and the wall at the station x0 = 40 mm, with
 solution of derivation.md. Only the Python standard library.
 """
 
-import re
 import sys
-import tomllib
 from pathlib import Path
 
+import tomllib
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-import vtu  # noqa: E402
+import vtu
 
 CHECKS = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
 # The exact temperatures of the interface and of the heated face at x0 (check.toml).
@@ -35,7 +35,7 @@ def exact(y):
 
 def model(folder):
     """(y, T) at x0: the mean of the 2 cell columns on each side of x0. T is linear in x there."""
-    steps = sorted(folder.glob("step-*.vtu"), key=lambda p: int(re.search(r"\d+", p.stem)[0]))
+    steps = sorted(folder.glob("step-*.vtu"), key=lambda p: int(p.stem.removeprefix("step-")))
     step = vtu.read(steps[-1])
     rows = {}
     for k, t in enumerate(step.cell["T"]):

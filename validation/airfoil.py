@@ -11,6 +11,7 @@ The mesh is a 2D C-grid of 12 blocks, 1 cell deep. The inner layer of blocks is 
 its lines leave the wall along the normal. The outer layer goes out to a circle of radius R.
 Above and below the wake, the far field is straight to the outlet.
 """
+import itertools
 import math
 import os
 import sys
@@ -91,19 +92,20 @@ def fractions(expansion, n):
 
 
 def length(pts):
-    return sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+    return sum(math.dist(a, b) for a, b in itertools.pairwise(pts))
 
 
 def at_length(path, s):
     """The point at the arc length s on the polyline `path`, and the unit tangent there."""
     run = 0.0
-    for a, b in zip(path, path[1:]):
+    for a, b in itertools.pairwise(path):
         step = math.dist(a, b)
         if run + step >= s or b is path[-1]:
             t = min(1.0, (s - run) / step)
             point = (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
             return point, ((b[0] - a[0]) / step, (b[1] - a[1]) / step)
         run += step
+    raise ValueError(f"at_length: the path has fewer than 2 points: {path}")
 
 
 def block_mesh_dict(title, surface, level):
@@ -417,6 +419,7 @@ def main():
     iterations = int(sys.argv[3]) if len(sys.argv) > 3 else case["iterations"]
     here = os.path.dirname(os.path.abspath(__file__))
     out = sys.argv[4] if len(sys.argv) > 4 else os.path.join(here, "cases", name)
+    cells = 0
     for folder, (alpha, surface) in case["runs"].items():
         mesh, cells = block_mesh_dict(case["title"], surface, level)
         files = case_files(alpha, iterations, 1.0 / case["re"], case["cofr"])

@@ -103,18 +103,15 @@ fn add(flat: &mut Flat, file: &Path, dir: &Path, depth: usize) -> Result<(), Str
     }
     let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
     for line in text.lines() {
-        match include_of(line) {
-            Some(name) => {
-                let relative = include_path(name)?;
-                add(flat, &dir.join(&relative), dir, depth + 1)?;
-                if !flat.files.contains(&relative) {
-                    flat.files.push(relative);
-                }
+        if let Some(name) = include_of(line) {
+            let relative = include_path(name)?;
+            add(flat, &dir.join(&relative), dir, depth + 1)?;
+            if !flat.files.contains(&relative) {
+                flat.files.push(relative);
             }
-            None => {
-                flat.text.push_str(line);
-                flat.text.push('\n');
-            }
+        } else {
+            flat.text.push_str(line);
+            flat.text.push('\n');
         }
     }
     Ok(())

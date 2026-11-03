@@ -17,11 +17,12 @@ The lengths are in mm, as the mesh of openEMS.
 
 import os
 
+import numpy as np
+
 # CSXCAD first: a Python with no openEMS then fails on CSXCAD, and fh gives the install step.
 from CSXCAD import ContinuousStructure
 from openEMS import openEMS
 from openEMS.physical_constants import C0
-import numpy as np
 
 OMEGA = 12.5
 W = 1.2  # strip width
@@ -44,7 +45,7 @@ mesh.SetDeltaUnit(1e-3)
 
 # The edges of a sheet: a mesh line d/3 in the metal and the next line 2d/3 out of the metal.
 edge = W / 2 - d / 3
-mesh.AddLine("x", list(np.linspace(-edge, edge, N)) + [-W / 2 - 2 * d / 3, W / 2 + 2 * d / 3])
+mesh.AddLine("x", [*list(np.linspace(-edge, edge, N)), -W / 2 - 2 * d / 3, W / 2 + 2 * d / 3])
 mesh.AddLine("x", [-W / 2 - MARGIN, W / 2 + MARGIN])
 mesh.AddLine("y", [-MARGIN, -d, 0, d, MARGIN])
 z = list(np.arange(-GAP / 2, GAP / 2 + d / 2, min(d, GAP / 2)))

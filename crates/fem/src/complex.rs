@@ -33,6 +33,7 @@ impl C64 {
         self.re.hypot(self.im)
     }
 
+    #[must_use]
     pub fn conj(self) -> C64 {
         C64::new(self.re, -self.im)
     }
@@ -54,6 +55,7 @@ impl C64 {
 
     /// The square root with a real part of 0 or more. The form with no difference of 2 near
     /// values keeps a small imaginary part (a small loss) to the precision of the arithmetic.
+    #[must_use]
     pub fn sqrt(self) -> C64 {
         let r = self.abs();
         if r == 0.0 {
@@ -71,6 +73,7 @@ impl C64 {
         self.re.is_finite() && self.im.is_finite()
     }
 
+    #[must_use]
     pub fn scale(self, s: f64) -> C64 {
         C64::new(self.re * s, self.im * s)
     }
@@ -202,6 +205,7 @@ impl Matrix {
         self.a[i * self.n + j] = v;
     }
 
+    #[must_use]
     pub fn mul(&self, o: &Matrix) -> Matrix {
         let n = self.n;
         let mut c = Matrix::zeros(n);
@@ -219,6 +223,7 @@ impl Matrix {
         c
     }
 
+    #[must_use]
     pub fn add(&self, o: &Matrix, s: f64) -> Matrix {
         Matrix {
             n: self.n,
@@ -231,6 +236,7 @@ impl Matrix {
         }
     }
 
+    #[must_use]
     pub fn scale(&self, s: f64) -> Matrix {
         Matrix {
             n: self.n,
@@ -299,6 +305,7 @@ impl Matrix {
     }
 
     /// The matrix exponential e^self.
+    #[must_use]
     pub fn exp(&self) -> Matrix {
         // The [6/6] Pade coefficients of e^x.
         const C: [f64; 7] = [
@@ -540,7 +547,7 @@ mod tests {
             let k = (0..e.len())
                 .min_by(|&a, &b| (e[a] - want).abs().total_cmp(&(e[b] - want).abs()))
                 .unwrap();
-            assert!(close(e[k], want, 1e-10), "{:?} not in {e:?}", want);
+            assert!(close(e[k], want, 1e-10), "{want:?} not in {e:?}");
             e.remove(k);
         }
     }

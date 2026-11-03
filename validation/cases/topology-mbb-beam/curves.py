@@ -9,8 +9,9 @@ last iterations with the pass band of check.toml. The reference is c of Andreass
 """
 
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 CHECK = tomllib.loads((Path(__file__).resolve().parent / "check.toml").read_text())
 REFERENCE = CHECK["compliance"]["value"]

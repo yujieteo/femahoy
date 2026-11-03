@@ -446,13 +446,12 @@ pub fn solve(model: &Model, events: &mut dyn Events) -> Result<Effective, String
 /// each point. The shear cases have the symmetric gradient, an engineering shear strain of 1.
 fn affine(case: usize, x: &[[f64; 3]]) -> [f64; 24] {
     let mut g = [[0.0; 3]; 3];
-    match case {
-        0..=2 => g[case][case] = 1.0,
-        _ => {
-            let [a, b] = [[1, 2], [0, 2], [0, 1]][case - 3];
-            g[a][b] = 0.5;
-            g[b][a] = 0.5;
-        }
+    if case <= 2 {
+        g[case][case] = 1.0;
+    } else {
+        let [a, b] = [[1, 2], [0, 2], [0, 1]][case - 3];
+        g[a][b] = 0.5;
+        g[b][a] = 0.5;
     }
     std::array::from_fn(|r| (0..3).map(|j| g[r % 3][j] * x[r / 3][j]).sum())
 }

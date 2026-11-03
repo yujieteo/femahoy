@@ -10,8 +10,9 @@ standard library.
 
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 HERE = Path(__file__).resolve().parent
 # Blevins (1979), Table 8-1, the clamped-free beam: lambda_r of the first 3 modes.
@@ -41,7 +42,9 @@ def main(out, folders):
     dat = (Path(dict(f.split("=", 1) for f in folders)["job.inp"]) / "ccx/job.dat").read_text()
     freq = {m: row[2] for m, row in table(dat, "E I G E N V A L U E   O U T P U T").items()}
     mass = table(dat, "E F F E C T I V E   M O D A L   M A S S")
-    total = float(re.search(r"T O T A L   E F F E C T I V E   M A S S.*?\n\s+(\d\.\d+E[+-]\d+)", dat, re.S)[1])
+    found = re.search(r"T O T A L   E F F E C T I V E   M A S S.*?\n\s+(\d\.\d+E[+-]\d+)", dat, re.S)
+    assert found, "job.dat has no total effective mass"
+    total = float(found[1])
     # A mode bends the beam in y or z when its effective mass in that direction is 1 % or more of
     # the total mass. Each direction counts its bending modes r = 1, 2, 3.
     bends = {"y": [], "z": []}

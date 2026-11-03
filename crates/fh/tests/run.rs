@@ -259,7 +259,7 @@ fn the_browser_solve_gives_the_probes_of_fh_run() {
         let mut steps = 0;
         let got =
             fh_viewer::solve::solve(&text, fh_viewer::solve::BROWSER, &mut |_| {}, &mut |_| {
-                steps += 1
+                steps += 1;
             })
             .unwrap();
         assert_eq!(got, want);
@@ -382,7 +382,7 @@ fn foam_lab(name: &str, application: &str) -> (PathBuf, PathBuf) {
     (dir, case)
 }
 
-fn fh_run_foam(dir: &std::path::Path, case: &std::path::Path) -> std::process::Output {
+fn fh_run_foam(dir: &Path, case: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_fh"))
         .args(["run", p(case)])
         .env("FH_STATE", dir.join("state"))
@@ -520,7 +520,7 @@ fn getdp_lab(name: &str, text: &str) -> (PathBuf, PathBuf) {
     (dir, case)
 }
 
-fn fh_run_getdp(dir: &std::path::Path, case: &std::path::Path) -> std::process::Output {
+fn fh_run_getdp(dir: &Path, case: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_fh"))
         .args(["run", p(case)])
         .env("FH_STATE", dir.join("state"))
@@ -665,8 +665,8 @@ fn fh_run_optimizes_a_topology_case_with_ccx_in_each_iteration() {
     // The steps show the design of the iterations 1, 2, 4, 8 and so on, then the last design.
     let pvd = fs::read_to_string(run.join("out/results.pvd")).unwrap();
     let steps = fh_core::vtu::read_pvd(&pvd).unwrap();
-    let mut want: Vec<f64> = (0..)
-        .map(|k| (1 << k) as f64)
+    let mut want: Vec<f64> = (0..31)
+        .map(|k| f64::from(1 << k))
         .take_while(|n| *n < rows.len() as f64)
         .collect();
     want.push(rows.len() as f64);
@@ -897,7 +897,7 @@ fn lammps_lab(name: &str, text: &str) -> (PathBuf, PathBuf) {
     (dir, case)
 }
 
-fn fh_run_lammps(dir: &std::path::Path, case: &std::path::Path) -> std::process::Output {
+fn fh_run_lammps(dir: &Path, case: &Path) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_fh"))
         .args(["run", p(case)])
         .env("FH_STATE", dir.join("state"))

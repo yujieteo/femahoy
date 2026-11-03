@@ -1,10 +1,11 @@
 """Protect explicit units, zero references, separate mesh series and plot files in reports."""
 import importlib.util
-from pathlib import Path
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location('reports', ROOT / 'scripts/validation-reports.py')
+assert spec is not None and spec.loader is not None
 reports = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reports)
 
@@ -28,7 +29,8 @@ class ReportResults(unittest.TestCase):
         self.assertIn('No extrapolation', page)
 
     def test_not_run_mesh_trend_has_a_file_for_each_curve_mark(self):
-        import re, tempfile
+        import re
+        import tempfile
         page = reports.text('naca23012-flap', 'not run: OpenFOAM is not installed', [], 'test')
         with tempfile.TemporaryDirectory() as tmp:
             files = reports.mesh_curves('naca23012-flap', Path(tmp))
