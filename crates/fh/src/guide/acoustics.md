@@ -1,6 +1,6 @@
 # Acoustics with GetDP
 
-For a sound request at 1 frequency, for example a radiating or vibrating surface, write a GetDP case as in `fh guide electromagnetics` for the sound pressure p: `div grad p + k^2 p = 0`, k = omega / c.
+For a sound request at 1 frequency, for example a radiating or vibrating surface, write a GetDP case. Write it as in `fh guide electromagnetics`, for the sound pressure p: `div grad p + k^2 p = 0`, k = omega / c.
 
 - p is `Form0` with `BF_Node` on `NodesOf[All]` and `BF_Node_2E` on `EdgesOf[All]` (second order). Use Gauss rules of 15 points for tetrahedra and 7 for triangles. The mesh stays first order, so the page shows the `.pos` files. In the validation case, h = wavelength / 14 gave errors of 0.2 % or less, and wavelength / 7 gave 1 %.
 - Terms: `[ Dof{d p}, {d p} ]` and `[ -k^2 * Dof{p}, {p} ]` in the air. A rigid wall or a symmetry plane needs no term.

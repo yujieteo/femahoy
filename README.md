@@ -1,10 +1,10 @@
 # femahoy
 
-femahoy is a chat for finite element and CFD analyses. You ask for an analysis, and Claude Code, signed in with your own Claude subscription, does the work on your computer.
+femahoy is a chat for finite element and CFD analyses where you ask for an analysis and Claude Code does the work on your computer.
 
 ![Diagram of the parts of femahoy. The browser, with the chat and the 3D viewer, sends HTTP requests with the token to fh serve at 127.0.0.1:8790. On your computer, fh serve starts Claude Code with your own login. Claude Code runs the fh commands to mesh, solve and report. The fh commands write the runs and results to the state folder, and fh serve reads them.](docs/figures/architecture.svg)
 
-fh serve starts Claude Code, Claude Code runs the fh commands, and fh serve shows what they write to the state folder.
+fh serve starts Claude Code, signed in with your own Claude subscription. Claude Code runs the fh commands, and fh serve shows what they write to the state folder.
 
 ## Start
 
@@ -39,7 +39,7 @@ Do these 4 steps on macOS (Apple Silicon) or Linux (x86-64 or ARM64).
 
    The address is the same at each start: `http://127.0.0.1:8790/?token=TOKEN`. Set `FH_PORT` to use a different port. If the port is in use, `fh serve` stops with an error. The token is in the file `token` of the state folder. Keep the address private, because each person with the address can use the page. To make a new token, remove the file `token` and start `fh serve` again.
 
-   To open the page on a phone, forward a local port of the phone to `127.0.0.1:8790` on the computer through SSH, for example with a local port forward in Termius. On a computer, use `ssh -L 8790:127.0.0.1:8790 HOST`. Then open the same address on the phone. The page accepts only the host `127.0.0.1:8790`, so the local port must also be 8790.
+   To open the page on a phone, forward a local port of the phone to `127.0.0.1:8790` on the computer through SSH. An example is a local port forward in Termius. On a computer, use `ssh -L 8790:127.0.0.1:8790 HOST`. Then open the same address on the phone. The page accepts only the host `127.0.0.1:8790`, so the local port must also be 8790.
 
 4. Ask for an analysis in the chat. For example: "Build and solve a steel cantilever of 100 x 10 x 10 mm with 1 MPa on the top face".
 

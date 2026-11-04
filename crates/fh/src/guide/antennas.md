@@ -1,11 +1,11 @@
 # Antennas with openEMS
 
-For an antenna request, for example the input impedance, S11 or the radiation pattern of a dipole, a monopole or a patch, write an openEMS case folder and solve it with `fh run CASE`. openEMS is an FDTD solver: 1 run with a pulse gives all the frequencies of a band.
+For an antenna request, write an openEMS case folder and solve it with `fh run CASE`. Examples are the input impedance, S11 or the radiation pattern of a dipole, a monopole or a patch. openEMS is an FDTD solver: 1 run with a pulse gives all the frequencies of a band.
 
 1. Case: write `openems.py`, a script for the Python modules `CSXCAD` and `openEMS`. Run the solver with `FDTD.Run("sim", cleanup=True)`, in the case folder. `Run` changes the working folder to `sim`: change it back with `os.chdir` before you write the output.
 2. Solve: `fh run CASE`. `fh run` starts the Python of openEMS with `openems.py`. The output goes to `log.python`.
 3. Numbers: write text tables with a header line `# name name ...`, for example f, R, X and S11 over the band. `fh run` prints the folder of these files.
-4. Fields for the page: write `.pos` files, as for GetDP (`fh guide electromagnetics`), for example the far-field pattern as a surface of `SQ` quads with the view `D`. All the views must have the same elements.
+4. Fields for the page: write `.pos` files, as for GetDP (`fh guide electromagnetics`). An example is the far-field pattern as a surface of `SQ` quads with the view `D`. All the views must have the same elements.
 
 This setup agrees with the King-Middleton impedance of a dipole (the validation case `dipole-king-middleton`):
 
