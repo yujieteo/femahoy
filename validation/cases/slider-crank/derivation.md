@@ -67,7 +67,7 @@ Problems that the model solves:
 
 These commands, in the repository root, solve the case with another time step in a scratch folder. Set `FH_PYCHRONO` to the Python of PyChrono first (README.md):
 
-```
+```text
 mkdir /tmp/slider-crank && cp validation/cases/slider-crank/60rpm/chrono.py /tmp/slider-crank && cd /tmp/slider-crank
 sed -i.bak 's/^DT, END = 1e-3,/DT, END = 5e-4,/' chrono.py && "$FH_PYCHRONO" chrono.py && tail -1 slider-crank.txt
 ```

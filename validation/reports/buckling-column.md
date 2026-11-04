@@ -1,6 +1,6 @@
 # buckling-column derivation
 
-## Conclusion
+## Finding
 
 The solid model gives the critical load of the column 0.10 % above the theory of Timoshenko and Gere (1961). The model gives 10806.05 N, and the theory gives 10794.88 N. The tolerance is 1 %.
 

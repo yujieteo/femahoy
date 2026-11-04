@@ -170,7 +170,8 @@ def mesh_curves(case, tmp):
 def story(case):
     """story.md of the case, or None."""
     path = CASES / case / "story.md"
-    return path.read_text().strip() if path.is_file() else None
+    # story.md starts with a level 1 heading, so it is a whole Markdown file. The report nests it.
+    return re.sub(r"^(#+) ", r"\1# ", path.read_text().strip(), flags=re.M) if path.is_file() else None
 
 
 # A story opts into a hand check with an explicit check name and unit. Never infer units.
@@ -211,7 +212,7 @@ def text(case, status, rows, version):
         lead = f"**{result.capitalize()}.** {rule} `fh validate` gives the computed values."
     body = ["## Result", lead]
     if result not in ("pass", "not run"):
-        body.append(f"```\n{status}\n```")
+        body.append(f"```text\n{status}\n```")
     if rows:
         cells = []
         for row in rows:
@@ -233,8 +234,7 @@ def text(case, status, rows, version):
     summary, _ = mesh_report(case)
     if summary:
         derivation = re.sub(r"(^## Mesh study\n.*?\n)((?:\|[^\n]*\n)+)",
-                            lambda m: m[1] + summary + "\n\n<details><summary>Full mesh table</summary>\n\n"
-                            + m[2] + "\n</details>\n",
+                            lambda m: m[1] + summary + "\n\nFull mesh table:\n\n" + m[2],
                             derivation + "\n", count=1, flags=re.S | re.M).strip()
     # The story and the result go after the title of derivation.md.
     title, _, rest = derivation.partition("\n")
@@ -282,13 +282,12 @@ def svg(figure):
 
 def values(figure):
     """The table of the original values of a plot (the "Show values" table of curve.rs) as a
-    Markdown table in a `details` block."""
+    Markdown table below its caption."""
     found = re.search(r"<table><caption>(.*?)</caption>(.*?)</table>", figure, re.S)
     assert found, figure
     cell = lambda c: html.unescape(re.sub(r"<[^>]+>", "", c))
     rows = [[cell(c) for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", tr)] for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", found[2], re.S)]
-    return (f"<details><summary>Values of the plot</summary>\n\n{cell(found[1])}\n\n"
-            + table(rows[0], rows[1:], 0) + "\n\n</details>")
+    return f"{cell(found[1])}\n\n" + table(rows[0], rows[1:], 0)
 
 
 def plots(case, page, curves, env, tmp):
@@ -315,7 +314,7 @@ def plots(case, page, curves, env, tmp):
         title, file, lines, samples = svg(figure)
         folder.mkdir(exist_ok=True)
         (folder / f"{name}.svg").write_text(file)
-        plot = "\n\n".join([f"**{title}**", f"![{title}]({case}/{name}.svg)", *lines, samples])
+        plot = "\n\n".join([f"### {title}", f"![{title}]({case}/{name}.svg)", *lines, samples])
         if marks:
             page = page.replace(f"<!--curve {marks[0]}-->", plot, 1)
         else:
@@ -342,7 +341,7 @@ def write_index(outcomes):
     for case in sorted(p.name for p in CASES.iterdir() if (p / "check.toml").is_file()):
         result, detail, version = outcomes.get(case, ["not run", "", ""])
         name = f"[{case}]({case}.md)" if (OUT / f"{case}.md").is_file() else case
-        rows.append([name, result + (f": {detail}" if detail else ""), version])
+        rows.append([name, result + (f": {detail}" if detail else ""), version or "n/a"])
     passed = sum(1 for o in outcomes.values() if o[0] == "pass")
     (OUT / "index.md").write_text(
         "# Validation reports\n\n"

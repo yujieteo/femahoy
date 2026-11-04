@@ -1,6 +1,6 @@
 # topology-mbb-beam-cad derivation
 
-## Conclusion
+## Finding
 
 The CAD check of fh gives the compliance 190.48 for the solid of the final design, 1.45 % below the check value 193.27. The check value is the threshold of the same design at the density 0.5, on the elements of the loop. The difference uses 72 % of the tolerance of 2 %. It comes from the smooth boundary of the solid and its finer mesh (section "Mesh of the check" below).
 
@@ -35,7 +35,7 @@ The solid has no gray material. Thus its compliance must be lower than the compl
 
 ## Source
 
-E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, https://doi.org/10.1007/s00158-010-0594-7.
+E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, <https://doi.org/10.1007/s00158-010-0594-7>.
 
 Figure 3, top left, gives c = 216.81 for the sensitivity filter. This is the compliance of the loop. The loop of `fh` gives 216.8137 on this problem (`topology-mbb-beam/derivation.md`).
 

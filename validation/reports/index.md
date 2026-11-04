@@ -19,43 +19,43 @@
 | [fit-nist-pontius](fit-nist-pontius.md) | pass | 9c54611 |
 | [fracture-centre-crack](fracture-centre-crack.md) | pass | 9c54611 |
 | [frequency-cantilever](frequency-cantilever.md) | pass | 9c54611 |
-| grid-bimetal-strip | not run |  |
-| grid-cantilever | not run |  |
-| grid-cavity-te101 | not run |  |
-| grid-coax-capacitor | not run |  |
-| grid-coax-tem | not run |  |
-| grid-conductivity-slab | not run |  |
-| grid-constrained-block | not run |  |
-| grid-cooling-slab | not run |  |
-| grid-fibre-composite-cell | not run |  |
-| grid-free-block-modes-ccx | not run |  |
-| grid-frequency-cantilever | not run |  |
-| grid-heated-bar | not run |  |
-| grid-heated-block-ccx | not run |  |
-| grid-heated-block-stress-ccx | not run |  |
-| grid-holm-spot | not run |  |
-| grid-joule-bar | not run |  |
-| grid-kirsch-hole | not run |  |
-| grid-lame-cylinder | not run |  |
-| grid-laminate-cell | not run |  |
-| grid-layered-wall | not run |  |
-| grid-pipe-wall | not run |  |
-| grid-plate-hole-ccx | not run |  |
-| grid-plate-hole-stress-ccx | not run |  |
-| grid-radiating-fin-ccx | not run |  |
-| grid-radiation-slab | not run |  |
-| grid-resistor-bar | not run |  |
-| grid-round-cantilever | not run |  |
-| grid-waveguide-dielectric | not run |  |
-| grid-waveguide-step | not run |  |
-| grid-waveguide-te10 | not run |  |
+| grid-bimetal-strip | not run | n/a |
+| grid-cantilever | not run | n/a |
+| grid-cavity-te101 | not run | n/a |
+| grid-coax-capacitor | not run | n/a |
+| grid-coax-tem | not run | n/a |
+| grid-conductivity-slab | not run | n/a |
+| grid-constrained-block | not run | n/a |
+| grid-cooling-slab | not run | n/a |
+| grid-fibre-composite-cell | not run | n/a |
+| grid-free-block-modes-ccx | not run | n/a |
+| grid-frequency-cantilever | not run | n/a |
+| grid-heated-bar | not run | n/a |
+| grid-heated-block-ccx | not run | n/a |
+| grid-heated-block-stress-ccx | not run | n/a |
+| grid-holm-spot | not run | n/a |
+| grid-joule-bar | not run | n/a |
+| grid-kirsch-hole | not run | n/a |
+| grid-lame-cylinder | not run | n/a |
+| grid-laminate-cell | not run | n/a |
+| grid-layered-wall | not run | n/a |
+| grid-pipe-wall | not run | n/a |
+| grid-plate-hole-ccx | not run | n/a |
+| grid-plate-hole-stress-ccx | not run | n/a |
+| grid-radiating-fin-ccx | not run | n/a |
+| grid-radiation-slab | not run | n/a |
+| grid-resistor-bar | not run | n/a |
+| grid-round-cantilever | not run | n/a |
+| grid-waveguide-dielectric | not run | n/a |
+| grid-waveguide-step | not run | n/a |
+| grid-waveguide-te10 | not run | n/a |
 | [heat-fin](heat-fin.md) | pass | 9c54611 |
 | [hyperelastic-tube](hyperelastic-tube.md) | pass | 9c54611 |
 | [laminate-pagano](laminate-pagano.md) | pass | 9c54611 |
-| line-bars-getdp | not run |  |
-| line-coax | not run |  |
-| line-stripline | not run |  |
-| line-wire-skin | not run |  |
+| line-bars-getdp | not run | n/a |
+| line-coax | not run | n/a |
+| line-stripline | not run | n/a |
+| line-wire-skin | not run | n/a |
 | [naca0012-ladson](naca0012-ladson.md) | pass | 9c54611 |
 | [naca23012-flap](naca23012-flap.md) | pass | 9c54611 |
 | [optics-mie-cylinder](optics-mie-cylinder.md) | pass | 9c54611 |

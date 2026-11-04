@@ -1,4 +1,4 @@
-## Conclusion
+# Finding
 
 `fh fit` gives the certified values of NIST for the data set Pontius. The fit of y = c0 + c1 x + c2 x^2 to the 40 observations gives c0, c1, c2 and R-squared within 6.4e-13 of the certified values, relative. The largest difference is in c0, 0.6 % of the tolerance of 1e-10 (see "Tolerance").
 

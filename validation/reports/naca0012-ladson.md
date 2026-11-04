@@ -1,13 +1,13 @@
 # naca0012-ladson derivation
 
-## Conclusion
+## Finding
 
 The model passes, and it is above the test of Ladson (1988) by the known amount of the Spalart-Allmaras model and of the mesh. Its lift is 1.1 % to 3.1 % above Table IX, and its drag is 10 to 13 drag counts above (1 count = 0.0001). The largest part of the tolerance that a check uses is 71 % (`cl_a4`).
 
 - Lift: the Spalart-Allmaras results of 7 codes of TMR are 2.9 % to 3.9 % above the lift of the same test (see "Tolerance").
 - Drag: the mesh of the check adds 5.5 to 7.3 counts (see "Mesh study"). At zero cell size, the drag of the model is 2.4 to 5.7 counts above the test.
 
-**The lift against the angle of attack**
+### The lift against the angle of attack
 
 ![The lift against the angle of attack](naca0012-ladson/lift.svg)
 
@@ -15,9 +15,7 @@ test: Ladson (1988), NASA TM-4074, Table IX, 80-W grit
 
 The lift of the test at -0.05 degrees is not a check: it is an offset of the test (see Sources).
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | angle of attack [degrees] | model (cl [1]) | test (cl [1]) |
 | ---: | ---: | ---: |
@@ -25,25 +23,19 @@ Original values. — means no sample.
 | 4.04 | 0.44494 | 0.4316 |
 | 10.12 | 1.08233 | 1.0707 |
 
-</details>
-
-**The drag against the angle of attack**
+### The drag against the angle of attack
 
 ![The drag against the angle of attack](naca0012-ladson/drag.svg)
 
 test: Ladson (1988), NASA TM-4074, Table IX, 80-W grit
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | angle of attack [degrees] | model (cd [1]) | test (cd [1]) |
 | ---: | ---: | ---: |
 | -0.05 | 0.009126 | 0.00809 |
 | 4.04 | 0.0095 | 0.00823 |
 | 10.12 | 0.01303 | 0.01201 |
-
-</details>
 
 The far field is 500 chords from the airfoil. The run solves the angles of attack -0.05, 4.04 and 10.12 degrees. The pressure `p` gives the lift.
 
@@ -66,12 +58,12 @@ It is the plain NACA 0012 airfoil, before a case with a flap.
 
 ## Sources
 
-- C. L. Ladson, "Effects of Independent Variation of Mach and Reynolds Numbers on the Low-Speed Aerodynamic Characteristics of the NACA 0012 Airfoil Section", NASA TM-4074, October 1988, https://ntrs.nasa.gov/citations/19880019495.
+- C. L. Ladson, "Effects of Independent Variation of Mach and Reynolds Numbers on the Low-Speed Aerodynamic Characteristics of the NACA 0012 Airfoil Section", NASA TM-4074, October 1988, <https://ntrs.nasa.gov/citations/19880019495>.
   The test was in the Langley Low-Turbulence Pressure Tunnel, with a chord of 0.601 m. The lift comes from the surface pressures, and the drag from a wake rake. Grit at 5 % of the chord fixed the transition.
 - The check values come from Table IX on page 19: M = 0.15, transition fixed with No. 80-W grit, R = 5.95 x 10^6.
-- NASA Langley Turbulence Modeling Resource (TMR), "2D NACA 0012 Airfoil Validation Case" (2DN00), https://turbmodels.larc.nasa.gov/naca0012_val.html.
+- NASA Langley Turbulence Modeling Resource (TMR), "2D NACA 0012 Airfoil Validation Case" (2DN00), <https://turbmodels.larc.nasa.gov/naca0012_val.html>.
   It gives the airfoil with a sharp trailing edge, Re = 6 million and M = 0.15. Its file "Ladson force data" has the same values as Table IX. TMR tells that these tripped data are the most applicable data for the forces of fully turbulent CFD at Re = 6 million.
-- TMR, "SA Model Results", https://turbmodels.larc.nasa.gov/naca0012_val_sa.html. It gives the SA forces of 7 CFD codes on the TMR grid of 897 x 257 points.
+- TMR, "SA Model Results", <https://turbmodels.larc.nasa.gov/naca0012_val_sa.html>. It gives the SA forces of 7 CFD codes on the TMR grid of 897 x 257 points.
 
 | Angle | Lift cl | Drag cd | Check |
 |---:|---:|---:|---|
@@ -114,7 +106,7 @@ Each level doubles the cells in each direction and halves the first cell height.
 
 These commands, in the repository root, write level 3 in a scratch folder and solve it at 4.04 degrees. Solve the other angles in the same way. Each level and angle starts from the free stream.
 
-```
+```text
 python3 validation/airfoil.py naca0012-ladson 3 6000 /tmp/naca-l3
 openfoam blockMesh -case /tmp/naca-l3/a4.04
 openfoam simpleFoam -case /tmp/naca-l3/a4.04
@@ -133,6 +125,7 @@ p = log2((f1 - f2) / (f2 - f3)), and f = f3 + (f3 - f2) / (2^p - 1). The value p
 Thus the mesh error of level 2 is -0.2 % in lift at 4.04 degrees and -0.6 % at 10.12 degrees, and +5.5 to +7.3 drag counts.
 
 The extrapolated values agree with the SA results of TMR:
+
 - The lift at 10.12 degrees is 1.0888. With the Prandtl-Glauert factor 1.011 for M = 0.15, it is 1.101. CFL3D gives 1.0909 at 10 degrees, thus about 1.104 at 10.12 degrees.
 - The drag at 10.12 degrees is 0.01246. CFL3D gives 0.01231 at 10 degrees, thus about 0.0124 at 10.12 degrees.
 - The drag at -0.05 degrees is 0.00833. CFL3D gives 0.00819 at 0 degrees, and the 7 codes give 0.00812 to 0.00830.

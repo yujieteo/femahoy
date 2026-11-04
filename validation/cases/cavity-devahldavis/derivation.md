@@ -5,12 +5,12 @@ The reference is a numerical bench mark with a known accuracy. Thus the toleranc
 
 ## Sources
 
-- G. de Vahl Davis, "Natural convection of air in a square cavity: a bench mark numerical solution", International Journal for Numerical Methods in Fluids 3 (1983) 249-264, https://doi.org/10.1002/fld.1650030305.
+- G. de Vahl Davis, "Natural convection of air in a square cavity: a bench mark numerical solution", International Journal for Numerical Methods in Fluids 3 (1983) 249-264, <https://doi.org/10.1002/fld.1650030305>.
   The left wall is hot, the right wall is cold, and the top and the bottom are adiabatic. Pr = 0.71.
 - The check values come from Table V, the bench mark solution. The velocities are in units of alpha/L, with alpha the thermal diffusivity.
 - Table VII gives the estimated error of the bench mark: 0.2 % at Ra = 1e4 and 0.3 % at Ra = 1e5.
 - Table V gives 2 average Nusselt numbers for the hot wall: Nu_0 from a one-sided difference at the wall, and Nu-bar, the average over the cavity. In a steady state, the same heat goes through each vertical line. The paper tells that Nu_0 is the less accurate value. The finite volume method of the model conserves heat, thus its heat flow through the hot wall is the same as its Nu-bar. Thus the check uses Nu-bar.
-- M. Hortmann, M. Peric and G. Scheuerer, "Finite volume multigrid prediction of laminar natural convection: bench-mark solutions", International Journal for Numerical Methods in Fluids 11 (1990) 189-207, https://doi.org/10.1002/fld.1650110206. It gives Nu-bar = 2.24475 at Ra = 1e4 and 4.52164 at Ra = 1e5, from meshes of up to 640 x 640 control volumes. Table 1 of T. Gjesdal, C. E. Wasberg and O. Andreassen, "Spectral element simulations of buoyancy-driven flow", https://arxiv.org/abs/physics/0305049, also gives these values. The case uses them only as a cross-check.
+- M. Hortmann, M. Peric and G. Scheuerer, "Finite volume multigrid prediction of laminar natural convection: bench-mark solutions", International Journal for Numerical Methods in Fluids 11 (1990) 189-207, <https://doi.org/10.1002/fld.1650110206>. It gives Nu-bar = 2.24475 at Ra = 1e4 and 4.52164 at Ra = 1e5, from meshes of up to 640 x 640 control volumes. Table 1 of T. Gjesdal, C. E. Wasberg and O. Andreassen, "Spectral element simulations of buoyancy-driven flow", <https://arxiv.org/abs/physics/0305049>, also gives these values. The case uses them only as a cross-check.
 
 | Ra | Nu-bar | u_max on x = 0.5 (at y) | v_max on y = 0.5 (at x) | Error of the bench mark | Checks |
 |---:|---:|---|---|---:|---|
@@ -47,7 +47,7 @@ With the relaxation factors 0.7, 0.3 and 0.5, the Nusselt number at Ra = 1e4 on 
 
 These commands, in the repository root, solve the case `ra1e5` on a mesh of 257 x 257 cells in a scratch folder:
 
-```
+```text
 cp -R validation/cases/cavity-devahldavis/ra1e5 /tmp/cavity-257
 # In /tmp/cavity-257/system/blockMeshDict, change (129 129 1) to (257 257 1).
 # In /tmp/cavity-257/system/controlDict, change endTime and writeInterval to 10000.

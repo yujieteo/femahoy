@@ -2,7 +2,7 @@
 
 femahoy is a chat for finite element and CFD analyses. You ask for an analysis, and Claude Code, signed in with your own Claude subscription, does the work on your computer.
 
-<p align="center"><img src="docs/figures/architecture.svg" width="320" alt="Diagram of the parts of femahoy. The browser, with the chat and the 3D viewer, sends HTTP requests with the token to fh serve at 127.0.0.1:8790. On your computer, fh serve starts Claude Code with your own login. Claude Code runs the fh commands to mesh, solve and report. The fh commands write the runs and results to the state folder, and fh serve reads them."></p>
+![Diagram of the parts of femahoy. The browser, with the chat and the 3D viewer, sends HTTP requests with the token to fh serve at 127.0.0.1:8790. On your computer, fh serve starts Claude Code with your own login. Claude Code runs the fh commands to mesh, solve and report. The fh commands write the runs and results to the state folder, and fh serve reads them.](docs/figures/architecture.svg)
 
 fh serve starts Claude Code, Claude Code runs the fh commands, and fh serve shows what they write to the state folder.
 

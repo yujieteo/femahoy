@@ -15,7 +15,7 @@ For another electromagnetic request, for example eddy currents in 3D, a magnetic
 
 This setup agrees with the measured field of TEAM problem 7, eddy currents in a plate with a hole at 50 Hz (the validation case `team7-eddy-current`):
 
-- The modified vector potential a with first-order edge elements (`BF_Edge`), `DtDof [ sigma[] * Dof{a}, {a} ]` in the conductor, and the current density of the coil as a source.
+- The changed vector potential a with first-order edge elements (`BF_Edge`), `DtDof [ sigma[] * Dof{a}, {a} ]` in the conductor, and the current density of the coil as a source.
 - A tree gauge in the regions with no conductivity: `EdgesOfTreeIn`, `EntitySubType StartingOn`, with the outer face and the skin of the conductor as `SubRegion`. Give the edges of the skin a separate basis function with no gauge constraint. Without this, the gauge also fixes the skin edges, and the result is wrong with no warning.
 - Air in a sphere, and around it a shell with the Jacobian `VolSphShell{R1, R2, x, y, z}` and a = 0 on its outer face. A box of air changes the result with its size.
 - B at a point: curl a is constant in each element. Make a continuous B with an L2 projection of `{d a}` on `BF_NodeX`, `BF_NodeY` and `BF_NodeZ` in a small region about the points.

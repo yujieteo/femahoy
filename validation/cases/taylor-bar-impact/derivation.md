@@ -55,7 +55,7 @@ The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the rad
 
 ## Tolerance
 
-The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of very different sizes (10.74 mm and 3.82 mm).
+The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of different sizes (10.74 mm and 3.82 mm).
 
 | Cause | Basis | Length | Radius |
 |---|---|---:|---:|

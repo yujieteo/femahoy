@@ -5,10 +5,10 @@ The reference is the exact solution of the oblique shock relations. Thus the tol
 
 ## Sources
 
-- NPARC Alliance Verification and Validation Archive, NASA Glenn Research Center, "Supersonic Wedge" (J. W. Slater), https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge.html.
+- NPARC Alliance Verification and Validation Archive, NASA Glenn Research Center, "Supersonic Wedge" (J. W. Slater), <https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge.html>.
   Inviscid flow at Mach 2.5 over a wedge with a half-angle of 15 degrees. The leading edge is at x = y = 0. The domain has the inflow at x = -0.5, the outflow at x = 1 and the far field at y = 1. Before the wedge, y = 0 is a symmetry plane.
 - The check values come from Table 2 of that page, "the analytic inviscid solution", from the program `oblshk.f` with a tolerance of 1e-6.
-- Study #2 of the same archive (https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge02/wedge02.html) is a mesh study of the WIND code on 4 grids with a spacing of 0.02, 0.01, 0.005 and 0.0031. Its error of the mean Mach number behind the shock is 0.39 %, 0.16 %, 0.066 % and 0.037 %. The case uses it only as a cross-check.
+- Study #2 of the same archive (<https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge02/wedge02.html>) is a mesh study of the WIND code on 4 grids with a spacing of 0.02, 0.01, 0.005 and 0.0031. Its error of the mean Mach number behind the shock is 0.39 %, 0.16 %, 0.066 % and 0.037 %. The case uses it only as a cross-check.
 - The oblique shock relations are in J. D. Anderson, Modern Compressible Flow, McGraw-Hill, and in Ames Research Staff, "Equations, tables, and charts for compressible flow", NACA Report 1135 (1953). The shock angle beta comes from the theta-beta-M relation
 
   tan(theta) = 2 cot(beta) (M1^2 sin^2(beta) - 1) / (M1^2 (gamma + cos(2 beta)) + 2),
@@ -58,7 +58,7 @@ With `maxCo 0.2`, p on the same line is 2.463 to 2.474 up to 2 cells from the sh
 
 The scratch commands below, in the repository root, solve the case on a mesh with N cells from y = 0 to y = 1 (N = 100 is the check):
 
-```
+```text
 cp -R validation/cases/wedge-oblique-shock/mach2.5 /tmp/wedge-N
 # In /tmp/wedge-N/system/blockMeshDict, change (50 100 1) to (N/2 N 1), (100 100 1) to (N N 1)
 # and the depth 0.01 to 1/N.

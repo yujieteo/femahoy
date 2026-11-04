@@ -102,7 +102,7 @@ The C3D10 study above records the former mesh. Its STEP file, `slice.step`, and 
 ## Choice of the case
 
 The case must be a real part, with open data for the geometry, the materials, the temperature change and the measured warpage.
-A linear thermoelastic model must be able to predict it.
+A linear thermoelastic model must can predict it.
 
 | Candidate | Result |
 |---|---|

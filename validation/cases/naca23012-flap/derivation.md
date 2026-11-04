@@ -5,7 +5,7 @@ It uses the setup of `naca0012-ladson`, and it adds the pitching moment (the col
 
 ## Sources
 
-- I. H. Abbott and H. Greenberg, "Tests in the Variable-Density Wind Tunnel of the N.A.C.A. 23012 Airfoil with Plain and Split Flaps", NACA Report No. 661, 1939, https://ntrs.nasa.gov/citations/19930091736. A scan is also at https://archive.org/details/NASA_NTRS_Archive_19930091736.
+- I. H. Abbott and H. Greenberg, "Tests in the Variable-Density Wind Tunnel of the N.A.C.A. 23012 Airfoil with Plain and Split Flaps", NACA Report No. 661, 1939, <https://ntrs.nasa.gov/citations/19930091736>. A scan is also at <https://archive.org/details/NASA_NTRS_Archive_19930091736>.
   The test was in the NACA variable-density tunnel, on a rectangular wing of aspect ratio 6. The section data come from the wing data, with corrections for the tip effects and for the turbulence of the tunnel ("effective Reynolds number").
   The brass flap of 0.20c had its hinge at 80 % of the chord, midway between the upper and the lower surface. For each flap angle, plaster filled the gap and gave a smooth and fair surface.
 - The check values come from Table I on page 381. Table I gives the angle of zero lift alpha_l0 and the lift slope a0. Thus the lift at 0 degrees is -a0 alpha_l0.
@@ -50,7 +50,7 @@ The y+ values are for the 3 flap angles. `checkMesh` reports the same cells with
 
 These commands, in the repository root, write level 3 in a scratch folder and solve it with the flap 10 degrees down. Solve the other flap angles in the same way.
 
-```
+```text
 python3 validation/airfoil.py naca23012-flap 3 6000 /tmp/flap-l3
 openfoam blockMesh -case /tmp/flap-l3/d10
 openfoam simpleFoam -case /tmp/flap-l3/d10

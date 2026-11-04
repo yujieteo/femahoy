@@ -74,7 +74,7 @@ Problems that the model solves:
 
 These commands, in the repository root, solve the case with 8 cells across the strip in a scratch folder. Set `FH_OPENEMS` to the Python of openEMS first (README.md):
 
-```
+```text
 mkdir /tmp/dipole && cp validation/cases/dipole-king-middleton/omega12.5/openems.py /tmp/dipole && cd /tmp/dipole
 sed -i.bak 's/^N = 4 /N = 8 /' openems.py && "$FH_OPENEMS" openems.py && cat dipole.txt
 ```

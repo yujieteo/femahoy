@@ -6,7 +6,7 @@ The solid has no gray material. Thus its compliance must be lower than the compl
 
 ## Source
 
-E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, https://doi.org/10.1007/s00158-010-0594-7.
+E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, <https://doi.org/10.1007/s00158-010-0594-7>.
 
 Figure 3, top left, gives c = 216.81 for the sensitivity filter. This is the compliance of the loop. The loop of `fh` gives 216.8137 on this problem (`topology-mbb-beam/derivation.md`).
 

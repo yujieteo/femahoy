@@ -18,7 +18,7 @@ To repeat the reference: `gmsh -3 getdp/case.geo -o case.msh`, then `getdp getdp
 | Ports | TE10 at z = 0 (port 1) and z = 50 mm (port 2), 25 mm from the step |
 | Frequency | 10 GHz: TE10 propagates in both guides (cut-off 6.557 and 9.369 GHz) |
 
-The TE30 mode, the first mode that the symmetric step excites after TE10, decays by exp(−8.9) in the wide guide and by more in the narrow guide over the 25 mm to the port. So a TE10 port condition is sufficient at both ports.
+The TE30 mode, the first mode that the symmetric step excites after TE10, decays by exp(−8.9) in the wide guide and by more in the narrow guide over the 25 mm to the port. So a TE10 port condition is enough at both ports.
 
 ## Mesh study
 

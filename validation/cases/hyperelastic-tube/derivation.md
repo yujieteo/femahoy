@@ -61,7 +61,7 @@ A pressure load cannot pass the maximum of p. A `*DSLOAD` of 0.235 MPa on the in
 
 The node sets `F25` and `F40` are the nodes of `INNER` with no node on x = 0. The sum of their x reactions is F.
 The node on x = 0 is not in the sets, because its x reaction also holds the hoop force of the symmetry plane.
-Its part of F is very small: with D1 = 0.00005 (K / μ0 = 96540), F is within 0.002 % of the reference.
+Its part of F is small: with D1 = 0.00005 (K / μ0 = 96540), F is within 0.002 % of the reference.
 The print requests have `GLOBAL=YES`. Without it, ccx writes the reactions of the nodes of `*TRANSFORM` in their cylindrical system, with an `L` at the end of each row, and `fh validate` does not read these rows.
 
 ## Results

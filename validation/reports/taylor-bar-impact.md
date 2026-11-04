@@ -1,10 +1,10 @@
 # taylor-bar-impact derivation
 
-## Conclusion
+## Finding
 
 The explicit model of CalculiX gives the final shape of the Taylor bar within the tolerance of 0.80 mm. At 80 µs, the final length of the model is 21.29 mm and the mushroom radius is 6.72 mm. DYNA3D gives 21.66 mm and 7.02 mm. The model values are 0.37 mm and 0.30 mm smaller, 46 % and 37 % of the tolerance.
 
-**The length of the bar and the mushroom radius against the time**
+### The length of the bar and the mushroom radius against the time
 
 ![The length of the bar and the mushroom radius against the time](taylor-bar-impact/shape.svg)
 
@@ -12,25 +12,21 @@ DYNA3D: DYNA3D (Hallquist and Benson 1987), from the Ansys Technology Showcase, 
 
 The length is 32.4 mm plus the mean u3 of the top face. The radius is 3.2 mm plus u1 of the rim node on the wall. ccx writes them each 10 µs.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | t [µs] | length (length or radius [mm]) | radius (length or radius [mm]) | DYNA3D (length or radius [mm]) |
 | ---: | ---: | ---: | ---: |
-| 0 | 32.4 | 3.2 | — |
-| 10 | 30.1411 | 4.9623 | — |
-| 20 | 28.0574 | 5.8551 | — |
-| 30 | 26.1834 | 6.4037 | — |
-| 40 | 24.542 | 6.6802 | — |
-| 50 | 23.166 | 6.7233 | — |
-| 60 | 22.1013 | 6.7253 | — |
-| 70 | 21.428 | 6.723 | — |
-| 80 | 21.294 | 6.7225 | — |
-| 80 | — | — | 21.66 |
-| 80 | — | — | 7.02 |
-
-</details>
+| 0 | 32.4 | 3.2 | n/a |
+| 10 | 30.1411 | 4.9623 | n/a |
+| 20 | 28.0574 | 5.8551 | n/a |
+| 30 | 26.1834 | 6.4037 | n/a |
+| 40 | 24.542 | 6.6802 | n/a |
+| 50 | 23.166 | 6.7233 | n/a |
+| 60 | 22.1013 | 6.7253 | n/a |
+| 70 | 21.428 | 6.723 | n/a |
+| 80 | 21.294 | 6.7225 | n/a |
+| 80 | n/a | n/a | 21.66 |
+| 80 | n/a | n/a | 7.02 |
 
 The radius increases fast in the first 30 µs and stops at about 50 µs. The length decreases to the end, but from 70 to 80 µs the top moves only 0.13 mm. Thus the bar is almost at rest at 80 µs, the time of the checks.
 
@@ -117,7 +113,7 @@ The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the rad
 
 ## Tolerance
 
-The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of very different sizes (10.74 mm and 3.82 mm).
+The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of different sizes (10.74 mm and 3.82 mm).
 
 | Cause | Basis | Length | Radius |
 |---|---|---:|---:|

@@ -14,7 +14,7 @@ This case checks the homogenized material of 2 periodic unit cells of a fibre co
 
 ## Reference
 
-Round fibres, across the fibres. Lord Rayleigh, On the influence of obstacles arranged in rectangular order upon the properties of a medium, Phil. Mag. 34 (1892) 481-502, solved the square array of cylinders. W. T. Perrins, D. R. McKenzie and R. C. McPhedran, Transport properties of regular arrays of cylinders, Proc. R. Soc. Lond. A 369 (1979) 207-225, give the lattice sums of its formula:
+Round fibres, across the fibres. Lord Rayleigh, On the influence of obstacles arranged in rectangular order on the properties of a medium, Phil. Mag. 34 (1892) 481-502, solved the square array of cylinders. W. T. Perrins, D. R. McKenzie and R. C. McPhedran, Transport properties of regular arrays of cylinders, Proc. R. Soc. Lond. A 369 (1979) 207-225, give the lattice sums of its formula:
 
 k*/km = 1 + 2 f ρ / (1 − f ρ − 0.305827 ρ² f⁴ / (1 − 1.402958 ρ² f⁸) − 0.013362 ρ² f⁸), with ρ = (kf − km) / (kf + km).
 

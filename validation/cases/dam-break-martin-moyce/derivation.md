@@ -14,7 +14,7 @@ No other case of the suite has any of these items:
 
 ## Source
 
-J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, https://doi.org/10.1098/rsta.1952.0006.
+J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, <https://doi.org/10.1098/rsta.1952.0006>.
 
 A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column is released. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in, in the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
 The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"), because the instant of the release is not known exactly. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
@@ -57,7 +57,7 @@ Problems that the model solves:
 
 These commands, in the repository root, solve the case with other values in a scratch folder. `-var` sets the variables `n`, `alpha` and `cfl` of `case.lmp`:
 
-```
+```text
 mkdir /tmp/dam && cp validation/cases/dam-break-martin-moyce/sph/case.lmp /tmp/dam && cd /tmp/dam
 lmp -in case.lmp -log none -var n 80
 ```

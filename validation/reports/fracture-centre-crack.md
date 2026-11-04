@@ -1,6 +1,6 @@
 # fracture-centre-crack derivation
 
-## Conclusion
+## Finding
 
 The CalculiX model gives the stress intensity factor K_I of the centre crack 0.19 % above the formula of Tada (1971). The model gives K_I = 1053.28 MPa mm^0.5, and the formula gives 1051.27 MPa mm^0.5. The tolerance is 0.5 %.
 
@@ -13,7 +13,7 @@ The model is 1/4 of the plate. The crack is on y = 0 from x = 0 to 25 mm, with t
 
 The opening of each node near the tip gives a value of K_I too. At the node nearest the tip, r = 0.125 mm, it is 0.25 % below the formula. Farther from the tip, the higher terms of the field make it smaller.
 
-**K_I from the opening of the crack face near the tip**
+### K_I from the opening of the crack face near the tip
 
 ![K_I from the opening of the crack face near the tip](fracture-centre-crack/opening.svg)
 
@@ -21,9 +21,7 @@ model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face, from v 
 
 Tada is the formula of Tada (1971) in check.toml. The check gets K_I of the model from the 2 nodes at r = L/4 and L (derivation.md).
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | r = a - x [mm] | model (K_I [MPa mm^0.5]) | Tada (K_I [MPa mm^0.5]) |
 | ---: | ---: | ---: |
@@ -43,8 +41,6 @@ Original values. — means no sample.
 | 3.5984 | 1009.67 | 1051.27 |
 | 4.2992 | 1001.75 | 1051.27 |
 | 5 | 993.8 | 1051.27 |
-
-</details>
 
 The finer meshes of the mesh study give K_I 0.10 % to 0.16 % above the formula. An error of the method gives a larger difference. For example, E in place of E' gives -9 %.
 

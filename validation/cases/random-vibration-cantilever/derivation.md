@@ -25,7 +25,7 @@ The derivation below gives the reference from these 2 sources, so that a reader 
 The beam has the length L, the bending stiffness EI and the mass per length m.
 The base moves with the acceleration a_b(t). The deflection w(x, t) relative to the base obeys:
 
-```
+```text
 EI w'''' + m w_tt = -m a_b
 phi_r(x) = cosh(lam_r x / L) - cos(lam_r x / L) - sig_r (sinh(lam_r x / L) - sin(lam_r x / L))
 omega_r = lam_r^2 / L^2 sqrt(EI / m)
@@ -37,7 +37,7 @@ G_r^2 is the fraction of the mass that mode r moves (the effective modal mass).
 
 The acceleration of the tip is the base acceleration plus the acceleration of w at x = L. For a base acceleration exp(j omega t), it is:
 
-```
+```text
 T(f) = 1 + omega^2 sum_r c_r / (omega_r^2 - omega^2 + 2 j zeta omega_r omega)
 c_r = G_r phi_r(L) = 4 sig_r (-1)^(r+1) / lam_r,  omega = 2 pi f
 A_rms^2 = integral from f1 to f2 of |T(f)|^2 W df
@@ -195,7 +195,7 @@ On a Mac with 10 cores, `fh run` of the case with the former C3D10 mesh took 3.5
 Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
 The box uses the same mapped mesh as `frequency-cantilever`: 320 C3D20R elements and 2117 nodes.
 The transfinite faces and the extrusion use `Recombine`, `Mesh.ElementOrder=2` and `Mesh.SecondOrderIncomplete=1`.
-The mesh retains `FIXED` at x = 0 and `TIP` at x = 100 mm.
+The mesh keeps `FIXED` at x = 0 and `TIP` at x = 100 mm.
 
 Reason: The audit shows fewer nodes for the same accuracy. The mapped grid also removes the free mesh choice.
 `fh validate` on the Mac gives 401161.7 mm/s2, a difference of +0.059 % from the reference.

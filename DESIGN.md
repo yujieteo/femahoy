@@ -40,7 +40,7 @@ Reason of the exception: the licence reason of the first rule does not apply to 
 
 ## 4. Architecture
 
-```
+```text
  browser (page + wasm viewer)
         |  HTTP (127.0.0.1, token)
         v
@@ -222,9 +222,11 @@ The fonts are under the SIL Open Font License 1.1, each with its licence: Inter 
 Each entry is a rule that is in force. The owner decided each of them.
 
 ### D-30 A requirement stays only if a real run showed the need
+
 A requirement stays only if a real run showed the need, it gives the user a result, and you can measure it. A rule that prevents a security fault, a licence or trademark fault, or a loss of data also stays. Its reason names that fault. Reverse for one item if a real run shows the need. Then add it as a new item with an exit test.
 
 ### D-31 Rules that do not change with each new solver or case
+
 About 10 workers add solvers and cases at the same time. These rules changed with each new solver or case, or made each pull request slow. The owner replaced them:
 
 1. `validate_runs_every_case` checks only that no case fails. It has no count and no list of the cases. Reason: each new case changed the count, thus parallel pull requests conflicted after each merge, and main failed once when 2 pull requests both changed 14 to 15. Exit test: a pull request that adds a case does not change `crates/fh/tests/cli.rs`.

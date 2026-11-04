@@ -46,7 +46,7 @@ Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
 The mapped mesh has 40 x 4 x 2 C3D20R elements, 320 elements and 2117 nodes.
 `Transfinite Curve`, `Transfinite Surface`, `Recombine` and an extrusion with 2 layers define the grid.
 `Mesh.ElementOrder=2` and `Mesh.SecondOrderIncomplete=1` produce 20-node hexahedra.
-The mesh retains the 100 x 10 x 5 mm box and the `FIXED` face at x = 0.
+The mesh keeps the 100 x 10 x 5 mm box and the `FIXED` face at x = 0.
 `job.inp` includes the mesh. The material, frequency step, check and 1 % tolerance stay the same.
 
 Reason: The audit mesh gives 419.1234 Hz, against 419.3186 Hz for the former mesh, with fewer nodes.

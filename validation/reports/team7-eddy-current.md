@@ -1,6 +1,6 @@
 # team7-eddy-current derivation
 
-## Conclusion
+## Finding
 
 The GetDP model agrees with the TEAM 7 measurements of Bz on the line A1-B1 at all 6 checked points, within the tolerance of 6 % + 1 G. At omega t = 0, the model is within 4.9 % of the measured values. The largest part of the tolerance is 51 %, at x = 36 mm and omega t = 90 degrees.
 
@@ -43,11 +43,11 @@ No other case of the suite has any of these items:
 
 ## Sources
 
-- K. Fujiwara and T. Nakata, "Results for benchmark problem 7 (asymmetrical conductor with a hole)", COMPEL 9 (1990) 137-154, https://doi.org/10.1108/eb010071.
+- K. Fujiwara and T. Nakata, "Results for benchmark problem 7 (asymmetrical conductor with a hole)", COMPEL 9 (1990) 137-154, <https://doi.org/10.1108/eb010071>.
   It defines TEAM problem 7, gives the measured values (Bz in its Table 4), and compares 25 solutions of 17 codes with them.
 - The table of the measured Bz on the line A1-B1 is also on 2 web pages:
-  - the TEAM problems of NGSolve, https://ngsolve.github.io/TEAM-problems/TEAM-7/team7.html;
-  - the TEAM 7 case of mufem, https://github.com/Raiden-Numerics/mufem/blob/main/Electromagnetics/Compumag-Team7-Asymmetrical-Conductor-with-a-Hole/README.md.
+  - the TEAM problems of NGSolve, <https://ngsolve.github.io/TEAM-problems/TEAM-7/team7.html>;
+  - the TEAM 7 case of mufem, <https://github.com/Raiden-Numerics/mufem/blob/main/Electromagnetics/Compumag-Team7-Asymmetrical-Conductor-with-a-Hole/README.md>.
 
   The 2 copies have the same values at the points of the check. They differ at x = 18 mm, 90 degrees (2.84 G and 2.48 G). The check does not use that point.
 - The mufem page gives the relative L2 difference between its solution and these data, over the 17 points and the 2 phases of A1-B1: 3.3 % at 50 Hz and 5.9 % at 200 Hz.
@@ -73,7 +73,7 @@ The GetDP case is the folder `50hz`: `case.geo` for gmsh and `case.pro` for GetD
 | Plate | 294 x 294 x 19 mm, from (0, 0, 0). The hole is 108 x 108 mm, from x, y = 18 mm to 126 mm. sigma = 3.526e7 S/m |
 | Coil | 2742 ampere-turns, a uniform current density in the section of 25 x 100 mm. The inner edge is a square of 150 mm with corner radius 25 mm, the outer edge a square of 200 mm with corner radius 50 mm. Centre (194, 100) mm, from z = 49 mm to 149 mm. The current goes anticlockwise as seen from +z |
 | Air | a sphere of radius 0.35 m about (147, 147, 74) mm. Around it, a shell to 0.45 m that GetDP maps to infinity (`VolSphShell`). a = 0 on the outer face |
-| Formulation | the modified vector potential a, with E = -j omega a in the plate: curl(nu curl a) + j omega sigma a = js. First-order edge elements |
+| Formulation | the changed vector potential a, with E = -j omega a in the plate: curl(nu curl a) + j omega sigma a = js. First-order edge elements |
 | Gauge | a tree of edges in the coil and the air (`EdgesOfTreeIn`, `StartingOn` the outer face and the skin of the plate). The edges of the skin have a separate coefficient that the gauge does not fix |
 | Bz at a point | the L2 projection of curl a on first-order node functions in a band about A1-B1 (x = -6 to 294 mm, y = 62 to 82 mm, z = 26 to 42 mm) |
 | Phase | GetDP uses the time factor exp(j omega t). Thus Bz at omega t = 0 is Re(Bz), and at 90 degrees it is -Im(Bz) |
@@ -95,7 +95,7 @@ Without eddy currents, the checks fail: `bz0_126` would be 88.3 G against 78.11 
 
 These commands, in the repository root, solve the case on another mesh in a scratch folder. `-setnumber` sets the mesh sizes of `case.geo` in m:
 
-```
+```text
 mkdir /tmp/team7 && cp validation/cases/team7-eddy-current/50hz/case.* /tmp/team7 && cd /tmp/team7
 gmsh case.geo -3 -o case.msh -setnumber hp 0.0035 -setnumber hc 0.007 -setnumber hb 0.0021 -setnumber hs 0.035
 getdp case.pro -msh case.msh -solve '#1' -pos '#1'

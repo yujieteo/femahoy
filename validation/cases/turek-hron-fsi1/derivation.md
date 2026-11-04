@@ -9,7 +9,7 @@ The reference is a numerical bench mark. Thus the tolerance comes from the mesh 
 
 - S. Turek and J. Hron, "Proposal for numerical benchmarking of fluid-structure interaction between an elastic object and laminar incompressible flow", in H.-J. Bungartz and M. Schäfer (eds.), Fluid-Structure Interaction, Lecture Notes in Computational Science and Engineering 53, Springer (2006) 371-385.
   It gives the geometry, the parameters and the results of FSI1. The check values come from these results.
-- S. Turek, J. Hron, M. Razzaq and H. Wobker, the bench mark results of 2009, https://wwwold.mathematik.tu-dortmund.de/lsiii/cms/papers/TurekHronRazzaqWobker2009.pdf. It gives FSI1 with more digits from finer meshes: ux = 0.02270493e-3 m, uy = 0.8208773e-3 m, drag = 14.29426 N/m and lift = 0.763746 N/m. These values agree with the check values to 0.03 % or less. The case uses them only as a cross-check.
+- S. Turek, J. Hron, M. Razzaq and H. Wobker, the bench mark results of 2009, <https://wwwold.mathematik.tu-dortmund.de/lsiii/cms/papers/TurekHronRazzaqWobker2009.pdf>. It gives FSI1 with more digits from finer meshes: ux = 0.02270493e-3 m, uy = 0.8208773e-3 m, drag = 14.29426 N/m and lift = 0.763746 N/m. These values agree with the check values to 0.03 % or less. The case uses them only as a cross-check.
 
 | Quantity | Check value | Check |
 |---|---:|---|
@@ -54,7 +54,7 @@ The conservative mapping puts the force of each fluid face on the solid nodes ne
 
 `mesh.py LEVEL OUT` writes the meshes of a level into the case folder `OUT`. Each level doubles the cells of the fluid and the elements of the flag in each direction. These commands, in the repository root, solve level 2 in a scratch folder:
 
-```
+```text
 cp -R validation/cases/turek-hron-fsi1/fsi1 /tmp/fsi1-level2
 python3 validation/cases/turek-hron-fsi1/mesh.py 2 /tmp/fsi1-level2
 fh run /tmp/fsi1-level2

@@ -20,10 +20,10 @@ Sources: [reader](../../crates/core/src/inp/parse.rs), [lexer](../../crates/core
 | `*ELSET` | `ELSET`, `GENERATE` | Element IDs or earlier element sets. `GENERATE` follows the same rule. |
 | `*SURFACE` | `TYPE=ELEMENT`, `NAME` | `element or element set, S<face>` (or `SPOS`, `SNEG`). |
 | `*STEP`, `*END STEP` | `NAME` | Open and close a step. The loads of a step are in the step. |
-| `*BOUNDARY` | — | Node ID or node set, first DOF, optional last DOF, optional value. Outside a step or inside a step. |
-| `*CLOAD` | — | Node ID or node set, DOF, magnitude. In a step. |
-| `*DLOAD` | — | Element ID or element set, `P1` to `P6`, pressure. In a step. |
-| `*DSLOAD` | — | Element surface name, `P`, pressure. In a step. Positive pressure pushes into the body. |
+| `*BOUNDARY` | n/a | Node ID or node set, first DOF, optional last DOF, optional value. Outside a step or inside a step. |
+| `*CLOAD` | n/a | Node ID or node set, DOF, magnitude. In a step. |
+| `*DLOAD` | n/a | Element ID or element set, `P1` to `P6`, pressure. In a step. |
+| `*DSLOAD` | n/a | Element surface name, `P`, pressure. In a step. Positive pressure pushes into the body. |
 | `*MODEL CHANGE` | `TYPE=ELEMENT`, `ADD` or `REMOVE` | Element IDs or element sets. In a step. The run shows in each step only the elements in the model in that step. |
 | `*INCLUDE` | `INPUT` | A file in the folder of the input, or in a folder below it. The path is relative, with no `..`. |
 

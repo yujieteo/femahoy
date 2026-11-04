@@ -1,10 +1,10 @@
 # optics-mie-cylinder derivation
 
-## Conclusion
+## Finding
 
 The scattering efficiency Q of the Meep model agrees with the exact series solution at all 41 size parameters x from 1 to 3, within 0.59 %. The 4 checks are within 0.33 %, and the tolerance is 1 %. The peaks of Q of the model are at the same size parameters as the peaks of the exact Q: x = 1.25, 1.80 and 2.40.
 
-**Scattering efficiency of the cylinder against the size parameter**
+### Scattering efficiency of the cylinder against the size parameter
 
 ![Scattering efficiency of the cylinder against the size parameter](optics-mie-cylinder/spectrum.svg)
 
@@ -12,9 +12,7 @@ exact series: Bohren and Huffman (1983), chapter 8, the series solution (referen
 
 Meep: 1 pulse, 40 grid points per a. The dots are the exact Q at the same size parameters, so the Meep line shows between them.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | x = 2 pi a / wavelength [1] | Meep (Q = C / (2 a) [1]) | exact series (Q = C / (2 a) [1]) |
 | ---: | ---: | ---: |
@@ -60,19 +58,15 @@ Original values. — means no sample.
 | 2.95 | 2.090403 | 2.082513 |
 | 3 | 2.58328 | 2.582972 |
 
-</details>
-
 The largest difference is -0.59 % at x = 2.70. There Q falls fast after the resonance at x = 2.405. The waves on the grid are a little slower than c, thus the resonances of the model are at a little smaller x (see "Spectrum" below). The differences at the 4 checks are +0.03 % at x = 1, -0.08 % at x = 2, -0.33 % at x = 2.5 and +0.01 % at x = 3.
 
-**Difference of the Meep Q from the exact Q**
+### Difference of the Meep Q from the exact Q
 
 ![Difference of the Meep Q from the exact Q](optics-mie-cylinder/error.svg)
 
 rel_tol of check.toml is 1 %. It applies to the 4 checks at x = 1, 2, 2.5 and 3.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | x = 2 pi a / wavelength [1] | Meep ((Q Meep - Q exact) / Q exact [%]) | +rel_tol ((Q Meep - Q exact) / Q exact [%]) | -rel_tol ((Q Meep - Q exact) / Q exact [%]) |
 | ---: | ---: | ---: | ---: |
@@ -118,8 +112,6 @@ Original values. — means no sample.
 | 2.95 | 0.3789 | 1 | -1 |
 | 3 | 0.0119 | 1 | -1 |
 
-</details>
-
 The result is the total field Ez at x = 2.5. The plane wave comes from the left. The cylinder is the circle of radius a = 1 at the centre, and in it the wavelength is half the wavelength in air. The period is T = 2 pi / x = 2.51 a / c. The crests move to the right. |Ez| is largest at the back surface of the cylinder, at the phases 90° and 270°.
 
 ## Result
@@ -159,7 +151,7 @@ The scattering efficiency of a cylinder or a sphere (the Mie problem) is the usu
 The derivation below gives the same result, so that a reader can check it without the book.
 The cylinder has the radius a and the index m, in air. The plane wave goes along +x, with the electric field E_z along the axis of the cylinder. With the time factor exp(-i w t), k = w / c and x = k a (the size parameter), the incident wave is a series of cylinder waves:
 
-```
+```text
 E_z,inc = exp(i k r cos(phi)) = sum_n i^n J_n(k r) exp(i n phi)
 E_z,sca = - sum_n i^n b_n H_n(k r) exp(i n phi)        (r > a, H_n is the Hankel function of the first kind)
 E_z,in  =   sum_n i^n c_n J_n(m k r) exp(i n phi)      (r < a)
@@ -167,13 +159,13 @@ E_z,in  =   sum_n i^n c_n J_n(m k r) exp(i n phi)      (r < a)
 
 E_z and its radial derivative are continuous at r = a. These 2 conditions give, for each n:
 
-```
+```text
 b_n = (J_n(m x) J_n'(x) - m J_n'(m x) J_n(x)) / (J_n(m x) H_n'(x) - m J_n'(m x) H_n(x))
 ```
 
 b_-n = b_n. The scattered power for each length of the cylinder, divided by the incident intensity, is the scattering cross-section C (a length). The scattering efficiency is Q = C / (2 a):
 
-```
+```text
 Q = (2 / x) (|b_0|^2 + 2 sum_{n>=1} |b_n|^2)
 ```
 
@@ -236,7 +228,7 @@ The largest error of the case at the 41 size parameters is 0.59 %, at x = 2.70. 
 
 These commands, in the repository root, solve the case with another grid in a scratch folder. Set `FH_MEEP` to the Python of Meep first (README.md):
 
-```
+```text
 mkdir /tmp/mie && cp validation/cases/optics-mie-cylinder/res40/meep_case.py /tmp/mie && cd /tmp/mie
 sed -i.bak 's/^RES = 40 /RES = 80 /' meep_case.py && "$FH_MEEP" meep_case.py && cat cylinder.txt
 ```
@@ -249,7 +241,7 @@ sed -i.bak 's/^RES = 40 /RES = 80 /' meep_case.py && "$FH_MEEP" meep_case.py && 
 | 80 | +0.02 % | -0.01 % | -0.07 % | +0.03 % | 0.14 % | 173 s |
 
 The times are the times of Meep 1.35.0 on 1 core of a Mac with 10 cores, with other work on the Mac. The error falls by a factor of 4 for each step: the order of the method is 2 (from the steps 20, 40 and 80: 2.01, 1.97 and 2.00 at the first 3 checks).
-The Richardson extrapolation of the values at 40 and 80 points per a is within 3.4e-4 of the analytical Q at each check. This remainder comes from the size of the model.
+The Richardson extrapolation of the values at 40 and 80 points per a is within 3.4e-4 of the analytical Q at each check. This rest comes from the size of the model.
 
 ## Size of the model
 

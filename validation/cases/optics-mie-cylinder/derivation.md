@@ -24,7 +24,7 @@ The scattering efficiency of a cylinder or a sphere (the Mie problem) is the usu
 The derivation below gives the same result, so that a reader can check it without the book.
 The cylinder has the radius a and the index m, in air. The plane wave goes along +x, with the electric field E_z along the axis of the cylinder. With the time factor exp(-i w t), k = w / c and x = k a (the size parameter), the incident wave is a series of cylinder waves:
 
-```
+```text
 E_z,inc = exp(i k r cos(phi)) = sum_n i^n J_n(k r) exp(i n phi)
 E_z,sca = - sum_n i^n b_n H_n(k r) exp(i n phi)        (r > a, H_n is the Hankel function of the first kind)
 E_z,in  =   sum_n i^n c_n J_n(m k r) exp(i n phi)      (r < a)
@@ -32,13 +32,13 @@ E_z,in  =   sum_n i^n c_n J_n(m k r) exp(i n phi)      (r < a)
 
 E_z and its radial derivative are continuous at r = a. These 2 conditions give, for each n:
 
-```
+```text
 b_n = (J_n(m x) J_n'(x) - m J_n'(m x) J_n(x)) / (J_n(m x) H_n'(x) - m J_n'(m x) H_n(x))
 ```
 
 b_-n = b_n. The scattered power for each length of the cylinder, divided by the incident intensity, is the scattering cross-section C (a length). The scattering efficiency is Q = C / (2 a):
 
-```
+```text
 Q = (2 / x) (|b_0|^2 + 2 sum_{n>=1} |b_n|^2)
 ```
 
@@ -101,7 +101,7 @@ The largest error of the case at the 41 size parameters is 0.59 %, at x = 2.70. 
 
 These commands, in the repository root, solve the case with another grid in a scratch folder. Set `FH_MEEP` to the Python of Meep first (README.md):
 
-```
+```text
 mkdir /tmp/mie && cp validation/cases/optics-mie-cylinder/res40/meep_case.py /tmp/mie && cd /tmp/mie
 sed -i.bak 's/^RES = 40 /RES = 80 /' meep_case.py && "$FH_MEEP" meep_case.py && cat cylinder.txt
 ```
@@ -114,7 +114,7 @@ sed -i.bak 's/^RES = 40 /RES = 80 /' meep_case.py && "$FH_MEEP" meep_case.py && 
 | 80 | +0.02 % | -0.01 % | -0.07 % | +0.03 % | 0.14 % | 173 s |
 
 The times are the times of Meep 1.35.0 on 1 core of a Mac with 10 cores, with other work on the Mac. The error falls by a factor of 4 for each step: the order of the method is 2 (from the steps 20, 40 and 80: 2.01, 1.97 and 2.00 at the first 3 checks).
-The Richardson extrapolation of the values at 40 and 80 points per a is within 3.4e-4 of the analytical Q at each check. This remainder comes from the size of the model.
+The Richardson extrapolation of the values at 40 and 80 points per a is within 3.4e-4 of the analytical Q at each check. This rest comes from the size of the model.
 
 ## Size of the model
 

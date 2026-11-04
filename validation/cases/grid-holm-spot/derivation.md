@@ -4,7 +4,7 @@ This case checks a conduction step on the mesh of tetrahedra with a singular fie
 
 ## Source
 
-A circular spot of radius a at 1 potential on the face of a half-space of conductivity σ, with the other electrode at infinity, has the constriction resistance R0 = 1 / (4 σ a). R. Holm, *Electric Contacts*, Springer, 1967, https://doi.org/10.1007/978-3-662-06688-1: the constriction resistance of a circular spot. The exact potential has oblate spheroidal equipotentials: in the coordinates (ξ, η) with r = a cosh ξ sin η and depth a sinh ξ cos η, V = V0 (1 − (2/π) atan(sinh ξ)) and the current is 4 σ a V0. Thus the resistance between the spot and the spheroid ξ is R(ξ) = R0 (2/π) atan(sinh ξ).
+A circular spot of radius a at 1 potential on the face of a half-space of conductivity σ, with the other electrode at infinity, has the constriction resistance R0 = 1 / (4 σ a). R. Holm, *Electric Contacts*, Springer, 1967, <https://doi.org/10.1007/978-3-662-06688-1>: the constriction resistance of a circular spot. The exact potential has oblate spheroidal equipotentials: in the coordinates (ξ, η) with r = a cosh ξ sin η and depth a sinh ξ cos η, V = V0 (1 − (2/π) atan(sinh ξ)) and the current is 4 σ a V0. Thus the resistance between the spot and the spheroid ξ is R(ξ) = R0 (2/π) atan(sinh ξ).
 
 ## Bounds for the finite block
 

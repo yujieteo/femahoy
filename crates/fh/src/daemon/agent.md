@@ -21,7 +21,7 @@ The cross-section of a transmission line with linear materials, for example a co
 
 A request for a Skein model (the person names Skein, or asks for a typed model with checked units): write `model.skn` in a case folder and solve it with `fh run`. Run `fh guide skein`.
 
-Frequency-domain electromagnetics in the same shapes as heat, for example the S-parameters of a waveguide, a transmission line of finite length, a step, a via or a filter, or the resonant modes of a cavity: also use the built-in grid solver first, before GetDP. Run `fh guide grid`. Use GetDP (`fh guide electromagnetics`) for 3D eddy currents, magnetostatics, the time domain, nonlinear materials, and other curved or sloped shapes.
+Frequency-domain electromagnetics in the same shapes as heat, for example the S-parameters of a waveguide, a transmission line of finite length, a step, a through or a filter, or the resonant modes of a cavity: also use the built-in grid solver first, before GetDP. Run `fh guide grid`. Use GetDP (`fh guide electromagnetics`) for 3D eddy currents, magnetostatics, the time domain, nonlinear materials, and other curved or sloped shapes.
 
 1. CAD: write a build123d script `part.py` that writes `part.step`. Run it with `fh-python part.py`. `fh-python` is the Python of femahoy, with build123d. The STEP unit of build123d is mm.
 2. Mesh: `fh mesh part.step --size H -o mesh.inp ...` writes the nodes, the C3D10 elements and the sets that you name. Start with a coarse mesh, so that the solve takes about 1 minute. See "fh mesh sets" below.
@@ -55,7 +55,7 @@ A report has no fixed form. It shows the conclusion of its results so that the p
 | Attribute | The view | Default |
 |---|---|---|
 | `data-fields="p,U magnitude"` | The fields of the contour list. The first shows first. With 1 field, the viewer shows its legend and no list. Use the names of the viewer, for example `MISES`, `S11`, `U magnitude`, `U3`, `NT`, `p`, `T` or `alpha.water`. | All the fields |
-| `data-controls="steps,deformation,loads,range,probe,scale,fit,report-view,views,help"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `range` compares one colour range across steps. `probe` reads an actual surface node or element and locates Min and Max. `scale` shows the deformation factor. `fit` fits the full model and keeps its direction. `report-view` restores the report camera. `views` offers exact ±X, ±Y, ±Z and Isometric views. `help` expands the mouse actions and shortcuts. Use `fit` for a long model. Use `views` for an end face. Use `report-view` for a marked region. Use `help` for camera changes. `data-controls=""` shows none. | Each control that can change the view of the run |
+| `data-controls="steps,deformation,loads,range,probe,scale,fit,report-view,views,help"` | The controls of the viewer that show: `steps` is the step selector and the play button, `deformation` the deformed shape and its scale, `loads` the supports and loads on the model. `range` compares one colour range across steps. `probe` reads an actual surface node or element and finds Min and Max. `scale` shows the deformation factor. `fit` fits the full model and keeps its direction. `report-view` restores the report camera. `views` offers exact ±X, ±Y, ±Z and Isometric views. `help` expands the mouse actions and shortcuts. Use `fit` for a long model. Use `views` for an end face. Use `report-view` for a marked region. Use `help` for camera changes. `data-controls=""` shows none. | Each control that can change the view of the run |
 | `data-step="N"` | The step that shows first, from 1. | The last step |
 | `data-scale="X"` | The deformation scale. `1` is the true shape, `0` the undeformed shape. | `0` for a topology run, `1` for a multibody run, else the automatic scale when the deformation controls show, else `1` |
 | `data-box="X0,Y0,Z0,X1,Y1,Z1"` | The box that the view shows first, in the units of the model. A flat box with no motion in z shows from the top: put Z0 and Z1 on the top face of the model, for example z = 1 for a 2D OpenFOAM mesh from z = 0 to 1. | The whole model |
@@ -63,7 +63,7 @@ A report has no fixed form. It shows the conclusion of its results so that the p
 
 For example, the pressure on an airfoil at 2 flap angles in the bar of the viewer, with the plot of the pressure coefficient along the chord:
 
-```
+```text
 <label data-bar>Flap angle <select>
 <option data-run="run-000004" data-fields="p,U magnitude" data-controls="" data-box="-0.2,-0.4,1,1.3,0.4,1">10 degrees up</option>
 <option data-run="run-000005" data-fields="p,U magnitude" data-controls="" data-box="-0.2,-0.4,1,1.3,0.4,1" selected>0 degrees</option>
@@ -73,7 +73,7 @@ For example, the pressure on an airfoil at 2 flap angles in the bar of the viewe
 
 A slider of the time of a run with 3 steps, with the front of the water marked at each step:
 
-```
+```text
 <label data-bar>Time <input type="range" min="1" max="3" value="3" data-run="run-000006" data-fields="alpha.water" data-controls="" data-labels="0 s|0.1 s|0.2 s" data-marks="1:0.11,0,1 front;2:0.25,0,1 front;3:0.4,0,1 front"></label>
 ```
 
@@ -83,7 +83,7 @@ A curve has the `values` control: a sample cursor and a table of the original va
 
 A curve is a CSV file of x-y values. `fh report ... --curve FILE` draws it as a plot at its mark in your text (see "The story of a report"), and `--curve` needs no `--run`. Write a curve for each result that is a line, not a field: a mesh study, a history over the time or the iterations, a response over the frequency.
 
-```
+```text
 # title: Dam break, the surge front
 # y: Z = x / a [1]
 # log: x
@@ -145,7 +145,7 @@ Put the output requests inside the `*STEP`, before `*END STEP`.
 
 Text values, in `job.dat` (read these):
 
-```
+```text
 *NODE PRINT, NSET=FIXED, TOTALS=YES
 RF
 *NODE PRINT, NSET=TIP
@@ -160,7 +160,7 @@ S
 
 Fields for the page, in the `.frd` file:
 
-```
+```text
 *NODE FILE
 U, RF
 *EL FILE
@@ -181,7 +181,7 @@ A wrong support face or a wrong load direction gives a result that looks correct
 
 `fh mesh part.step --size 2.5 -o mesh.inp --face FIXED=x:0 --face TOP=z:10 --nodes TIP=x:100`
 
-```
+```text
 *INCLUDE, INPUT=mesh.inp
 *MATERIAL, NAME=STEEL
 *ELASTIC

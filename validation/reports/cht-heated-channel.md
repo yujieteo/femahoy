@@ -1,12 +1,12 @@
 # cht-heated-channel derivation
 
-## Conclusion
+## Finding
 
 The model agrees with the exact conjugate solution. The 3 checked temperatures are 0.0002 K to 0.0043 K below the exact values, and the tolerance is 0.006 K. `heater_T` uses 72 % of the tolerance. The mesh error of the check mesh is -0.0040 K (see "Mesh study"), thus the mesh causes most of the difference.
 
 The model also has the correct temperature across the full section at x = 40 mm, not only at the checked points. In the air, the temperature increases by 3.0 K from the centre line to the interface. In the wall, it increases linearly by 0.48 K to the heater. At the scale of the plot, the model line is on the exact line.
 
-**The temperature across the half channel and the wall at x = 40 mm**
+### The temperature across the half channel and the wall at x = 40 mm
 
 ![The temperature across the half channel and the wall at x = 40 mm](cht-heated-channel/profile.svg)
 
@@ -16,75 +16,71 @@ The exact line is the fully developed solution of derivation.md: the profile of 
 
 The model is the mean of the 2 cell columns at x = 39.9 and 40.1 mm.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | y [mm] | model (T [K]) | exact (T [K]) |
 | ---: | ---: | ---: |
-| 0.05 | 309.909 | — |
-| 0.15 | 309.981 | — |
-| 0.25 | 310.123 | — |
-| 0.35 | 310.332 | — |
-| 0.45 | 310.604 | — |
-| 0.55 | 310.934 | — |
-| 0.65 | 311.313 | — |
-| 0.75 | 311.734 | — |
-| 0.85 | 312.187 | — |
-| 0.95 | 312.66 | — |
-| 1.05 | 312.924 | — |
-| 1.15 | 312.972 | — |
-| 1.25 | 313.02 | — |
-| 1.35 | 313.068 | — |
-| 1.45 | 313.116 | — |
-| 1.55 | 313.164 | — |
-| 1.65 | 313.212 | — |
-| 1.75 | 313.26 | — |
-| 1.85 | 313.308 | — |
-| 1.95 | 313.356 | — |
-| 0 | — | 309.9044 |
-| 0.05 | — | 309.9133 |
-| 0.1 | — | 309.9403 |
-| 0.15 | — | 309.985 |
-| 0.2 | — | 310.0474 |
-| 0.25 | — | 310.127 |
-| 0.3 | — | 310.2235 |
-| 0.35 | — | 310.3363 |
-| 0.4 | — | 310.465 |
-| 0.45 | — | 310.6087 |
-| 0.5 | — | 310.7669 |
-| 0.55 | — | 310.9384 |
-| 0.6 | — | 311.1226 |
-| 0.65 | — | 311.3182 |
-| 0.7 | — | 311.5243 |
-| 0.75 | — | 311.7395 |
-| 0.8 | — | 311.9626 |
-| 0.85 | — | 312.1921 |
-| 0.9 | — | 312.4267 |
-| 0.95 | — | 312.6646 |
-| 1 | — | 312.9044 |
-| 1.05 | — | 312.9284 |
-| 1.1 | — | 312.9524 |
-| 1.15 | — | 312.9764 |
-| 1.2 | — | 313.0004 |
-| 1.25 | — | 313.0244 |
-| 1.3 | — | 313.0484 |
-| 1.35 | — | 313.0724 |
-| 1.4 | — | 313.0964 |
-| 1.45 | — | 313.1204 |
-| 1.5 | — | 313.1444 |
-| 1.55 | — | 313.1683 |
-| 1.6 | — | 313.1923 |
-| 1.65 | — | 313.2163 |
-| 1.7 | — | 313.2403 |
-| 1.75 | — | 313.2643 |
-| 1.8 | — | 313.2883 |
-| 1.85 | — | 313.3123 |
-| 1.9 | — | 313.3363 |
-| 1.95 | — | 313.3603 |
-| 2 | — | 313.3843 |
-
-</details>
+| 0.05 | 309.909 | n/a |
+| 0.15 | 309.981 | n/a |
+| 0.25 | 310.123 | n/a |
+| 0.35 | 310.332 | n/a |
+| 0.45 | 310.604 | n/a |
+| 0.55 | 310.934 | n/a |
+| 0.65 | 311.313 | n/a |
+| 0.75 | 311.734 | n/a |
+| 0.85 | 312.187 | n/a |
+| 0.95 | 312.66 | n/a |
+| 1.05 | 312.924 | n/a |
+| 1.15 | 312.972 | n/a |
+| 1.25 | 313.02 | n/a |
+| 1.35 | 313.068 | n/a |
+| 1.45 | 313.116 | n/a |
+| 1.55 | 313.164 | n/a |
+| 1.65 | 313.212 | n/a |
+| 1.75 | 313.26 | n/a |
+| 1.85 | 313.308 | n/a |
+| 1.95 | 313.356 | n/a |
+| 0 | n/a | 309.9044 |
+| 0.05 | n/a | 309.9133 |
+| 0.1 | n/a | 309.9403 |
+| 0.15 | n/a | 309.985 |
+| 0.2 | n/a | 310.0474 |
+| 0.25 | n/a | 310.127 |
+| 0.3 | n/a | 310.2235 |
+| 0.35 | n/a | 310.3363 |
+| 0.4 | n/a | 310.465 |
+| 0.45 | n/a | 310.6087 |
+| 0.5 | n/a | 310.7669 |
+| 0.55 | n/a | 310.9384 |
+| 0.6 | n/a | 311.1226 |
+| 0.65 | n/a | 311.3182 |
+| 0.7 | n/a | 311.5243 |
+| 0.75 | n/a | 311.7395 |
+| 0.8 | n/a | 311.9626 |
+| 0.85 | n/a | 312.1921 |
+| 0.9 | n/a | 312.4267 |
+| 0.95 | n/a | 312.6646 |
+| 1 | n/a | 312.9044 |
+| 1.05 | n/a | 312.9284 |
+| 1.1 | n/a | 312.9524 |
+| 1.15 | n/a | 312.9764 |
+| 1.2 | n/a | 313.0004 |
+| 1.25 | n/a | 313.0244 |
+| 1.3 | n/a | 313.0484 |
+| 1.35 | n/a | 313.0724 |
+| 1.4 | n/a | 313.0964 |
+| 1.45 | n/a | 313.1204 |
+| 1.5 | n/a | 313.1444 |
+| 1.55 | n/a | 313.1683 |
+| 1.6 | n/a | 313.1923 |
+| 1.65 | n/a | 313.2163 |
+| 1.7 | n/a | 313.2403 |
+| 1.75 | n/a | 313.2643 |
+| 1.8 | n/a | 313.2883 |
+| 1.85 | n/a | 313.3123 |
+| 1.9 | n/a | 313.3363 |
+| 1.95 | n/a | 313.3603 |
+| 2 | n/a | 313.3843 |
 
 The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. At the station x = 40 mm, the checked temperatures are interface_T = 312.9000 K and heater_T = 313.3800 K. At the outlet x = 90 mm, outlet_T = 329.9998 K.
 
@@ -162,7 +158,7 @@ With the heater end at 80 mm, a move of the end to 100 mm changes `interface_T` 
 
 These commands, in the repository root, solve the case on a mesh with n = 20 in a scratch folder:
 
-```
+```text
 cp -R validation/cases/cht-heated-channel/channel /tmp/cht-20
 # In /tmp/cht-20/system/fluid/blockMeshDict and /tmp/cht-20/system/solid/blockMeshDict, change "n 10;" to "n 20;".
 # In /tmp/cht-20/system/controlDict, change endTime and writeInterval to 4000.

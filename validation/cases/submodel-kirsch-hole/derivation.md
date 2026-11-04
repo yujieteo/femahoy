@@ -49,7 +49,7 @@ The outer edges of the global model get the exact displacement of the infinite p
 
 `job.inp` has these lines:
 
-```
+```text
 *SUBMODEL, TYPE=NODE, INPUT=global.frd
 CUT
 ...

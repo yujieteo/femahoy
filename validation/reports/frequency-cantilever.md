@@ -1,6 +1,6 @@
 # frequency-cantilever derivation
 
-## Conclusion
+## Finding
 
 The solid model gives the first natural frequency of the cantilever 0.33 % above the beam theory of Blevins (1979). The model gives 419.12 Hz, and the beam theory gives 417.758 Hz. The tolerance is 1 %.
 
@@ -8,7 +8,7 @@ The former C3D10 mesh study of derivation.md goes from +0.47 % at the size 5 mm 
 
 The check uses only mode 1, but the run gives 6 modes. The effective modal mass of each mode in `job.dat` gives its direction. The modes 1, 3 and 6 bend the beam in z, and the modes 2 and 4 bend it in y. Mode 5, at 6013.0 Hz, has almost no effective mass in x, y or z, only a rotation about x: it twists the beam. The plot compares the bending modes r = 1, 2, 3 of each direction with the beam theory.
 
-**Bending frequencies of the solid against the beam theory**
+### Bending frequencies of the solid against the beam theory
 
 ![Bending frequencies of the solid against the beam theory](frequency-cantilever/modes.svg)
 
@@ -20,17 +20,13 @@ The direction of a mode is the direction of its largest effective modal mass in 
 
 The beam theory is f_r = f1 (λ_r / λ_1)^2 with f1 = 417.758 Hz of check.toml and λ_r of Blevins (1979), Table 8-1. For a bend in y, the beam is 10 mm deep in place of 5 mm, thus f_r is 2 times larger.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | bending mode r [1] | bend in z (f solid / f beam theory [1]) | bend in y (f solid / f beam theory [1]) | beam theory (f solid / f beam theory [1]) |
 | ---: | ---: | ---: | ---: |
 | 1 | 1.003268 | 0.995718 | 1 |
 | 2 | 0.991881 | 0.953056 | 1 |
-| 3 | 0.974764 | — | 1 |
-
-</details>
+| 3 | 0.974764 | n/a | 1 |
 
 Mode 1 is the only mode above the beam theory. The other bending modes are below it, and the difference increases with r. In z, r = 2 is 0.81 % lower and r = 3 is 2.5 % lower. In y, the beam is 10 mm deep in place of 5 mm. There the solid is 0.43 % lower at r = 1 and 4.7 % lower at r = 2. derivation.md names the effects that the beam theory does not have: shear deformation, rotary inertia and the Poisson effect across the width.
 
@@ -90,7 +86,7 @@ Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
 The mapped mesh has 40 x 4 x 2 C3D20R elements, 320 elements and 2117 nodes.
 `Transfinite Curve`, `Transfinite Surface`, `Recombine` and an extrusion with 2 layers define the grid.
 `Mesh.ElementOrder=2` and `Mesh.SecondOrderIncomplete=1` produce 20-node hexahedra.
-The mesh retains the 100 x 10 x 5 mm box and the `FIXED` face at x = 0.
+The mesh keeps the 100 x 10 x 5 mm box and the `FIXED` face at x = 0.
 `job.inp` includes the mesh. The material, frequency step, check and 1 % tolerance stay the same.
 
 Reason: The audit mesh gives 419.1234 Hz, against 419.3186 Hz for the former mesh, with fewer nodes.

@@ -13,7 +13,7 @@ Reason: the flap report hid useful velocity data and did not connect its plots t
 `fh report --cfd DATA.json` embeds the source data for these controls.
 The flap case writes this file through `curves.py`.
 The file contains final field limits, ordered upper and lower Cp samples, coefficients, histories, and cell velocity traces.
-No control fabricates absent data. Old reports retain their original controls and contour limits.
+No control fabricates absent data. Old reports keep their original controls and contour limits.
 Reason: absent data must not produce a false result.
 
 | Name in `data-controls` | HTML attribute | Use |
@@ -31,7 +31,7 @@ A history container can contain `data-cfd-angle="ANGLE"` sections with static CS
 Use `<!--cfd-curve NAME.csv-->` for these plots to keep full SVG samples in a small report.
 Each residual plot uses initial residuals on a log axis. Absent samples form gaps.
 A streamline figure states its source.
-Without sufficient source data, it shows an explicit absent-data message.
+Without enough source data, it shows an explicit absent-data message.
 
 The view also accepts `data-range="LOW,HIGH"`, `data-mesh="false"`, and `data-quantity="velocity"` or `"kinematic-pressure"`.
 The range and quantity apply only to the first named field. The report source must justify them.

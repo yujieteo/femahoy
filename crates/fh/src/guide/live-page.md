@@ -18,5 +18,5 @@ Keep the `token` and `run` parameters.
 
 A mesh pair gives no convergence result. It compares no contour field, unit, time step, or independent deformation scale.
 A load error names its side. The other side stays open. Uncheck Link cameras for separate camera poses.
-The report command retains a report copy for each named run. Open report uses a sandbox with no daemon access.
+The report command keeps a report copy for each named run. Open report uses a sandbox with no daemon access.
 Reason: scout runs R5 to R9 showed repeated run names, hidden report paths, and unclear command and stop state.

@@ -62,7 +62,7 @@ With the heater end at 80 mm, a move of the end to 100 mm changes `interface_T` 
 
 These commands, in the repository root, solve the case on a mesh with n = 20 in a scratch folder:
 
-```
+```text
 cp -R validation/cases/cht-heated-channel/channel /tmp/cht-20
 # In /tmp/cht-20/system/fluid/blockMeshDict and /tmp/cht-20/system/solid/blockMeshDict, change "n 10;" to "n 20;".
 # In /tmp/cht-20/system/controlDict, change endTime and writeInterval to 4000.

@@ -1,20 +1,18 @@
 # shape-hole-biaxial derivation
 
-## Conclusion
+## Finding
 
 The shape loop of `fh run` finds the exact optimum hole, the ellipse with the axis ratio a/b = 2. The loop makes the peak stress a minimum. The peak stress is the largest von Mises stress on the hole edge. After 52 solves, the ratio is 2.00229 (+0.11 %), the power of the superellipse is 2.00061 (+0.03 %), and the peak stress is 1.49918 (-0.05 %). The tolerance is 0.5 %.
 
 The loop starts at the rounded square with ratio 1 and power 3, with a peak of 2.39. The ratio and the power go to 2, and the peak goes to 1.5, the lowest peak of all hole shapes:
 
-**The loop: each solve of the hole shape**
+### The loop: each solve of the hole shape
 
 ![The loop: each solve of the hole shape](shape-hole-biaxial/loop.svg)
 
 peak is the largest von Mises stress on the hole edge. The exact optimum is the ellipse with ratio 2 and power 2, and its peak 1.5 is the lowest peak of all hole shapes (derivation.md).
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | solve [1] | peak (peak, ratio and power [1]) | ratio (peak, ratio and power [1]) | power (peak, ratio and power [1]) | exact peak (peak, ratio and power [1]) | exact ratio and power (peak, ratio and power [1]) |
 | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -71,19 +69,15 @@ Original values. — means no sample.
 | 51 | 1.5002 | 1.99888 | 1.99948 | 1.5 | 2 |
 | 52 | 1.49918 | 2.00229 | 2.00061 | 1.5 | 2 |
 
-</details>
-
 The best hole has almost the same stress at each point of its edge. This agrees with Cherepanov (1974), who shows that the optimum hole has a constant hoop stress on its edge. At the nodes of the edge, the von Mises stress is between 1.4973 and 1.4992. The plate of half side 40 and the mesh make it a little lower than 1.5 (see "Tolerance").
 
-**The stress on the edge of the best hole**
+### The stress on the edge of the best hole
 
 ![The stress on the edge of the best hole](shape-hole-biaxial/edge.svg)
 
 On the free edge, the von Mises stress is equal to the absolute value of the hoop stress. The model is between 1.4973 and 1.4992 at the nodes of the edge. The exact ellipse has the hoop stress sx + sy = 1.5 at each point of its edge (derivation.md).
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | angle from the x axis [degrees] | model (von Mises stress [1]) | exact ellipse (von Mises stress [1]) |
 | ---: | ---: | ---: |
@@ -227,8 +221,6 @@ Original values. — means no sample.
 | 88.992 | 1.49774 | 1.5 |
 | 90 | 1.49775 | 1.5 |
 
-</details>
-
 The von Mises stress on the edge of the best hole is almost the same from the x axis to the y axis. The peak is 1.4992 at 8.4 degrees from the x axis, and the value at the end of the y axis is 1.4977.
 
 ## Result
@@ -251,7 +243,7 @@ The loop changes 2 variables of a superellipse hole and finds the optimum in 52 
 
 - G. P. Cherepanov, "Inverse problems of the plane theory of elasticity", Journal of Applied Mathematics and Mechanics 38 (1974) 915-931. When the 2 remote stresses have the same sign, the hole of minimum stress concentration has a constant hoop stress on its edge (the equal-strength hole). For 1 hole, this hole is an ellipse with a/b = sx/sy.
 - C. E. Inglis, "Stresses in a plate due to the presence of cracks and sharp corners", Transactions of the Institution of Naval Architects 55 (1913) 219-241. The hoop stress on the edge of an elliptical hole. At the end of the x axis (a, 0), it is sy (1 + 2 a/b) - sx. At the end of the y axis (0, b), it is sx (1 + 2 b/a) - sy.
-- K. Bandara, T. Rüberg and F. Cirak, "Shape optimisation with multiresolution subdivision surfaces and immersed finite elements", Computer Methods in Applied Mechanics and Engineering 300 (2016) 510-539, https://doi.org/10.1016/j.cma.2015.11.015, section 5.1.2. The same problem is a benchmark of shape optimization. For the stress ratio 0.5, the aspect ratio of the result goes to the exact value when the plate becomes large.
+- K. Bandara, T. Rüberg and F. Cirak, "Shape optimisation with multiresolution subdivision surfaces and immersed finite elements", Computer Methods in Applied Mechanics and Engineering 300 (2016) 510-539, <https://doi.org/10.1016/j.cma.2015.11.015>, section 5.1.2. The same problem is a benchmark of shape optimization. For the stress ratio 0.5, the aspect ratio of the result goes to the exact value when the plate becomes large.
 
 No hole shape gives a peak below sx + sy. The sum sx + sy of the 2 normal stresses is a harmonic function in the plate. It goes to the remote value 1.5 far from the hole. On the free edge, it is equal to the hoop stress. Thus the hoop stress cannot be below 1.5 at all points of the edge, and its largest value is at least 1.5.
 

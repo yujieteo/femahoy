@@ -59,12 +59,14 @@ Reason: The mapped audit mesh converges with 1825 nodes. The former S6 mesh need
 Reason: no other case solves an `S6` mesh with `ccx` against a reference.
 
 `s6.inp` is the former mesh of the case. These commands made it from `part.py` and `part.step`:
-```
+
+```text
 fh-python part.py
 fh mesh part.step --shell --size 1250 -o part.inp \
   --nodes END0=x:0 --nodes END1=x:50000 \
   --nodes TIP=point:25000,16069.69024216,19151.11107797
 ```
+
 The former `part.py`, `part.step` and `part.inp` are in the git history before this change.
 In `s6.inp`, each node and element number is 100000 higher, each set name has the suffix `_S6`, and y is 40000 mm higher.
 Thus the 2 roofs share no node, and the 3D view shows them apart. The move in y does not change the load or the constraints.

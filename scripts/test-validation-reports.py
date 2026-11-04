@@ -45,9 +45,9 @@ class ReportResults(unittest.TestCase):
     def test_plot_file_is_standalone_with_legend_and_notes(self):
         figure = ('<figure class="curve"><figcaption>Front &amp; time</figcaption><svg viewBox="0 0 640 360" role="img">'
                   '<polyline style="stroke:var(--s2)" points="1,2"/></svg><div data-control="values" hidden><div hidden>'
-                  '<p class="keys">keys</p><table><caption>Original values. — means no sample.</caption><thead><tr>'
+                  '<p class="keys">keys</p><table><caption>Original values. n/a means no sample.</caption><thead><tr>'
                   '<th scope="col">T [1]</th><th scope="col">model (Z [1])</th></tr></thead><tbody><tr data-x="72">'
-                  '<td>0.28</td><td>1.0000001</td></tr><tr data-x="80"><td>1.19</td><td>—</td></tr></tbody></table></div></div><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li>'
+                  '<td>0.28</td><td>1.0000001</td></tr><tr data-x="80"><td>1.19</td><td>n/a</td></tr></tbody></table></div></div><ul class="legend"><li><i class="line" style="background:var(--s1)"></i>model</li>'
                   '<li><i class="point" style="background:var(--s2)"></i>measured</li></ul><p>measured: Martin</p><p>A note.</p></figure>')
         title, file, lines, samples = reports.svg(figure)
         self.assertEqual(title, 'Front & time')
@@ -57,7 +57,7 @@ class ReportResults(unittest.TestCase):
         self.assertIn('>measured</text>', file)
         self.assertIn('| T [1] | model (Z [1]) |', samples)
         self.assertIn('| 0.28 | 1.0000001 |', samples)
-        self.assertIn('| 1.19 | — |', samples)
+        self.assertIn('| 1.19 | n/a |', samples)
 
 
 if __name__ == '__main__':

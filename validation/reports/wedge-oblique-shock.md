@@ -1,135 +1,131 @@
 # wedge-oblique-shock derivation
 
-## Conclusion
+## Finding
 
 The model passes: its shock angle is 0.071 % and its pressure ratio 0.013 % from the exact oblique shock. Its Mach number, temperature and density behind the shock are 0.19 % to 0.20 % from the theory. These 3 checks use 74 % to 80 % of the tolerance of 0.25 %.
 
 The pressure jump of the model is at the shock of the theory. Behind the shock, the pressure is within 0.3 % of the theory. The shock of the theory is at beta = 36.9449 degrees from the tip: y = 0.5678 at x = 0.755 and y = 0.7520 at x = 1.
 
-**The pressure on the line x = 0.755, from the wedge to the far field**
+### The pressure on the line x = 0.755, from the wedge to the far field
 
 ![The pressure on the line x = 0.755, from the wedge to the far field](wedge-oblique-shock/pressure.svg)
 
 The theory is the exact oblique shock of Table 2 of the NPARC case: the shock at y = 0.5678 (beta = 36.9449 degrees) and p2 / p1 = 2.4675.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | y [1] | model (p / p1 [1]) | theory (p / p1 [1]) |
 | ---: | ---: | ---: |
-| 0.20629 | 2.4692 | — |
-| 0.21427 | 2.46902 | — |
-| 0.22224 | 2.46894 | — |
-| 0.23022 | 2.46881 | — |
-| 0.2382 | 2.46899 | — |
-| 0.24618 | 2.4687 | — |
-| 0.25415 | 2.46852 | — |
-| 0.26213 | 2.46829 | — |
-| 0.27011 | 2.46805 | — |
-| 0.27808 | 2.46778 | — |
-| 0.28606 | 2.46806 | — |
-| 0.29404 | 2.46848 | — |
-| 0.30201 | 2.46812 | — |
-| 0.30999 | 2.46777 | — |
-| 0.31797 | 2.46795 | — |
-| 0.32594 | 2.46873 | — |
-| 0.33392 | 2.46857 | — |
-| 0.3419 | 2.46824 | — |
-| 0.34988 | 2.4681 | — |
-| 0.35785 | 2.46786 | — |
-| 0.36583 | 2.4675 | — |
-| 0.37381 | 2.46669 | — |
-| 0.38178 | 2.46621 | — |
-| 0.38976 | 2.4662 | — |
-| 0.39774 | 2.46664 | — |
-| 0.40571 | 2.46807 | — |
-| 0.41369 | 2.46905 | — |
-| 0.42167 | 2.4697 | — |
-| 0.42965 | 2.4697 | — |
-| 0.43762 | 2.46864 | — |
-| 0.4456 | 2.46839 | — |
-| 0.45358 | 2.46915 | — |
-| 0.46155 | 2.47058 | — |
-| 0.46953 | 2.47132 | — |
-| 0.47751 | 2.4715 | — |
-| 0.48548 | 2.46804 | — |
-| 0.49346 | 2.46289 | — |
-| 0.50144 | 2.46271 | — |
-| 0.50942 | 2.46994 | — |
-| 0.51739 | 2.47446 | — |
-| 0.52537 | 2.46796 | — |
-| 0.53335 | 2.47248 | — |
-| 0.54132 | 2.47249 | — |
-| 0.5493 | 2.42713 | — |
-| 0.55728 | 2.39474 | — |
-| 0.56525 | 2.02198 | — |
-| 0.57323 | 1.39354 | — |
-| 0.58121 | 1.04479 | — |
-| 0.58919 | 1.00107 | — |
-| 0.59716 | 1 | — |
-| 0.60514 | 1 | — |
-| 0.61312 | 1 | — |
-| 0.62109 | 1 | — |
-| 0.62907 | 1 | — |
-| 0.63705 | 1 | — |
-| 0.64502 | 1 | — |
-| 0.653 | 1 | — |
-| 0.66098 | 1 | — |
-| 0.66895 | 1 | — |
-| 0.67693 | 1 | — |
-| 0.68491 | 1 | — |
-| 0.69289 | 1 | — |
-| 0.70086 | 1 | — |
-| 0.70884 | 1 | — |
-| 0.71682 | 1 | — |
-| 0.72479 | 1 | — |
-| 0.73277 | 1 | — |
-| 0.74075 | 1 | — |
-| 0.74872 | 1 | — |
-| 0.7567 | 1 | — |
-| 0.76468 | 1 | — |
-| 0.77266 | 1 | — |
-| 0.78063 | 1 | — |
-| 0.78861 | 1 | — |
-| 0.79659 | 1 | — |
-| 0.80456 | 1 | — |
-| 0.81254 | 1 | — |
-| 0.82052 | 1 | — |
-| 0.82849 | 1 | — |
-| 0.83647 | 1 | — |
-| 0.84445 | 1 | — |
-| 0.85243 | 1 | — |
-| 0.8604 | 1 | — |
-| 0.86838 | 1 | — |
-| 0.87636 | 1 | — |
-| 0.88433 | 1 | — |
-| 0.89231 | 1 | — |
-| 0.90029 | 1 | — |
-| 0.90826 | 1 | — |
-| 0.91624 | 1 | — |
-| 0.92422 | 1 | — |
-| 0.9322 | 1 | — |
-| 0.94017 | 1 | — |
-| 0.94815 | 1 | — |
-| 0.95613 | 1 | — |
-| 0.9641 | 1 | — |
-| 0.97208 | 1 | — |
-| 0.98006 | 1 | — |
-| 0.98803 | 1 | — |
-| 0.99601 | 1 | — |
-| 0.2023 | — | 2.4675 |
-| 0.5678 | — | 2.4675 |
-| 0.5678 | — | 1 |
-| 1 | — | 1 |
-
-</details>
+| 0.20629 | 2.4692 | n/a |
+| 0.21427 | 2.46902 | n/a |
+| 0.22224 | 2.46894 | n/a |
+| 0.23022 | 2.46881 | n/a |
+| 0.2382 | 2.46899 | n/a |
+| 0.24618 | 2.4687 | n/a |
+| 0.25415 | 2.46852 | n/a |
+| 0.26213 | 2.46829 | n/a |
+| 0.27011 | 2.46805 | n/a |
+| 0.27808 | 2.46778 | n/a |
+| 0.28606 | 2.46806 | n/a |
+| 0.29404 | 2.46848 | n/a |
+| 0.30201 | 2.46812 | n/a |
+| 0.30999 | 2.46777 | n/a |
+| 0.31797 | 2.46795 | n/a |
+| 0.32594 | 2.46873 | n/a |
+| 0.33392 | 2.46857 | n/a |
+| 0.3419 | 2.46824 | n/a |
+| 0.34988 | 2.4681 | n/a |
+| 0.35785 | 2.46786 | n/a |
+| 0.36583 | 2.4675 | n/a |
+| 0.37381 | 2.46669 | n/a |
+| 0.38178 | 2.46621 | n/a |
+| 0.38976 | 2.4662 | n/a |
+| 0.39774 | 2.46664 | n/a |
+| 0.40571 | 2.46807 | n/a |
+| 0.41369 | 2.46905 | n/a |
+| 0.42167 | 2.4697 | n/a |
+| 0.42965 | 2.4697 | n/a |
+| 0.43762 | 2.46864 | n/a |
+| 0.4456 | 2.46839 | n/a |
+| 0.45358 | 2.46915 | n/a |
+| 0.46155 | 2.47058 | n/a |
+| 0.46953 | 2.47132 | n/a |
+| 0.47751 | 2.4715 | n/a |
+| 0.48548 | 2.46804 | n/a |
+| 0.49346 | 2.46289 | n/a |
+| 0.50144 | 2.46271 | n/a |
+| 0.50942 | 2.46994 | n/a |
+| 0.51739 | 2.47446 | n/a |
+| 0.52537 | 2.46796 | n/a |
+| 0.53335 | 2.47248 | n/a |
+| 0.54132 | 2.47249 | n/a |
+| 0.5493 | 2.42713 | n/a |
+| 0.55728 | 2.39474 | n/a |
+| 0.56525 | 2.02198 | n/a |
+| 0.57323 | 1.39354 | n/a |
+| 0.58121 | 1.04479 | n/a |
+| 0.58919 | 1.00107 | n/a |
+| 0.59716 | 1 | n/a |
+| 0.60514 | 1 | n/a |
+| 0.61312 | 1 | n/a |
+| 0.62109 | 1 | n/a |
+| 0.62907 | 1 | n/a |
+| 0.63705 | 1 | n/a |
+| 0.64502 | 1 | n/a |
+| 0.653 | 1 | n/a |
+| 0.66098 | 1 | n/a |
+| 0.66895 | 1 | n/a |
+| 0.67693 | 1 | n/a |
+| 0.68491 | 1 | n/a |
+| 0.69289 | 1 | n/a |
+| 0.70086 | 1 | n/a |
+| 0.70884 | 1 | n/a |
+| 0.71682 | 1 | n/a |
+| 0.72479 | 1 | n/a |
+| 0.73277 | 1 | n/a |
+| 0.74075 | 1 | n/a |
+| 0.74872 | 1 | n/a |
+| 0.7567 | 1 | n/a |
+| 0.76468 | 1 | n/a |
+| 0.77266 | 1 | n/a |
+| 0.78063 | 1 | n/a |
+| 0.78861 | 1 | n/a |
+| 0.79659 | 1 | n/a |
+| 0.80456 | 1 | n/a |
+| 0.81254 | 1 | n/a |
+| 0.82052 | 1 | n/a |
+| 0.82849 | 1 | n/a |
+| 0.83647 | 1 | n/a |
+| 0.84445 | 1 | n/a |
+| 0.85243 | 1 | n/a |
+| 0.8604 | 1 | n/a |
+| 0.86838 | 1 | n/a |
+| 0.87636 | 1 | n/a |
+| 0.88433 | 1 | n/a |
+| 0.89231 | 1 | n/a |
+| 0.90029 | 1 | n/a |
+| 0.90826 | 1 | n/a |
+| 0.91624 | 1 | n/a |
+| 0.92422 | 1 | n/a |
+| 0.9322 | 1 | n/a |
+| 0.94017 | 1 | n/a |
+| 0.94815 | 1 | n/a |
+| 0.95613 | 1 | n/a |
+| 0.9641 | 1 | n/a |
+| 0.97208 | 1 | n/a |
+| 0.98006 | 1 | n/a |
+| 0.98803 | 1 | n/a |
+| 0.99601 | 1 | n/a |
+| 0.2023 | n/a | 2.4675 |
+| 0.5678 | n/a | 2.4675 |
+| 0.5678 | n/a | 1 |
+| 1 | n/a | 1 |
 
 The tip of the wedge causes the 3 larger differences (see "Mesh study"). There the shock and the wall meet in 1 cell, and the scheme makes too much entropy. The hottest cell is at the wall near the tip, with T = 1.412, 6.8 % above the theory.
 
 The flow carries this hot gas along the wall. On the line x = 0.755 near the wall, the temperature is up to 0.44 % above the theory. There the Mach number is up to 0.35 % below the theory, but the pressure is within 0.07 % of it. The averages of the 3 checks include this layer. The error decreases with the cell size. From the 2 finest meshes of the mesh study, the 5 values extrapolate to within 0.011 % of the theory.
 
-**The state behind the shock on the line x = 0.755, divided by the theory**
+### The state behind the shock on the line x = 0.755, divided by the theory
 
 ![The state behind the shock on the line x = 0.755, divided by the theory](wedge-oblique-shock/behind.svg)
 
@@ -137,59 +133,55 @@ The checks mach2, temperature_ratio and density2 average the cells with 0.25 < x
 
 The wedge is at y = 0.2023.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | y [1] | p / p2 (model / theory [1]) | T / T2 (model / theory [1]) | Ma / M2 (model / theory [1]) | theory (model / theory [1]) |
 | ---: | ---: | ---: | ---: | ---: |
-| 0.20629 | 1.00069 | 1.00134 | 0.99778 | — |
-| 0.21427 | 1.00062 | 1.00147 | 0.99785 | — |
-| 0.22224 | 1.00058 | 1.00194 | 0.99802 | — |
-| 0.23022 | 1.00053 | 1.00274 | 0.99817 | — |
-| 0.2382 | 1.0006 | 1.00361 | 0.99811 | — |
-| 0.24618 | 1.00049 | 1.00415 | 0.99782 | — |
-| 0.25415 | 1.00041 | 1.00436 | 0.99737 | — |
-| 0.26213 | 1.00032 | 1.00436 | 0.99697 | — |
-| 0.27011 | 1.00022 | 1.00421 | 0.99678 | — |
-| 0.27808 | 1.00011 | 1.0038 | 0.99669 | — |
-| 0.28606 | 1.00023 | 1.00313 | 0.99654 | — |
-| 0.29404 | 1.0004 | 1.00231 | 0.99663 | — |
-| 0.30201 | 1.00025 | 1.00142 | 0.9972 | — |
-| 0.30999 | 1.00011 | 1.00067 | 0.99803 | — |
-| 0.31797 | 1.00018 | 1.00021 | 0.99886 | — |
-| 0.32594 | 1.0005 | 1.00003 | 0.99949 | — |
-| 0.33392 | 1.00043 | 0.99987 | 0.99984 | — |
-| 0.3419 | 1.0003 | 0.99977 | 0.99998 | — |
-| 0.34988 | 1.00024 | 0.99971 | 1.0001 | — |
-| 0.35785 | 1.00015 | 0.99968 | 1.00015 | — |
-| 0.36583 | 1 | 0.99965 | 1.0002 | — |
-| 0.37381 | 0.99967 | 0.99958 | 1.00031 | — |
-| 0.38178 | 0.99948 | 0.99957 | 1.00036 | — |
-| 0.38976 | 0.99947 | 0.99961 | 1.00037 | — |
-| 0.39774 | 0.99965 | 0.9997 | 1.0003 | — |
-| 0.40571 | 1.00023 | 0.9999 | 1.00007 | — |
-| 0.41369 | 1.00063 | 1.00008 | 0.99983 | — |
-| 0.42167 | 1.00089 | 1.0002 | 0.99974 | — |
-| 0.42965 | 1.00089 | 1.00024 | 0.9998 | — |
-| 0.43762 | 1.00046 | 1.00014 | 0.99996 | — |
-| 0.4456 | 1.00036 | 1.00013 | 1.00016 | — |
-| 0.45358 | 1.00067 | 1.00023 | 1.00029 | — |
-| 0.46155 | 1.00125 | 1.00042 | 1.00032 | — |
-| 0.46953 | 1.00155 | 1.00052 | 1.00013 | — |
-| 0.47751 | 1.00162 | 1.00055 | 0.99988 | — |
-| 0.48548 | 1.00022 | 1.00015 | 0.99995 | — |
-| 0.49346 | 0.99813 | 0.99952 | 1.00019 | — |
-| 0.50144 | 0.99806 | 0.99945 | 1.00031 | — |
-| 0.50942 | 1.00099 | 1.00023 | 0.99984 | — |
-| 0.51739 | 1.00282 | 1.00073 | 0.99935 | — |
-| 0.52537 | 1.00019 | 1.00007 | 0.99961 | — |
-| 0.53335 | 1.00202 | 1.00077 | 0.99961 | — |
-| 0.54132 | 1.00202 | 1.00068 | 1.00423 | — |
-| 0.2023 | — | — | — | 1 |
-| 0.54132 | — | — | — | 1 |
-
-</details>
+| 0.20629 | 1.00069 | 1.00134 | 0.99778 | n/a |
+| 0.21427 | 1.00062 | 1.00147 | 0.99785 | n/a |
+| 0.22224 | 1.00058 | 1.00194 | 0.99802 | n/a |
+| 0.23022 | 1.00053 | 1.00274 | 0.99817 | n/a |
+| 0.2382 | 1.0006 | 1.00361 | 0.99811 | n/a |
+| 0.24618 | 1.00049 | 1.00415 | 0.99782 | n/a |
+| 0.25415 | 1.00041 | 1.00436 | 0.99737 | n/a |
+| 0.26213 | 1.00032 | 1.00436 | 0.99697 | n/a |
+| 0.27011 | 1.00022 | 1.00421 | 0.99678 | n/a |
+| 0.27808 | 1.00011 | 1.0038 | 0.99669 | n/a |
+| 0.28606 | 1.00023 | 1.00313 | 0.99654 | n/a |
+| 0.29404 | 1.0004 | 1.00231 | 0.99663 | n/a |
+| 0.30201 | 1.00025 | 1.00142 | 0.9972 | n/a |
+| 0.30999 | 1.00011 | 1.00067 | 0.99803 | n/a |
+| 0.31797 | 1.00018 | 1.00021 | 0.99886 | n/a |
+| 0.32594 | 1.0005 | 1.00003 | 0.99949 | n/a |
+| 0.33392 | 1.00043 | 0.99987 | 0.99984 | n/a |
+| 0.3419 | 1.0003 | 0.99977 | 0.99998 | n/a |
+| 0.34988 | 1.00024 | 0.99971 | 1.0001 | n/a |
+| 0.35785 | 1.00015 | 0.99968 | 1.00015 | n/a |
+| 0.36583 | 1 | 0.99965 | 1.0002 | n/a |
+| 0.37381 | 0.99967 | 0.99958 | 1.00031 | n/a |
+| 0.38178 | 0.99948 | 0.99957 | 1.00036 | n/a |
+| 0.38976 | 0.99947 | 0.99961 | 1.00037 | n/a |
+| 0.39774 | 0.99965 | 0.9997 | 1.0003 | n/a |
+| 0.40571 | 1.00023 | 0.9999 | 1.00007 | n/a |
+| 0.41369 | 1.00063 | 1.00008 | 0.99983 | n/a |
+| 0.42167 | 1.00089 | 1.0002 | 0.99974 | n/a |
+| 0.42965 | 1.00089 | 1.00024 | 0.9998 | n/a |
+| 0.43762 | 1.00046 | 1.00014 | 0.99996 | n/a |
+| 0.4456 | 1.00036 | 1.00013 | 1.00016 | n/a |
+| 0.45358 | 1.00067 | 1.00023 | 1.00029 | n/a |
+| 0.46155 | 1.00125 | 1.00042 | 1.00032 | n/a |
+| 0.46953 | 1.00155 | 1.00052 | 1.00013 | n/a |
+| 0.47751 | 1.00162 | 1.00055 | 0.99988 | n/a |
+| 0.48548 | 1.00022 | 1.00015 | 0.99995 | n/a |
+| 0.49346 | 0.99813 | 0.99952 | 1.00019 | n/a |
+| 0.50144 | 0.99806 | 0.99945 | 1.00031 | n/a |
+| 0.50942 | 1.00099 | 1.00023 | 0.99984 | n/a |
+| 0.51739 | 1.00282 | 1.00073 | 0.99935 | n/a |
+| 0.52537 | 1.00019 | 1.00007 | 0.99961 | n/a |
+| 0.53335 | 1.00202 | 1.00077 | 0.99961 | n/a |
+| 0.54132 | 1.00202 | 1.00068 | 1.00423 | n/a |
+| 0.2023 | n/a | n/a | n/a | 1 |
+| 0.54132 | n/a | n/a | n/a | 1 |
 
 ## Result
 
@@ -210,10 +202,10 @@ The reference is the exact solution of the oblique shock relations. Thus the tol
 
 ## Sources
 
-- NPARC Alliance Verification and Validation Archive, NASA Glenn Research Center, "Supersonic Wedge" (J. W. Slater), https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge.html.
+- NPARC Alliance Verification and Validation Archive, NASA Glenn Research Center, "Supersonic Wedge" (J. W. Slater), <https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge.html>.
   Inviscid flow at Mach 2.5 over a wedge with a half-angle of 15 degrees. The leading edge is at x = y = 0. The domain has the inflow at x = -0.5, the outflow at x = 1 and the far field at y = 1. Before the wedge, y = 0 is a symmetry plane.
 - The check values come from Table 2 of that page, "the analytic inviscid solution", from the program `oblshk.f` with a tolerance of 1e-6.
-- Study #2 of the same archive (https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge02/wedge02.html) is a mesh study of the WIND code on 4 grids with a spacing of 0.02, 0.01, 0.005 and 0.0031. Its error of the mean Mach number behind the shock is 0.39 %, 0.16 %, 0.066 % and 0.037 %. The case uses it only as a cross-check.
+- Study #2 of the same archive (<https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge02/wedge02.html>) is a mesh study of the WIND code on 4 grids with a spacing of 0.02, 0.01, 0.005 and 0.0031. Its error of the mean Mach number behind the shock is 0.39 %, 0.16 %, 0.066 % and 0.037 %. The case uses it only as a cross-check.
 - The oblique shock relations are in J. D. Anderson, Modern Compressible Flow, McGraw-Hill, and in Ames Research Staff, "Equations, tables, and charts for compressible flow", NACA Report 1135 (1953). The shock angle beta comes from the theta-beta-M relation
 
   tan(theta) = 2 cot(beta) (M1^2 sin^2(beta) - 1) / (M1^2 (gamma + cos(2 beta)) + 2),
@@ -263,7 +255,7 @@ With `maxCo 0.2`, p on the same line is 2.463 to 2.474 up to 2 cells from the sh
 
 The scratch commands below, in the repository root, solve the case on a mesh with N cells from y = 0 to y = 1 (N = 100 is the check):
 
-```
+```text
 cp -R validation/cases/wedge-oblique-shock/mach2.5 /tmp/wedge-N
 # In /tmp/wedge-N/system/blockMeshDict, change (50 100 1) to (N/2 N 1), (100 100 1) to (N N 1)
 # and the depth 0.01 to 1/N.
