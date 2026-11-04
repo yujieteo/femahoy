@@ -1,10 +1,10 @@
 # grid-pipe-wall derivation
 
-This case checks the built-in solver on a shape that is not a box: a pipe wall, a circle with a round hole, extruded along z. The solver meshes it with tetrahedra (`fh guide grid`). The case is not a chip package problem. Units are SI-m.
+This case checks the built-in solver on a shape that is not a box. The shape is a pipe wall, a circle with a round hole, extruded along z. The solver meshes it with tetrahedra (`fh guide grid`). The case is not a chip package problem. Units are SI-m.
 
 ## Source
 
-Steady conduction through a cylinder wall with no source: the heat flow per length q' is the same through each radius, so T(r) = T1 − q' ln(r / r1) / (2π k). A convection outside adds the film resistance 1 / (2π r2 h) in series with the wall resistance ln(r2 / r1) / (2π k). F. P. Incropera, D. P. DeWitt, T. L. Bergman and A. S. Lavine, *Fundamentals of Heat and Mass Transfer*, 6th ed., Wiley, 2007, section 3.3.1 (the cylindrical wall).
+Take steady conduction through a cylinder wall with no source. The heat flow per length q' is the same through each radius, so T(r) = T1 − q' ln(r / r1) / (2π k). A convection outside adds the film resistance 1 / (2π r2 h) in series with the wall resistance ln(r2 / r1) / (2π k). F. P. Incropera, D. P. DeWitt, T. L. Bergman and A. S. Lavine, *Fundamentals of Heat and Mass Transfer*, 6th ed., Wiley, 2007, section 3.3.1 (the cylindrical wall).
 
 ## Model
 
@@ -36,7 +36,7 @@ The solver puts the points of each circle on the circle, with segments of at mos
 | 0.002 | 19,629 | 58.137421 | 58.135139 | 40.831908 | 0.20942950 | 0.07 s |
 | 0.001 | 76,377 | 58.135673 | 58.136530 | 40.832828 | 0.20943607 | 0.33 s |
 
-The error of the heat flow is −1.7e-4, −4.3e-5 and −1.1e-5 of the value: it falls by a factor of 4 when the cell halves. The errors at the probes are below 1.3e-3 °C at max_cell 0.002 m, and their sign changes, because a probe interpolates in a tetrahedron that is at a different place in each mesh.
+The error of the heat flow is −1.7e-4, −4.3e-5 and −1.1e-5 of the value: it falls by a factor of 4 when the cell halves. The errors at the probes are below 1.3e-3 °C at max_cell 0.002 m, and their sign changes. The reason is that a probe interpolates in a tetrahedron at a different place in each mesh.
 
 ## Tolerance
 

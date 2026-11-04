@@ -31,7 +31,7 @@ phi_r(x) = cosh(lam_r x / L) - cos(lam_r x / L) - sig_r (sinh(lam_r x / L) - sin
 omega_r = lam_r^2 / L^2 sqrt(EI / m)
 ```
 
-With this scale of phi_r: the integral of phi_r^2 over the beam is L, the integral of phi_r is 2 sig_r L / lam_r, and phi_r(L) = 2 (-1)^(r+1).
+With this scale of phi_r, the integral of phi_r^2 over the beam is L. The integral of phi_r is 2 sig_r L / lam_r, and phi_r(L) = 2 (-1)^(r+1).
 Each mode r with the damping ratio zeta obeys q_tt + 2 zeta omega_r q_t + omega_r^2 q = -G_r a_b, with G_r = 2 sig_r / lam_r.
 G_r^2 is the fraction of the mass that mode r moves (the effective modal mass).
 
@@ -88,7 +88,7 @@ print(f"A_rms = {A:.1f} mm/s2 = {A / g:.4f} g")
 It prints `A_rms = 400925.4 mm/s2 = 40.8830 g`: the value of the check `a_tip_rms`.
 With 5 modes the value is 0.001 % lower, and with 800000 intervals it does not change.
 
-Miles' equation for mode 1 alone is the hand check: A_rms = c_1 sqrt(π/2 f_1 Q W) = 1.56598 x sqrt(π/2 x 417.76 x 25 x 0.04) = 40.115 g.
+The hand check is Miles' equation for mode 1 alone. A_rms = c_1 sqrt(π/2 f_1 Q W) = 1.56598 x sqrt(π/2 x 417.76 x 25 x 0.04) = 40.115 g.
 It is 1.9 % lower than the modal sum. The modal sum also has the base acceleration below the resonance and the static part of the higher modes.
 
 ## Model
@@ -104,7 +104,7 @@ It is 1.9 % lower than the modal sum. The modal sum also has the base accelerati
 | Base motion | `*BASE MOTION, DOF=3, TYPE=ACCELERATION, AMPLITUDE=PSD` on `FIXED` |
 | Output | `*NODE PRINT` of `U` for `TIP`, the 37 nodes of the face x = 100 mm. `*NODE FILE, FREQUENCY=0` stops the field output of step 1 in step 2 |
 
-`ccx` puts the frequency points in the intervals between 20 Hz, each natural frequency in the band (419.1 Hz and 831.9 Hz) and 2000 Hz: 301 points.
+`ccx` puts 301 frequency points in the intervals between 20 Hz, each natural frequency in the band (419.1 Hz and 831.9 Hz) and 2000 Hz.
 At each point it prints the real part and the imaginary part of `U`. With the amplitude sqrt(W), |U(f)|^2 is the PSD of the displacement.
 `fh` integrates (2 π f)^4 |U|^2 over the points with the trapezoid rule and writes the RMS acceleration of each node to `ccx/rms.txt`.
 The check `a_tip_rms` is the mean of `A3` over the nodes of `TIP`. The former 57 values differ by less than 0.002 %.
@@ -184,7 +184,7 @@ The tolerance stops these errors. Each line is a change of `job.inp`, solved wit
 
 ## Not in the check
 
-- The deflection relative to the base: with `*BASE MOTION`, `U` is the absolute displacement, and its RMS (0.335 mm at the tip) is mostly the motion of the base. The beam theory gives 0.0571 mm RMS for the deflection of the tip.
+- The deflection relative to the base: with `*BASE MOTION`, `U` is the absolute displacement. Its RMS (0.335 mm at the tip) is mostly the motion of the base. The beam theory gives 0.0571 mm RMS for the deflection of the tip.
 - The stress: `ccx` prints no stress to `job.dat` in a steady state step.
 - A PSD that is not flat: `ccx` interpolates the amplitude linearly between its points. The flat PSD of the check has no interpolation error.
 

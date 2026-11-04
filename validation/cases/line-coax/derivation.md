@@ -1,10 +1,10 @@
 # line-coax derivation
 
-This case checks the transmission line solver of the built-in grid solver (`fh guide grid`, a `grid.toml` with a `[line]` table) on a coaxial cable with an exact answer. The case is not a chip package problem. Units are SI-m.
+This case checks the transmission line solver of the built-in grid solver (`fh guide grid`, a `grid.toml` with a `[line]` table). The test is a coaxial cable with an exact answer. The case is not a chip package problem. Units are SI-m.
 
 ## Source
 
-The field between 2 coaxial perfect conductors is the field of a line charge and of a line current. With the inner radius a, the outer radius b and a dielectric of relative permittivity ε_r: C = 2π ε0 ε_r / ln(b/a), L = μ0 ln(b/a) / (2π), Z0 = sqrt(L / C) and ε_eff = L C c0² = ε_r. D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, section 2.2 (the coaxial line). The constants are ε0 = 8.8541878128e-12 F/m, μ0 = 1.25663706212e-6 H/m (CODATA 2018) and c0 = 299792458 m/s. The values below are from mpmath at 30 digits.
+The field between 2 coaxial perfect conductors is the field of a line charge and of a line current. Take the inner radius a, the outer radius b and a dielectric of relative permittivity ε_r. Then C = 2π ε0 ε_r / ln(b/a) and L = μ0 ln(b/a) / (2π). Also Z0 = sqrt(L / C) and ε_eff = L C c0² = ε_r. D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, section 2.2 (the coaxial line). The constants are ε0 = 8.8541878128e-12 F/m, μ0 = 1.25663706212e-6 H/m (CODATA 2018) and c0 = 299792458 m/s. The values below are from mpmath at 30 digits.
 
 ## Model
 
@@ -25,7 +25,7 @@ The field between 2 coaxial perfect conductors is the field of a line charge and
 
 ## Mesh study
 
-The points of each circle are on the circle, with segments of at most `max_cell`. Thus the conductors are polygons: the inner one is a little too small and the outer one a little too large, so C is too small and L too large. These errors and the error of the linear triangles fall at second order.
+The points of each circle are on the circle, with segments of at most `max_cell`. Thus the conductors are polygons. The inner one is a little too small and the outer one a little too large. Thus C is too small and L is too large. These errors and the error of the linear triangles fall at second order.
 
 | max_cell (m) | points | C (F/m) | L (H/m) | Z0 (Ω) | time |
 |---:|---:|---:|---:|---:|---:|

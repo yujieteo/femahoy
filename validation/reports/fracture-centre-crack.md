@@ -17,7 +17,7 @@ The opening of each node near the tip gives a value of K_I too. At the node near
 
 ![K_I from the opening of the crack face near the tip](fracture-centre-crack/opening.svg)
 
-model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face, from v = (4 K_I / E') sqrt(r / 2 pi). This formula is the first term of the field at the tip. It is exact only as r goes to 0.
+model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face. It comes from v = (4 K_I / E') sqrt(r / 2 pi). This formula is the first term of the field at the tip. It is exact only as r goes to 0.
 
 Tada is the formula of Tada (1971) in check.toml. The check gets K_I of the model from the 2 nodes at r = L/4 and L (derivation.md).
 

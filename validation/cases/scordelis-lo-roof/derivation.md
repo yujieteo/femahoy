@@ -6,7 +6,7 @@ The roof is a cylinder shell with a published deflection.
 ## Source
 
 MacNeal, R.H. and Harder, R.L., "A proposed standard set of problems to test finite element
-accuracy", Finite Elements in Analysis and Design 1 (1985), pages 3 to 20. The problem is the
+accuracy". Finite Elements in Analysis and Design 1 (1985), pages 3 to 20. The problem is the
 Scordelis-Lo roof. The published target is a vertical deflection of 0.3024 at the middle of the
 free edge. (The first solution of Scordelis and Lo gave 0.3086.)
 
@@ -33,8 +33,8 @@ This gives 3.6E-7 x 1 x 250 = 9.0E-5 MPa.
 ## Model
 
 Axes: x along the roof, z up, the axis of the cylinder is the x axis. The crown is at y = 0.
-The model is the full roof. It has no symmetry plane, because a rotation constraint on
-the mid-length plane made the roof 9 times too stiff in `ccx` (S6, uz = -34 mm).
+The model is the full roof. It has no symmetry plane.
+A rotation constraint on the mid-length plane made the roof 9 times too stiff in `ccx` (S6, uz = -34 mm).
 
 - Each end (x = 0 and x = 50000) is a rigid diaphragm in its plane: uy = uz = 0, ux free.
 - The 2 curved edges at y = +/-16069.7 mm are free.

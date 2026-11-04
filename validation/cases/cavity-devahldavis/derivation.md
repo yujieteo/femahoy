@@ -41,7 +41,7 @@ The function objects of `system/controlDict` write the 3 values of each case:
 - Nusselt number: the `areaNormalAverage` of `grad(T)` on the patch `hot`. The normal points out of the fluid, thus the value is the average of -dT/dx on the hot wall.
 - Velocities: the largest `Ux` in the row of cells that the plane x = 0.5 cuts. Also the largest `Uy` in the row of cells that the plane y = 0.5 cuts. The mesh has an odd number of cells, thus each plane goes through a row of cell centres.
 
-With the relaxation factors 0.7, 0.3 and 0.5, the Nusselt number at Ra = 1e4 on 129 x 129 changed between 1.5 and 2.34 over 8000 iterations. The relaxation factors of the case get a residual of 1e-7 after about 2000 iterations.
+The relaxation factors were 0.7, 0.3 and 0.5. Then the Nusselt number at Ra = 1e4 on 129 x 129 changed between 1.5 and 2.34 over 8000 iterations. The relaxation factors of the case get a residual of 1e-7 after about 2000 iterations.
 
 ## Mesh study
 

@@ -29,8 +29,8 @@ The result is the density of each element of the loop. The CAD makes its solid f
 
 Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
-This case checks the CAD of a topology run: the solid that `fh run` makes from the last design, and the check of this solid with `ccx`.
-The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the threshold of the same design at 0.5 on the elements of the loop.
+This case checks the CAD of a topology run. It checks the solid that `fh run` makes from the last design, and it checks this solid with `ccx`.
+The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the threshold of the same design. The threshold is 0.5 on the elements of the loop.
 The solid has no gray material. Thus its compliance must be lower than the compliance of the loop.
 
 ## Source
@@ -52,7 +52,7 @@ After the loop, `fh run` writes the CAD in `topology/cad` (`crates/fh/src/topolo
 1. The density of a node is the mean of the densities of its elements. The material is where the density is 0.5 or more.
 2. The boundary of the material is a set of closed loops. On the edge of the mesh, a loop has straight lines. In the mesh, a loop is a smoothed `Spline` of gmsh.
 3. `design.geo` holds the plane surfaces of the material and their extrusion by the thickness 1. gmsh writes the solid to `design.step`.
-4. gmsh meshes the plane surfaces with `CPE6` elements of size 0.5, half the element size of the loop. The material has the modulus E0 of the loop (the density 1). The nodes on the left edge get ux = 0, the node at the bottom right corner gets uy = 0, and the node at the top left corner gets the load. `ccx` solves this model, and `cad/check.txt` holds the compliance c = 2 times the sum of `ELSE`.
+4. gmsh meshes the plane surfaces with `CPE6` elements of size 0.5, half the element size of the loop. The material has the modulus E0 of the loop (the density 1). The nodes on the left edge get ux = 0. The node at the bottom right corner gets uy = 0. The node at the top left corner gets the load. `ccx` solves this model, and `cad/check.txt` holds the compliance c = 2 times the sum of `ELSE`.
 
 ## Results
 

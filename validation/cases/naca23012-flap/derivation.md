@@ -17,8 +17,8 @@ It uses the setup of `naca0012-ladson`, and it adds the pitching moment (the col
 | 0 | 8.4 | -1.2 | 0.100 | 0.1200 | -0.008 | `cl_0`, `cm_0` |
 | 10 | 8.3 | -6.0 | 0.094 | 0.5640 | -0.09 | `cl_down10`, `cm_down10` |
 
-A positive cm is nose up. The checks use the angle of attack 0, because there the flow is attached for each flap angle.
-With the flap 20 degrees down at 2 degrees, the flow separates on the flap of the model, and `simpleFoam` does not get a steady lift. Thus the case stops at 10 degrees.
+A positive cm is nose up. The checks use the angle of attack 0, because there the flow stays attached for each flap angle.
+With the flap 20 degrees down at 2 degrees, the flow separates on the flap of the model. `simpleFoam` does not get a steady lift. Thus the case stops at 10 degrees.
 
 ## Model
 
@@ -28,7 +28,7 @@ The model is the model of `naca0012-ladson`, with these differences:
 | Item | Value |
 |---|---|
 | Airfoil | the NACA 230 mean line (m = 0.2025, k1 = 15.957), with the thickness of the TMR NACA 0012 (11.9 %) normal to the mean line |
-| Flap | the hinge is on the mean line at x = 0.8. Each point at the station x turns about the hinge by the flap angle times S((x - 0.8) / 0.05), with S a smooth step from 0 to 1. Thus the flap aft of x = 0.85 turns as a rigid body, and the gap is sealed and fair, as the plaster of the test |
+| Flap | the hinge is on the mean line at x = 0.8. Each point at the station x turns about the hinge by the flap angle times S((x - 0.8) / 0.05). S is a smooth step from 0 to 1. Thus the flap aft of x = 0.85 turns as a rigid body. The gap stays closed and fair, as the plaster of the test does |
 | Reference lengths | the chord of the airfoil without flap, 1 |
 | Speed and viscosity | \|U\| = 1, nu = 1/8.4e6, thus Re = 8.4 million |
 | Angle of attack | 0 degrees |
@@ -72,7 +72,7 @@ Level 3 stopped at 3000 iterations. There it still changed by about 0.1 % for ea
 At 1000 iterations, level 2 is within 0.14 % of its lift at 3000 iterations, and within 0.4 % of its moment.
 The 3 cases of the check run at the same time. On a Mac with 10 cores, `fh validate` took 103 s for this case, while other programs used about 3 cores.
 
-The lift slope of the model comes from level 2 at 0 and 2 degrees: 0.109 per degree with the flap at -10, 0.111 at 0, and 0.106 at 10.
+The lift slope of the model comes from level 2 at 0 and 2 degrees. It is 0.109 per degree with the flap at -10, 0.111 at 0, and 0.106 at 10.
 Thus the angle of zero lift of the model is 4.0, -1.16 and -6.49 degrees.
 
 ## Tolerance
@@ -84,9 +84,9 @@ The tolerance holds these differences between the model and the test:
 | Cause | Lift | Moment |
 |---|---|---|
 | Lift slope: Table I gives 0.094 to 0.100 per degree, the model 0.106 to 0.111, thin-airfoil theory 0.110 | +10 % to +13 % | none, because the moment is about the a.c. |
-| Flap effect on the angle of zero lift: Table I gives 0.48 to 0.50 degrees for each degree of flap, the model 0.52 to 0.53, thin-airfoil theory 0.55 | -3 % at 0, +5 % at -10, +8 % at 10 | |
-| Flap effect on the moment: Table I gives -0.0082 to -0.0088 for each degree of flap, the model -0.0105 to -0.0106, thin-airfoil theory -0.0119 about the same point | | +20 % at -10, +28 % at 10 |
-| Precision of Table I: alpha_l0 to 0.1 degree, a0 to 0.001, the moment of a flapped airfoil to 0.01 and as an average over the lift range | up to 0.007 | up to 0.005, and the spread about the average |
+| Flap effect on the angle of zero lift. Table I gives 0.48 to 0.50 degrees for each degree of flap, the model 0.52 to 0.53, thin-airfoil theory 0.55 | -3 % at 0, +5 % at -10, +8 % at 10 | |
+| Flap effect on the moment. Table I gives -0.0082 to -0.0088 for each degree of flap, the model -0.0105 to -0.0106, thin-airfoil theory -0.0119 about the same point | | +20 % at -10, +28 % at 10 |
+| Precision of Table I. alpha_l0 to 0.1 degree, a0 to 0.001, the moment of a flapped airfoil to 0.01 and as an average over the lift range | up to 0.007 | up to 0.005, and the spread about the average |
 | Hinge model: a blend over 0.025 and 0.1 of the chord against 0.05 (level 2, flap 10, 1500 iterations) | -0.2 % to +0.9 % | -0.5 % to +2.1 % |
 | Mesh error of level 2 (section "Mesh study") | -0.8 % to -0.5 % | -2 % to -0.6 % |
 | Iterations: 1000 against 3000 | 0.14 % | 0.4 % |
@@ -95,6 +95,6 @@ The tolerance holds these differences between the model and the test:
 Table I gives a0 for the section from the tests of a wing of aspect ratio 6, with a correction for the tip effects. An error of this correction goes directly into a0 and into the lift of the check.
 The effective Reynolds number includes a factor for the turbulence of the tunnel. Thus the Reynolds number of the test was lower than 8.4 million, and the boundary layer on the flap was thicker than in the model. This is a probable cause of the lower flap effect of the test.
 
-Level 2 at 1000 iterations is 7 % to 22 % larger than the test in lift, and 20 % to 28 % larger in the moment of a flapped airfoil.
+Level 2 at 1000 iterations is 7 % to 22 % larger than the test in lift. It is 20 % to 28 % larger in the moment of a flapped airfoil.
 The largest part of the tolerance that a check uses is 79 % (`cm_down10`).
-The tolerance does not let these faults pass: a flap with no effect, a flap that turns the wrong way, and a moment with the wrong sign.
+The tolerance does not let these faults pass. They are a flap with no effect, a flap that turns the wrong way, and a moment with the wrong sign.

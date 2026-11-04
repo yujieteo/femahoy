@@ -2328,9 +2328,9 @@ The time derivatives of these 2 equations give phi', phi'', x_B' and x_B''. The 
 
 torque w = d/dt (T + V),
 
-where T = 1/2 m2 |v_G2|^2 + 1/2 (m2 l^2 / 12) phi'^2 + 1/2 m3 x_B'^2 + (a constant term of the crank) and V = g (m1 y_G1 + m2 y_G2). G1 and G2 are the centres of the crank and the rod.
+where T = 1/2 m2 |v_G2|^2 + 1/2 (m2 l^2 / 12) phi'^2 + 1/2 m3 x_B'^2 + (a constant term of the crank). Also V = g (m1 y_G1 + m2 y_G2). G1 and G2 are the centres of the crank and the rod.
 
-`reference.py` computes these values. A second calculation agreed with it to 5e-7 N m: a central difference in theta of T + V, with the velocities from central differences of the positions.
+`reference.py` computes these values. A second calculation agreed with it to 5e-7 N m. It is a central difference in theta of T + V, with the velocities from central differences of the positions.
 
 The check reads the values at t = 1.125 s, thus theta = 2.25 turns, or 45 degrees:
 

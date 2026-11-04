@@ -1,6 +1,6 @@
 # contact-cattaneo derivation
 
-This case checks frictional contact with partial slip (stick-slip). A steel cylinder on a steel block is pushed down and then pulled to the side with less than the slip force (units SI-mm).
+This case checks frictional contact with partial slip (stick-slip). A force pushes a steel cylinder down on a steel block. Then a force less than the slip force pulls it to the side (units SI-mm).
 The centre of the contact sticks, and its 2 edges slip.
 The checks are the largest contact pressure p0 and the shear traction q(0) at the centre of the contact.
 
@@ -59,7 +59,7 @@ The steps:
 2. Release the top in y and apply P = 4500 N at once: 2250 N on each end of the top.
 3. Release the top in x and increase Q from 0 to 1012.5 N in increments of 0.05 of the step. P stays.
 
-Q acts on the top of the pad, 20 mm above the contact. In step 3, a couple F = 20 Q / 24 = 843.75 N on the 2 ends of the top cancels the moment of Q about the centre of the contact.
+Q acts on the top of the pad, 20 mm above the contact. In step 3, a couple F = 20 Q / 24 = 843.75 N acts on the 2 ends of the top. It cancels the moment of Q about the centre of the contact.
 The theory has no moment about the centre of the contact.
 A first model had a top that could not turn. The pad then bent, and the contact moved to 1 side.
 In that model, q(0) was +0.15 %, -0.29 % and -1.19 % from the reference for parts of 20, 40 and 80 mm.

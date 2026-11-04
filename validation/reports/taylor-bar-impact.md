@@ -30,7 +30,7 @@ Original values. n/a means no sample.
 
 The radius increases fast in the first 30 µs and stops at about 50 µs. The length decreases to the end, but from 70 to 80 µs the top moves only 0.13 mm. Thus the bar is almost at rest at 80 µs, the time of the checks.
 
-A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below), 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.
+A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below). They are 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.
 
 The model is the quarter bar, with 1 step each 10 µs. The length and the mushroom radius at each time are:
 
@@ -66,8 +66,8 @@ OpenRadioss, now OpenCourant (AGPL-3.0), has builds for Linux x86-64, Linux ARM6
 
 ## Sources
 
-- The benchmark: A. Kamoulakos, "A simple 'benchmark' for impact", Bench Mark, 1990, pp. 31-35. A copper bar with a radius of 3.2 mm and a length of 32.4 mm hits a rigid frictionless wall at 227 m/s. The material is elastic-plastic with E = 117 GPa, nu = 0.35, rho = 8930 kg/m3, a yield stress of 400 MPa and a linear hardening of 100 MPa. The results are at 80 µs.
-- The reference values: the DYNA3D results (J. O. Hallquist and D. J. Benson, DYNA3D user's manual, revision 3, report UCID-19592, Lawrence Livermore National Laboratory, 1987). The Ansys Technology Showcase, chapter 17 "Impact of a Metal Bar on a Rigid Wall", gives them as its reference: a mushroom radius of 7.02 mm, a final length of 21.66 mm and a largest equivalent plastic strain of 3.24.
+- The benchmark: A. Kamoulakos, "A simple 'benchmark' for impact", Bench Mark, 1990, pp. 31-35. A copper bar with a radius of 3.2 mm and a length of 32.4 mm hits a rigid frictionless wall at 227 m/s. The material is elastic-plastic with E = 117 GPa, nu = 0.35 and rho = 8930 kg/m3. The yield stress is 400 MPa and the linear hardening is 100 MPa. The results are at 80 µs.
+- The reference values: the DYNA3D results (J. O. Hallquist and D. J. Benson, DYNA3D user's manual, revision 3, report UCID-19592, Lawrence Livermore National Laboratory, 1987). The Ansys Technology Showcase, chapter 17 "Impact of a Metal Bar on a Rigid Wall", gives them as its reference. They are a mushroom radius of 7.02 mm, a final length of 21.66 mm and a largest equivalent plastic strain of 3.24.
 - The same setup, with the axial velocity 0 at the impact face: M. N. Rahimi and G. Moutsanidis, "SoliDualSPHysics", arXiv:2602.15149, section 4.3.2.
 
 ## Model
@@ -139,5 +139,5 @@ The coarse mesh (4 4 27) passes. Its largest part of the tolerance is 83 % (`rad
 
 ## Not in the check
 
-- The largest equivalent plastic strain (3.24 for DYNA3D): it is a value at 1 point at the centre of the impact face, and it changes much with the mesh.
+- The largest equivalent plastic strain (3.24 for DYNA3D) is a value at 1 point at the centre of the impact face. It changes much with the mesh.
 - Friction on the wall and the bounce off the wall: the benchmark has no friction, and at 80 µs the bar is almost at rest.

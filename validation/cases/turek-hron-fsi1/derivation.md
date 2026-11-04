@@ -3,7 +3,7 @@
 This case checks the fluid-structure coupling: OpenFOAM for the fluid and CalculiX for the solid, coupled through preCICE.
 The problem is FSI1 of the bench mark of Turek and Hron: a soft elastic flag behind a cylinder in a laminar channel flow. The flag bends to a steady shape.
 The bench mark has 3 cases. FSI2 and FSI3 have a periodic motion. They need a dynamic solid and thousands of small time steps, so they are too slow for CI. FSI1 is steady, and it checks the same coupling.
-The reference is a numerical bench mark. Thus the tolerance comes from the mesh study of the model and from the iteration error of the coupling, not from the difference between the model and the reference.
+The reference is a numerical bench mark. Thus the tolerance comes from the mesh study of the model and from the iteration error of the coupling. It does not come from the difference between the model and the reference.
 
 ## Sources
 
@@ -30,25 +30,25 @@ The case folder `fsi1` has `precice-config.xml`, the OpenFOAM case `fluid` and t
 | Fluid | rho = 1000 kg/m^3, nu = 1e-3 m^2/s. Re = 20 with the mean inlet velocity 0.2 m/s and the cylinder diameter |
 | Inlet | a parabolic profile with the mean velocity 0.2 m/s. A factor (1 - cos(pi t / 2)) / 2 increases it from 0 in the first 2 s |
 | Outlet | p = 0. No slip on the walls, the cylinder and the flag |
-| Solid | St. Venant-Kirchhoff: `*ELASTIC` with `NLGEOM`, E = 1.4e6 Pa (mu = 0.5e6 Pa), nu = 0.4, rho = 1000 kg/m^3. The end at the cylinder is clamped |
+| Solid | St. Venant-Kirchhoff: `*ELASTIC` with `NLGEOM`, E = 1.4e6 Pa (mu = 0.5e6 Pa), nu = 0.4, rho = 1000 kg/m^3. The end at the cylinder has a clamp |
 | Solid elements | C3D8I bricks, 1 element in z, with z fixed: plane strain, as the 2D bench mark |
 | Fluid solver | `pimpleFoam`, steady (`steadyState` for `ddtSchemes`), SIMPLEC (`consistent yes`) with the relaxation factors 0.9 for p and U, 30 outer correctors in each time step. A moving mesh (`displacementLaplacian`, diffusivity `quadratic inverseDistance` of the flag) |
 | Solid step | `*STATIC`: the adapter solves each time window to equilibrium |
 | Coupling | `parallel-implicit`, a time window of 1 s, 30 windows. At most 30 iterations in each window. The relative convergence limit is 1e-4 on the force and the displacement. IQN-ILS with the `residual-sum` preconditioner |
 | Mapping | radial basis functions `rbf-compact-polynomial-c6` with a support radius of 0.05 m. Conservative for the force, consistent for the displacement |
-| Output | the function object `forces` on the cylinder and the flag (`total_x` is the drag, `total_y` the lift), and the `watch-point` A of preCICE in the solid |
+| Output | the function object `forces` on the cylinder and the flag, and the `watch-point` A of preCICE in the solid. `total_x` is the drag and `total_y` is the lift |
 
-FSI1 is steady, thus its result does not depend on the time or on the mass of the flag. Thus the fluid and the solid are both steady. Each time window is a pseudo time: 30 iterations of the steady fluid, then the static equilibrium of the flag, and the coupling iterates the window. The inlet factor goes to 1 in the first 2 windows, then the fluid and the flag converge to the steady state.
+FSI1 is steady, thus its result does not depend on the time or on the mass of the flag. Thus the fluid and the solid are both steady. Each time window is a pseudo time. It has 30 iterations of the steady fluid, then the static equilibrium of the flag. The coupling iterates the window. The inlet factor goes to 1 in the first 2 windows, then the fluid and the flag converge to the steady state.
 
 A transient fluid with a soft flag makes the coupling unstable, because of the added mass of the fluid. The study tried this first, with `Euler` for `ddtSchemes`:
 
 - Explicit coupling diverged in the first windows.
-- Implicit coupling with windows of 0.2 s diverged on the mesh of level 2 in the first 2 s, in most of the variants of the relaxation, the preconditioner and the outer correctors that the study tried.
+- Implicit coupling with windows of 0.2 s diverged on the mesh of level 2 in the first 2 s. This happened in most of the variants that the study tried. The variants changed the relaxation, the preconditioner and the outer correctors.
 - With windows of 1 s, implicit coupling converged on the levels 1 and 2. On level 3, the fluid diverged in the second window. There the Courant number was up to 185.
 
-A steady fluid has no time derivative, thus no added mass. With the steady fluid, the coupling converged on the 3 levels, in 8 or fewer iterations for each window. On the levels 1 and 2, the transient and the steady fluid gave the same drag within 0.05 %, and the same lift and ux within 0.3 %. uy differed by 0.9 % on level 1 and 0.3 % on level 2. The transient runs had a convergence limit of 1e-3, and their uy changed by up to 0.5 % from window to window.
+A steady fluid has no time derivative, thus no added mass. With the steady fluid, the coupling converged on the 3 levels, in 8 or fewer iterations for each window. On the levels 1 and 2, the transient and the steady fluid gave the same drag within 0.05 %. They gave the same lift and ux within 0.3 %. uy differed by 0.9 % on level 1 and 0.3 % on level 2. The transient runs had a convergence limit of 1e-3, and their uy changed by up to 0.5 % from window to window.
 
-The conservative mapping puts the force of each fluid face on the solid nodes near it. If the solid has more nodes on the interface than the fluid has faces, the mapped force changes sign from node to node. Thus the flag mesh is not finer than the fluid mesh on the interface. At level 1, each side of the flag has 24 elements and 24 fluid faces, and the free end has 4 elements and 4 fluid faces.
+The conservative mapping puts the force of each fluid face on the solid nodes near it. If the solid has more nodes on the interface than the fluid has faces, the mapped force changes sign from node to node. Thus the flag mesh is not finer than the fluid mesh on the interface. At level 1, each side of the flag has 24 elements and 24 fluid faces. The free end has 4 elements and 4 fluid faces.
 
 ## Mesh study
 
@@ -92,4 +92,4 @@ The tolerance is `rel_tol = 0.04` and `abs_tol = 0`.
 
 `rel_tol` is the largest sum, 3.86 % for `ux_a`, rounded up to 4 %. The file has 1 tolerance for all checks, thus the drag and the lift have a larger tolerance than their sums.
 The model is 0.18 % to 3.09 % below the reference. The largest part of the tolerance that a check uses is 77 % (`ux_a`).
-The tolerance does not let a run without the coupling pass: a rigid flag (CFD1 of the bench mark) has no displacement and a lift of 1.119, 46 % above the reference.
+The tolerance does not let a run without the coupling pass. A rigid flag (CFD1 of the bench mark) has no displacement and a lift of 1.119, 46 % above the reference.

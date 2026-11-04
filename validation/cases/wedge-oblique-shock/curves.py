@@ -48,8 +48,8 @@ def main(out, folders):
     (out / "pressure.csv").write_text(
         f"# title: The pressure on the line x = {X}, from the wedge to the far field\n"
         "# y: p / p1 [1]\n"
-        "# note: The theory is the exact oblique shock of Table 2 of the NPARC case: the shock at "
-        f"y = {shock:.4f} (beta = {BETA} degrees) and p2 / p1 = {P2}.\n"
+        "# note: The theory is the exact oblique shock of Table 2 of the NPARC case. "
+        f"The shock is at y = {shock:.4f} (beta = {BETA} degrees), and p2 / p1 = {P2}.\n"
         "y [1],model,theory\n" + "\n".join(rows) + "\n"
     )
     # Behind the shock: the cells below the shock with the full pressure rise.

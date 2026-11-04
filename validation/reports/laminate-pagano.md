@@ -120,7 +120,7 @@ The plots show the stress at the nodes of the result file. Their largest differe
 The model has 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm.
 
 - σ_xx in the thick plate: the face x = 110 mm is the symmetry plane x = a/2. On this face, |σ_xx| at the nodes is up to 12.6 MPa in the 2 plies at 0 degrees. In the ply at 90 degrees in the core, it is less than 0.1 MPa. The σ_xx plot is on the line x = y = a/2 of this face.
-- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`): the thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
+- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`). The thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
 
 The transverse shear stress τ_xz is continuous through the plies. At the supported edge x = 0, the 3D layers follow the exact τ_xz within 0.056 MPa:
 
@@ -259,15 +259,15 @@ Both plates use the ply material `*ELASTIC, TYPE=ENGINEERING CONSTANTS`, and the
 ## Source
 
 N. J. Pagano, "Exact solutions for rectangular bidirectional composites and sandwich plates", Journal of Composite Materials 4 (1970) 20-34.
-The problem is a square plate of side a and thickness h, simply supported on the 4 edges, with the load q = q0 sin(πx/a) sin(πy/a) on the top face.
+The problem is a square plate of side a and thickness h, simply supported on the 4 edges. The load on the top face is q = q0 sin(πx/a) sin(πy/a).
 The plate has 3 plies of h/3 at 0, 90 and 0 degrees. The ply has E_L/E_T = 25, G_LT/E_T = 0.5, G_TT/E_T = 0.2 and ν_LT = ν_TT = 0.25 (L is the fibre).
 
 For this load, each field is 1 sine or cosine term in x and y, times a function of z. In each ply, the 3D equations of elasticity then become 6 linear equations in z with constant coefficients.
-`pagano.py` solves them exactly: the state (U, V, W, τ_xz, τ_yz, σ_z) goes from the bottom face to the top face through the matrix exponential of each ply.
+`pagano.py` solves them exactly. The state (U, V, W, τ_xz, τ_yz, σ_z) goes from the bottom face to the top face through the matrix exponential of each ply.
 The displacements and the transverse stresses are continuous at each interface. The top and bottom faces have τ_xz = τ_yz = 0, and σ_z = -q0 on the top and 0 on the bottom.
 This is the solution of Pagano. `pagano.py` has no other approximation than the round-off and the truncation of the series of the exponential (below 1e-12).
 
-`python3 pagano.py --table` prints the normalized values: w̄ = 100 E_T h^3 w / (q0 a^4), σ̄ = σ / (q0 S^2) and τ̄_xz = τ_xz / (q0 S), S = a/h.
+`python3 pagano.py --table` prints the normalized values. They are w̄ = 100 E_T h^3 w / (q0 a^4), σ̄ = σ / (q0 S^2) and τ̄_xz = τ_xz / (q0 S), with S = a/h.
 K. Bhaskar, T. Varadan and J. Ali, "Thermoelastic solutions for orthotropic and anisotropic composite laminates", Composites Part B 27 (1996) 415-420, give the same exact solution.
 Table 3 of A. Venkatachari et al., arXiv:1407.7171 (2014), gives their values. `pagano.py` agrees with them:
 
@@ -281,7 +281,7 @@ Table 3 of A. Venkatachari et al., arXiv:1407.7171 (2014), gives their values. `
 The only difference is τ̄_xz at a/h = 20 (0.4 %). This case does not use a/h = 20.
 The table gives these values at z = h/2. They agree with `pagano.py` at the mid-plane for w and at the face without load for σ_xx.
 At a/h = 100, `pagano.py` gives w̄ = 0.4347 and σ̄_xx = 0.5393. The classical laminate theory (CLT) gives w̄ = 0.4312 and σ̄_xx = 0.5387 at all a/h.
-At a/h = 4, the CLT deflection is 78 % too small, and σ_xx is not symmetric about the mid-plane (0.8008 on the top, 0.7548 on the bottom).
+At a/h = 4, the CLT deflection is 78 % too small. Also σ_xx is not symmetric about the mid-plane (0.8008 on the top, 0.7548 on the bottom).
 
 ## Data
 
@@ -312,7 +312,7 @@ Without DOF 5 and 4 on the symmetry edges, the shell is free to turn there, and 
 - `THIN`: 8 x 8 `S8R`. `*SHELL SECTION, COMPOSITE` has 1 line for each layer: the thickness, an empty field, the material and the orientation. The normal of the elements is +z, thus the first layer is at the bottom.
 - `THICK`: 8 x 8 x 9 `C3D20R`. The element sets `THICK_0` and `THICK_90` have their own `*SOLID SECTION` and orientation.
 - `OR0` puts the fibre (axis 1) on x, `OR90` puts it on y.
-- Load: `pagano.py` writes the nodal forces of q0 sin sin, from the shape functions of the 8-node faces with 4 x 4 Gauss points (`load.inp`). For `THIN` they are on the nodes of the shells, thus on the mid-surface. For `THICK` they are on the top face.
+- Load: `pagano.py` writes the nodal forces of q0 sin sin (`load.inp`). They come from the shape functions of the 8-node faces with 4 x 4 Gauss points. For `THIN` they are on the nodes of the shells, thus on the mid-surface. For `THICK` they are on the top face.
 
 ## Reference values
 
@@ -341,7 +341,7 @@ Thus each stress check compares with the exact stress at the integration points 
 | `sx_thick` | 10.3599 MPa | 10.3419 MPa | +0.17 % |
 | `txz_thick` | -1.01018 MPa | -1.01034 MPa | -0.015 % |
 
-The run takes less than 1 s. A wrong layup fails the case: with the 2 orientations swapped ([90/0/90]), w does not change (the plate is square), but `sx_thin` is -78 % and `sx_thick` is -89 %.
+The run takes less than 1 s. A wrong layup fails the case. With the 2 orientations swapped ([90/0/90]), w does not change (the plate is square). But `sx_thin` is -78 % and `sx_thick` is -89 %.
 With G_TT = G_LT, `w_thick` is -27 %.
 
 ## Mesh study
@@ -382,7 +382,7 @@ The error of `THIN` does not change with the mesh. It comes from the model: `ccx
 
 The composite shell is too stiff in transverse shear, because 1 brick cannot follow the zigzag of the displacement across the plies.
 Thus use composite shells only for a/h of 50 or more with this material (E_L/G_TT = 125). Use 3D layers for a thicker laminate.
-The transverse shear stress of a composite shell comes from the strain of the brick, not from the equilibrium. At a/h = 100, τ_xz at the bottom points of the shell is 3 times the exact value, and in the core it is 1/3 of the exact value.
+The transverse shear stress of a composite shell comes from the strain of the brick, not from the equilibrium. At a/h = 100, τ_xz at the bottom points of the shell is 3 times the exact value. In the core it is 1/3 of the exact value.
 A test with `S6` (each `S8R` cut into 2 `S6`) gave w of `THIN` -0.42 %.
 
 ## Tolerance

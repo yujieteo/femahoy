@@ -47,7 +47,7 @@ The relative tolerance is 0.12. It is the root sum square of these contributions
 
 | Contribution | Basis | Effect |
 |---|---|---:|
-| Moiré accuracy | ±1.5 µm for each map (distributor data for the TDM Compact 3; the A*STAR equipment page gives < 1 µm or 2%). 2 maps give the change of 28.0 µm. | 7.6% |
+| Moiré accuracy | ±1.5 µm for each map (distributor data for the TDM Compact 3, while the A*STAR equipment page gives < 1 µm or 2%). 2 maps give the change of 28.0 µm. | 7.6% |
 | Temperature | The thermocouple is on the stage, not on the slice. The paper gives no uncertainty. The budget uses ±1 K at 50 °C and at 90 °C. | 3.5% |
 | Layers not in the model | The seed copper (0.2 µm) gives +0.9% in plate theory. The paper gives no TiW data. The budget gives the TiW layer the effect of 0.3 µm of copper. | 2.4% |
 | Silicon elasticity | The inputs give a biaxial modulus E/(1 - nu) of 166.7 GPa. The (100) silicon wafer has 180.5 GPa (Hopcroft, Nix and Kenny, J. MEMS 19 (2010) 229). | 7.1% |

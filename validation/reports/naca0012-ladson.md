@@ -58,7 +58,7 @@ It is the plain NACA 0012 airfoil, before a case with a flap.
 
 ## Sources
 
-- C. L. Ladson, "Effects of Independent Variation of Mach and Reynolds Numbers on the Low-Speed Aerodynamic Characteristics of the NACA 0012 Airfoil Section", NASA TM-4074, October 1988, <https://ntrs.nasa.gov/citations/19880019495>.
+- C. L. Ladson, "Effects of Independent Variation of Mach and Reynolds Numbers on the Low-Speed Aerodynamic Characteristics of the NACA 0012 Airfoil Section". NASA TM-4074, October 1988, <https://ntrs.nasa.gov/citations/19880019495>.
   The test was in the Langley Low-Turbulence Pressure Tunnel, with a chord of 0.601 m. The lift comes from the surface pressures, and the drag from a wake rake. Grit at 5 % of the chord fixed the transition.
 - The check values come from Table IX on page 19: M = 0.15, transition fixed with No. 80-W grit, R = 5.95 x 10^6.
 - NASA Langley Turbulence Modeling Resource (TMR), "2D NACA 0012 Airfoil Validation Case" (2DN00), <https://turbmodels.larc.nasa.gov/naca0012_val.html>.
@@ -120,7 +120,7 @@ openfoam simpleFoam -case /tmp/naca-l3/a4.04
 | Extrapolated | | 0.008334 | 0.44569 | 0.008798 | 1.08881 | 0.012461 |
 | 2, the check | 1500 | 0.009126 | 0.44494 | 0.009500 | 1.08233 | 0.013030 |
 
-Each extrapolated value comes from the 3 levels, with the observed order p of the convergence:
+Each extrapolated value comes from the 3 levels. It uses the observed order p of the convergence:
 p = log2((f1 - f2) / (f2 - f3)), and f = f3 + (f3 - f2) / (2^p - 1). The value p is 1.9 to 2.8.
 Thus the mesh error of level 2 is -0.2 % in lift at 4.04 degrees and -0.6 % at 10.12 degrees, and +5.5 to +7.3 drag counts.
 

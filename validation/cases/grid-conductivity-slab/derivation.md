@@ -4,7 +4,7 @@ This case checks a conductivity that changes with the temperature against an exa
 
 ## Source
 
-Take k = k0 (1 + beta T). The Kirchhoff transform is Phi(T) = integral of k dT = k0 (T + beta T^2 / 2). It changes the steady equation div(k grad T) = 0 into the Laplace equation of Phi, because grad Phi = k grad T. In a plane wall with no source (Incropera et al., *Fundamentals of Heat and Mass Transfer*, 6th ed., section 3.1), the flux k dT/dz = dPhi/dz is the same at each z. So Phi is linear in z. Thus
+Take k = k0 (1 + beta T). The Kirchhoff transform is Phi(T) = integral of k dT = k0 (T + beta T^2 / 2). It changes the steady equation div(k grad T) = 0 into the Laplace equation of Phi, because grad Phi = k grad T. Take a plane wall with no source (Incropera et al., *Fundamentals of Heat and Mass Transfer*, 6th ed., section 3.1). The flux is the same at each z: k dT/dz = dPhi/dz. So Phi is linear in z. Thus
 
 Phi(z) = Phi(T1) + (Phi(T2) − Phi(T1)) z / L, and T(z) = (−1 + sqrt(1 + 2 beta Phi(z) / k0)) / beta.
 

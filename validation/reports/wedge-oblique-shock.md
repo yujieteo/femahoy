@@ -10,7 +10,7 @@ The pressure jump of the model is at the shock of the theory. Behind the shock, 
 
 ![The pressure on the line x = 0.755, from the wedge to the far field](wedge-oblique-shock/pressure.svg)
 
-The theory is the exact oblique shock of Table 2 of the NPARC case: the shock at y = 0.5678 (beta = 36.9449 degrees) and p2 / p1 = 2.4675.
+The theory is the exact oblique shock of Table 2 of the NPARC case. The shock is at y = 0.5678 (beta = 36.9449 degrees), and p2 / p1 = 2.4675.
 
 Original values. n/a means no sample.
 
@@ -205,13 +205,13 @@ The reference is the exact solution of the oblique shock relations. Thus the tol
 - NPARC Alliance Verification and Validation Archive, NASA Glenn Research Center, "Supersonic Wedge" (J. W. Slater), <https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge.html>.
   Inviscid flow at Mach 2.5 over a wedge with a half-angle of 15 degrees. The leading edge is at x = y = 0. The domain has the inflow at x = -0.5, the outflow at x = 1 and the far field at y = 1. Before the wedge, y = 0 is a symmetry plane.
 - The check values come from Table 2 of that page, "the analytic inviscid solution", from the program `oblshk.f` with a tolerance of 1e-6.
-- Study #2 of the same archive (<https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge02/wedge02.html>) is a mesh study of the WIND code on 4 grids with a spacing of 0.02, 0.01, 0.005 and 0.0031. Its error of the mean Mach number behind the shock is 0.39 %, 0.16 %, 0.066 % and 0.037 %. The case uses it only as a cross-check.
+- Study #2 of the same archive (<https://www.grc.nasa.gov/WWW/wind/valid/wedge/wedge02/wedge02.html>) is a mesh study of the WIND code. It uses 4 grids with a spacing of 0.02, 0.01, 0.005 and 0.0031. Its error of the mean Mach number behind the shock is 0.39 %, 0.16 %, 0.066 % and 0.037 %. The case uses it only as a cross-check.
 - The oblique shock relations are in J. D. Anderson, Modern Compressible Flow, McGraw-Hill, and in Ames Research Staff, "Equations, tables, and charts for compressible flow", NACA Report 1135 (1953). The shock angle beta comes from the theta-beta-M relation
 
   tan(theta) = 2 cot(beta) (M1^2 sin^2(beta) - 1) / (M1^2 (gamma + cos(2 beta)) + 2),
 
-  with the weak solution. With Mn1 = M1 sin(beta), the normal shock relations give the ratios p2/p1 = 1 + 2 gamma/(gamma + 1) (Mn1^2 - 1) and rho2/rho1 = (gamma + 1) Mn1^2 / ((gamma - 1) Mn1^2 + 2), and T2/T1 = (p2/p1)/(rho2/rho1). M2 = Mn2 / sin(beta - theta), with Mn2^2 = (1 + (gamma - 1)/2 Mn1^2) / (gamma Mn1^2 - (gamma - 1)/2).
-  A bisection of the theta-beta-M relation in double precision gives the same 5 values as Table 2 to the last digit of the table: beta = 36.944900 degrees, M2 = 1.8735260, p2/p1 = 2.4675001, rho2/rho1 = 1.8665486 and T2/T1 = 1.3219587.
+  with the weak solution. Let Mn1 = M1 sin(beta). The normal shock relations give the ratio p2/p1 = 1 + 2 gamma/(gamma + 1) (Mn1^2 - 1). They also give rho2/rho1 = (gamma + 1) Mn1^2 / ((gamma - 1) Mn1^2 + 2). Also T2/T1 = (p2/p1)/(rho2/rho1). M2 = Mn2 / sin(beta - theta), with Mn2^2 = (1 + (gamma - 1)/2 Mn1^2) / (gamma Mn1^2 - (gamma - 1)/2).
+  A bisection of the theta-beta-M relation in double precision gives the same 5 values as Table 2 to the last digit of the table. They are beta = 36.944900 degrees, M2 = 1.8735260, p2/p1 = 2.4675001, rho2/rho1 = 1.8665486 and T2/T1 = 1.3219587.
 
 | Quantity | Table 2 | Check | Value of the check |
 |---|---:|---|---:|
@@ -230,7 +230,7 @@ The OpenFOAM case is `mach2.5`. The model has no units, and its lengths are the 
 | Item | Value |
 |---|---|
 | Domain | -0.5 <= x <= 1 and y <= 1. The wedge surface is y = x tan(15 degrees) for x > 0. 1 cell of depth 0.01 in z, with an `empty` patch on the front and the back |
-| Mesh | 2 blocks of `blockMesh`. Before the wedge, square cells of h = 0.01. Above the wedge, columns of width h with 100 cells each, thus the cells there are h wide and h (1 - x tan(15 degrees)) high. 15000 cells: the grid B of the NPARC study |
+| Mesh | 2 blocks of `blockMesh`. Before the wedge, square cells of h = 0.01. Above the wedge, the mesh has columns of width h with 100 cells each. Thus the cells there are h wide and h (1 - x tan(15 degrees)) high. 15000 cells: the grid B of the NPARC study |
 | Gas | perfect gas, gamma = 1.4, mu = 0. R = 1/1.4 and Cp = gamma R/(gamma - 1) = 2.5. Thus p = 1 and T = 1 give rho = 1.4 and a speed of sound of 1. The mol weight is 1.4 times the gas constant of OpenFOAM v2512, 8314.47006650545 |
 | Free stream | p = 1, T = 1, U = (2.5, 0, 0): Mach 2.5 |
 | Boundaries | `inlet` (x = -0.5) and `top` (y = 1): the free stream, `fixedValue`. `outlet` (x = 1): `zeroGradient`, because the flow there is supersonic. `wedge`: `slip` for U and `zeroGradient` for p and T. `symmetry` (y = 0, x < 0): `symmetryPlane` |
@@ -241,7 +241,7 @@ The shock leaves the domain through the outlet at y = 0.752, below the far field
 
 The function objects of `system/controlDict` write the 5 values at each time step. The checks read the last row, at t = 2.
 
-- Shock angle: the area A between the wedge and the shock for 0 < x < 1 is (tan(beta) - tan(15 degrees))/2. The `exprField` `shockAngle` gets A as the integral of (p - 1)/(2.4675 - 1) over the cells with 0 < x: the area of a sharp shock with the same pressure rise. Then it gives beta = atan(tan(15 degrees) + 2 A). A mask of the cells with p above the middle of the jump changes in steps of 1 cell. At h = 0.01, beta from such a mask changed by up to 0.08 % in the steady flow. The integral of the pressure rise changed by 0.002 %.
+- Shock angle: the area A between the wedge and the shock for 0 < x < 1 is (tan(beta) - tan(15 degrees))/2. The `exprField` `shockAngle` gets A as the integral of (p - 1)/(2.4675 - 1) over the cells with 0 < x. It is the area of a sharp shock with the same pressure rise. Then it gives beta = atan(tan(15 degrees) + 2 A). A mask of the cells with p above the middle of the jump changes in steps of 1 cell. At h = 0.01, beta from such a mask changed by up to 0.08 % in the steady flow. The integral of the pressure rise changed by 0.002 %.
 - The state behind the shock: the volume average of `Ma`, `p`, `T` and `rho` over the cells with 0.25 < x and y < x/2. The shock is at y = 0.752 x, thus the region stays at least 0.0715 from it, 7 cells at h = 0.01. This is the mean behind the shock of the NPARC study, without the cells in the shock.
 
 `exprField` of OpenFOAM v2512 cannot sum a field with units: `sum(vol() * ...)` stops with a dimension error. Thus the shock angle uses `weightAverage`, the volume average, and divides by the volume average of the mask 0 < x.
@@ -253,7 +253,7 @@ With `maxCo 0.2`, p on the same line is 2.463 to 2.474 up to 2 cells from the sh
 
 ## Mesh study
 
-The scratch commands below, in the repository root, solve the case on a mesh with N cells from y = 0 to y = 1 (N = 100 is the check):
+The scratch commands below solve the case on a mesh with N cells from y = 0 to y = 1 (N = 100 is the check). Run them in the repository root:
 
 ```text
 cp -R validation/cases/wedge-oblique-shock/mach2.5 /tmp/wedge-N
@@ -273,13 +273,13 @@ The values are in the last rows of the tables in `/tmp/wedge-N/postProcessing`, 
 | Extrapolated from B and C, order 1 | | | | 36.94727 (+0.006 %) | 1.873363 (-0.009 %) | 2.467235 (-0.011 %) | 1.321964 (+0.000 %) | 2.612876 (-0.011 %) |
 | Theory (Table 2) | | | | 36.94490 | 1.873526 | 2.467500 | 1.321958 | 2.613168 |
 
-From B to C, the differences of beta, M2, T2 and rho2 from the theory become 1.8 to 2.0 times smaller: the observed order is 0.87 to 1.00. First order is the order of a captured shock and of the error at the tip of the wedge, see below. From A to B, M2 and T2 change less: grid A is not yet in the range where the error falls as h. p2 converges faster.
+From B to C, the differences of beta, M2, T2 and rho2 from the theory become 1.8 to 2.0 times smaller. The observed order is 0.87 to 1.00. First order is the order of a captured shock and of the error at the tip of the wedge (see below). From A to B, M2 and T2 change less: grid A is not yet in the range where the error falls as h. p2 converges faster.
 The extrapolation uses the order 1 and no reference: f = f_C - (f_B - f_C). The extrapolated values agree with the theory to 0.011 % or less.
-The mean Mach number of the WIND code of the NPARC study is 0.39 %, 0.16 % and 0.066 % above the theory on the grids A, B and C. The model is 0.25 %, 0.20 % and 0.10 % below it: errors of the same size.
+The WIND code of the NPARC study gives a mean Mach number above the theory. The difference is 0.39 %, 0.16 % and 0.066 % on the grids A, B and C. The model is 0.25 %, 0.20 % and 0.10 % below it: errors of the same size.
 
-The error comes from the tip of the wedge. There the shock and the wall meet in 1 cell, and the scheme makes too much entropy. The flow carries this entropy along the wall, and the numerical diffusion spreads it. On the line x = 0.75 at h = 0.01, the cells up to 0.12 from the wall have T = 1.3216 to 1.3277, up to 0.4 % above the theory, with p within 0.05 % of the theory. Thus rho and Ma there are low. Farther from the wall, T and Ma are within 0.05 % of the theory.
+The error comes from the tip of the wedge. There the shock and the wall meet in 1 cell, and the scheme makes too much entropy. The flow carries this entropy along the wall, and the numerical diffusion spreads it. On the line x = 0.75 at h = 0.01, the cells up to 0.12 from the wall have T = 1.3216 to 1.3277. This is up to 0.4 % above the theory. The value of p is within 0.05 % of the theory. Thus rho and Ma there are low. Farther from the wall, T and Ma are within 0.05 % of the theory.
 
-The iteration error at t = 2 is 0.002 % or less: on grid B, the values at t = 1.5 and t = 2 differ by 0.002 % or less.
+The iteration error at t = 2 is 0.002 % or less. On grid B, the values at t = 1.5 and t = 2 differ by 0.002 % or less.
 
 On a Mac with 10 cores, `fh validate` took 66 s for this case, while other programs used most of the cores.
 
@@ -288,7 +288,7 @@ On a Mac with 10 cores, `fh validate` took 66 s for this case, while other progr
 The tolerance is `rel_tol = 0.0025` and `abs_tol = 0`.
 
 The reference is exact: `oblshk.f` solves the relations to 1e-6, and the bisection above gives the same values. Thus the tolerance is the mesh error of grid B, the iteration error and the error of the reference.
-The mesh error of grid B is the Richardson estimate from B and C with the order 1, 2 |f_B - f_C|, times 1.25, the factor of safety of the grid convergence index.
+The mesh error of grid B is the Richardson estimate from B and C with the order 1, 2 |f_B - f_C|. Then multiply it by 1.25, the factor of safety of the grid convergence index.
 
 | Cause | beta | M2 | p2 | T2 | rho2 |
 |---|---:|---:|---:|---:|---:|

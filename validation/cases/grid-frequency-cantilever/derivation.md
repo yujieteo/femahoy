@@ -21,7 +21,7 @@ Thus f1 = 1.87510407² / (2π · 100²) · sqrt(210000 · 104.17 / 3.925e-7) = 4
 
 ## Mesh study
 
-The cells are the 8-node hex with incompatible modes. The mass is the consistent mass of the 8 corners; the incompatible modes have no mass.
+The cells are the 8-node hex with incompatible modes. The mass is the consistent mass of the 8 corners. The incompatible modes have no mass.
 
 | max_cell (mm) | unknowns | f1 (Hz) | Difference |
 |---:|---:|---:|---:|
@@ -30,7 +30,7 @@ The cells are the 8-node hex with incompatible modes. The mass is the consistent
 | 1.25 | 10,800 | 419.088 | +0.32 % |
 | 0.625 | 73,440 | 418.875 | +0.27 % |
 
-The changes fall by a factor of 2.8, then 2.0. The extrapolation with the factor 2 gives 418.66 Hz, 0.22 % above the beam theory. The case `frequency-cantilever` found the same difference for C3D20R elements: the beam theory has no shear deformation, no rotary inertia and no clamp of the Poisson contraction. The error of the grid at max_cell 2.5 mm is 0.21 %.
+The changes fall by a factor of 2.8, then 2.0. The extrapolation with the factor 2 gives 418.66 Hz, 0.22 % above the beam theory. The case `frequency-cantilever` found the same difference for C3D20R elements. The beam theory has no shear deformation, no rotary inertia and no clamp of the Poisson contraction. The error of the grid at max_cell 2.5 mm is 0.21 %.
 
 The effective mass of mode 1 is 0.611 of the mass of the beam, against 0.613 for the beam theory.
 

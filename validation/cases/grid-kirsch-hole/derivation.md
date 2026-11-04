@@ -18,7 +18,7 @@ With ν = 0, the stress has no change through the thickness, and the 3D solution
 
 ## Reference
 
-The Kirsch solution gives the hoop stress on the wall of the hole of an infinite plate under the tension σ along x: σθθ = σ (1 − 2 cos 2θ), with θ from the x axis (S. P. Timoshenko and J. N. Goodier, Theory of Elasticity, 3rd ed., McGraw-Hill 1970, section 35). At the top of the hole, θ = 90°: σθθ = σxx = 3 σ = 300 MPa. At its side, θ = 0: σθθ = σyy = −σ = −100 MPa. The probes `top` (0, 1, 0.5) and `side` (1, 0, 0.5) are points of the arc.
+The Kirsch solution gives the hoop stress on the wall of the hole of an infinite plate under the tension σ along x. It is σθθ = σ (1 − 2 cos 2θ), with θ from the x axis (S. P. Timoshenko and J. N. Goodier, Theory of Elasticity, 3rd ed., McGraw-Hill 1970, section 35). At the top of the hole, θ = 90°: σθθ = σxx = 3 σ = 300 MPa. At its side, θ = 0: σθθ = σyy = −σ = −100 MPa. The probes `top` (0, 1, 0.5) and `side` (1, 0, 0.5) are points of the arc.
 
 ## Studies
 
@@ -40,8 +40,8 @@ Arc study, max_cell 4 mm, plate 40 mm:
 | 32 | 300.715 | −100.102 |
 | 64 | 300.423 | −100.325 |
 
-Width study, 16 segments, max_cell 4 mm: the plate of 80 mm gives top.sxx = 300.770 MPa, 0.45 MPa less than the plate of 40 mm. The effect of the width falls with the square of the width, so the plate of 40 mm is about 0.6 MPa (0.2 %) above the infinite plate.
+Width study, 16 segments, max_cell 4 mm: the plate of 80 mm gives top.sxx = 300.770 MPa, 0.45 MPa less than the plate of 40 mm. The effect of the width falls with the square of the width. So the plate of 40 mm is about 0.6 MPa (0.2 %) above the infinite plate.
 
 ## Tolerance
 
-The polygon of the hole gives +0.4 % at the top and −0.4 % at the side against a true circle, the finite width +0.2 %, and the mesh less than 0.02 %. Their sum is 0.6 %, and the tolerance is 1 %. The solve takes about 1 s.
+The polygon of the hole gives +0.4 % at the top and −0.4 % at the side against a true circle. The finite width gives +0.2 %, and the mesh gives less than 0.02 %. Their sum is 0.6 %, and the tolerance is 1 %. The solve takes about 1 s.

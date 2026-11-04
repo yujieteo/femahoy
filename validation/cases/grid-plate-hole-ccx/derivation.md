@@ -1,6 +1,6 @@
 # grid-plate-hole-ccx derivation
 
-This case compares the built-in solver on a mesh of tetrahedra with CalculiX on the same 3D steady problem: a steel plate with a round hole, and a copper pad with a heat source on the top of the plate. The wall of the hole is at 20 °C, for example a cooled bolt or a pipe. It has no analytical solution. The plate is a rectangle with a circle hole (a `polygon` with `holes`), and the pad is a box, so the solver meshes the model with tetrahedra (`fh guide grid`). Units are SI-m.
+This case compares the built-in solver on a mesh of tetrahedra with CalculiX on the same 3D steady problem. The problem has a steel plate with a round hole, and a copper pad with a heat source on the top of the plate. The wall of the hole is at 20 °C, for example a cooled bolt or a pipe. It has no analytical solution. The plate is a rectangle with a circle hole (a `polygon` with `holes`). The pad is a box, so the solver meshes the model with tetrahedra (`fh guide grid`). Units are SI-m.
 
 ## Source
 
@@ -10,7 +10,7 @@ The reference is a CalculiX 2.23 solve with 10-node tetrahedra (C3D10) on a gmsh
     python3 ccx/job.py mesh.inp job.inp
     ccx job
 
-The 2 meshes are independent: gmsh meshes the true cylinder with curved second-order elements, and the built-in solver meshes a polygon with its points on the circle.
+The 2 meshes are independent. gmsh meshes the true cylinder with curved second-order elements. The built-in solver meshes a polygon with its points on the circle.
 
 ## Model
 
@@ -23,7 +23,7 @@ The 2 meshes are independent: gmsh meshes the true cylinder with curved second-o
 | Wall of the hole | T = 20 °C |
 | Other faces | adiabatic |
 
-The 3 probes are corners of the geometry, so each is a node of both meshes: `pad_corner` (0.09, 0.04, 0.02), the top outer corner of the pad; `plate_far` (0.1, 0, 0), the corner of the plate far from the hole; `plate_near` (0, 0.06, 0.01), the corner of the plate near the hole.
+The 3 probes are corners of the geometry, so each is a node of both meshes. `pad_corner` (0.09, 0.04, 0.02) is the top outer corner of the pad. `plate_far` (0.1, 0, 0) is the corner of the plate far from the hole. `plate_near` (0, 0.06, 0.01) is the corner of the plate near the hole.
 
 ## Mesh studies
 
@@ -45,6 +45,6 @@ CalculiX, C3D10:
 
 ## Tolerance
 
-The edges where the pad meets the plate are re-entrant, so the heat flux is singular there, and the temperature far from them also converges slowly. CalculiX converges at about first order: each change is half of the last. Its first-order extrapolation is 35.947 °C at `pad_corner` and 34.281 °C at `plate_far`, so the error of the reference is at most 0.059 °C. The built-in solver converges more slowly (each change is about 0.7 of the last), as linear tetrahedra do near a singular edge. Against the extrapolated value, its error at max_cell 0.002 m is 0.342 °C at `pad_corner` and 0.172 °C at `plate_far`. The sum of the 2 errors is at most 0.40 °C. The tolerance is 0.5 °C.
+The edges where the pad meets the plate are re-entrant, so the heat flux is singular there. The temperature far from them also converges slowly. CalculiX converges at about first order: each change is half of the last. Its first-order extrapolation is 35.947 °C at `pad_corner` and 34.281 °C at `plate_far`, so the error of the reference is at most 0.059 °C. The built-in solver converges more slowly (each change is about 0.7 of the last), as linear tetrahedra do near a singular edge. Against the extrapolated value, its error at max_cell 0.002 m is 0.342 °C at `pad_corner` and 0.172 °C at `plate_far`. The sum of the 2 errors is at most 0.40 °C. The tolerance is 0.5 °C.
 
 The check uses max_cell 0.002 m, so the test of each change (a debug build) solves it in about 4 s. At max_cell 0.001 m, the error is 0.17 °C. `plate_near` is next to the cooled hole, and the 2 solvers agree there to 0.001 °C.

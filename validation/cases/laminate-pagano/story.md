@@ -11,7 +11,7 @@ The plots show the stress at the nodes of the result file. Their largest differe
 The model has 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm.
 
 - σ_xx in the thick plate: the face x = 110 mm is the symmetry plane x = a/2. On this face, |σ_xx| at the nodes is up to 12.6 MPa in the 2 plies at 0 degrees. In the ply at 90 degrees in the core, it is less than 0.1 MPa. The σ_xx plot is on the line x = y = a/2 of this face.
-- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`): the thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
+- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`). The thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
 
 The transverse shear stress τ_xz is continuous through the plies. At the supported edge x = 0, the 3D layers follow the exact τ_xz within 0.056 MPa:
 

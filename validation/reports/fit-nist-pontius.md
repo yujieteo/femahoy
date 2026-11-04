@@ -2,7 +2,7 @@
 
 ## Finding
 
-`fh fit` gives the certified values of NIST for the data set Pontius. The fit of y = c0 + c1 x + c2 x^2 to the 40 observations gives c0, c1, c2 and R-squared within a relative 6.4e-13 of the certified values. The largest difference is in c0, 0.6 % of the tolerance of 1e-10 (see "Tolerance").
+`fh fit` gives the certified values of NIST for the data set Pontius. The fit of y = c0 + c1 x + c2 x^2 to the 40 observations gives c0, c1, c2 and R-squared. They are within a relative 6.4e-13 of the certified values. The largest difference is in c0, 0.6 % of the tolerance of 1e-10 (see "Tolerance").
 
 ### Load cell calibration of NIST (Pontius), the deflection at each load
 
@@ -12,7 +12,7 @@ NIST: NIST StRD, data set Pontius (P. Pontius, NIST, load cell calibration), 40 
 
 The source gives no units.
 
-poly2 fit of NIST: c0 = 6.735658e-4 [-], c1 = 7.320592e-7 [-], c2 = -3.160819e-15 [-], R^2 = 0.99999990, largest residual 4.4684e-4 at x = 300000, valid for x from 150000 to 3e6.
+poly2 fit of NIST: c0 = 6.735658e-4 [-], c1 = 7.320592e-7 [-], c2 = -3.160819e-15 [-]. R^2 = 0.99999990, largest residual 4.4684e-4 at x = 300000, valid for x from 150000 to 3e6.
 
 Original values. n/a means no sample.
 

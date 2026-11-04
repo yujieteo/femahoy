@@ -1,10 +1,10 @@
 # grid-resistor-bar derivation
 
-This case checks the DC conduction step of the built-in grid solver (`[step] type = "conduction"`): the resistance between 2 face sets with a fixed voltage, and the unit system SI-mm (lengths in mm, the electric conductivity in S/m, the resistance in ohm). It is not a package problem.
+This case checks the DC conduction step of the built-in grid solver (`[step] type = "conduction"`). It checks the resistance between 2 face sets with a fixed voltage. It also checks the unit system SI-mm (lengths in mm, the electric conductivity in S/m, the resistance in ohm). It is not a package problem.
 
 ## Source
 
-A uniform bar of length L, section A and conductivity σ, with 1 voltage on each end face, has a uniform current density and R = L / (σ A). The FE equation is the steady conduction equation of T. J. R. Hughes, *The Finite Element Method*, Prentice-Hall, 1987, chapter 1, with the potential in the place of the temperature.
+Take a uniform bar of length L, section A and conductivity σ, with 1 voltage on each end face. It has a uniform current density and R = L / (σ A). The FE equation is the steady conduction equation of T. J. R. Hughes, *The Finite Element Method*, Prentice-Hall, 1987, chapter 1, with the potential in the place of the temperature.
 
 ## Model
 

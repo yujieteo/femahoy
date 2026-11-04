@@ -1,6 +1,6 @@
 # Finding
 
-The GetDP model agrees with the TEAM 7 measurements of Bz on the line A1-B1 at all 6 checked points, within the tolerance of 6 % + 1 G. At omega t = 0, the model is within 4.9 % of the measured values. The largest part of the tolerance is 51 %, at x = 36 mm and omega t = 90 degrees.
+The GetDP model agrees with the TEAM 7 measurements of Bz on the line A1-B1 at all 6 checked points. The tolerance is 6 % + 1 G. At omega t = 0, the model is within 4.9 % of the measured values. The largest part of the tolerance is 51 %, at x = 36 mm and omega t = 90 degrees.
 
 The table "Result" below gives the 6 values. `bz0_36` is Bz at x = 36 mm at omega t = 0, and `bz90_36` is Bz at the same point at omega t = 90 degrees. x = 36 mm is above the hole.
 

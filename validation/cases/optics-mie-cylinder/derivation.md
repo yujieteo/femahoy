@@ -8,7 +8,7 @@ The reference is the analytical series solution. Thus the tolerance comes from t
 No other case of the suite has any of these items:
 
 - Optics and photonics: the Maxwell equations in the time domain, solved with the FDTD method of Meep.
-- A spectrum from 1 run: a short pulse holds all the frequencies, and a Fourier transform at each grid point of a flux surface gives the flux at 41 frequencies.
+- A spectrum from 1 run: a short pulse holds all the frequencies. A Fourier transform at each grid point of a flux surface gives the flux at 41 frequencies.
 - A scattering cross-section: a run of the incident wave alone, then a run with the cylinder that subtracts the incident fields. The flux of the difference out of a closed box is the scattered power.
 - Perfectly matched layers (PML) on all sides, a mirror symmetry, and the average of the permittivity in the grid cells that the curved surface cuts.
 
@@ -22,7 +22,7 @@ The scattering efficiency of a cylinder or a sphere (the Mie problem) is the usu
   It describes the solver, its PML and its average of the permittivity at a surface.
 
 The derivation below gives the same result, so that a reader can check it without the book.
-The cylinder has the radius a and the index m, in air. The plane wave goes along +x, with the electric field E_z along the axis of the cylinder. With the time factor exp(-i w t), k = w / c and x = k a (the size parameter), the incident wave is a series of cylinder waves:
+The cylinder has the radius a and the index m, in air. The plane wave goes along +x, with the electric field E_z along the axis of the cylinder. The time factor is exp(-i w t), k = w / c and x = k a (the size parameter). The incident wave is a series of cylinder waves.
 
 ```text
 E_z,inc = exp(i k r cos(phi)) = sum_n i^n J_n(k r) exp(i n phi)
@@ -44,7 +44,7 @@ Q = (2 / x) (|b_0|^2 + 2 sum_{n>=1} |b_n|^2)
 
 `reference.py` computes Q. 3 independent checks of `reference.py` agree:
 
-- The extinction efficiency (2 / x) Re(b_0 + 2 sum b_n), from the forward wave, is equal to Q to 1e-15, as it must be for a material with no loss.
+- The extinction efficiency (2 / x) Re(b_0 + 2 sum b_n), from the forward wave, equals Q to 1e-15. It must, for a material with no loss.
 - The fields of the series meet both conditions at r = a to 2e-15.
 - At x = 0.01, Q is 0.14 % from the small-cylinder limit pi^2 x^3 (m^2 - 1)^2 / 8.
 
@@ -70,14 +70,14 @@ The Meep case is the folder `res40`: `meep_case.py` for Meep 1.35.0. The units a
 
 | Item | Value |
 |---|---|
-| Cell | a square of side 9 a in 2D: the flux box of half side 1.5 a, then 1 a of air and a PML of 2 a on each side |
+| Cell | a square of side 9 a in 2D. It has the flux box of half side 1.5 a, then 1 a of air and a PML of 2 a on each side |
 | Grid | 40 points per a: 42 points in the shortest wavelength in the cylinder (x = 3). Meep averages the permittivity in the cells that the surface of the cylinder cuts |
 | Source | a line of E_z across the full cell on the inner face of the PML at the left, also in the PML (`is_integrated=True`). Its pulse is Gaussian, with the centre at the size parameter 2 and a width that covers the size parameters from 1 to 3 |
 | Symmetry | `Mirror(Y)`: E_z is even about y = 0, thus Meep solves half of the cell |
 | Run 1 | no cylinder. The flux through 1 side of the box gives the incident intensity. Meep keeps the Fourier transforms of the fields on the box |
 | Run 2 | the cylinder. `load_minus_flux_data` subtracts the fields of run 1 on the box, thus the flux out of the box is the scattered power |
 | End of each run | `stop_when_dft_decayed()`: the Fourier transforms change by less than 1e-11 |
-| Output | `spectrum.txt`: Q at 41 size parameters from 1 to 3. `cylinder.txt`: 1 row with the 4 values of the check. `field.pos`: the real part of the total E_z at the size parameter 2.5 at 8 times of 1 period, on every fourth grid point, for the viewer |
+| Output | `spectrum.txt`: Q at 41 size parameters from 1 to 3. `cylinder.txt`: 1 row with the 4 values of the check. `field.pos`: the real part of the total E_z at the size parameter 2.5, for the viewer. It has 8 times of 1 period, on every fourth grid point |
 
 Q in the box does not depend on the size of the box, because the cylinder has no loss and the box holds no source.
 
@@ -113,7 +113,7 @@ sed -i.bak 's/^RES = 40 /RES = 80 /' meep_case.py && "$FH_MEEP" meep_case.py && 
 | 40, the case | +0.03 % | -0.08 % | -0.33 % | +0.01 % | 0.59 % | 15 s |
 | 80 | +0.02 % | -0.01 % | -0.07 % | +0.03 % | 0.14 % | 173 s |
 
-The times are the times of Meep 1.35.0 on 1 core of a Mac with 10 cores, with other work on the Mac. The error falls by a factor of 4 for each step: the order of the method is 2 (from the steps 20, 40 and 80: 2.01, 1.97 and 2.00 at the first 3 checks).
+The times are the times of Meep 1.35.0 on 1 core of a Mac with 10 cores, with other work on the Mac. The error falls by a factor of 4 for each step. The order of the method is 2 (from the steps 20, 40 and 80: 2.01, 1.97 and 2.00 at the first 3 checks).
 The Richardson extrapolation of the values at 40 and 80 points per a is within 3.4e-4 of the analytical Q at each check. This rest comes from the size of the model.
 
 ## Size of the model

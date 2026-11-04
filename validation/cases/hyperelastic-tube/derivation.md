@@ -17,7 +17,7 @@ Ogden fitted W = Σ μ_p / α_p (λ1^α_p + λ2^α_p + λ3^α_p - 3) to the simp
 The shear modulus at small strain is μ0 = Σ μ_p α_p / 2 = 4.225 kg/cm² = 0.414331 MPa.
 
 D. M. Haughton and R. W. Ogden, "Bifurcation of inflated circular cylinders of elastic material under axial loading - II. Exact theory for thick-walled tubes", J. Mech. Phys. Solids 27 (1979) 489-512, give the pressure of an incompressible thick tube.
-Z. Guo, S. Wang and Y. Fu, "Localised bulging of an inflated rubber tube with fixed ends" (arXiv:2203.04110, 2022), give the same integral and the same constants (as μ_p / μ0 = 1.491, 0.003 and -0.024).
+Z. Guo, S. Wang and Y. Fu, "Localised bulging of an inflated rubber tube with fixed ends" (arXiv:2203.04110, 2022), give the same integral and the same constants. They are μ_p / μ0 = 1.491, 0.003 and -0.024.
 
 This is the simplest boundary-value problem with an exact solution for this rubber, a large deformation that is not uniform, and a pressure maximum.
 The inner face has the stretches (λ, 1/λ, 1): the pure shear of the tests of Treloar.
@@ -41,7 +41,7 @@ For A = 10 mm and B = 20 mm, p has a maximum of 0.229790 MPa at λ_a = 2.566. Th
 | `f_40` | 4.0 | 2.17945 | 0.219041 | F = p a t = 8.76165 N |
 | `u_outer` | 4.0 | 2.17945 | | u(B) = B (λ_b - 1) = 23.5890 mm |
 
-F is the force of the pressure on the inner face of the quarter in the x direction, with a = λ_a A and the thickness t = 1 mm.
+F is the force of the pressure on the inner face of the quarter in the x direction. Here a = λ_a A and the thickness is t = 1 mm.
 `u_outer` checks the volume: it is a function of λ_a only.
 
 ## Model
@@ -50,7 +50,7 @@ F is the force of the pressure on the inner face of the quarter in the x directi
 |---|---|
 | Part | 1/4 of the tube, 0 <= θ <= 90°, plane strain, 1 mm thick |
 | Elements | `CPE8R`, 8 through the wall and 16 about the axis, 433 nodes. ccx expands each to a `C3D20R` element. |
-| Rubber | `*HYPERELASTIC, OGDEN, N=3`. ccx uses W = Σ 2 μ_i / α_i² (λ̄1^α_i + λ̄2^α_i + λ̄3^α_i - 3) + Σ (J - 1)^(2i) / D_i, thus μ_i = μ_p α_p / 2: 0.40158232, 0.002941995 and 0.00980665 MPa. |
+| Rubber | `*HYPERELASTIC, OGDEN, N=3`. ccx uses W = Σ 2 μ_i / α_i² (λ̄1^α_i + λ̄2^α_i + λ̄3^α_i - 3) + Σ (J - 1)^(2i) / D_i. Thus μ_i = μ_p α_p / 2, which gives 0.40158232, 0.002941995 and 0.00980665 MPa. |
 | Compressibility | D1 = 0.0005 MPa⁻¹, thus K = 2 / D1 = 4000 MPa and K / μ0 = 9654. D2 = D3 = 0: ccx then uses (0.1/μ0)² and (0.1/μ0)³ with a warning. Their terms (J - 1)⁴ and (J - 1)⁶ have no effect. |
 | `SX`, x = 0 | ux = 0 (symmetry) |
 | `SY`, y = 0 | uy = 0 (symmetry) |
@@ -62,7 +62,7 @@ A pressure load cannot pass the maximum of p. A `*DSLOAD` of 0.235 MPa on the in
 The node sets `F25` and `F40` are the nodes of `INNER` with no node on x = 0. The sum of their x reactions is F.
 The node on x = 0 is not in the sets, because its x reaction also holds the hoop force of the symmetry plane.
 Its part of F is small: with D1 = 0.00005 (K / μ0 = 96540), F is within 0.002 % of the reference.
-The print requests have `GLOBAL=YES`. Without it, ccx writes the reactions of the nodes of `*TRANSFORM` in their cylindrical system, with an `L` at the end of each row, and `fh validate` does not read these rows.
+The print requests have `GLOBAL=YES`. Without it, ccx writes the reactions of the nodes of `*TRANSFORM` in their cylindrical system, with an `L` at the end of each row. `fh validate` does not read these rows.
 
 ## Results
 
@@ -127,7 +127,7 @@ The same tube as a 3D slice, 2 mm thick, with `C3D10` elements from `fh mesh` an
 
 A thick sphere (a balloon) is the other usual inflation case. This case does not use it.
 The Ogden model of ccx calculates the principal stretches from the eigenvalues of C. When 2 stretches are almost equal, the calculation loses digits.
-In a sphere, 2 stretches are equal everywhere. An axisymmetric sphere (A = 10 mm, B = 20 mm, 16 x 32 `CAX8R`, K / μ0 = 1000, 0.3 MPa) stopped in the first increment with "too many cutbacks".
+In a sphere, 2 stretches are equal everywhere. An axisymmetric sphere stopped in the first increment with "too many cutbacks". Its data are A = 10 mm, B = 20 mm, 16 x 32 `CAX8R`, K / μ0 = 1000, 0.3 MPa.
 The Ogden model with N = 1 and α = 2, which is the Neo-Hooke energy, stopped at 1.3 % of the load. Neo-Hooke solved the step.
 With 8 x 16 `CAX8R`, the Ogden model solved the step, and u(A) was 0.003 % from the exact solution. With a first increment of 0.1 in place of 0.05, the 16 x 32 mesh also solved the step.
 Thus the result of an Ogden sphere in ccx changes with the mesh and the increments. In the tube, the 3 stretches (λ, 1/λ, 1) are different, and each `CPE8R` mesh solved.

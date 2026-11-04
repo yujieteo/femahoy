@@ -1,6 +1,6 @@
 # grid-plate-hole-stress-ccx derivation
 
-This case compares the static stress solver on a mesh of 10-node tetrahedra with CalculiX on the same 3D problem: the steel plate with a round hole and the copper pad of `grid-plate-hole-ccx`, heated uniformly from 20 °C to 120 °C. The copper expands more than the steel, so the plate and the pad bend. The wall of the hole holds the 3 displacement components, for example a bolt. The problem has no analytical solution. The plate is a rectangle with a circle hole (a `polygon` with `holes`), and the pad is a box, so the solver meshes the model with tetrahedra (`fh guide grid`). Units are SI-m.
+This case compares the static stress solver on a mesh of 10-node tetrahedra with CalculiX on the same 3D problem. The problem has the steel plate with a round hole and the copper pad of `grid-plate-hole-ccx`. The temperature rises uniformly from 20 °C to 120 °C. The copper expands more than the steel, so the plate and the pad bend. The wall of the hole holds the 3 displacement components, for example a bolt. The problem has no analytical solution. The plate is a rectangle with a circle hole (a `polygon` with `holes`). The pad is a box, so the solver meshes the model with tetrahedra (`fh guide grid`). Units are SI-m.
 
 ## Source
 
@@ -11,7 +11,7 @@ The reference is a CalculiX 2.23 solve with 10-node tetrahedra (C3D10) on a gmsh
     ccx job
     python3 ccx/result.py job.dat
 
-The 2 meshes are independent: gmsh meshes the true cylinder with curved second-order elements, and the built-in solver meshes a polygon with its points on the circle and straight edges.
+The 2 meshes are independent. gmsh meshes the true cylinder with curved second-order elements. The built-in solver meshes a polygon with its points on the circle and straight edges.
 
 ## Model
 
@@ -45,6 +45,6 @@ CalculiX, C3D10, values in 1e-6 m:
 
 ## Tolerance
 
-At the same cell size of 2 mm, the 2 solvers agree to 0.3 % on each value. The value that converges most slowly in the check is `pad_corner.uz`: the grid solver changes by 0.4 % from 4 mm to 2 mm, and it is within 0.5 % of its limit at 4 mm. CalculiX changes by 0.38 % from 2 mm to 1 mm, at about first order, so its reference is within 0.4 % of its limit. The sum is 0.9 %, and the tolerance is 1 %. The check uses max_cell 4 mm, so the test of each change solves it in about 2 s.
+At the same cell size of 2 mm, the 2 solvers agree to 0.3 % on each value. The value that converges most slowly in the check is `pad_corner.uz`. The grid solver changes by 0.4 % from 4 mm to 2 mm, and it is within 0.5 % of its limit at 4 mm. CalculiX changes by 0.38 % from 2 mm to 1 mm, at about first order, so its reference is within 0.4 % of its limit. The sum is 0.9 %, and the tolerance is 1 %. The check uses max_cell 4 mm, so the test of each change solves it in about 2 s.
 
-`plate_far.uz` is not in the check. It is the bending of the long free end of the plate, and the singular edges where the pad meets the plate and where the hole wall meets the free faces make it converge at first order in both solvers: CalculiX changes it by 2.8 % and then 1.4 %. The 2 solvers agree on it to 0.3 % at 2 mm.
+`plate_far.uz` is not in the check. It is the bending of the long free end of the plate. The singular edges make it converge at first order in both solvers. They are the edges where the pad meets the plate and where the hole wall meets the free faces. CalculiX changes it by 2.8 % and then 1.4 %. The 2 solvers agree on it to 0.3 % at 2 mm.

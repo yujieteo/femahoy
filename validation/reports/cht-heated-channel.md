@@ -12,7 +12,7 @@ The model also has the correct temperature across the full section at x = 40 mm,
 
 The air is at 0 < y < 1 mm and the wall at 1 < y < 2 mm. The heater is at y = 2 mm, the centre line at y = 0.
 
-The exact line is the fully developed solution of derivation.md: the profile of Shah and London (1978) in the air, and a linear temperature in the wall.
+The exact line is the fully developed solution of derivation.md. It is the profile of Shah and London (1978) in the air, and a linear temperature in the wall.
 
 The model is the mean of the 2 cell columns at x = 39.9 and 40.1 mm.
 
@@ -182,7 +182,7 @@ The temperatures converge monotonically. The extrapolation from the meshes 5, 10
 The extrapolated values are 0.00027 K below the exact values. Thus the mesh error of n = 10 is -0.0040 K in `interface_T` and in `heater_T`.
 At n = 10 the Nusselt number from `interface_T` and the exact T_b is 8.251, 0.19 % above 140/17.
 
-The mesh error comes from the cells across the channel. The fully developed profile on the same cells is solved exactly as a 1D finite volume model. It has the errors -0.0154, -0.0040 and -0.0010 K at n = 5, 10 and 20. The errors of the case are 0.0002 to 0.0003 K lower than these.
+The mesh error comes from the cells across the channel. The fully developed profile on the same cells has the errors -0.0154, -0.0040 and -0.0010 K at n = 5, 10 and 20. The profile comes from an exact solve of a 1D finite volume model. The errors of the case are 0.0002 to 0.0003 K lower than these.
 
 The 0.0003 K between the extrapolated values and the exact values has these causes:
 

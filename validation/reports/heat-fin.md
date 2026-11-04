@@ -114,9 +114,9 @@ The mean of the area is 0.008 °C higher than the fin theory. This is the differ
 ## Tolerance
 
 The tolerance is 0.1 °C (`abs_tol = 0.1`), 0.2 % of the 50.9 °C difference between the tip and the air.
-The fin theory has 1 temperature in each section. In the solid, the tip face changes from 70.84 °C at the corners to 70.90 °C at the centre: the Biot number h (t/2) / k is 0.00125.
+The fin theory has 1 temperature in each section. In the solid, the tip face changes from 70.84 °C at the corners to 70.90 °C at the centre. The Biot number h (t/2) / k is 0.00125.
 Thus the check is the mean of the tip face. The mean is 70.8776 °C (+0.002 °C) with a mesh of size 5 mm.
-It is the sum of 3 parts ("Mesh study"): the solid against the fin theory +0.008 °C, the mean of the nodes -0.006 °C and the mesh less than 0.0001 °C.
+It is the sum of 3 parts ("Mesh study"). The solid against the fin theory gives +0.008 °C, the mean of the nodes gives -0.006 °C and the mesh gives less than 0.0001 °C.
 
 ## Chat run
 

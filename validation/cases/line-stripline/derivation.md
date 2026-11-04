@@ -4,7 +4,7 @@ This case checks the transmission line solver (`fh guide grid`, a `[line]` table
 
 ## Source
 
-A strip of width w and zero thickness in the middle between 2 infinite ground planes a distance b apart, in a dielectric of relative permittivity ε_r, has the exact characteristic impedance Z0 = (η0 / (4 sqrt(ε_r))) K(k) / K(k'), with k = sech(π w / (2b)), k' = tanh(π w / (2b)), η0 = sqrt(μ0 / ε0) and K the complete elliptic integral of the first kind. S. B. Cohn, Characteristic impedance of the shielded-strip transmission line, IRE Trans. Microwave Theory Tech. 2 (1954) 52-57. The formula is from a conformal map, so it has no approximation for a strip of zero thickness. Then C = sqrt(ε_r) / (c0 Z0), L = Z0 sqrt(ε_r) / c0 and ε_eff = ε_r. The values below are from mpmath at 30 digits.
+Consider a strip of width w and zero thickness in the middle between 2 infinite ground planes. The planes are a distance b apart. The dielectric has the relative permittivity ε_r. The exact characteristic impedance is Z0 = (η0 / (4 sqrt(ε_r))) K(k) / K(k'). Here k = sech(π w / (2b)), k' = tanh(π w / (2b)) and η0 = sqrt(μ0 / ε0). K is the complete elliptic integral of the first kind. S. B. Cohn, Characteristic impedance of the shielded-strip transmission line, IRE Trans. Microwave Theory Tech. 2 (1954) 52-57. The formula is from a conformal map, so it has no approximation for a strip of zero thickness. Then C = sqrt(ε_r) / (c0 Z0), L = Z0 sqrt(ε_r) / c0 and ε_eff = ε_r. The values below are from mpmath at 30 digits.
 
 ## Model
 
@@ -43,4 +43,4 @@ A strip of thickness 0.02 µm (max_cell 1e-4 m, max_growth 1.1) gives 67.6705 Ω
 
 ## Tolerance
 
-The check uses max_cell 1e-4 m and max_growth 1.05. Its error is 6.4e-4 of Z0, C and L. The tolerance is 1e-3. For an impedance to 0.1 %, use max_growth 1.1 or less, because the default 1.3 gives a mesh that is too coarse at the edges of a thin strip.
+The check uses max_cell 1e-4 m and max_growth 1.05. Its error is 6.4e-4 of Z0, C and L. The tolerance is 1e-3. For an impedance to 0.1 %, use max_growth 1.1 or less. The default 1.3 gives a mesh that is too coarse at the edges of a thin strip.
