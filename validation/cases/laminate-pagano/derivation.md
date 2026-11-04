@@ -82,7 +82,7 @@ Thus each stress check compares with the exact stress at the integration points 
 τ_xz is negative at x = 0, thus the check takes the mean, not the maximum.
 `GLOBAL=YES` gives the stresses in x, y, z. Without it, `ccx` gives them in the axes of the ply, and it adds the name of the orientation at the end of each line.
 
-## Comparison of the results
+## Result
 
 | Check | ccx | Exact | Difference |
 |---|---:|---:|---:|

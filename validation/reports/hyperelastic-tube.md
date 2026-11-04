@@ -1,6 +1,6 @@
 # hyperelastic-tube derivation
 
-## Finding
+## Conclusion
 
 The CalculiX model inflates the Ogden rubber tube past its pressure maximum. At each of its 40 increments, the pressure of the model is within 0.018 % of the exact pressure of Haughton and Ogden (1979). The tolerance of the checks is 0.2 %.
 

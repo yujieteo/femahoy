@@ -1,6 +1,6 @@
 # dynamics-bar-step derivation
 
-## Finding
+## Conclusion
 
 The solid bar gives the end displacement at t = 2L/c 1.57 % below the 1D wave theory of Graff (1975). The mean u1 of the end face is 0.0187484 mm, and the theory gives 0.0190476 mm. The tolerance is 3 %.
 

@@ -1,6 +1,6 @@
 # birth-death-column derivation
 
-## Finding
+## Conclusion
 
 ccx builds the column in 10 lifts with element birth and gives the settlement of the lift theory. At mid-height (z = 5 m), ccx gives 0.02315179 mm, and the lift theory gives 0.0231516 mm. The difference is 8.2e-6 of the reference, and the tolerance is 1e-4. At the top of each lift, the largest difference is 2.0e-7 mm.
 

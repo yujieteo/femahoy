@@ -1,6 +1,6 @@
 # turek-hron-fsi1 derivation
 
-## Finding
+## Conclusion
 
 The coupled model of OpenFOAM, CalculiX and preCICE passes FSI1 of Turek and Hron (2006). The drag and the lift are 0.33 % and 0.18 % below the reference. The displacement of point A is 3.1 % (ux) and 1.9 % (uy) below the reference. `ux_a` uses 77 % of the tolerance of 4 %.
 

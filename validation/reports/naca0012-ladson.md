@@ -1,6 +1,6 @@
 # naca0012-ladson derivation
 
-## Finding
+## Conclusion
 
 The model passes, and it is above the test of Ladson (1988) by the known amount of the Spalart-Allmaras model and of the mesh. Its lift is 1.1 % to 3.1 % above Table IX, and its drag is 10 to 13 drag counts above (1 count = 0.0001). The largest part of the tolerance that a check uses is 71 % (`cl_a4`).
 

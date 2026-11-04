@@ -1,6 +1,6 @@
 # plasticity-sphere derivation
 
-## Finding
+## Conclusion
 
 The model of the thick sphere follows the elastic-plastic solution of Hill (1950) within 0.70 % at each of its 10 load increments. At the full pressure of 300 MPa, the outer radial displacement is 0.0071039 mm, 0.08 % above the reference 0.00709845 mm. The tolerance is 1 %.
 
