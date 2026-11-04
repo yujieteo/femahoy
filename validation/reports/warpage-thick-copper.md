@@ -1,6 +1,6 @@
 # Measured warpage of a wafer slice with thick copper
 
-## Conclusion
+## Finding
 
 The model gives a warpage 3.2 % smaller than the measured warpage of Calabretta et al. (2021). For a temperature increase of 40 K, the end of the slice moves -0.02709912 mm, and the measured rate of 0.700 µm/K gives -0.028 mm. The tolerance is 12 %.
 

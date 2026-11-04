@@ -1,6 +1,6 @@
 # fracture-centre-crack derivation
 
-## Conclusion
+## Finding
 
 The CalculiX model gives the stress intensity factor K_I of the centre crack 0.19 % above the formula of Tada (1971). The model gives K_I = 1053.28 MPa mm^0.5, and the formula gives 1051.27 MPa mm^0.5. The tolerance is 0.5 %.
 

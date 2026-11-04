@@ -1,6 +1,6 @@
 # dam-break-martin-moyce derivation
 
-## Conclusion
+## Finding
 
 The surge front of the SPH model is in the scatter of the fronts that Martin and Moyce (1952) measured. But it is slower than their mean. At Z = 2.11, 3.00 and 3.89, the front of the model arrives 2.0 %, 3.4 % and 4.3 % later than the mean. Each value is in the range of the single runs and less than 1 standard deviation from the mean. At Z = 3.89, the model (T = 3.244) is almost as late as the slowest single run (3.25).
 

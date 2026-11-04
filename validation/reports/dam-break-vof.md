@@ -1,6 +1,6 @@
 # dam-break-vof derivation
 
-## Conclusion
+## Finding
 
 The surge front of the interFoam model follows the front that Martin and Moyce (1952) measured. The front of the model is 2.3 % to 3.1 % slower than the mean of the measured runs. This is at the 3 checked positions Z = 2.11, 3.00 and 3.89. Each difference is less than 1 standard deviation of the single runs, thus the model is in the scatter of the measurement.
 

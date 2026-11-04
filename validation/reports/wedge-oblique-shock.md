@@ -1,6 +1,6 @@
 # wedge-oblique-shock derivation
 
-## Conclusion
+## Finding
 
 The model passes: its shock angle is 0.071 % and its pressure ratio 0.013 % from the exact oblique shock. Its Mach number, temperature and density behind the shock are 0.19 % to 0.20 % from the theory. These 3 checks use 74 % to 80 % of the tolerance of 0.25 %.
 

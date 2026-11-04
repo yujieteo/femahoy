@@ -1,6 +1,6 @@
 # team7-eddy-current derivation
 
-## Conclusion
+## Finding
 
 The GetDP model agrees with the TEAM 7 measurements of Bz on the line A1-B1 at all 6 checked points. The tolerance is 6 % + 1 G. At omega t = 0, the model is within 4.9 % of the measured values. The largest part of the tolerance is 51 %, at x = 36 mm and omega t = 90 degrees.
 

@@ -1,6 +1,6 @@
 # laminate-pagano derivation
 
-## Conclusion
+## Finding
 
 Both CalculiX models of the square [0/90/0] plate agree with the exact 3D solution of Pagano (1970) within 0.17 %. The tolerance is 0.5 %. The thin plate (a/h = 100) uses composite shells. The thick plate (a/h = 4) uses 3D layers with 3 elements in each ply.
 
@@ -331,7 +331,7 @@ Thus each stress check compares with the exact stress at the integration points 
 τ_xz is negative at x = 0, thus the check takes the mean, not the maximum.
 `GLOBAL=YES` gives the stresses in x, y, z. Without it, `ccx` gives them in the axes of the ply, and it adds the name of the orientation at the end of each line.
 
-## Result
+## Comparison of the results
 
 | Check | ccx | Exact | Difference |
 |---|---:|---:|---:|

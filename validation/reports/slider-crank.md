@@ -1,6 +1,6 @@
 # slider-crank derivation
 
-## Conclusion
+## Finding
 
 The Chrono model gives the closed-form motor torque and slider position of the slider-crank. At the check time t = 1.125 s, the torque of the model is 1.4269621 N m and the closed form is 1.42695517 N m. The difference is 6.9e-6 N m, 5 % of the tolerance. The slider position of the model is 0.362258273 m, equal to the closed form to the 9 decimals of the output.
 

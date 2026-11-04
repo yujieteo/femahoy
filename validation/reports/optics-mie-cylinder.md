@@ -1,6 +1,6 @@
 # optics-mie-cylinder derivation
 
-## Conclusion
+## Finding
 
 The scattering efficiency Q of the Meep model agrees with the exact series solution at all 41 size parameters x from 1 to 3. The difference is within 0.59 %. The 4 checks are within 0.33 %, and the tolerance is 1 %. The peaks of Q of the model are at the same size parameters as the peaks of the exact Q: x = 1.25, 1.80 and 2.40.
 

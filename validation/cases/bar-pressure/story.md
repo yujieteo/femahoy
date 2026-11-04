@@ -1,4 +1,4 @@
-# Conclusion
+# Finding
 
 The C3D10 model gives the exact stress and displacement of the bar under a pull of 100 MPa, to the digits that ccx prints. The tolerance of 1e-6 holds only the round-off.
 

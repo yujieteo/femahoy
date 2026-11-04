@@ -1,6 +1,6 @@
 # Measured warpage of a 2.5D package with a metal frame
 
-## Conclusion
+## Finding
 
 The model gives a warpage of -0.1453 mm at the substrate corner at 60 °C. This is 10.3 % smaller than the moiré value of Tsai, Wang and Liu (2021), -0.162 mm. The tolerance is 13 %, the root sum square of the errors of the inputs and of the measurement (see "Tolerance"). Thus the difference is 79 % of the tolerance. The mapped mesh has converged: the 2 mm mesh changes the warpage by 0.009 % (see "Mapped mesh and convergence").
 

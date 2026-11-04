@@ -1,4 +1,4 @@
-# Conclusion
+# Finding
 
 The solid model of the pin fin gives the tip temperature of the fin theory of Incropera et al. (2007). The mean of the tip face is 70.8776 °C, and the fin theory gives 70.8757 °C. The difference is +0.002 °C, and the tolerance is 0.1 °C. Along the full length of the fin, the model also follows the fin theory. On the edge y = 0, z = 0, the largest difference is -0.061 °C.
 

@@ -1,6 +1,6 @@
 # submodel-kirsch-hole derivation
 
-## Conclusion
+## Finding
 
 The submodel gives σ_xx at the hole 0.029 % above the Kirsch solution (1898). The coarse global model alone gives the peak 4.5 % low. The check is the largest σ_xx at the integration points of the element `TOP`, at the top of the hole. There the submodel gives 296.265 MPa, and the Kirsch solution gives 296.179 MPa. The tolerance is 0.1 %.
 

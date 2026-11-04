@@ -1,6 +1,6 @@
 # shape-hole-biaxial derivation
 
-## Conclusion
+## Finding
 
 The shape loop of `fh run` finds the exact optimum hole, the ellipse with the axis ratio a/b = 2. The loop makes the peak stress a minimum. The peak stress is the largest von Mises stress on the hole edge. After 52 solves, the ratio is 2.00229 (+0.11 %), the power of the superellipse is 2.00061 (+0.03 %), and the peak stress is 1.49918 (-0.05 %). The tolerance is 0.5 %.
 

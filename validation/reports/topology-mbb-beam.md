@@ -1,6 +1,6 @@
 # topology-mbb-beam derivation
 
-## Conclusion
+## Finding
 
 The topology loop of fh gives the compliance of the published SIMP code for the half MBB beam. After 106 iterations, the loop gives c = 216.8137 with 50 % of the volume. Andreassen et al. (2011) give 216.81. The difference is 0.002 %, less than 1 % of the tolerance of 0.2 %.
 

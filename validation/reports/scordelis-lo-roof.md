@@ -1,6 +1,6 @@
 # Scordelis-Lo roof with S8R shells: derivation
 
-## Conclusion
+## Finding
 
 The S8R shell model gives the deflection of the middle of the free edge within 0.16 % of the published value. The model gives uz = -301.92 mm at TIP, and MacNeal and Harder (1985) give -302.4 mm. The difference is 0.48 mm, 16 % of the tolerance of 1 %.
 
