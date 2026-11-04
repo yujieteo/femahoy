@@ -24,7 +24,7 @@ The Hashin-Shtrikman bounds of a transversely isotropic 2D composite (Z. Hashin 
 
 Round fibres, along the fibres: the field is uniform, and kzz = km + f (kf − km). The polygon of the circle has the volume fraction f = 0.4997928030 at max_cell 0.02, so kzz = 5.0979694697.
 
-Square fibres, along the fibres. With the same Poisson ratio in the 2 materials, a uniform strain (εzz = 1, εxx = εyy = −ν) is in equilibrium and is compatible, so Ez = f Ef + (1 − f) Em = 85040 MPa exactly (R. Hill, J. Mech. Phys. Solids 12 (1964) 199-212). In the same way kzz = 3.728 and the density 1.416e-9 are the means.
+Square fibres, along the fibres. With the same Poisson ratio in the 2 materials, a uniform strain (εzz = 1, εxx = εyy = −ν) is in equilibrium and compatible. So Ez = f Ef + (1 − f) Em = 85040 MPa exactly (R. Hill, J. Mech. Phys. Solids 12 (1964) 199-212). In the same way kzz = 3.728 and the density 1.416e-9 are the means.
 
 ## Mesh study
 
@@ -40,4 +40,4 @@ The square fibres give Ez = 85040.0000 and kzz = 3.72800000 at max_cell 0.05.
 
 ## Tolerance
 
-The change of kxx from max_cell 0.02 to 0.01 is 0.014 %, so the discretization error at 0.02, with the area of the polygon of the circle, is about 0.02 %. The formula leaves out the terms of f¹² and above, about 0.01 % at f = 0.5. Their sum is 0.03 %, and the tolerance is 0.1 %. The checks along the fibres are exact to 1e-10, inside the same tolerance.
+The change of kxx from max_cell 0.02 to 0.01 is 0.014 %. So the discretization error at 0.02, with the area of the polygon of the circle, is about 0.02 %. The formula leaves out the terms of f¹² and above, about 0.01 % at f = 0.5. Their sum is 0.03 %, and the tolerance is 0.1 %. The checks along the fibres are exact to 1e-10, inside the same tolerance.

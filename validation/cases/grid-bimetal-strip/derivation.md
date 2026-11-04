@@ -1,6 +1,6 @@
 # grid-bimetal-strip derivation
 
-This case checks the thermal strain of 2 bonded materials, the bending of thin layers, and the curvature of a surface. A free strip of 2 layers with different expansion coefficients is heated. It bends to a uniform curvature (units SI-mm).
+This case checks the thermal strain of 2 bonded materials, the bending of thin layers, and the curvature of a surface. The temperature of a free strip of 2 layers with different expansion coefficients rises. It bends to a uniform curvature (units SI-mm).
 
 ## Model
 
@@ -10,7 +10,7 @@ This case checks the thermal strain of 2 bonded materials, the bending of thin l
 | Layer 1, bottom | z 0 to 0.5 mm, E1 = 200000 MPa, ν = 0.3, α1 = 12e-6 1/°C |
 | Layer 2, top | z 0.5 to 1 mm, E2 = 100000 MPa, ν = 0.3, α2 = 20e-6 1/°C |
 | Temperature | 120 °C, stress-free at 20 °C, so ΔT = 100 °C |
-| Support | uz = 0 on the bottom faces at the centre; the planes x = 0 and y = 0 are planes of symmetry |
+| Support | uz = 0 on the bottom faces at the centre. The planes x = 0 and y = 0 are planes of symmetry |
 
 The load has no net force, so the support only stops a rigid motion.
 
@@ -24,7 +24,7 @@ with m = t1 / t2 = 1, n = E1 / E2 = 2 and h = t1 + t2 = 1 mm:
 
 κ = 6 · 8e-6 · 100 · 4 / (1 · [12 + 3 · 1.5]) = 0.0192 / 16.5 = 1.163636e-3 1/mm.
 
-The layer with the larger expansion is on the top, so the top face bulges outward (`top.shape` is `convex`), and the curvature of the top face is positive.
+The layer with the larger expansion is on the top, so the top face bulges outward (`top.shape` is `convex`). The curvature of the top face is positive.
 
 The strip is 10 times as wide as it is thick, so it bends in x and in y. The 2 layers have the same Poisson ratio. Then the in-plane stress is equal in x and y, and the formula holds for each direction with the biaxial moduli E / (1 − ν). The formula uses only the ratio n of the moduli, so the curvature is the same in x and in y.
 

@@ -2,7 +2,7 @@
 
 ## Finding
 
-The GetDP model gives the analytical spherical wave of the pulsating sphere: at each node of the mesh, p is within 0.39 % of the analytical p. The radiation impedance z is within 0.11 %, and p at the check point (r = 0.3 m) is within 0.32 %. The tolerance is 1 %.
+The GetDP model gives the analytical spherical wave of the pulsating sphere. At each node of the mesh, p is within 0.39 % of the analytical p. The radiation impedance z is within 0.11 %, and p at the check point (r = 0.3 m) is within 0.32 %. The tolerance is 1 %.
 
 ### Sound pressure against the distance from the centre of the sphere, 500 Hz
 
@@ -2519,7 +2519,7 @@ The times are the times of GetDP 4.0.0 on a Mac with 10 cores.
 | x 0.7 | -0.06 % | 0.00 % | -0.13 % | -0.04 % |
 | x 0.5 | -0.03 % | 0.00 % | -0.06 % | -0.03 % |
 
-Each value goes to the analytical value as the mesh becomes finer. The error of z_re falls by a factor of about 2 for each step: the meshed sphere is a polyhedron, and its error falls as h^2.
+Each value goes to the analytical value as the mesh becomes finer. The error of z_re falls by a factor of about 2 for each step. The meshed sphere is a polyhedron, and its error falls as h^2.
 The meshed sphere of the check mesh has 0.19 % less area than the octant of the sphere. z uses the area of the meshed sphere.
 
 ## Tolerance

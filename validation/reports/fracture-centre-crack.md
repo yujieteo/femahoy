@@ -94,7 +94,7 @@ This puts the singularity 1/sqrt(r) of the stress in the elements at the tip (R.
 
 ## K_I from the displacements
 
-On the face of the crack, near the tip, the opening of 1 face is v = (4 K_I / E') sqrt(r / 2π), with E' = E / (1 - nu^2) in plane strain.
+On the face of the crack, near the tip, the opening of 1 face is v = (4 K_I / E') sqrt(r / 2π). In plane strain, E' = E / (1 - nu^2).
 On the edge of a quarter-point element, v(r) = v_T + (-3 v_T + 4 v_B - v_C) sqrt(r/L) + 2 (v_T - 2 v_B + v_C) r/L.
 T is the tip, B is the node at L/4 and C is the node at L. Here v_T = 0. The terms in sqrt(r) give:
 
@@ -123,7 +123,7 @@ The mesh has the size L at the tip and grows to the edges. Each finer mesh has m
 
 L has the largest effect. With 16 rays and 8 + 8 rings, L = 2.0, 1.0 and 0.25 mm give +1.02 %, +0.46 % and +0.07 %.
 
-The source has a strip with no end. With 48 rays, 16 + 24 rings and L = 0.25 mm, K_I changes by -0.09 % from h = 100 mm to 150 mm, and by -0.01 % from 150 mm to 200 mm.
+The source has a strip with no end. With 48 rays, 16 + 24 rings and L = 0.25 mm, K_I changes by -0.09 % from h = 100 mm to 150 mm. It changes by -0.01 % from 150 mm to 200 mm.
 
 The same mesh rules (L = a/50) at other crack lengths give these differences from the formula:
 
@@ -135,7 +135,7 @@ At a/b = 0.1, the elements between the tip and the top edge are long. 32 rays an
 
 ## Tolerance
 
-The tolerance is 0.5 % (`rel_tol = 0.005`). It is the sum of the error of the formula (0.2 %), the error of the mesh (0.2 %) and the height of the plate (0.02 %), with a small margin.
+The tolerance is 0.5 % (`rel_tol = 0.005`). It is the sum of the error of the formula (0.2 %), the error of the mesh (0.2 %) and the height of the plate (0.02 %). It also has a small margin.
 An error of the method is larger: E in place of E' gives -9 %, and L/2 in place of L gives +41 %.
 
 ## Files

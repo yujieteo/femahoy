@@ -94,7 +94,7 @@ The times are the times of GetDP 4.0.0 on a Mac with 10 cores.
 | x 0.7 | -0.06 % | 0.00 % | -0.13 % | -0.04 % |
 | x 0.5 | -0.03 % | 0.00 % | -0.06 % | -0.03 % |
 
-Each value goes to the analytical value as the mesh becomes finer. The error of z_re falls by a factor of about 2 for each step: the meshed sphere is a polyhedron, and its error falls as h^2.
+Each value goes to the analytical value as the mesh becomes finer. The error of z_re falls by a factor of about 2 for each step. The meshed sphere is a polyhedron, and its error falls as h^2.
 The meshed sphere of the check mesh has 0.19 % less area than the octant of the sphere. z uses the area of the meshed sphere.
 
 ## Tolerance

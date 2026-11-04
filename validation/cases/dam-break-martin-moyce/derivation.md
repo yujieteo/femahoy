@@ -16,8 +16,8 @@ No other case of the suite has any of these items:
 
 J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, <https://doi.org/10.1098/rsta.1952.0006>.
 
-A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column is released. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in, in the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
-The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"), because the instant of the release is not known exactly. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
+A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column starts to fall. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in. The times have the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
+The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"). The reason is that the exact instant of the release is unknown. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
 
 The checks use the column "mean" for a = 2.25 in:
 
@@ -27,7 +27,7 @@ The checks use the column "mean" for a = 2.25 in:
 | `T_300` | 3.00 | 2.51 | 9, from 2.38 to 2.66 | 0.099 (3.9 %) |
 | `T_389` | 3.89 | 3.11 | 4, from 2.94 to 3.25 | 0.139 (4.5 %) |
 
-The 3 points are near the start, the middle and the end of the data that the source gives for most runs of a = 2.25 in.
+The 3 points are near the start, the middle and the end of the data. The source gives these data for most runs of a = 2.25 in.
 
 ## Model
 
@@ -51,7 +51,7 @@ The run stops at each Z with `fix halt`. The last stop is at Z = 3.89, at t = 0.
 Problems that the model solves:
 
 - With dt = 0.1 h / c0 and alpha = 0.02, the density goes from 400 to 1350 kg/m^3 and particles leave the box. A smaller time step removes this.
-- With dt = 0.05 h / c0 and alpha = 0.02, T is 6 % to 21 % too small at n = 80, and 1 % to 18 % too large at n = 40. With dt = 0.025 h / c0, the values change little from n = 40 to n = 80.
+- With dt = 0.05 h / c0 and alpha = 0.02, T is 6 % to 21 % too small at n = 80. It is 1 % to 18 % too large at n = 40. With dt = 0.025 h / c0, the values change little from n = 40 to n = 80.
 
 ## Studies
 

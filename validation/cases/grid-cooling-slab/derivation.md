@@ -4,8 +4,8 @@ This case checks the transient centre temperature of a slab that cools after its
 
 ## Source
 
-H. S. Carslaw and J. C. Jaeger, *Conduction of Heat in Solids*, 2nd ed., Oxford, 1959, section 3.3 (the slab −L < z < L at T0, with its faces at 0 from t = 0).
-At the centre, T / T0 = Σ_{n ≥ 0} 4 (−1)^n / ((2n+1)π) · exp(−(2n+1)² π² Fo / 4), with Fo = α t / L².
+H. S. Carslaw and J. C. Jaeger, *Conduction of Heat in Solids*, 2nd ed., Oxford, 1959, section 3.3. The slab is −L < z < L at T0, with its faces at 0 from t = 0.
+At the centre, T / T0 = Σ_{n ≥ 0} 4 (−1)^n / ((2n+1)π) · exp(−(2n+1)² π² Fo / 4). Here Fo = α t / L².
 
 ## Model
 

@@ -579,11 +579,11 @@ The reference is a numerical bench mark with a known accuracy. Thus the toleranc
 
 ## Sources
 
-- G. de Vahl Davis, "Natural convection of air in a square cavity: a bench mark numerical solution", International Journal for Numerical Methods in Fluids 3 (1983) 249-264, <https://doi.org/10.1002/fld.1650030305>.
+- G. de Vahl Davis, "Natural convection of air in a square cavity. A bench mark numerical solution", International Journal for Numerical Methods in Fluids 3 (1983) 249-264, <https://doi.org/10.1002/fld.1650030305>.
   The left wall is hot, the right wall is cold, and the top and the bottom are adiabatic. Pr = 0.71.
 - The check values come from Table V, the bench mark solution. The velocities are in units of alpha/L, with alpha the thermal diffusivity.
 - Table VII gives the estimated error of the bench mark: 0.2 % at Ra = 1e4 and 0.3 % at Ra = 1e5.
-- Table V gives 2 average Nusselt numbers for the hot wall: Nu_0 from a one-sided difference at the wall, and Nu-bar, the average over the cavity. In a steady state, the same heat goes through each vertical line. The paper tells that Nu_0 is the less accurate value. The finite volume method of the model conserves heat, thus its heat flow through the hot wall is the same as its Nu-bar. Thus the check uses Nu-bar.
+- Table V gives 2 average Nusselt numbers for the hot wall. Nu_0 is from a one-sided difference at the wall, and Nu-bar is the average over the cavity. In a steady state, the same heat goes through each vertical line. The paper tells that Nu_0 is the less accurate value. The finite volume method of the model conserves heat, thus its heat flow through the hot wall is the same as its Nu-bar. Thus the check uses Nu-bar.
 - M. Hortmann, M. Peric and G. Scheuerer, "Finite volume multigrid prediction of laminar natural convection: bench-mark solutions", International Journal for Numerical Methods in Fluids 11 (1990) 189-207, <https://doi.org/10.1002/fld.1650110206>. It gives Nu-bar = 2.24475 at Ra = 1e4 and 4.52164 at Ra = 1e5, from meshes of up to 640 x 640 control volumes. Table 1 of T. Gjesdal, C. E. Wasberg and O. Andreassen, "Spectral element simulations of buoyancy-driven flow", <https://arxiv.org/abs/physics/0305049>, also gives these values. The case uses them only as a cross-check.
 
 | Ra | Nu-bar | u_max on x = 0.5 (at y) | v_max on y = 0.5 (at x) | Error of the bench mark | Checks |
@@ -613,9 +613,9 @@ The model has no units. The side L, the temperature difference Th - Tc and the t
 The function objects of `system/controlDict` write the 3 values of each case:
 
 - Nusselt number: the `areaNormalAverage` of `grad(T)` on the patch `hot`. The normal points out of the fluid, thus the value is the average of -dT/dx on the hot wall.
-- Velocities: the largest `Ux` in the row of cells that the plane x = 0.5 cuts, and the largest `Uy` in the row of cells that the plane y = 0.5 cuts. The mesh has an odd number of cells, thus each plane goes through a row of cell centres.
+- Velocities: the largest `Ux` in the row of cells that the plane x = 0.5 cuts. Also the largest `Uy` in the row of cells that the plane y = 0.5 cuts. The mesh has an odd number of cells, thus each plane goes through a row of cell centres.
 
-With the relaxation factors 0.7, 0.3 and 0.5, the Nusselt number at Ra = 1e4 on 129 x 129 changed between 1.5 and 2.34 for 8000 iterations. The relaxation factors of the case get a residual of 1e-7 after about 2000 iterations.
+With the relaxation factors 0.7, 0.3 and 0.5, the Nusselt number at Ra = 1e4 on 129 x 129 changed between 1.5 and 2.34 over 8000 iterations. The relaxation factors of the case get a residual of 1e-7 after about 2000 iterations.
 
 ## Mesh study
 
@@ -647,7 +647,7 @@ Thus the mesh error of 129 x 129 is +0.055 % in Nu at Ra = 1e4 and +0.205 % at R
 A velocity check reads the largest cell value, not the maximum between the cell centres. Thus a velocity changes less smoothly with the mesh. A `sets` function object on the centre lines and a parabola through the 3 largest cell values give the maximum between the cell centres. At 129 x 129, the largest cell value is 0 % to 0.016 % below this maximum.
 The velocities at 129 x 129 are within 0.03 % of the maxima of the parabolas at 257 x 257.
 
-The iteration error at 2000 iterations is 0.0003 % or less: on 129 x 129, the values at 2000 and 3000 iterations differ by 0.0003 % or less.
+The iteration error at 2000 iterations is 0.0003 % or less. On 129 x 129, the values at 2000 and 3000 iterations differ by 0.0003 % or less.
 
 The 2 cases of the check run at the same time. On a Mac with 10 cores, `fh validate` took 47 s and 88 s for this case, while other programs used 3 to 5 cores.
 

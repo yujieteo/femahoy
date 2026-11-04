@@ -2,7 +2,7 @@
 
 ## Finding
 
-The surge front of the interFoam model follows the front that Martin and Moyce (1952) measured. At the 3 checked positions Z = 2.11, 3.00 and 3.89, the front of the model is 2.3 % to 3.1 % slower than the mean of the measured runs. Each difference is less than 1 standard deviation of the single runs, thus the model is in the scatter of the measurement.
+The surge front of the interFoam model follows the front that Martin and Moyce (1952) measured. The front of the model is 2.3 % to 3.1 % slower than the mean of the measured runs. This is at the 3 checked positions Z = 2.11, 3.00 and 3.89. Each difference is less than 1 standard deviation of the single runs, thus the model is in the scatter of the measurement.
 
 ### Dam break, the surge front (interFoam, 40 cells across a)
 
@@ -201,8 +201,8 @@ No other case of the suite has any of these items:
 
 J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, <https://doi.org/10.1098/rsta.1952.0006>.
 
-A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column is released. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in, in the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
-The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"), because the instant of the release is not known exactly. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
+A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column starts to fall. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in. The times have the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
+The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"). The reason is that the exact instant of the release is unknown. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
 
 The checks use the column "mean" for a = 2.25 in. The single runs and their standard deviation come from the same table:
 
@@ -212,7 +212,7 @@ The checks use the column "mean" for a = 2.25 in. The single runs and their stan
 | `T_300` | 3.00 | 2.51 | 9, from 2.38 to 2.66 | 0.099 (3.9 %) |
 | `T_389` | 3.89 | 3.11 | 4, from 2.94 to 3.25 | 0.139 (4.5 %) |
 
-The 3 points are near the start, the middle and the end of the data that the source gives for most runs of a = 2.25 in.
+The 3 points are near the start, the middle and the end of the data. The source gives these data for most runs of a = 2.25 in.
 
 ## Model
 
@@ -263,7 +263,7 @@ Mesh, with `maxCo` and `maxAlphaCo` 0.5:
 | 80 | 80000 | 1.8756 | 2.5926 | 3.2203 |
 | Measured | | 1.83 | 2.51 | 3.11 |
 
-From n = 20 to n = 80, the values change by 0.5 % or less, with no monotonic trend. `mesh.csv` holds the values of `T_389` as a curve for `fh report --curve`. Thus an extrapolation is not possible. The mesh error of n = 40 is the difference to n = 80: 0.0146 for `T_389` (0.47 % of the reference), 0.0070 for `T_300` (0.28 %) and 0.0039 for `T_211` (0.21 %).
+From n = 20 to n = 80, the values change by 0.5 % or less, with no monotonic trend. `mesh.csv` holds the values of `T_389` as a curve for `fh report --curve`. Thus an extrapolation is not possible. The mesh error of n = 40 is the difference to n = 80. It is 0.0146 for `T_389` (0.47 % of the reference), 0.0070 for `T_300` (0.28 %) and 0.0039 for `T_211` (0.21 %).
 
 Time step and walls, with n = 40. For these rows, edit `maxCo` and `maxAlphaCo` in `system/controlDict`, or the type of `walls` in `0/U`:
 
@@ -306,7 +306,7 @@ The tolerance does not stop a coarse mesh: n = 10 passes, because the time of th
 - Z larger than 4.11: only 3 of the 9 runs of a = 2.25 in have data there, and the run takes longer.
 - The other column of the source, a = 1.125 in: it has the same n^2 and thus the same T(Z) in theory.
 
-On a Mac with 10 cores and other jobs, `fh validate` of the case took 85 s (34 s of CPU time) on 1 core with OpenFOAM v2512.
+On a Mac with 10 cores and other jobs, `fh validate` of the case took 85 s with OpenFOAM v2512. It used 34 s of CPU time on 1 core.
 
 ### Dam break, the mesh study of T at Z = 3.89 (interFoam)
 

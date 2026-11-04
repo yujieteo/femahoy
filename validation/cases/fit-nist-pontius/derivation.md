@@ -6,7 +6,7 @@ This case checks `fh fit`: the least squares fit of a model to a curve. The refe
 
 No other case of the suite checks a fit. `fh fit` gives the parameters that the agent puts in a model, for example the constants of `*HYPERELASTIC`. A wrong fit gives a wrong model with no warning.
 
-Each model of `fh fit` is linear in its parameters, or in ln x and ln y (`power`). Thus all models use the same least squares solver, and this case checks that solver. The rows of the models are in `crates/fh/src/fit.rs`. Its unit tests check that each model gives its parameters back from exact points, and that `mooney-rivlin` gives the nominal stress of a C3D8 element of ccx 2.23 with the same constants.
+Each model of `fh fit` is linear in its parameters, or in ln x and ln y (`power`). Thus all models use the same least squares solver, and this case checks that solver. The rows of the models are in `crates/fh/src/fit.rs`. Its unit tests check that each model gives its parameters back from exact points. They also check that `mooney-rivlin` gives the nominal stress of a C3D8 element of ccx 2.23 with the same constants.
 
 ## Source
 

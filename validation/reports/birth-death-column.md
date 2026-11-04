@@ -136,4 +136,4 @@ The `.frd` file has the settlement of `job.dat` with 6 digits, for example -0.02
 
 ## Files
 
-`job.inp` is written by hand: 44 nodes and 10 `C3D8` elements, 1 for each lift. The run takes less than 1 s.
+The `job.inp` has 44 nodes and 10 `C3D8` elements, 1 for each lift. The run takes less than 1 s.

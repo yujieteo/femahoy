@@ -2,7 +2,7 @@
 
 ## Finding
 
-The CalculiX model of the cylindrical steel pad (R = 20 mm) on the steel block gives the partial slip of Cattaneo (1938): the centre of the contact sticks, and its 2 edges slip. The shear traction at the centre is q(0) = 433.064 MPa, 0.43 % above the reference 431.203 MPa. The largest contact pressure is 2888.39 MPa, 0.48 % above the Hertz pressure p0 = 2874.69 MPa. The tolerance is 2 %.
+The CalculiX model of the cylindrical steel pad (R = 20 mm) on the steel block gives the partial slip of Cattaneo (1938). The centre of the contact sticks, and its 2 edges slip. The shear traction at the centre is q(0) = 433.064 MPa, 0.43 % above the reference 431.203 MPa. The largest contact pressure is 2888.39 MPa, 0.48 % above the Hertz pressure p0 = 2874.69 MPa. The tolerance is 2 %.
 
 The pad gets the normal force P = 4500 N and then the tangential force Q = 0.75 μP = 1012.5 N, each for 1 mm of length. The theory then gives a contact of half-width a = 0.997 mm with a stick zone |x| < c = 0.5 a. The plot shows the contact pressure p and the shear traction q at the nodes of the pad, with the curves of Hertz and Cattaneo:
 
@@ -316,7 +316,7 @@ Original values. n/a means no sample.
 
 At the nodes with |x| ≥ 0.52 a, q = μp: these nodes slip. At the nodes with |x| ≤ 0.48 a, q is less than μp: these nodes stick. A model with no slip (μ = 10) gives q(0) 24.83 % below the reference. Thus the check of q(0) finds a contact that does not slip (see "Tolerance").
 
-The pad is above y = 0, and the block is below it. In the model, the ends of the stick zone are at x = ±c = ±0.498 mm, and the edges of the contact are at x = ±a = ±0.997 mm. The 2 stresses near the contact are:
+The pad is above y = 0, and the block is below it. In the model, the ends of the stick zone are at x = ±c = ±0.498 mm. The edges of the contact are at x = ±a = ±0.997 mm. The 2 stresses near the contact are:
 
 - Shear stress S12: Q goes from the pad into the block through the contact. On the top face of the block, S12 is the shear traction q. The check `q_centre` is the mean of S12 in the 2 block elements at x = 0.
 - Normal stress S22: on the top face of the block, S22 is -p. Its magnitude is largest at x = 0 and goes to 0 at x = ±a.
@@ -332,14 +332,14 @@ The pad is above y = 0, and the block is below it. In the model, the ends of the
 
 Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
-This case checks frictional contact with partial slip (stick-slip): a steel cylinder on a steel block, pushed down and then pulled to the side with less than the slip force (units SI-mm).
+This case checks frictional contact with partial slip (stick-slip). A steel cylinder on a steel block is pushed down and then pulled to the side with less than the slip force (units SI-mm).
 The centre of the contact sticks, and its 2 edges slip.
 The checks are the largest contact pressure p0 and the shear traction q(0) at the centre of the contact.
 
 ## Source
 
 - C. Cattaneo, "Sul contatto di due corpi elastici: distribuzione locale degli sforzi", *Rendiconti dell'Accademia Nazionale dei Lincei* 27 (1938), 342-348, 434-436 and 474-478.
-- K. L. Johnson, *Contact Mechanics*, Cambridge University Press, 1985: chapter 4 (the Hertz contact of 2 cylinders) and chapter 7 (tangential loading, the partial slip of Cattaneo and Mindlin).
+- K. L. Johnson, *Contact Mechanics*, Cambridge University Press, 1985. Chapter 4 gives the Hertz contact of 2 cylinders. Chapter 7 gives tangential loading, the partial slip of Cattaneo and Mindlin.
 
 2 long cylinders of the same material touch along a line, in plane strain.
 P is the normal force and Q is the tangential force, each for 1 mm of length.
@@ -354,7 +354,7 @@ The shear traction q is the sum of 2 elliptical distributions:
 - In the stick zone |x| < c: q(x) = μ p(x) - μ p0 (c/a) (1 - x²/c²)^(1/2).
 
 On a half-plane, an elliptical traction b0 (1 - x²/b²)^(1/2) on |x| < b gives a surface strain that is linear in x, in |x| < b.
-The 2 parts of q thus give strains of the same size and opposite signs in |x| < c, and the 2 bodies do not slip there.
+The 2 parts of q thus give strains of the same size and opposite signs in |x| < c. So the 2 bodies do not slip there.
 The total of q is Q = μ P (1 - c²/a²). Thus c = a (1 - Q / (μ P))^(1/2) and q(0) = μ p0 (1 - c/a).
 
 The 2 bodies have the same material. Thus the pressure causes no tangential slip, and the shear traction does not change the pressure.
@@ -428,7 +428,7 @@ These runs changed 1 item of the model at a time:
 | Parts of 80 mm (block 160 x 80, pad 36 wide and 80 high, F for that pad) | +0.43 % | +0.21 % |
 | Increments of 0.02 in step 3 | +0.48 % | +0.43 % |
 
-The budget of q(0) is 0.13 % for the mesh (a/25 to a/100), 0.34 % for the stick slope, 0.43 % for the penalty and 0.22 % for the size of the parts.
+The budget of q(0) is 0.13 % for the mesh (a/25 to a/100) and 0.34 % for the stick slope. It is 0.43 % for the penalty and 0.22 % for the size of the parts.
 p0 changes by 0.34 % from the penalty and by 0.04 % from the mesh (a/25 to a/100).
 Hertz theory has 2 half-planes. The model has parts of finite size, and the penalty lets the surfaces go into each other a little.
 
