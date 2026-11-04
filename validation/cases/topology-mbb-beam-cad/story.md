@@ -1,4 +1,4 @@
-## Conclusion
+# Finding
 
 The CAD check of fh gives the compliance 190.48 for the solid of the final design, 1.45 % below the check value 193.27. The check value is the threshold of the same design at the density 0.5, on the elements of the loop. The difference uses 72 % of the tolerance of 2 %. It comes from the smooth boundary of the solid and its finer mesh (section "Mesh of the check" below).
 

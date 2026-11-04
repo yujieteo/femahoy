@@ -4,7 +4,7 @@ This case checks the built-in electromagnetic solver on the simplest wave: the T
 
 ## Source
 
-A rectangular waveguide of width a has the TE10 mode with the propagation constant β = sqrt(k0² − (π/a)²), k0 = 2π f / c. A uniform guide with matched ports has S11 = 0 and S21 = exp(−jβL) for the length L between the ports, with the time factor exp(jωt). D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, section 3.3.
+A rectangular waveguide of width a has the TE10 mode with the propagation constant β = sqrt(k0² − (π/a)²), k0 = 2π f / c. A uniform guide with matched ports has S11 = 0 and S21 = exp(−jβL) for the length L between the ports. The time factor is exp(jωt). D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, section 3.3.
 
 ## Model
 
@@ -31,7 +31,7 @@ A rectangular waveguide of width a has the TE10 mode with the propagation consta
 | 2 | 2,160 | 11,176 | 0.00623 | 0.999837 | 87.962842 | 0.17 s |
 | 1 | 15,934 | 96,531 | 0.00140 | 0.999976 | 88.015033 | 10.9 s |
 
-The error of the phase is −0.220, −0.046 and +0.0066 degrees, and \|S11\| falls by a factor of 3.3 and 4.5 when the cell halves: second order, as for linear edge elements. The port uses the exact β, so the reflection at a port shows the difference between the exact β and the β of the mesh.
+The error of the phase is −0.220, −0.046 and +0.0066 degrees. \|S11\| falls by a factor of 3.3 and 4.5 when the cell halves. This is second order, as for linear edge elements. The port uses the exact β, so the reflection at a port shows the difference between the exact β and the β of the mesh.
 
 ## Tolerance
 

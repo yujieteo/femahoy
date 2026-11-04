@@ -1,6 +1,6 @@
-## Conclusion
+# Finding
 
-The GetDP model gives the analytical spherical wave of the pulsating sphere: at each node of the mesh, p is within 0.39 % of the analytical p. The radiation impedance z is within 0.11 %, and p at the check point (r = 0.3 m) is within 0.32 %. The tolerance is 1 %.
+The GetDP model gives the analytical spherical wave of the pulsating sphere. At each node of the mesh, p is within 0.39 % of the analytical p. The radiation impedance z is within 0.11 %, and p at the check point (r = 0.3 m) is within 0.32 %. The tolerance is 1 %.
 
 <!--curve pressure.csv-->
 

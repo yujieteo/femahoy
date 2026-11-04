@@ -1,10 +1,10 @@
 # dam-break-martin-moyce derivation
 
-## Conclusion
+## Finding
 
-The surge front of the SPH model is in the scatter of the fronts that Martin and Moyce (1952) measured, but it is slower than their mean. At Z = 2.11, 3.00 and 3.89, the front of the model arrives 2.0 %, 3.4 % and 4.3 % later than the mean. Each value is in the range of the single runs and less than 1 standard deviation from the mean. At Z = 3.89, the model (T = 3.244) is almost as late as the slowest single run (3.25).
+The surge front of the SPH model is in the scatter of the fronts that Martin and Moyce (1952) measured. But it is slower than their mean. At Z = 2.11, 3.00 and 3.89, the front of the model arrives 2.0 %, 3.4 % and 4.3 % later than the mean. Each value is in the range of the single runs and less than 1 standard deviation from the mean. At Z = 3.89, the model (T = 3.244) is almost as late as the slowest single run (3.25).
 
-**Dam break, the surge front (LAMMPS SPH, 40 particles across a)**
+### Dam break, the surge front (LAMMPS SPH, 40 particles across a)
 
 ![Dam break, the surge front (LAMMPS SPH, 40 particles across a)](dam-break-martin-moyce/front.svg)
 
@@ -14,60 +14,56 @@ single runs: Martin and Moyce (1952), Table 2, the smallest and the largest T of
 
 The front is the largest x of the water plus dx / 2. T is 1.19 at Z = 1.44, as in the source.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | T = t sqrt(2 g / a) [1] | SPH (Z = x / a, the front [1]) | measured (Z = x / a, the front [1]) | single runs (Z = x / a, the front [1]) |
 | ---: | ---: | ---: | ---: |
-| 0.1624 | 1 | — | — |
-| 0.2617 | 1.009 | — | — |
-| 0.361 | 1.0225 | — | — |
-| 0.4602 | 1.0502 | — | — |
-| 0.5595 | 1.0836 | — | — |
-| 0.6588 | 1.1237 | — | — |
-| 0.7581 | 1.1668 | — | — |
-| 0.8573 | 1.2184 | — | — |
-| 0.9566 | 1.2764 | — | — |
-| 1.0559 | 1.3392 | — | — |
-| 1.1552 | 1.4125 | — | — |
-| 1.19 | 1.4401 | — | — |
-| 1.2544 | 1.4918 | — | — |
-| 1.3537 | 1.5776 | — | — |
-| 1.453 | 1.6737 | — | — |
-| 1.5522 | 1.7713 | — | — |
-| 1.6515 | 1.8757 | — | — |
-| 1.7508 | 1.9839 | — | — |
-| 1.8501 | 2.0913 | — | — |
-| 1.8673 | 2.1101 | — | — |
-| 1.9493 | 2.2012 | — | — |
-| 2.0486 | 2.3165 | — | — |
-| 2.1479 | 2.4346 | — | — |
-| 2.2472 | 2.5542 | — | — |
-| 2.3464 | 2.6787 | — | — |
-| 2.4457 | 2.8057 | — | — |
-| 2.545 | 2.9334 | — | — |
-| 2.5961 | 3.0001 | — | — |
-| 2.6442 | 3.0635 | — | — |
-| 2.7435 | 3.1965 | — | — |
-| 2.8428 | 3.3315 | — | — |
-| 2.9421 | 3.4672 | — | — |
-| 3.0413 | 3.6038 | — | — |
-| 3.1406 | 3.7434 | — | — |
-| 3.2399 | 3.8845 | — | — |
-| 3.2437 | 3.8901 | — | — |
-| 1.19 | — | 1.44 | — |
-| 1.83 | — | 2.11 | — |
-| 1.75 | — | — | 2.11 |
-| 1.88 | — | — | 2.11 |
-| 2.51 | — | 3 | — |
-| 2.38 | — | — | 3 |
-| 2.66 | — | — | 3 |
-| 3.11 | — | 3.89 | — |
-| 2.94 | — | — | 3.89 |
-| 3.25 | — | — | 3.89 |
-
-</details>
+| 0.1624 | 1 | n/a | n/a |
+| 0.2617 | 1.009 | n/a | n/a |
+| 0.361 | 1.0225 | n/a | n/a |
+| 0.4602 | 1.0502 | n/a | n/a |
+| 0.5595 | 1.0836 | n/a | n/a |
+| 0.6588 | 1.1237 | n/a | n/a |
+| 0.7581 | 1.1668 | n/a | n/a |
+| 0.8573 | 1.2184 | n/a | n/a |
+| 0.9566 | 1.2764 | n/a | n/a |
+| 1.0559 | 1.3392 | n/a | n/a |
+| 1.1552 | 1.4125 | n/a | n/a |
+| 1.19 | 1.4401 | n/a | n/a |
+| 1.2544 | 1.4918 | n/a | n/a |
+| 1.3537 | 1.5776 | n/a | n/a |
+| 1.453 | 1.6737 | n/a | n/a |
+| 1.5522 | 1.7713 | n/a | n/a |
+| 1.6515 | 1.8757 | n/a | n/a |
+| 1.7508 | 1.9839 | n/a | n/a |
+| 1.8501 | 2.0913 | n/a | n/a |
+| 1.8673 | 2.1101 | n/a | n/a |
+| 1.9493 | 2.2012 | n/a | n/a |
+| 2.0486 | 2.3165 | n/a | n/a |
+| 2.1479 | 2.4346 | n/a | n/a |
+| 2.2472 | 2.5542 | n/a | n/a |
+| 2.3464 | 2.6787 | n/a | n/a |
+| 2.4457 | 2.8057 | n/a | n/a |
+| 2.545 | 2.9334 | n/a | n/a |
+| 2.5961 | 3.0001 | n/a | n/a |
+| 2.6442 | 3.0635 | n/a | n/a |
+| 2.7435 | 3.1965 | n/a | n/a |
+| 2.8428 | 3.3315 | n/a | n/a |
+| 2.9421 | 3.4672 | n/a | n/a |
+| 3.0413 | 3.6038 | n/a | n/a |
+| 3.1406 | 3.7434 | n/a | n/a |
+| 3.2399 | 3.8845 | n/a | n/a |
+| 3.2437 | 3.8901 | n/a | n/a |
+| 1.19 | n/a | 1.44 | n/a |
+| 1.83 | n/a | 2.11 | n/a |
+| 1.75 | n/a | n/a | 2.11 |
+| 1.88 | n/a | n/a | 2.11 |
+| 2.51 | n/a | 3 | n/a |
+| 2.38 | n/a | n/a | 3 |
+| 2.66 | n/a | n/a | 3 |
+| 3.11 | n/a | 3.89 | n/a |
+| 2.94 | n/a | n/a | 3.89 |
+| 3.25 | n/a | n/a | 3.89 |
 
 The difference increases along the floor. The checks use 29 %, 49 % and 61 % of the tolerance. The section "Studies" below gives a part of the cause: the resolution. With 80 particles across a, the front is earlier, and the values extrapolated to a fine resolution are 1.9 % above the mean.
 
@@ -112,10 +108,10 @@ No other case of the suite has any of these items:
 
 ## Source
 
-J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, https://doi.org/10.1098/rsta.1952.0006.
+J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, <https://doi.org/10.1098/rsta.1952.0006>.
 
-A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column is released. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in, in the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
-The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"), because the instant of the release is not known exactly. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
+A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column starts to fall. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in. The times have the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
+The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"). The reason is that the exact instant of the release is unknown. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
 
 The checks use the column "mean" for a = 2.25 in:
 
@@ -125,7 +121,7 @@ The checks use the column "mean" for a = 2.25 in:
 | `T_300` | 3.00 | 2.51 | 9, from 2.38 to 2.66 | 0.099 (3.9 %) |
 | `T_389` | 3.89 | 3.11 | 4, from 2.94 to 3.25 | 0.139 (4.5 %) |
 
-The 3 points are near the start, the middle and the end of the data that the source gives for most runs of a = 2.25 in.
+The 3 points are near the start, the middle and the end of the data. The source gives these data for most runs of a = 2.25 in.
 
 ## Model
 
@@ -149,13 +145,13 @@ The run stops at each Z with `fix halt`. The last stop is at Z = 3.89, at t = 0.
 Problems that the model solves:
 
 - With dt = 0.1 h / c0 and alpha = 0.02, the density goes from 400 to 1350 kg/m^3 and particles leave the box. A smaller time step removes this.
-- With dt = 0.05 h / c0 and alpha = 0.02, T is 6 % to 21 % too small at n = 80, and 1 % to 18 % too large at n = 40. With dt = 0.025 h / c0, the values change little from n = 40 to n = 80.
+- With dt = 0.05 h / c0 and alpha = 0.02, T is 6 % to 21 % too small at n = 80. It is 1 % to 18 % too large at n = 40. With dt = 0.025 h / c0, the values change little from n = 40 to n = 80.
 
 ## Studies
 
 These commands, in the repository root, solve the case with other values in a scratch folder. `-var` sets the variables `n`, `alpha` and `cfl` of `case.lmp`:
 
-```
+```text
 mkdir /tmp/dam && cp validation/cases/dam-break-martin-moyce/sph/case.lmp /tmp/dam && cd /tmp/dam
 lmp -in case.lmp -log none -var n 80
 ```

@@ -1,6 +1,6 @@
 # fracture-centre-crack derivation
 
-## Conclusion
+## Finding
 
 The CalculiX model gives the stress intensity factor K_I of the centre crack 0.19 % above the formula of Tada (1971). The model gives K_I = 1053.28 MPa mm^0.5, and the formula gives 1051.27 MPa mm^0.5. The tolerance is 0.5 %.
 
@@ -13,17 +13,15 @@ The model is 1/4 of the plate. The crack is on y = 0 from x = 0 to 25 mm, with t
 
 The opening of each node near the tip gives a value of K_I too. At the node nearest the tip, r = 0.125 mm, it is 0.25 % below the formula. Farther from the tip, the higher terms of the field make it smaller.
 
-**K_I from the opening of the crack face near the tip**
+### K_I from the opening of the crack face near the tip
 
 ![K_I from the opening of the crack face near the tip](fracture-centre-crack/opening.svg)
 
-model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face, from v = (4 K_I / E') sqrt(r / 2 pi). This formula is the first term of the field at the tip. It is exact only as r goes to 0.
+model is K_I = (E' / 4) v sqrt(2 pi / r) at each node of the crack face. It comes from v = (4 K_I / E') sqrt(r / 2 pi). This formula is the first term of the field at the tip. It is exact only as r goes to 0.
 
 Tada is the formula of Tada (1971) in check.toml. The check gets K_I of the model from the 2 nodes at r = L/4 and L (derivation.md).
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | r = a - x [mm] | model (K_I [MPa mm^0.5]) | Tada (K_I [MPa mm^0.5]) |
 | ---: | ---: | ---: |
@@ -43,8 +41,6 @@ Original values. — means no sample.
 | 3.5984 | 1009.67 | 1051.27 |
 | 4.2992 | 1001.75 | 1051.27 |
 | 5 | 993.8 | 1051.27 |
-
-</details>
 
 The finer meshes of the mesh study give K_I 0.10 % to 0.16 % above the formula. An error of the method gives a larger difference. For example, E in place of E' gives -9 %.
 
@@ -98,7 +94,7 @@ This puts the singularity 1/sqrt(r) of the stress in the elements at the tip (R.
 
 ## K_I from the displacements
 
-On the face of the crack, near the tip, the opening of 1 face is v = (4 K_I / E') sqrt(r / 2π), with E' = E / (1 - nu^2) in plane strain.
+On the face of the crack, near the tip, the opening of 1 face is v = (4 K_I / E') sqrt(r / 2π). In plane strain, E' = E / (1 - nu^2).
 On the edge of a quarter-point element, v(r) = v_T + (-3 v_T + 4 v_B - v_C) sqrt(r/L) + 2 (v_T - 2 v_B + v_C) r/L.
 T is the tip, B is the node at L/4 and C is the node at L. Here v_T = 0. The terms in sqrt(r) give:
 
@@ -127,7 +123,7 @@ The mesh has the size L at the tip and grows to the edges. Each finer mesh has m
 
 L has the largest effect. With 16 rays and 8 + 8 rings, L = 2.0, 1.0 and 0.25 mm give +1.02 %, +0.46 % and +0.07 %.
 
-The source has a strip with no end. With 48 rays, 16 + 24 rings and L = 0.25 mm, K_I changes by -0.09 % from h = 100 mm to 150 mm, and by -0.01 % from 150 mm to 200 mm.
+The source has a strip with no end. With 48 rays, 16 + 24 rings and L = 0.25 mm, K_I changes by -0.09 % from h = 100 mm to 150 mm. It changes by -0.01 % from 150 mm to 200 mm.
 
 The same mesh rules (L = a/50) at other crack lengths give these differences from the formula:
 
@@ -139,7 +135,7 @@ At a/b = 0.1, the elements between the tip and the top edge are long. 32 rays an
 
 ## Tolerance
 
-The tolerance is 0.5 % (`rel_tol = 0.005`). It is the sum of the error of the formula (0.2 %), the error of the mesh (0.2 %) and the height of the plate (0.02 %), with a small margin.
+The tolerance is 0.5 % (`rel_tol = 0.005`). It is the sum of the error of the formula (0.2 %), the error of the mesh (0.2 %) and the height of the plate (0.02 %). It also has a small margin.
 An error of the method is larger: E in place of E' gives -9 %, and L/2 in place of L gives +41 %.
 
 ## Files

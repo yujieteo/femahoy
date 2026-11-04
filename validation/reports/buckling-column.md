@@ -1,6 +1,6 @@
 # buckling-column derivation
 
-## Conclusion
+## Finding
 
 The solid model gives the critical load of the column 0.10 % above the theory of Timoshenko and Gere (1961). The model gives 10806.05 N, and the theory gives 10794.88 N. The tolerance is 1 %.
 
@@ -18,7 +18,7 @@ A finer mesh gives +0.06 %: the size 3.3 mm in derivation.md, and the size 2.5 m
 
 Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
-This case checks the critical load of a steel column that is fixed at the base and free at the top (units SI-mm).
+This case checks the critical load of a steel column with a fixed base and a free top (units SI-mm).
 
 ## Source
 

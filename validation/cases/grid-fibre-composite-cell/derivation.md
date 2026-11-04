@@ -14,7 +14,7 @@ This case checks the homogenized material of 2 periodic unit cells of a fibre co
 
 ## Reference
 
-Round fibres, across the fibres. Lord Rayleigh, On the influence of obstacles arranged in rectangular order upon the properties of a medium, Phil. Mag. 34 (1892) 481-502, solved the square array of cylinders. W. T. Perrins, D. R. McKenzie and R. C. McPhedran, Transport properties of regular arrays of cylinders, Proc. R. Soc. Lond. A 369 (1979) 207-225, give the lattice sums of its formula:
+Round fibres, across the fibres. Lord Rayleigh, On the influence of obstacles arranged in rectangular order on the properties of a medium, Phil. Mag. 34 (1892) 481-502, solved the square array of cylinders. W. T. Perrins, D. R. McKenzie and R. C. McPhedran, Transport properties of regular arrays of cylinders, Proc. R. Soc. Lond. A 369 (1979) 207-225, give the lattice sums of its formula:
 
 k*/km = 1 + 2 f ρ / (1 − f ρ − 0.305827 ρ² f⁴ / (1 − 1.402958 ρ² f⁸) − 0.013362 ρ² f⁸), with ρ = (kf − km) / (kf + km).
 
@@ -24,7 +24,7 @@ The Hashin-Shtrikman bounds of a transversely isotropic 2D composite (Z. Hashin 
 
 Round fibres, along the fibres: the field is uniform, and kzz = km + f (kf − km). The polygon of the circle has the volume fraction f = 0.4997928030 at max_cell 0.02, so kzz = 5.0979694697.
 
-Square fibres, along the fibres. With the same Poisson ratio in the 2 materials, a uniform strain (εzz = 1, εxx = εyy = −ν) is in equilibrium and is compatible, so Ez = f Ef + (1 − f) Em = 85040 MPa exactly (R. Hill, J. Mech. Phys. Solids 12 (1964) 199-212). In the same way kzz = 3.728 and the density 1.416e-9 are the means.
+Square fibres, along the fibres. With the same Poisson ratio in the 2 materials, a uniform strain (εzz = 1, εxx = εyy = −ν) is in equilibrium and compatible. So Ez = f Ef + (1 − f) Em = 85040 MPa exactly (R. Hill, J. Mech. Phys. Solids 12 (1964) 199-212). In the same way kzz = 3.728 and the density 1.416e-9 are the means.
 
 ## Mesh study
 
@@ -40,4 +40,4 @@ The square fibres give Ez = 85040.0000 and kzz = 3.72800000 at max_cell 0.05.
 
 ## Tolerance
 
-The change of kxx from max_cell 0.02 to 0.01 is 0.014 %, so the discretization error at 0.02, with the area of the polygon of the circle, is about 0.02 %. The formula leaves out the terms of f¹² and above, about 0.01 % at f = 0.5. Their sum is 0.03 %, and the tolerance is 0.1 %. The checks along the fibres are exact to 1e-10, inside the same tolerance.
+The change of kxx from max_cell 0.02 to 0.01 is 0.014 %. So the discretization error at 0.02, with the area of the polygon of the circle, is about 0.02 %. The formula leaves out the terms of f¹² and above, about 0.01 % at f = 0.5. Their sum is 0.03 %, and the tolerance is 0.1 %. The checks along the fibres are exact to 1e-10, inside the same tolerance.

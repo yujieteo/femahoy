@@ -55,7 +55,7 @@ def main(out, folders):
         "# y: T [K]\n"
         "# note: The air is at 0 < y < 1 mm and the wall at 1 < y < 2 mm. The heater is at y = 2 mm, "
         "the centre line at y = 0.\n"
-        "# note: The exact line is the fully developed solution of derivation.md: the profile of "
+        "# note: The exact line is the fully developed solution of derivation.md. It is the profile of "
         "Shah and London (1978) in the air, and a linear temperature in the wall.\n"
         "# note: The model is the mean of the 2 cell columns at x = 39.9 and 40.1 mm.\n"
         "y [mm],model,exact\n" + "\n".join(rows) + "\n"

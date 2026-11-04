@@ -13,7 +13,7 @@ This case checks the bending of the 10-node tetrahedra on a bar of round section
 
 ## Reference
 
-The solver makes the circle a polygon of n = 64 points on the circle, and the reference uses the area and the moment of inertia of that polygon. The polygon is n triangles with the apex at the centre, so A = (n / 2) R² sin(2π/n) = 78.41371 mm². The moment of inertia of the n triangles about a diameter is I = (n R⁴ / 24) sin(2π/n) (2 + cos(2π/n)) = 489.2991 mm⁴, 0.32 % less than π R⁴ / 4 = 490.8739 mm⁴ of the circle. P = 78.41371 N, G = E / (2 (1 + ν)) = 80769.23 MPa.
+The solver makes the circle a polygon of n = 64 points on the circle. The reference uses the area and the moment of inertia of that polygon. The polygon is n triangles with the apex at the centre, so A = (n / 2) R² sin(2π/n) = 78.41371 mm². The moment of inertia of the n triangles about a diameter is I = (n R⁴ / 24) sin(2π/n) (2 + cos(2π/n)) = 489.2991 mm⁴. This is 0.32 % less than π R⁴ / 4 = 490.8739 mm⁴ of the circle. P = 78.41371 N, G = E / (2 (1 + ν)) = 80769.23 MPa.
 
 The tip deflection of the Timoshenko beam is the bending part plus the shear part:
 
@@ -32,7 +32,7 @@ The bending stress is σxx = M z / I, with M = P (L − x): the exact Saint-Vena
 | 2.5 | 232,080 | −0.253973 | 40.053 | −40.104 |
 | 1.25 | 479,520 | −0.254157 | 40.061 | −40.075 |
 
-The 64 segments of the circle fix the mesh of the section (450 triangles), so max_cell sets only the planes along x. Each change of tip.uz is 0.31 times the last. The extrapolation is −0.254240 mm, 0.60 % less than the Timoshenko beam: the clamp at the root also stops the warping and the Poisson contraction of the section, which a beam does not. The box bar of `grid-cantilever` shows the same effect, 0.66 %.
+The 64 segments of the circle fix the mesh of the section (450 triangles), so max_cell sets only the planes along x. Each change of tip.uz is 0.31 times the last. The extrapolation is −0.254240 mm, 0.60 % less than the Timoshenko beam. The clamp at the root also stops the warping and the Poisson contraction of the section, which a beam does not. The box bar of `grid-cantilever` shows the same effect, 0.66 %.
 
 ## Tolerance
 

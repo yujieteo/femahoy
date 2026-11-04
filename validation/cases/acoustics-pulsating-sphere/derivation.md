@@ -22,7 +22,7 @@ With the time factor exp(j omega t), the outgoing spherical wave is p = A exp(-j
 The linear Euler equation gives the radial velocity: j omega rho u = -dp/dr.
 On the sphere r = a, u = U. Thus:
 
-```
+```text
 p(r) = rho c U z (a / r) exp(-j k (r - a))
 z = j ka / (1 + j ka) = (ka)^2 / (1 + (ka)^2) + j ka / (1 + (ka)^2)
 ```
@@ -67,7 +67,7 @@ The .pos files have first-order elements, because the mesh is first-order. Thus 
 
 These commands, in the repository root, solve the case on another mesh in a scratch folder. `-setnumber` sets the mesh sizes of `case.geo` in m:
 
-```
+```text
 mkdir /tmp/sphere && cp validation/cases/acoustics-pulsating-sphere/500hz/case.* /tmp/sphere && cd /tmp/sphere
 gmsh case.geo -3 -o case.msh -setnumber ha 0.007 -setnumber hR 0.035
 getdp case.pro -msh case.msh -solve '#1' -pos '#1'
@@ -94,7 +94,7 @@ The times are the times of GetDP 4.0.0 on a Mac with 10 cores.
 | x 0.7 | -0.06 % | 0.00 % | -0.13 % | -0.04 % |
 | x 0.5 | -0.03 % | 0.00 % | -0.06 % | -0.03 % |
 
-Each value goes to the analytical value as the mesh becomes finer. The error of z_re falls by a factor of about 2 for each step: the meshed sphere is a polyhedron, and its error falls as h^2.
+Each value goes to the analytical value as the mesh becomes finer. The error of z_re falls by a factor of about 2 for each step. The meshed sphere is a polyhedron, and its error falls as h^2.
 The meshed sphere of the check mesh has 0.19 % less area than the octant of the sphere. z uses the area of the meshed sphere.
 
 ## Tolerance

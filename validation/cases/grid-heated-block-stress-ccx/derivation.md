@@ -1,6 +1,6 @@
 # grid-heated-block-stress-ccx derivation
 
-This case compares the grid solver with CalculiX on the same 3D problem of thermal stress: the steady temperature of a heated copper block on a steel plate, and the deformation that it causes (units SI-m). It checks the one-way coupling of the heat solve and the stress solve, a point support, and the shape of a surface. It has no analytical solution.
+This case compares the grid solver with CalculiX on the same 3D problem of thermal stress (units SI-m). The problem has the steady temperature of a heated copper block on a steel plate, and the deformation that it causes. It checks the one-way coupling of the heat solve and the stress solve, a point support, and the shape of a surface. It has no analytical solution.
 
 ## Source
 
@@ -12,8 +12,8 @@ The heat problem is that of `grid-heated-block-ccx`.
 
 | Item | Value |
 |---|---|
-| Plate | steel, x and y 0 to 0.1 m, z 0 to 0.01 m: k = 50 W/(m K), E = 200 GPa, ν = 0.3, α = 12e-6 1/K |
-| Block | copper, x and y 0.035 to 0.065 m, z 0.01 to 0.03 m: k = 400 W/(m K), E = 110 GPa, ν = 0.34, α = 17e-6 1/K |
+| Plate | steel, x and y 0 to 0.1 m, z 0 to 0.01 m. k = 50 W/(m K), E = 200 GPa, ν = 0.3, α = 12e-6 1/K |
+| Block | copper, x and y 0.035 to 0.065 m, z 0.01 to 0.03 m. k = 400 W/(m K), E = 110 GPa, ν = 0.34, α = 17e-6 1/K |
 | Source | 2e6 W/m3 in the block |
 | Bottom of the plate, z− | convection, h = 200 W/(m2 K), air at 20 °C |
 | Stress-free temperature | 20 °C |
@@ -22,7 +22,7 @@ The heat problem is that of `grid-heated-block-ccx`.
 
 The planes of symmetry hold ux and uy, and the point holds uz. Thus the supports stop only the rigid motions, and the plate is free to bend. The force of the point support is 0.
 
-The checks are the displacements at the top of the block (0.05, 0.05, 0.03), at the bottom corner of the plate (0.1, 0.1, 0) and at the middle of the bottom edge (0.1, 0.05, 0), and the range of uz on the bottom face. The plate bends down at its edges: the bottom face is concave.
+The checks are the displacements at the top of the block (0.05, 0.05, 0.03) and at the bottom corner of the plate (0.1, 0.1, 0). They also include the displacement at the middle of the bottom edge (0.1, 0.05, 0), and the range of uz on the bottom face. The plate bends down at its edges: the bottom face is concave.
 
 ## Mesh studies
 
@@ -46,7 +46,7 @@ CalculiX, C3D20, quarter model (values in 1e-6 m):
 
 ## Tolerance
 
-The edge where the block meets the plate is singular in the stress, so both solvers converge at about first order: each change is about half of the last one (ratios 2.07 to 2.22). The first-order extrapolation of the 3 meshes gives:
+The edge where the block meets the plate is singular in the stress, so both solvers converge at about first order. Each change is about half of the last one (ratios 2.07 to 2.22). The first-order extrapolation of the 3 meshes gives:
 
 | | grid solver | CalculiX |
 |---|---:|---:|
@@ -54,4 +54,4 @@ The edge where the block meets the plate is singular in the stress, so both solv
 | plate_corner.uz | −7.093 | −7.092 |
 | plate_edge.uz | −4.752 | −4.750 |
 
-The 2 solvers agree to 0.03 % after the extrapolation. The error of the grid solver at max_cell 0.00125 m is at most 1.8 % (plate_edge.uz), and the error of the reference is at most 1.1 % (plate_edge.uz). Their sum is 2.9 %. The tolerance is 3 %.
+The 2 solvers agree to 0.03 % after the extrapolation. The error of the grid solver at max_cell 0.00125 m is at most 1.8 % (plate_edge.uz). The error of the reference is at most 1.1 % (plate_edge.uz). Their sum is 2.9 %. The tolerance is 3 %.

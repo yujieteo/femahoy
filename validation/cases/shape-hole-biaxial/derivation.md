@@ -1,14 +1,14 @@
 # shape-hole-biaxial derivation
 
-This case checks the shape optimization loop of `fh run`: the hole of minimum stress concentration in a large plate under the biaxial remote stress sx = 1, sy = 0.5.
-The exact optimum is known: the ellipse with the axis ratio a/b = sx/sy = 2. Its hoop stress is sx + sy = 1.5 at each point of the edge.
+This case checks the shape optimization loop of `fh run`. The case is the hole of minimum stress concentration in a large plate under the biaxial remote stress sx = 1, sy = 0.5.
+The exact optimum is the ellipse with the axis ratio a/b = sx/sy = 2. Its hoop stress is sx + sy = 1.5 at each point of the edge.
 The loop changes 2 variables of a superellipse hole and finds the optimum in 52 solves.
 
 ## Source
 
-- G. P. Cherepanov, "Inverse problems of the plane theory of elasticity", Journal of Applied Mathematics and Mechanics 38 (1974) 915-931. When the 2 remote stresses have the same sign, the hole of minimum stress concentration has a constant hoop stress on its edge (the equal-strength hole). For 1 hole, this hole is an ellipse with a/b = sx/sy.
+- G. P. Cherepanov, "Inverse problems of the plane theory of elasticity", Journal of Applied Mathematics and Mechanics 38 (1974) 915-931. When the 2 remote stresses have the same sign, the hole of minimum stress concentration has a constant hoop stress on its edge. It is the equal-strength hole. For 1 hole, this hole is an ellipse with a/b = sx/sy.
 - C. E. Inglis, "Stresses in a plate due to the presence of cracks and sharp corners", Transactions of the Institution of Naval Architects 55 (1913) 219-241. The hoop stress on the edge of an elliptical hole. At the end of the x axis (a, 0), it is sy (1 + 2 a/b) - sx. At the end of the y axis (0, b), it is sx (1 + 2 b/a) - sy.
-- K. Bandara, T. Rüberg and F. Cirak, "Shape optimisation with multiresolution subdivision surfaces and immersed finite elements", Computer Methods in Applied Mechanics and Engineering 300 (2016) 510-539, https://doi.org/10.1016/j.cma.2015.11.015, section 5.1.2. The same problem is a benchmark of shape optimization. For the stress ratio 0.5, the aspect ratio of the result goes to the exact value when the plate becomes large.
+- K. Bandara, T. Rüberg and F. Cirak, "Shape optimisation with multiresolution subdivision surfaces and immersed finite elements", Computer Methods in Applied Mechanics and Engineering 300 (2016) 510-539, <https://doi.org/10.1016/j.cma.2015.11.015>, section 5.1.2. The same problem is a benchmark of shape optimization. For the stress ratio 0.5, the aspect ratio of the result goes to the exact value when the plate becomes large.
 
 No hole shape gives a peak below sx + sy. The sum sx + sy of the 2 normal stresses is a harmonic function in the plate. It goes to the remote value 1.5 far from the hole. On the free edge, it is equal to the hoop stress. Thus the hoop stress cannot be below 1.5 at all points of the edge, and its largest value is at least 1.5.
 
@@ -32,16 +32,16 @@ The case `L40` is a quarter of the plate. `mesh.geo` makes the mesh with gmsh, a
 | Mesh | 6-node plane stress triangles (`CPS6`), element size 0.025 + 0.15 d at the distance d from the hole, 2056 elements for the exact ellipse |
 | Material | E = 1000, nu = 0.3, thickness 0.01 |
 | Supports | ux = 0 on x = 0, uy = 0 on y = 0 (symmetry) |
-| Load | the remote strain on the far edges: ux = 40 (sx - nu sy) / E = 0.034 on x = 40, uy = 40 (sy - nu sx) / E = 0.008 on y = 40 |
+| Load | the remote strain on the far edges. ux = 40 (sx - nu sy) / E = 0.034 on x = 40, uy = 40 (sy - nu sx) / E = 0.008 on y = 40 |
 | Objective | the largest von Mises stress `MISES` at a node of the hole edge (node set `HOLE`) |
 
 On the free edge, the von Mises stress is equal to the absolute value of the hoop stress.
 `ccx` expands each plane stress element to a layer with the section thickness. A thick layer gets a stress SZZ that is not 0, and the circle then gives a peak 1.2 % too low. Thus the thickness is 0.01.
-The far edges move. They do not get a pressure, because the gmsh `.inp` file has no element faces for `*DLOAD`. The 2 boundary conditions give the same stress far from the hole. The study of the plate size below shows that the difference near the hole decreases as 1/L^2, with L the half side of the plate.
+The far edges move. They do not get a pressure, because the gmsh `.inp` file has no element faces for `*DLOAD`. The 2 boundary conditions give the same stress far from the hole. The study of the plate size below shows that the difference near the hole decreases as 1/L^2. L is the half side of the plate.
 
 ## The loop
 
-The loop of `fh` (`crates/fh/src/optimize.rs`) is the Nelder-Mead method on the variables `ratio` (1 to 4) and `power` (1.6 to 4), each scaled to 0 to 1. For each design:
+The loop of `fh` (`crates/fh/src/optimize.rs`) is the Nelder-Mead method on the variables `ratio` (1 to 4) and `power` (1.6 to 4). The method scales each variable to 0 to 1. For each design:
 
 1. gmsh meshes `mesh.geo` with `-setnumber ratio ... -setnumber power ...`.
 2. `ccx` solves `job.inp`.

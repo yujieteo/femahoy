@@ -40,7 +40,7 @@ The times are from 2026-10-28 on an Apple M5 Mac (macOS 27), with emcc 6.0.9 and
 
 ## Limits
 
-- Only grid cases (`grid.toml`) run. A case that needs CalculiX, GetDP, OpenFOAM or another program is refused with a message that names the solver.
+- Only grid cases (`grid.toml`) run. A case that needs CalculiX, GetDP, OpenFOAM or another program gets a refusal. The message names the solver.
 - The page has 1 thread and at most 4 GB of memory. Large 3D models and long transient runs are not suitable.
 - The page shows no 3D view. The viewer of `fh serve` is a different wasm build (wgpu with wasm-bindgen) and does not link with emcc. Thus the results leave the page by the `.tar` export.
 - The page cannot run `fh serve`, `fh report` or the agent. The crate `fh` builds for this target only without its default feature `server`.

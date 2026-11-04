@@ -32,7 +32,7 @@ The bending stress is σxx = M z / I, with M = P (L − x) and z from the mid-pl
 | 1.25 | 19,440 | −0.190444 | 29.633 |
 | 0.625 | 138,720 | −0.190579 | 29.440 |
 
-The changes of `tip.uz` fall by a factor of about 2.4 for each halving, and the extrapolation gives −0.190671 mm. This is 0.66 % less than the beam theory: the clamp of all 3 components holds the Poisson contraction and the warping of the root section, which the beam theory does not. The error at max_cell 2.5 mm is 0.30 %.
+The changes of `tip.uz` fall by a factor of about 2.4 for each halving, and the extrapolation gives −0.190671 mm. This is 0.66 % less than the beam theory. The clamp of all 3 components holds the Poisson contraction and the warping of the root section, which the beam theory does not. The error at max_cell 2.5 mm is 0.30 %.
 
 The stress probes are at the centre of a cell in x only at max_cell 2.5 mm. There, the grid gives 29.2500000 MPa. The incompatible modes make the cell exact for a linear moment at its centre. At the other grids, the probes are on a cell face, and the stress is the value of 1 cell at its edge.
 

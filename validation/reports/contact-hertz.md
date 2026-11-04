@@ -1,6 +1,6 @@
 # contact-hertz derivation
 
-## Conclusion
+## Finding
 
 The result below compares the largest contact pressure with the Hertz pressure of Johnson (1985). The tolerance is 3 %.
 
@@ -30,7 +30,7 @@ This case checks the largest contact pressure of a steel ball on a flat steel bl
 ## Source
 
 K. L. Johnson, *Contact Mechanics*, Cambridge University Press, 1985, section 4.2, the Hertz contact of 2 solids of revolution.
-For a sphere of radius R on a flat with the force P: a = (3 P R / (4 E*))^(1/3) and p0 = 3 P / (2π a²), with 1/E* = (1 - nu1²)/E1 + (1 - nu2²)/E2.
+Take a sphere of radius R on a flat with the force P. Then a = (3 P R / (4 E*))^(1/3) and p0 = 3 P / (2π a²), with 1/E* = (1 - nu1²)/E1 + (1 - nu2²)/E2.
 
 ## Model
 

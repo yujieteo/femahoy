@@ -1,90 +1,86 @@
 # cht-heated-channel derivation
 
-## Conclusion
+## Finding
 
 The model agrees with the exact conjugate solution. The 3 checked temperatures are 0.0002 K to 0.0043 K below the exact values, and the tolerance is 0.006 K. `heater_T` uses 72 % of the tolerance. The mesh error of the check mesh is -0.0040 K (see "Mesh study"), thus the mesh causes most of the difference.
 
 The model also has the correct temperature across the full section at x = 40 mm, not only at the checked points. In the air, the temperature increases by 3.0 K from the centre line to the interface. In the wall, it increases linearly by 0.48 K to the heater. At the scale of the plot, the model line is on the exact line.
 
-**The temperature across the half channel and the wall at x = 40 mm**
+### The temperature across the half channel and the wall at x = 40 mm
 
 ![The temperature across the half channel and the wall at x = 40 mm](cht-heated-channel/profile.svg)
 
 The air is at 0 < y < 1 mm and the wall at 1 < y < 2 mm. The heater is at y = 2 mm, the centre line at y = 0.
 
-The exact line is the fully developed solution of derivation.md: the profile of Shah and London (1978) in the air, and a linear temperature in the wall.
+The exact line is the fully developed solution of derivation.md. It is the profile of Shah and London (1978) in the air, and a linear temperature in the wall.
 
 The model is the mean of the 2 cell columns at x = 39.9 and 40.1 mm.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | y [mm] | model (T [K]) | exact (T [K]) |
 | ---: | ---: | ---: |
-| 0.05 | 309.909 | — |
-| 0.15 | 309.981 | — |
-| 0.25 | 310.123 | — |
-| 0.35 | 310.332 | — |
-| 0.45 | 310.604 | — |
-| 0.55 | 310.934 | — |
-| 0.65 | 311.313 | — |
-| 0.75 | 311.734 | — |
-| 0.85 | 312.187 | — |
-| 0.95 | 312.66 | — |
-| 1.05 | 312.924 | — |
-| 1.15 | 312.972 | — |
-| 1.25 | 313.02 | — |
-| 1.35 | 313.068 | — |
-| 1.45 | 313.116 | — |
-| 1.55 | 313.164 | — |
-| 1.65 | 313.212 | — |
-| 1.75 | 313.26 | — |
-| 1.85 | 313.308 | — |
-| 1.95 | 313.356 | — |
-| 0 | — | 309.9044 |
-| 0.05 | — | 309.9133 |
-| 0.1 | — | 309.9403 |
-| 0.15 | — | 309.985 |
-| 0.2 | — | 310.0474 |
-| 0.25 | — | 310.127 |
-| 0.3 | — | 310.2235 |
-| 0.35 | — | 310.3363 |
-| 0.4 | — | 310.465 |
-| 0.45 | — | 310.6087 |
-| 0.5 | — | 310.7669 |
-| 0.55 | — | 310.9384 |
-| 0.6 | — | 311.1226 |
-| 0.65 | — | 311.3182 |
-| 0.7 | — | 311.5243 |
-| 0.75 | — | 311.7395 |
-| 0.8 | — | 311.9626 |
-| 0.85 | — | 312.1921 |
-| 0.9 | — | 312.4267 |
-| 0.95 | — | 312.6646 |
-| 1 | — | 312.9044 |
-| 1.05 | — | 312.9284 |
-| 1.1 | — | 312.9524 |
-| 1.15 | — | 312.9764 |
-| 1.2 | — | 313.0004 |
-| 1.25 | — | 313.0244 |
-| 1.3 | — | 313.0484 |
-| 1.35 | — | 313.0724 |
-| 1.4 | — | 313.0964 |
-| 1.45 | — | 313.1204 |
-| 1.5 | — | 313.1444 |
-| 1.55 | — | 313.1683 |
-| 1.6 | — | 313.1923 |
-| 1.65 | — | 313.2163 |
-| 1.7 | — | 313.2403 |
-| 1.75 | — | 313.2643 |
-| 1.8 | — | 313.2883 |
-| 1.85 | — | 313.3123 |
-| 1.9 | — | 313.3363 |
-| 1.95 | — | 313.3603 |
-| 2 | — | 313.3843 |
-
-</details>
+| 0.05 | 309.909 | n/a |
+| 0.15 | 309.981 | n/a |
+| 0.25 | 310.123 | n/a |
+| 0.35 | 310.332 | n/a |
+| 0.45 | 310.604 | n/a |
+| 0.55 | 310.934 | n/a |
+| 0.65 | 311.313 | n/a |
+| 0.75 | 311.734 | n/a |
+| 0.85 | 312.187 | n/a |
+| 0.95 | 312.66 | n/a |
+| 1.05 | 312.924 | n/a |
+| 1.15 | 312.972 | n/a |
+| 1.25 | 313.02 | n/a |
+| 1.35 | 313.068 | n/a |
+| 1.45 | 313.116 | n/a |
+| 1.55 | 313.164 | n/a |
+| 1.65 | 313.212 | n/a |
+| 1.75 | 313.26 | n/a |
+| 1.85 | 313.308 | n/a |
+| 1.95 | 313.356 | n/a |
+| 0 | n/a | 309.9044 |
+| 0.05 | n/a | 309.9133 |
+| 0.1 | n/a | 309.9403 |
+| 0.15 | n/a | 309.985 |
+| 0.2 | n/a | 310.0474 |
+| 0.25 | n/a | 310.127 |
+| 0.3 | n/a | 310.2235 |
+| 0.35 | n/a | 310.3363 |
+| 0.4 | n/a | 310.465 |
+| 0.45 | n/a | 310.6087 |
+| 0.5 | n/a | 310.7669 |
+| 0.55 | n/a | 310.9384 |
+| 0.6 | n/a | 311.1226 |
+| 0.65 | n/a | 311.3182 |
+| 0.7 | n/a | 311.5243 |
+| 0.75 | n/a | 311.7395 |
+| 0.8 | n/a | 311.9626 |
+| 0.85 | n/a | 312.1921 |
+| 0.9 | n/a | 312.4267 |
+| 0.95 | n/a | 312.6646 |
+| 1 | n/a | 312.9044 |
+| 1.05 | n/a | 312.9284 |
+| 1.1 | n/a | 312.9524 |
+| 1.15 | n/a | 312.9764 |
+| 1.2 | n/a | 313.0004 |
+| 1.25 | n/a | 313.0244 |
+| 1.3 | n/a | 313.0484 |
+| 1.35 | n/a | 313.0724 |
+| 1.4 | n/a | 313.0964 |
+| 1.45 | n/a | 313.1204 |
+| 1.5 | n/a | 313.1444 |
+| 1.55 | n/a | 313.1683 |
+| 1.6 | n/a | 313.1923 |
+| 1.65 | n/a | 313.2163 |
+| 1.7 | n/a | 313.2403 |
+| 1.75 | n/a | 313.2643 |
+| 1.8 | n/a | 313.2883 |
+| 1.85 | n/a | 313.3123 |
+| 1.9 | n/a | 313.3363 |
+| 1.95 | n/a | 313.3603 |
+| 2 | n/a | 313.3843 |
 
 The air enters at 300 K with a uniform velocity. The heater on 20 ≤ x ≤ 80 mm heats the wall, and the wall heats the air. At the outlet, the bulk temperature of the air is 329.9998 K, and the energy balance gives 330 K. At the station x = 40 mm, the checked temperatures are interface_T = 312.9000 K and heater_T = 313.3800 K. At the outlet x = 90 mm, outlet_T = 329.9998 K.
 
@@ -107,12 +103,12 @@ The reference is exact. Thus the tolerance comes from the mesh study of the mode
 ## Sources
 
 - R. K. Shah and A. L. London, *Laminar Flow Forced Convection in Ducts*, Advances in Heat Transfer, Supplement 1, Academic Press, 1978.
-  For fully developed laminar flow between parallel plates with the same uniform heat flux on the 2 plates, Nu = h Dh / k = 140/17 = 8.235, with Dh = 4b and b the half of the distance between the plates.
-- The derivation of this value is short. The velocity is u = (3/2) U (1 - y²/b²). In the fully developed state, dT/dx = G at each y, and ρ cp u G = k d²T/dy². The energy balance of the cross section gives ρ cp U b G = q. Integration across the half channel gives T_w - T_b = 17 q b / (35 k) and T_w - T_c, with T_c on the centre line, = 5 q b / (8 k).
+  Take fully developed laminar flow between parallel plates with the same uniform heat flux on the 2 plates. Then Nu = h Dh / k = 140/17 = 8.235, with Dh = 4b and b the half of the distance between the plates.
+- The derivation of this value is short. The velocity is u = (3/2) U (1 - y²/b²). In the fully developed state, dT/dx = G at each y, and ρ cp u G = k d²T/dy². The energy balance of the cross section gives ρ cp U b G = q. Integration across the half channel gives T_w - T_b = 17 q b / (35 k). It also gives T_w - T_c = 5 q b / (8 k), with T_c on the centre line.
 - In the wall, the temperature also rises by G along x. Thus the heat flux across the wall is q at each x, and the temperature is linear across the wall: T_heater - T_w = q t / k_s.
 - The energy balance from the inlet to the station x0 gives the bulk temperature there. The heat that goes into the channel is q (x0 - x_s), with x_s the start of the heater. Heat also goes upstream through the section x0, by conduction along x in the air and in the wall. In the fully developed region, this conduction is (k_f b + k_s t) G.
 
-The published conjugate benchmarks that the study found give their results in figures, or are not open to read. A value from a figure has an error that is not known. The exact solution has no error. Its conjugate effects are large against the tolerance:
+The published conjugate benchmarks that the study found give their results in figures, or are not open to read. A value from a figure has an unknown error. The exact solution has no error. Its conjugate effects are large against the tolerance:
 
 - The conduction along the wall adds 0.52 K to the bulk temperature at x0. A model with no conduction along the wall gives an interface_T that is 0.52 K too low.
 - The wall adds 0.48 K between the heater and the interface. A model with no wall resistance gives a heater_T that is 0.48 K too low.
@@ -123,7 +119,7 @@ The OpenFOAM case `channel` has the regions `fluid` and `solid` (`constant/regio
 
 | Item | Value |
 |---|---|
-| Fluid region | the half channel 0 <= y <= b = 1 mm, 0 <= x <= 90 mm, with 1 cell of depth 0.1 mm in z and an `empty` patch on the front and the back |
+| Fluid region | the half channel 0 <= y <= b = 1 mm, 0 <= x <= 90 mm. It has 1 cell of depth 0.1 mm in z and an `empty` patch on the front and the back |
 | Solid region | the wall 1 <= y <= 2 mm (t = 1 mm), 0 <= x <= 90 mm |
 | Air | ρ = 1.2 kg/m³ (`rhoConst`), cp = 1000 J/(kg K), μ = 1.8e-5 Pa s, Pr = 0.72. Thus k_f = μ cp / Pr = 0.025 W/(m K) |
 | Wall | k_s = 0.25 W/(m K). ρ = 1200 kg/m³ and cp = 1000 J/(kg K) do not change a steady state |
@@ -136,7 +132,7 @@ The OpenFOAM case `channel` has the regions `fluid` and `solid` (`constant/regio
 | Solver | `chtMultiRegionSimpleFoam`, laminar and steady, g = 0 |
 | Schemes | `bounded Gauss linear` for `div(phi,U)`, `div(phi,h)` and `div(phi,K)`, `Gauss linear` for the gradients, `Gauss linear corrected` for the Laplacians |
 | Relaxation | 0.7 for `U` and `p_rgh` and 0.9 for `h` in the fluid, 1 for `h` in the solid |
-| Mesh | uniform, n = 10 cells across each region, and the cells are 2 times as long as high: 450 x 10 cells in each region, 9000 in total |
+| Mesh | uniform, n = 10 cells across each region. The cells are 2 times as long as high: 450 x 10 cells in each region, 9000 in total |
 | Iterations | 2000 |
 
 The station of the checks is x0 = 40 mm. The function objects of `system/controlDict` write the 3 values:
@@ -162,7 +158,7 @@ With the heater end at 80 mm, a move of the end to 100 mm changes `interface_T` 
 
 These commands, in the repository root, solve the case on a mesh with n = 20 in a scratch folder:
 
-```
+```text
 cp -R validation/cases/cht-heated-channel/channel /tmp/cht-20
 # In /tmp/cht-20/system/fluid/blockMeshDict and /tmp/cht-20/system/solid/blockMeshDict, change "n 10;" to "n 20;".
 # In /tmp/cht-20/system/controlDict, change endTime and writeInterval to 4000.
@@ -186,7 +182,7 @@ The temperatures converge monotonically. The extrapolation from the meshes 5, 10
 The extrapolated values are 0.00027 K below the exact values. Thus the mesh error of n = 10 is -0.0040 K in `interface_T` and in `heater_T`.
 At n = 10 the Nusselt number from `interface_T` and the exact T_b is 8.251, 0.19 % above 140/17.
 
-The mesh error comes from the cells across the channel. The fully developed profile on the same cells, solved exactly as a 1D finite volume model, has the errors -0.0154, -0.0040 and -0.0010 K at n = 5, 10 and 20. The errors of the case are 0.0002 to 0.0003 K lower than these.
+The mesh error comes from the cells across the channel. The fully developed profile on the same cells has the errors -0.0154, -0.0040 and -0.0010 K at n = 5, 10 and 20. The profile comes from an exact solve of a 1D finite volume model. The errors of the case are 0.0002 to 0.0003 K lower than these.
 
 The 0.0003 K between the extrapolated values and the exact values has these causes:
 
@@ -194,7 +190,7 @@ The 0.0003 K between the extrapolated values and the exact values has these caus
 - The 2 ends of the heater: 7e-5 K (see "Model").
 - The kinetic energy in `div(phi,K)`: from the uniform inlet profile to the parabola, the bulk kinetic energy increases by 0.011 J/kg. Thus T decreases by 1e-5 K.
 
-The iteration error at 2000 iterations is below 1e-7 K: at n = 10, the values at 2000 and 3000 iterations differ by 1e-8 K or less. A finer mesh needs more iterations: n = 20 needs 3500.
+The iteration error at 2000 iterations is below 1e-7 K. At n = 10, the values at 2000 and 3000 iterations differ by 1e-8 K or less. A finer mesh needs more iterations: n = 20 needs 3500.
 
 On a Mac with 10 cores at a load of about 45, the case at n = 10 took 36 s for 3000 iterations.
 

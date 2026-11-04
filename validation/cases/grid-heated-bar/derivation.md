@@ -1,6 +1,6 @@
 # grid-heated-bar derivation
 
-This case checks the steady centre temperature of a square bar with a uniform heat source and its 4 long sides at 0 °C (units SI-m). It also measures the convergence of the grid solver.
+This case checks the steady centre temperature of a square bar with a uniform heat source (units SI-m). The 4 long sides are at 0 °C. It also measures the convergence of the grid solver.
 
 ## Source
 

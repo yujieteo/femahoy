@@ -1,12 +1,12 @@
 # birth-death-column derivation
 
-## Conclusion
+## Finding
 
 ccx builds the column in 10 lifts with element birth and gives the settlement of the lift theory. At mid-height (z = 5 m), ccx gives 0.02315179 mm, and the lift theory gives 0.0231516 mm. The difference is 8.2e-6 of the reference, and the tolerance is 1e-4. At the top of each lift, the largest difference is 2.0e-7 mm.
 
 The run has 1 step for each of the 10 lifts. Each step has only the lifts in the model in that step. After lift 10, the settlement at mid-height is u_mid = -0.02315179 mm.
 
-**Column built in 10 lifts, the settlement of the top of each lift at the end**
+### Column built in 10 lifts, the settlement of the top of each lift at the end
 
 ![Column built in 10 lifts, the settlement of the top of each lift at the end](birth-death-column/settlement.svg)
 
@@ -16,9 +16,7 @@ Lift theory: (rho g h^2 / 2E) (2i (N + 1 - i) - 1) at the top of lift i. All at 
 
 The largest difference of ccx from the lift theory is +2.0e-07 mm, at z = 4 m. With ADD=WITH STRAIN in place of ADD=STRAIN FREE, ccx gives the curve of all at once.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | height z [m] | lift theory (settlement -u_z [mm]) | all at once (settlement -u_z [mm]) | ccx (settlement -u_z [mm]) |
 | ---: | ---: | ---: | ---: |
@@ -33,8 +31,6 @@ Original values. — means no sample.
 | 8 | 0.0184428 | 0.0376704 | 0.01844291 |
 | 9 | 0.013734 | 0.0388476 | 0.01373408 |
 | 10 | 0.0074556 | 0.03924 | 0.007455639 |
-
-</details>
 
 Each lift goes on the deformed column strain free. Thus the top of lift 5 or 6 settles most, and the top of the column settles only 0.0074556 mm. A column with all lifts at once settles 0.02943 mm at mid-height, 27 % more, and most at the top. ccx with `ADD=WITH STRAIN` gives this curve (derivation.md). Thus the check fails if ccx does not add the lifts strain free.
 
@@ -55,7 +51,7 @@ This case checks element birth: a concrete column built in 10 lifts, each lift a
 The theory is the axial deformation of a bar, δ = N L / (E A), applied to each step of the construction: J. M. Gere and B. J. Goodno, *Mechanics of Materials*, 8th ed., Cengage Learning, 2013, chapter 2 (axially loaded members).
 R. W. Clough and R. Woodward, "Analysis of embankment stresses and deformations", *Journal of the Soil Mechanics and Foundations Division*, ASCE 93, 1967, pp. 529-549, analysed embankments built in layers.
 J. Kadish, J. R. Barber, P. D. Washabaugh and D. J. Scheeres, "Stresses in accreted planetary bodies", *International Journal of Solids and Structures* 45, 2008, pp. 540-550, use the same principle: new material attaches stress free, and then it is elastic.
-They find that the result is very different from the solution for a body that is complete before the load starts.
+They find that the result is different from the solution for a body that is complete before the load starts.
 
 ## Model
 
@@ -140,4 +136,4 @@ The `.frd` file has the settlement of `job.dat` with 6 digits, for example -0.02
 
 ## Files
 
-`job.inp` is written by hand: 44 nodes and 10 `C3D8` elements, 1 for each lift. The run takes less than 1 s.
+The `job.inp` has 44 nodes and 10 `C3D8` elements, 1 for each lift. The run takes less than 1 s.

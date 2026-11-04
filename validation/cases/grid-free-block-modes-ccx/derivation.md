@@ -13,7 +13,7 @@ This case checks the natural frequencies of a free body with the modes step of t
 
 ## Reference
 
-There is no closed form for the modes of a free block. The reference is CalculiX 2.23 on the same problem: `ccx/mesh.py` writes a structured grid of C3D20 elements (full integration) and a `*FREQUENCY` step of 12 modes, and `ccx/result.py` prints the frequencies from `job.dat`.
+There is no closed form for the modes of a free block. The reference is CalculiX 2.23 on the same problem. `ccx/mesh.py` writes a structured grid of C3D20 elements (full integration) and a `*FREQUENCY` step of 12 modes. `ccx/result.py` prints the frequencies from `job.dat`.
 
 | Mode | H = 5 mm | H = 2.5 mm | H = 1.25 mm (reference) |
 |---:|---:|---:|---:|
@@ -36,7 +36,7 @@ The mesh of H = 1.25 mm has 12,288 elements and 55,857 nodes. The largest change
 
 The changes fall by a factor of 3.4 to 3.6 for each halving: second order. The extrapolation of the 2 finer grids agrees with CalculiX to 0.04 % for each of these modes. At max_cell 1.25 mm, the errors against the reference are +0.17 % (mode 7), +0.10 % (8), +0.25 % (9), +0.21 % (10), +0.06 % (11) and +0.27 % (12). The grid solver gives modes 1 to 6 at 0 Hz: their eigenvalues are below 1e-10 of the mean of K_ii / M_ii.
 
-The test `a_free_box_has_6_rigid_modes` in `crates/fem/tests/modes.rs` checks the rigid modes with both linear solvers: each eigenvalue is below 1e-6 of the first elastic eigenvalue, and the effective masses of the 6 rigid modes sum to the mass along x, y and z.
+The test `a_free_box_has_6_rigid_modes` in `crates/fem/tests/modes.rs` checks the rigid modes with both linear solvers. Each eigenvalue is below 1e-6 of the first elastic eigenvalue. The effective masses of the 6 rigid modes sum to the mass along x, y and z.
 
 ## Tolerance
 

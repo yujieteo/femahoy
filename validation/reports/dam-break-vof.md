@@ -1,10 +1,10 @@
 # dam-break-vof derivation
 
-## Conclusion
+## Finding
 
-The surge front of the interFoam model follows the front that Martin and Moyce (1952) measured. At the 3 checked positions Z = 2.11, 3.00 and 3.89, the front of the model is 2.3 % to 3.1 % slower than the mean of the measured runs. Each difference is less than 1 standard deviation of the single runs, thus the model is in the scatter of the measurement.
+The surge front of the interFoam model follows the front that Martin and Moyce (1952) measured. The front of the model is 2.3 % to 3.1 % slower than the mean of the measured runs. This is at the 3 checked positions Z = 2.11, 3.00 and 3.89. Each difference is less than 1 standard deviation of the single runs, thus the model is in the scatter of the measurement.
 
-**Dam break, the surge front (interFoam, 40 cells across a)**
+### Dam break, the surge front (interFoam, 40 cells across a)
 
 ![Dam break, the surge front (interFoam, 40 cells across a)](dam-break-vof/front.svg)
 
@@ -12,160 +12,156 @@ measured: Martin and Moyce (1952), Table 2, the mean of the runs with a = 2.25 i
 
 The front is the largest x of a cell centre with alpha.water > 0.5. T is 1.19 at Z = 1.44, as in the source.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | T = t sqrt(2 g / a) [1] | interFoam (Z = x / a, the front [1]) | measured (Z = x / a, the front [1]) |
 | ---: | ---: | ---: |
-| 0.277 | 0.9875 | — |
-| 0.4255 | 1.0125 | — |
-| 0.5304 | 1.0375 | — |
-| 0.5824 | 1.0625 | — |
-| 0.6502 | 1.0875 | — |
-| 0.7095 | 1.1125 | — |
-| 0.7457 | 1.1375 | — |
-| 0.7964 | 1.1625 | — |
-| 0.828 | 1.1875 | — |
-| 0.8738 | 1.2125 | — |
-| 0.9171 | 1.2375 | — |
-| 0.9453 | 1.2625 | — |
-| 0.9859 | 1.2875 | — |
-| 1.0257 | 1.3125 | — |
-| 1.0516 | 1.3375 | — |
-| 1.09 | 1.3625 | — |
-| 1.1149 | 1.3875 | — |
-| 1.1522 | 1.4125 | — |
-| 1.1876 | 1.4375 | — |
-| 1.2113 | 1.4625 | — |
-| 1.2467 | 1.4875 | — |
-| 1.2703 | 1.5125 | — |
-| 1.3058 | 1.5375 | — |
-| 1.3294 | 1.5625 | — |
-| 1.3531 | 1.5875 | — |
-| 1.3885 | 1.6125 | — |
-| 1.4102 | 1.6375 | — |
-| 1.4319 | 1.6625 | — |
-| 1.4639 | 1.6875 | — |
-| 1.485 | 1.7125 | — |
-| 1.5163 | 1.7375 | — |
-| 1.537 | 1.7625 | — |
-| 1.5675 | 1.7875 | — |
-| 1.5877 | 1.8125 | — |
-| 1.6178 | 1.8375 | — |
-| 1.6376 | 1.8625 | — |
-| 1.667 | 1.8875 | — |
-| 1.6864 | 1.9125 | — |
-| 1.7058 | 1.9375 | — |
-| 1.7345 | 1.9625 | — |
-| 1.7535 | 1.9875 | — |
-| 1.7819 | 2.0125 | — |
-| 1.8005 | 2.0375 | — |
-| 1.8285 | 2.0625 | — |
-| 1.8469 | 2.0875 | — |
-| 1.8745 | 2.1125 | — |
-| 1.8926 | 2.1375 | — |
-| 1.9108 | 2.1625 | — |
-| 1.9378 | 2.1875 | — |
-| 1.9557 | 2.2125 | — |
-| 1.9825 | 2.2375 | — |
-| 2.0003 | 2.2625 | — |
-| 2.0182 | 2.2875 | — |
-| 2.0445 | 2.3125 | — |
-| 2.062 | 2.3375 | — |
-| 2.0881 | 2.3625 | — |
-| 2.1053 | 2.3875 | — |
-| 2.131 | 2.4125 | — |
-| 2.1482 | 2.4375 | — |
-| 2.1652 | 2.4625 | — |
-| 2.1903 | 2.4875 | — |
-| 2.2071 | 2.5125 | — |
-| 2.2322 | 2.5375 | — |
-| 2.2489 | 2.5625 | — |
-| 2.2657 | 2.5875 | — |
-| 2.2902 | 2.6125 | — |
-| 2.3064 | 2.6375 | — |
-| 2.3306 | 2.6625 | — |
-| 2.3468 | 2.6875 | — |
-| 2.3629 | 2.7125 | — |
-| 2.3871 | 2.7375 | — |
-| 2.4033 | 2.7625 | — |
-| 2.4275 | 2.7875 | — |
-| 2.4437 | 2.8125 | — |
-| 2.4598 | 2.8375 | — |
-| 2.4841 | 2.8625 | — |
-| 2.5002 | 2.8875 | — |
-| 2.5159 | 2.9125 | — |
-| 2.5392 | 2.9375 | — |
-| 2.5548 | 2.9625 | — |
-| 2.578 | 2.9875 | — |
-| 2.5933 | 3.0125 | — |
-| 2.6086 | 3.0375 | — |
-| 2.6314 | 3.0625 | — |
-| 2.6467 | 3.0875 | — |
-| 2.6694 | 3.1125 | — |
-| 2.6845 | 3.1375 | — |
-| 2.6996 | 3.1625 | — |
-| 2.722 | 3.1875 | — |
-| 2.7369 | 3.2125 | — |
-| 2.7593 | 3.2375 | — |
-| 2.7741 | 3.2625 | — |
-| 2.7963 | 3.2875 | — |
-| 2.811 | 3.3125 | — |
-| 2.8257 | 3.3375 | — |
-| 2.8477 | 3.3625 | — |
-| 2.8623 | 3.3875 | — |
-| 2.8842 | 3.4125 | — |
-| 2.8987 | 3.4375 | — |
-| 2.9133 | 3.4625 | — |
-| 2.9349 | 3.4875 | — |
-| 2.9493 | 3.5125 | — |
-| 2.9709 | 3.5375 | — |
-| 2.9852 | 3.5625 | — |
-| 2.9995 | 3.5875 | — |
-| 3.0209 | 3.6125 | — |
-| 3.0351 | 3.6375 | — |
-| 3.0564 | 3.6625 | — |
-| 3.0706 | 3.6875 | — |
-| 3.0917 | 3.7125 | — |
-| 3.1057 | 3.7375 | — |
-| 3.1198 | 3.7625 | — |
-| 3.1409 | 3.7875 | — |
-| 3.1549 | 3.8125 | — |
-| 3.1759 | 3.8375 | — |
-| 3.1898 | 3.8625 | — |
-| 3.2036 | 3.8875 | — |
-| 3.2244 | 3.9125 | — |
-| 3.2382 | 3.9375 | — |
-| 3.259 | 3.9625 | — |
-| 3.2728 | 3.9875 | — |
-| 3.2866 | 4.0125 | — |
-| 3.3071 | 4.0375 | — |
-| 3.3208 | 4.0625 | — |
-| 3.3411 | 4.0875 | — |
-| 3.3547 | 4.1125 | — |
-| 3.375 | 4.1375 | — |
-| 3.3885 | 4.1625 | — |
-| 3.4021 | 4.1875 | — |
-| 3.4224 | 4.2125 | — |
-| 3.4359 | 4.2375 | — |
-| 3.4562 | 4.2625 | — |
-| 3.4698 | 4.2875 | — |
-| 3.4833 | 4.3125 | — |
-| 3.5036 | 4.3375 | — |
-| 3.5172 | 4.3625 | — |
-| 3.5375 | 4.3875 | — |
-| 3.551 | 4.4125 | — |
-| 3.5645 | 4.4375 | — |
-| 3.5848 | 4.4625 | — |
-| 3.5984 | 4.4875 | — |
-| 3.6119 | 4.5125 | — |
-| 1.19 | — | 1.44 |
-| 1.83 | — | 2.11 |
-| 2.51 | — | 3 |
-| 3.11 | — | 3.89 |
-
-</details>
+| 0.277 | 0.9875 | n/a |
+| 0.4255 | 1.0125 | n/a |
+| 0.5304 | 1.0375 | n/a |
+| 0.5824 | 1.0625 | n/a |
+| 0.6502 | 1.0875 | n/a |
+| 0.7095 | 1.1125 | n/a |
+| 0.7457 | 1.1375 | n/a |
+| 0.7964 | 1.1625 | n/a |
+| 0.828 | 1.1875 | n/a |
+| 0.8738 | 1.2125 | n/a |
+| 0.9171 | 1.2375 | n/a |
+| 0.9453 | 1.2625 | n/a |
+| 0.9859 | 1.2875 | n/a |
+| 1.0257 | 1.3125 | n/a |
+| 1.0516 | 1.3375 | n/a |
+| 1.09 | 1.3625 | n/a |
+| 1.1149 | 1.3875 | n/a |
+| 1.1522 | 1.4125 | n/a |
+| 1.1876 | 1.4375 | n/a |
+| 1.2113 | 1.4625 | n/a |
+| 1.2467 | 1.4875 | n/a |
+| 1.2703 | 1.5125 | n/a |
+| 1.3058 | 1.5375 | n/a |
+| 1.3294 | 1.5625 | n/a |
+| 1.3531 | 1.5875 | n/a |
+| 1.3885 | 1.6125 | n/a |
+| 1.4102 | 1.6375 | n/a |
+| 1.4319 | 1.6625 | n/a |
+| 1.4639 | 1.6875 | n/a |
+| 1.485 | 1.7125 | n/a |
+| 1.5163 | 1.7375 | n/a |
+| 1.537 | 1.7625 | n/a |
+| 1.5675 | 1.7875 | n/a |
+| 1.5877 | 1.8125 | n/a |
+| 1.6178 | 1.8375 | n/a |
+| 1.6376 | 1.8625 | n/a |
+| 1.667 | 1.8875 | n/a |
+| 1.6864 | 1.9125 | n/a |
+| 1.7058 | 1.9375 | n/a |
+| 1.7345 | 1.9625 | n/a |
+| 1.7535 | 1.9875 | n/a |
+| 1.7819 | 2.0125 | n/a |
+| 1.8005 | 2.0375 | n/a |
+| 1.8285 | 2.0625 | n/a |
+| 1.8469 | 2.0875 | n/a |
+| 1.8745 | 2.1125 | n/a |
+| 1.8926 | 2.1375 | n/a |
+| 1.9108 | 2.1625 | n/a |
+| 1.9378 | 2.1875 | n/a |
+| 1.9557 | 2.2125 | n/a |
+| 1.9825 | 2.2375 | n/a |
+| 2.0003 | 2.2625 | n/a |
+| 2.0182 | 2.2875 | n/a |
+| 2.0445 | 2.3125 | n/a |
+| 2.062 | 2.3375 | n/a |
+| 2.0881 | 2.3625 | n/a |
+| 2.1053 | 2.3875 | n/a |
+| 2.131 | 2.4125 | n/a |
+| 2.1482 | 2.4375 | n/a |
+| 2.1652 | 2.4625 | n/a |
+| 2.1903 | 2.4875 | n/a |
+| 2.2071 | 2.5125 | n/a |
+| 2.2322 | 2.5375 | n/a |
+| 2.2489 | 2.5625 | n/a |
+| 2.2657 | 2.5875 | n/a |
+| 2.2902 | 2.6125 | n/a |
+| 2.3064 | 2.6375 | n/a |
+| 2.3306 | 2.6625 | n/a |
+| 2.3468 | 2.6875 | n/a |
+| 2.3629 | 2.7125 | n/a |
+| 2.3871 | 2.7375 | n/a |
+| 2.4033 | 2.7625 | n/a |
+| 2.4275 | 2.7875 | n/a |
+| 2.4437 | 2.8125 | n/a |
+| 2.4598 | 2.8375 | n/a |
+| 2.4841 | 2.8625 | n/a |
+| 2.5002 | 2.8875 | n/a |
+| 2.5159 | 2.9125 | n/a |
+| 2.5392 | 2.9375 | n/a |
+| 2.5548 | 2.9625 | n/a |
+| 2.578 | 2.9875 | n/a |
+| 2.5933 | 3.0125 | n/a |
+| 2.6086 | 3.0375 | n/a |
+| 2.6314 | 3.0625 | n/a |
+| 2.6467 | 3.0875 | n/a |
+| 2.6694 | 3.1125 | n/a |
+| 2.6845 | 3.1375 | n/a |
+| 2.6996 | 3.1625 | n/a |
+| 2.722 | 3.1875 | n/a |
+| 2.7369 | 3.2125 | n/a |
+| 2.7593 | 3.2375 | n/a |
+| 2.7741 | 3.2625 | n/a |
+| 2.7963 | 3.2875 | n/a |
+| 2.811 | 3.3125 | n/a |
+| 2.8257 | 3.3375 | n/a |
+| 2.8477 | 3.3625 | n/a |
+| 2.8623 | 3.3875 | n/a |
+| 2.8842 | 3.4125 | n/a |
+| 2.8987 | 3.4375 | n/a |
+| 2.9133 | 3.4625 | n/a |
+| 2.9349 | 3.4875 | n/a |
+| 2.9493 | 3.5125 | n/a |
+| 2.9709 | 3.5375 | n/a |
+| 2.9852 | 3.5625 | n/a |
+| 2.9995 | 3.5875 | n/a |
+| 3.0209 | 3.6125 | n/a |
+| 3.0351 | 3.6375 | n/a |
+| 3.0564 | 3.6625 | n/a |
+| 3.0706 | 3.6875 | n/a |
+| 3.0917 | 3.7125 | n/a |
+| 3.1057 | 3.7375 | n/a |
+| 3.1198 | 3.7625 | n/a |
+| 3.1409 | 3.7875 | n/a |
+| 3.1549 | 3.8125 | n/a |
+| 3.1759 | 3.8375 | n/a |
+| 3.1898 | 3.8625 | n/a |
+| 3.2036 | 3.8875 | n/a |
+| 3.2244 | 3.9125 | n/a |
+| 3.2382 | 3.9375 | n/a |
+| 3.259 | 3.9625 | n/a |
+| 3.2728 | 3.9875 | n/a |
+| 3.2866 | 4.0125 | n/a |
+| 3.3071 | 4.0375 | n/a |
+| 3.3208 | 4.0625 | n/a |
+| 3.3411 | 4.0875 | n/a |
+| 3.3547 | 4.1125 | n/a |
+| 3.375 | 4.1375 | n/a |
+| 3.3885 | 4.1625 | n/a |
+| 3.4021 | 4.1875 | n/a |
+| 3.4224 | 4.2125 | n/a |
+| 3.4359 | 4.2375 | n/a |
+| 3.4562 | 4.2625 | n/a |
+| 3.4698 | 4.2875 | n/a |
+| 3.4833 | 4.3125 | n/a |
+| 3.5036 | 4.3375 | n/a |
+| 3.5172 | 4.3625 | n/a |
+| 3.5375 | 4.3875 | n/a |
+| 3.551 | 4.4125 | n/a |
+| 3.5645 | 4.4375 | n/a |
+| 3.5848 | 4.4625 | n/a |
+| 3.5984 | 4.4875 | n/a |
+| 3.6119 | 4.5125 | n/a |
+| 1.19 | n/a | 1.44 |
+| 1.83 | n/a | 2.11 |
+| 2.51 | n/a | 3 |
+| 3.11 | n/a | 3.89 |
 
 `alpha.water` is 1 in the water and 0 in the air. The front is the largest x of a cell centre with alpha.water above 0.5, and Z = x / a with a = 2.25 in. The front at each time of the run is:
 
@@ -203,10 +199,10 @@ No other case of the suite has any of these items:
 
 ## Source
 
-J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, https://doi.org/10.1098/rsta.1952.0006.
+J. C. Martin and W. J. Moyce, "Part IV. An experimental study of the collapse of liquid columns on a rigid horizontal plane", Phil. Trans. R. Soc. Lond. A 244 (1952) 312-324, <https://doi.org/10.1098/rsta.1952.0006>.
 
-A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column is released. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in, in the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
-The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"), because the instant of the release is not known exactly. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
+A column of water of width a and height n^2 a stands on a horizontal plane, against a wall at x = 0. At t = 0 the column starts to fall. Table 2 (page 317) gives the times for n^2 = 2, a = 2.25 in. The times have the dimensionless form T = n t sqrt(g / a) = t sqrt(2 g / a) at the front positions Z = x / a.
+The source sets T to 1.19 at Z = 1.44 in each run ("T normalized at this value of Z"). The reason is that the exact instant of the release is unknown. The model does the same: it adds a constant to its T so that T is 1.19 at Z = 1.44.
 
 The checks use the column "mean" for a = 2.25 in. The single runs and their standard deviation come from the same table:
 
@@ -216,7 +212,7 @@ The checks use the column "mean" for a = 2.25 in. The single runs and their stan
 | `T_300` | 3.00 | 2.51 | 9, from 2.38 to 2.66 | 0.099 (3.9 %) |
 | `T_389` | 3.89 | 3.11 | 4, from 2.94 to 3.25 | 0.139 (4.5 %) |
 
-The 3 points are near the start, the middle and the end of the data that the source gives for most runs of a = 2.25 in.
+The 3 points are near the start, the middle and the end of the data. The source gives these data for most runs of a = 2.25 in.
 
 ## Model
 
@@ -241,7 +237,7 @@ The OpenFOAM case is the folder `n40`. The units are SI.
 The run stops at t = 0.18 s. Then the front is at Z = 4.5, before the wall at x = 5a.
 
 The front moves 1 cell at a time. Thus `front.awk` interpolates linearly between the 2 steps of the front on each side of x = Z a.
-The largest cell centre is up to 1 cell behind the surface alpha.water = 0.5. This offset is almost the same at Z = 1.44 and at the 3 points of the check, thus the normalization removes most of it. The mesh study includes the remainder.
+The largest cell centre is up to 1 cell behind the surface alpha.water = 0.5. This offset is almost the same at Z = 1.44 and at the 3 points of the check, thus the normalization removes most of it. The mesh study includes the rest.
 
 The front of the model gets to Z = 1.44 at T = 0.91: the release of the model is instantaneous. The constant that sets T to 1.19 is thus 0.28.
 
@@ -249,7 +245,7 @@ The front of the model gets to Z = 1.44 at T = 0.91: the release of the model is
 
 These commands, in the repository root, solve the case with other values in a scratch folder. On Linux, use `openfoam2512` in place of `openfoam`:
 
-```
+```text
 cp -R validation/cases/dam-break-vof/n40 /tmp/dam && cd /tmp/dam
 sed -i.orig 's/^n       40;/n       80;/' system/blockMeshDict
 openfoam blockMesh && openfoam setFields && openfoam interFoam
@@ -267,7 +263,7 @@ Mesh, with `maxCo` and `maxAlphaCo` 0.5:
 | 80 | 80000 | 1.8756 | 2.5926 | 3.2203 |
 | Measured | | 1.83 | 2.51 | 3.11 |
 
-From n = 20 to n = 80, the values change by 0.5 % or less, with no monotonic trend. `mesh.csv` holds the values of `T_389` as a curve for `fh report --curve`. Thus an extrapolation is not possible. The mesh error of n = 40 is the difference to n = 80: 0.0146 for `T_389` (0.47 % of the reference), 0.0070 for `T_300` (0.28 %) and 0.0039 for `T_211` (0.21 %).
+From n = 20 to n = 80, the values change by 0.5 % or less, with no monotonic trend. `mesh.csv` holds the values of `T_389` as a curve for `fh report --curve`. Thus an extrapolation is not possible. The mesh error of n = 40 is the difference to n = 80. It is 0.0146 for `T_389` (0.47 % of the reference), 0.0070 for `T_300` (0.28 %) and 0.0039 for `T_211` (0.21 %).
 
 Time step and walls, with n = 40. For these rows, edit `maxCo` and `maxAlphaCo` in `system/controlDict`, or the type of `walls` in `0/U`:
 
@@ -310,9 +306,9 @@ The tolerance does not stop a coarse mesh: n = 10 passes, because the time of th
 - Z larger than 4.11: only 3 of the 9 runs of a = 2.25 in have data there, and the run takes longer.
 - The other column of the source, a = 1.125 in: it has the same n^2 and thus the same T(Z) in theory.
 
-On a Mac with 10 cores and other jobs, `fh validate` of the case took 85 s (34 s of CPU time) on 1 core with OpenFOAM v2512.
+On a Mac with 10 cores and other jobs, `fh validate` of the case took 85 s with OpenFOAM v2512. It used 34 s of CPU time on 1 core.
 
-**Dam break, the mesh study of T at Z = 3.89 (interFoam)**
+### Dam break, the mesh study of T at Z = 3.89 (interFoam)
 
 ![Dam break, the mesh study of T at Z = 3.89 (interFoam)](dam-break-vof/mesh.svg)
 
@@ -320,9 +316,7 @@ measured: Martin and Moyce (1952), Table 2, the mean of 4 runs with a = 2.25 in,
 
 The values are from derivation.md, "Studies". The check uses 40 cells across a.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | cells across a [1] | interFoam (T = t sqrt(2 g / a) at Z = 3.89 [1]) | measured (T = t sqrt(2 g / a) at Z = 3.89 [1]) |
 | ---: | ---: | ---: |
@@ -330,5 +324,3 @@ Original values. — means no sample.
 | 20 | 3.2195 | 3.11 |
 | 40 | 3.2057 | 3.11 |
 | 80 | 3.2203 | 3.11 |
-
-</details>

@@ -1,10 +1,10 @@
 # heat-fin derivation
 
-## Conclusion
+## Finding
 
 The solid model of the pin fin gives the tip temperature of the fin theory of Incropera et al. (2007). The mean of the tip face is 70.8776 °C, and the fin theory gives 70.8757 °C. The difference is +0.002 °C, and the tolerance is 0.1 °C. Along the full length of the fin, the model also follows the fin theory. On the edge y = 0, z = 0, the largest difference is -0.061 °C.
 
-**The temperature along the fin**
+### The temperature along the fin
 
 ![The temperature along the fin](heat-fin/fin.svg)
 
@@ -14,9 +14,7 @@ The fin theory is Incropera et al. (2007), Table 3.4, case A, with 1 temperature
 
 The largest difference of the model from the fin theory is -0.061 °C, at x = 7.5 mm.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | x [mm] | model (T [°C]) | fin theory (T [°C]) |
 | ---: | ---: | ---: |
@@ -61,8 +59,6 @@ Original values. — means no sample.
 | 95 | 70.9684 | 71.0029 |
 | 97.5 | 70.8889 | 70.9234 |
 | 100 | 70.8413 | 70.8757 |
-
-</details>
 
 The base x = 0 is at 100 °C. The 4 sides and the tip give heat to the air at 20 °C. On the checked tip face, the mean is 70.878 °C, and the fin theory gives 70.876 °C. On the edge y = 0, z = 0 of the plot, the largest difference is -0.061 °C, at x = 7.5 mm.
 
@@ -118,9 +114,9 @@ The mean of the area is 0.008 °C higher than the fin theory. This is the differ
 ## Tolerance
 
 The tolerance is 0.1 °C (`abs_tol = 0.1`), 0.2 % of the 50.9 °C difference between the tip and the air.
-The fin theory has 1 temperature in each section. In the solid, the tip face changes from 70.84 °C at the corners to 70.90 °C at the centre: the Biot number h (t/2) / k is 0.00125.
+The fin theory has 1 temperature in each section. In the solid, the tip face changes from 70.84 °C at the corners to 70.90 °C at the centre. The Biot number h (t/2) / k is 0.00125.
 Thus the check is the mean of the tip face. The mean is 70.8776 °C (+0.002 °C) with a mesh of size 5 mm.
-It is the sum of 3 parts ("Mesh study"): the solid against the fin theory +0.008 °C, the mean of the nodes -0.006 °C and the mesh less than 0.0001 °C.
+It is the sum of 3 parts ("Mesh study"). The solid against the fin theory gives +0.008 °C, the mean of the nodes gives -0.006 °C and the mesh gives less than 0.0001 °C.
 
 ## Chat run
 

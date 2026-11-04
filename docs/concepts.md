@@ -13,7 +13,7 @@ Posture: sovereign. The person keeps the page open for a full work session, and 
 | Solve | Show each solve that runs now. | The run, the folder, the elapsed time, the solved fraction. | (none: it ends by itself) | After the agent starts a solve and ends its turn, the solve stays in the list until `fh run` ends. |
 | Run | Keep the results of 1 solve. | The ID, the source path, the status, the files, the report. | open, search, compare, open file, open report, prepare rerun | After you open a run, the model view shows its mesh and its results. |
 | Model view | Show the field of a run on its mesh. | The camera, the field, the step, the marks, the panel. | orbit, pan, zoom, fit, reset camera, pick field, probe, hide panel | After you pick a field, the colours and the legend change at once. |
-| Comparison | Show 2 meshes side by side. | Run A, run B, linked cameras. | compare, link cameras, done | After you choose A and B, both models move together while the cameras are linked. |
+| Comparison | Show 2 meshes side by side. | Run A, run B, linked cameras. | compare, link cameras, done | After you choose A and B, both models move together while the cameras stay linked. |
 
 ## Objects (ORCA)
 
@@ -27,7 +27,7 @@ Posture: sovereign. The person keeps the page open for a full work session, and 
 
 ## Synchronisations
 
-- When the agent writes a new result while the model is out of view, the page shows "New result", and a tap on it opens the run.
+- When the agent writes a new result while the model is out of view, the page shows "New result". A tap on it opens the run.
 - When a run opens, the Runs list closes and the address of the page keeps the run.
 - When Compare runs is on, the next opened runs go to A and B.
 

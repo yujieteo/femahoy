@@ -4,7 +4,7 @@ This case checks the built-in electromagnetic solver at a change of material: a 
 
 ## Source
 
-In a guide of uniform cross-section, a section that fills the cross-section keeps the TE10 shape: the wave sees only a change of the propagation constant. The section is thus a transmission line of length l with the TE10 wave impedance Z2 = ωμ0 / β2, between 2 lines of Z1 = ωμ0 / β1, with βi = sqrt(εi k0² − (π/a)²). The answer is exact for the TE10 wave (no other mode is excited). D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, sections 3.3 (TE10 in a filled guide), 4.4 (the ABCD matrix of a line) and 4.4 (the conversion of ABCD to S).
+In a guide of uniform cross-section, a section that fills the cross-section keeps the TE10 shape. The wave sees only a change of the propagation constant. The section is thus a transmission line of length l with the TE10 wave impedance Z2 = ωμ0 / β2. It lies between 2 lines of Z1 = ωμ0 / β1, with βi = sqrt(εi k0² − (π/a)²). The answer is exact for the TE10 wave (the wave excites no other mode). D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, sections 3.3 (TE10 in a filled guide) and 4.4 (the ABCD matrix of a line). Section 4.4 also gives the conversion of ABCD to S.
 
 The ABCD matrix of the section is A = D = cos β2l, B = j Z2 sin β2l, C = j sin β2l / Z2. With the reference impedance Z1: S11 = (A + B/Z1 − C Z1 − D) / Δ and S21 = 2 / Δ, with Δ = A + B/Z1 + C Z1 + D. Each port is 10 mm from the section, so each S-parameter gets the factor exp(−2jβ1 × 10 mm).
 

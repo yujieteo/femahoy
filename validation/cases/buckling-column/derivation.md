@@ -1,6 +1,6 @@
 # buckling-column derivation
 
-This case checks the critical load of a steel column that is fixed at the base and free at the top (units SI-mm).
+This case checks the critical load of a steel column with a fixed base and a free top (units SI-mm).
 
 ## Source
 

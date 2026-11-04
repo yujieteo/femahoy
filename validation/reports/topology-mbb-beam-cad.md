@@ -1,6 +1,6 @@
 # topology-mbb-beam-cad derivation
 
-## Conclusion
+## Finding
 
 The CAD check of fh gives the compliance 190.48 for the solid of the final design, 1.45 % below the check value 193.27. The check value is the threshold of the same design at the density 0.5, on the elements of the loop. The difference uses 72 % of the tolerance of 2 %. It comes from the smooth boundary of the solid and its finer mesh (section "Mesh of the check" below).
 
@@ -29,13 +29,13 @@ The result is the density of each element of the loop. The CAD makes its solid f
 
 Made by `scripts/validation-reports.py` on 2026-10-28, femahoy 9c54611.
 
-This case checks the CAD of a topology run: the solid that `fh run` makes from the last design, and the check of this solid with `ccx`.
-The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the threshold of the same design at 0.5 on the elements of the loop.
+This case checks the CAD of a topology run. It checks the solid that `fh run` makes from the last design, and it checks this solid with `ccx`.
+The case 60x20 is the same as in `topology-mbb-beam`: the half MBB beam with 50 % of the volume. The check compares the compliance of the solid with the compliance of the threshold of the same design. The threshold is 0.5 on the elements of the loop.
 The solid has no gray material. Thus its compliance must be lower than the compliance of the loop.
 
 ## Source
 
-E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, https://doi.org/10.1007/s00158-010-0594-7.
+E. Andreassen, A. Clausen, M. Schevenels, B. S. Lazarov and O. Sigmund, "Efficient topology optimization in MATLAB using 88 lines of code", Structural and Multidisciplinary Optimization 43 (2011) 1-16, <https://doi.org/10.1007/s00158-010-0594-7>.
 
 Figure 3, top left, gives c = 216.81 for the sensitivity filter. This is the compliance of the loop. The loop of `fh` gives 216.8137 on this problem (`topology-mbb-beam/derivation.md`).
 
@@ -52,7 +52,7 @@ After the loop, `fh run` writes the CAD in `topology/cad` (`crates/fh/src/topolo
 1. The density of a node is the mean of the densities of its elements. The material is where the density is 0.5 or more.
 2. The boundary of the material is a set of closed loops. On the edge of the mesh, a loop has straight lines. In the mesh, a loop is a smoothed `Spline` of gmsh.
 3. `design.geo` holds the plane surfaces of the material and their extrusion by the thickness 1. gmsh writes the solid to `design.step`.
-4. gmsh meshes the plane surfaces with `CPE6` elements of size 0.5, half the element size of the loop. The material has the modulus E0 of the loop (the density 1). The nodes on the left edge get ux = 0, the node at the bottom right corner gets uy = 0, and the node at the top left corner gets the load. `ccx` solves this model, and `cad/check.txt` holds the compliance c = 2 times the sum of `ELSE`.
+4. gmsh meshes the plane surfaces with `CPE6` elements of size 0.5, half the element size of the loop. The material has the modulus E0 of the loop (the density 1). The nodes on the left edge get ux = 0. The node at the bottom right corner gets uy = 0. The node at the top left corner gets the load. `ccx` solves this model, and `cad/check.txt` holds the compliance c = 2 times the sum of `ELSE`.
 
 ## Results
 

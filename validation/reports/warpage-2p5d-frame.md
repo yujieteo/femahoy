@@ -1,12 +1,12 @@
 # Measured warpage of a 2.5D package with a metal frame
 
-## Conclusion
+## Finding
 
-The model gives a warpage of -0.1453 mm at the substrate corner at 60 °C. This is 10.3 % smaller than the moiré value of Tsai, Wang and Liu (2021), -0.162 mm. The tolerance is 13 %, the root sum square of the errors of the inputs and of the measurement (see "Tolerance"). Thus the difference is 79 % of the tolerance. The mapped mesh is converged: the 2 mm mesh changes the warpage by 0.009 % (see "Mapped mesh and convergence").
+The model gives a warpage of -0.1453 mm at the substrate corner at 60 °C. This is 10.3 % smaller than the moiré value of Tsai, Wang and Liu (2021), -0.162 mm. The tolerance is 13 %, the root sum square of the errors of the inputs and of the measurement (see "Tolerance"). Thus the difference is 79 % of the tolerance. The mapped mesh has converged: the 2 mm mesh changes the warpage by 0.009 % (see "Mapped mesh and convergence").
 
 At 60 °C, the strain gauges of the paper give -0.168 mm, and the FEM of the paper gives -0.162 mm. The 2 largest errors of the budget are the zero error of the moiré (9.8 %) and the unknown die size (7.5 %).
 
-The check is at 60 °C only. At 25 °C and 260 °C, the warpage of the model with the former 1 mm C3D10 mesh is 24 % and 22 % smaller than the moiré value (see "Other results" and "Causes of the difference"). Thus this case does not validate the warpage at these temperatures.
+The check is at 60 °C only. The model with the former 1 mm C3D10 mesh has a warpage that is 24 % smaller than the moiré value at 25 °C. At 260 °C it is 22 % smaller. See "Other results" and "Causes of the difference". Thus this case does not validate the warpage at these temperatures.
 
 u3 is the displacement out of the plane of the quarter package after it cools from 140 °C to 60 °C. The package becomes a dome, and the corner moves to -z. The warpage is u3 at the corner relative to the centre. The lowest point of the substrate is not the corner, but a node on the edge x = 27.5 mm at y = 14.65 mm. It is 0.0047 mm lower than the corner. u3 is 0 at the centre, -0.1453 mm at the corner and -0.1500 mm at the lowest point of the substrate.
 
@@ -132,19 +132,19 @@ The thermal strain uses the alpha of each part of the path from 140 °C (a secan
 Figure 15 gives -223.5 µm (moiré) and -226 µm (FEM of the paper) at 25 °C, near the values of Figure 20.
 The curvature is k = (strain at the bottom - strain at the top) / t, as in Figure 17 of the paper.
 The strains are along the diagonal, over a gauge length of 5 mm. The paper does not give the gauge length. Gauge lengths of 3 and 7 mm change k1 by 0.2%, k2 by 3.3% and k3 by 1.6% or less.
-k1 is at the middle of the die block (t = 2.73 mm), k2 on the substrate between the module and the frame (t = 1.81 mm), and k3 on the frame (t = 2.745 mm).
+k1 is at the middle of the die block (t = 2.73 mm). k2 is on the substrate between the module and the frame (t = 1.81 mm). k3 is on the frame (t = 2.745 mm).
 
-At 260 °C the profile on the diagonal has the same shape as the FEM of the paper: the highest point is about 31 mm from the centre, and the frame pulls the corner down.
+At 260 °C the profile on the diagonal has the same shape as the FEM of the paper. The highest point is about 31 mm from the centre, and the frame pulls the corner down.
 
 ## Causes of the difference
 
 1. At 25 °C the adhesive is below its Tg, and Table 1 gives E = 100 MPa. The frame then holds the substrate more. This gives a corner that is 7 µm higher than the lowest point, and a warpage 24% below the moiré value.
-   With the adhesive at E = 20 MPa at all temperatures, the warpage is -209.5 µm (-7.0% to the moiré), k2 is +10% and k3 is +14% to the FEM of the paper.
-   In Figures 18 and 20, the FEM of the paper is a straight line from 25 to 140 °C, and the measurements show no change of slope at 50 °C.
+   With the adhesive at E = 20 MPa at all temperatures, the warpage is -209.5 µm (-7.0% to the moiré). Compared with the FEM of the paper, k2 is +10% and k3 is +14%.
+   In Figures 18 and 20, the FEM of the paper is a straight line from 25 to 140 °C. The measurements show no change of slope at 50 °C.
    Thus the FEM of the paper possibly does not use the change of the adhesive at its Tg. A viscoelastic adhesive can also stay soft below its Tg for the time of the test.
 2. The paper gives no die size. A die block that fills the module gives 7.5% more warpage at 60 °C and 8.5% more at 25 °C.
 3. At 260 °C the value of femahoy is 2.7% above the FEM of the paper, but both models are about 22% below the moiré value.
-   The 2 linear elastic models with the data of Table 1 agree, so the cause is in the data or in the model type, not in the solve.
+   The 2 linear elastic models with the data of Table 1 agree. Thus the cause is in the data or in the model type, not in the solve.
    Above 140 °C the EMC and the underfills are above their Tg, where viscoelastic behaviour is usually large.
 4. The moiré gives -15.8 µm at the stress-free temperature. This zero error is about 10% of the warpage at 60 °C.
 5. The frame has a large effect: with no frame, the warpage at 25 °C is -344 µm. Thus the warpage is sensitive to each input of the frame and the adhesive.
@@ -191,7 +191,7 @@ The paper must have a legal free full text and give the geometry, the materials,
 | The extremely large 2.5D molded interposer on substrate package, ECTC 2021 | Not selected. Closed access. |
 | Modeling and design of 2.5D package with mitigated warpage, ECTC 2018 | Not selected. An FEM study with no measured warpage. |
 | Study of warpage and mechanical stress of 2.5D package interposers, IMAPS 2012 | Not selected. Free, but an FEM study with no measured warpage. |
-| Influence of stiffener design on co-packaged optics 2.5D packages | Not selected. No legal free full text with measured warpage was found. |
+| Influence of stiffener design on co-packaged optics 2.5D packages | Not selected. The search found no legal free full text with measured warpage. |
 | Tsai et al., IEEE TDMR 2018, the first moiré study of the same 2.5D package (reference 16 of the paper) | Not selected. Closed access. The selected paper gives its moiré data. |
 
 ## Limits

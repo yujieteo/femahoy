@@ -327,7 +327,7 @@ pub fn with_fit(curve: &Curve, f: &Fit, series: &str) -> Result<Curve, String> {
     }
     let params = parameters(f, curve).join(", ");
     out.notes.push(format!(
-        "{} fit of {series}: {params}, R^2 = {:.8}, largest residual {} at x = {}, valid for x from {} to {}.",
+        "{} fit of {series}: {params}. R^2 = {:.8}, largest residual {} at x = {}, valid for x from {} to {}.",
         f.model.name(),
         f.r2,
         short(f.residual),

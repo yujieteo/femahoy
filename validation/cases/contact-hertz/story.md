@@ -1,4 +1,4 @@
-## Conclusion
+# Finding
 
 The result below compares the largest contact pressure with the Hertz pressure of Johnson (1985). The tolerance is 3 %.
 

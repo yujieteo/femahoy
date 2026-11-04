@@ -4,7 +4,7 @@ This case checks a conductivity that changes with the temperature against an exa
 
 ## Source
 
-With k = k0 (1 + beta T), the Kirchhoff transform Phi(T) = integral of k dT = k0 (T + beta T^2 / 2) changes the steady equation div(k grad T) = 0 into the Laplace equation of Phi, because grad Phi = k grad T. In a plane wall with no source (Incropera et al., *Fundamentals of Heat and Mass Transfer*, 6th ed., section 3.1), the flux k dT/dz = dPhi/dz is the same at each z, so Phi is linear in z. Thus
+Take k = k0 (1 + beta T). The Kirchhoff transform is Phi(T) = integral of k dT = k0 (T + beta T^2 / 2). It changes the steady equation div(k grad T) = 0 into the Laplace equation of Phi, because grad Phi = k grad T. Take a plane wall with no source (Incropera et al., *Fundamentals of Heat and Mass Transfer*, 6th ed., section 3.1). The flux is the same at each z: k dT/dz = dPhi/dz. So Phi is linear in z. Thus
 
 Phi(z) = Phi(T1) + (Phi(T2) − Phi(T1)) z / L, and T(z) = (−1 + sqrt(1 + 2 beta Phi(z) / k0)) / beta.
 
@@ -25,6 +25,6 @@ Phi(z) = Phi(T1) + (Phi(T2) − Phi(T1)) z / L, and T(z) = (−1 + sqrt(1 + 2 be
 
 ## Error
 
-The solver gives each cell the conductivity at the mean temperature of its points. In a slab, the flux of a cell is then k(T_m) (T_a − T_b) / h. When k is linear in T, this equals the Kirchhoff flux (Phi(T_a) − Phi(T_b)) / h, so the solution is exact at the points. The solve took 4 Newton iterations, and `quarter` and `middle` equal the exact values to 1e-11. The iteration converges quadratically, because its tangent has the dk/dT term (see `crates/fem/src/nonlinear.rs`). A tangent with no dk/dT term took 10 iterations on a stronger table (beta T from 2 to 5, the test `a_strong_conductivity_converges_quadratically`), and the full tangent took 6.
+The solver gives each cell the conductivity at the mean temperature of its points. In a slab, the flux of a cell is then k(T_m) (T_a − T_b) / h. When k is linear in T, this equals the Kirchhoff flux (Phi(T_a) − Phi(T_b)) / h, so the solution is exact at the points. The solve took 4 Newton iterations, and `quarter` and `middle` equal the exact values to 1e-11. The iteration converges quadratically, because its tangent has the dk/dT term (see `crates/fem/src/nonlinear.rs`). A tangent with no dk/dT term took 10 iterations on a stronger table (beta T from 2 to 5, the test `a_strong_conductivity_converges_quadratically`). The full tangent took 6.
 
 Between 2 points, the result is the linear interpolation of the curved exact profile. Its error is h^2 / 8 |T''| = 4.4e-5 of the value at `cell_middle` (computed 359.635153, exact 359.651092). The tolerance 1e-4 holds it with a margin of a factor of 2. The budget of the method was 0.5 % at 20 cells: the case is 50 times tighter.

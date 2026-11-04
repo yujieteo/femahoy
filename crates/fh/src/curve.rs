@@ -353,7 +353,7 @@ impl Curve {
         }
         svg.push_str(&format!("<line class=\"sample-cursor\" x1=\"{LEFT}\" x2=\"{LEFT}\" y1=\"{TOP}\" y2=\"{}\" hidden=\"hidden\"/></svg>", TOP + HEIGHT));
         // Original values form the public sample interface, independent of SVG rounding.
-        svg.push_str(&format!("<div data-control=\"values\" hidden><button type=\"button\" aria-label=\"Show values for {title}\" aria-expanded=\"false\">Show values</button><div hidden><label>Sample <input type=\"range\" name=\"sample\" aria-label=\"Sample of {title}\" min=\"0\" max=\"{}\" value=\"0\" step=\"1\"></label><output class=\"readout\" aria-live=\"polite\"></output><p class=\"keys\"><kbd>←</kbd><kbd>→</kbd> select a source sample</p><table><caption>Original values. — means no sample.</caption><thead><tr><th scope=\"col\">{}</th>", self.rows.len().saturating_sub(1), escape(&self.x)));
+        svg.push_str(&format!("<div data-control=\"values\" hidden><button type=\"button\" aria-label=\"Show values for {title}\" aria-expanded=\"false\">Show values</button><div hidden><label>Sample <input type=\"range\" name=\"sample\" aria-label=\"Sample of {title}\" min=\"0\" max=\"{}\" value=\"0\" step=\"1\"></label><output class=\"readout\" aria-live=\"polite\"></output><p class=\"keys\"><kbd>←</kbd><kbd>→</kbd> select a source sample</p><table><caption>Original values. n/a means no sample.</caption><thead><tr><th scope=\"col\">{}</th>", self.rows.len().saturating_sub(1), escape(&self.x)));
         for series in &self.series {
             svg.push_str(&format!(
                 "<th scope=\"col\">{} ({})</th>",
@@ -367,7 +367,7 @@ impl Curve {
             for value in values {
                 svg.push_str(&format!(
                     "<td>{}</td>",
-                    value.map_or_else(|| "—".into(), |v| v.to_string())
+                    value.map_or_else(|| "n/a".into(), |v| v.to_string())
                 ));
             }
             svg.push_str("</tr>");
@@ -599,7 +599,7 @@ mod tests {
         let html = curve.figure();
         assert!(html.contains("<td>1.2345678901234567</td>"), "{html}");
         assert!(html.contains("<td>9.876543210123456</td>"));
-        assert!(html.contains("<td>—</td>"));
+        assert!(html.contains("<td>n/a</td>"));
     }
 
     #[test]

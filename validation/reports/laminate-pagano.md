@@ -1,12 +1,12 @@
 # laminate-pagano derivation
 
-## Conclusion
+## Finding
 
 Both CalculiX models of the square [0/90/0] plate agree with the exact 3D solution of Pagano (1970) within 0.17 %. The tolerance is 0.5 %. The thin plate (a/h = 100) uses composite shells. The thick plate (a/h = 4) uses 3D layers with 3 elements in each ply.
 
 The thick plate is the hard test. At a/h = 4, the classical laminate theory gives a deflection 78 % too small, and σ_xx is not symmetric about the mid-plane. The 3D layers follow the exact σ_xx through the thickness, with the jumps at the 2 ply interfaces:
 
-**The thick plate (a/h = 4): σ_xx through the thickness at the centre**
+### The thick plate (a/h = 4): σ_xx through the thickness at the centre
 
 ![The thick plate (a/h = 4): σ_xx through the thickness at the centre](laminate-pagano/sx.svg)
 
@@ -18,117 +18,113 @@ The model leaves out the 2 nodes on the ply interfaces z = -4.17 and 4.17 mm. Th
 
 The largest difference of the model from Pagano is +0.233 MPa, at z = 12.50 mm.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | z [mm] | model (σ_xx [MPa]) | Pagano (σ_xx [MPa]) |
 | ---: | ---: | ---: |
-| -12.5 | 11.8667 | — |
-| -11.1111 | 8.5003 | — |
-| -9.7222 | 5.2226 | — |
-| -8.3333 | 3.0819 | — |
-| -6.9444 | 0.9202 | — |
-| -5.5556 | -1.0199 | — |
-| -2.7778 | -0.0996 | — |
-| -1.3889 | -0.0977 | — |
-| 0 | -0.096 | — |
-| 1.3889 | -0.0942 | — |
-| 2.7778 | -0.0993 | — |
-| 5.5556 | 1.4915 | — |
-| 6.9444 | -0.6156 | — |
-| 8.3333 | -2.9751 | — |
-| 9.7222 | -5.3114 | — |
-| 11.1111 | -8.8976 | — |
-| 12.5 | -12.5808 | — |
-| -12.5 | — | 12.0763 |
-| -12.1528 | — | 11.0369 |
-| -11.8056 | — | 10.0664 |
-| -11.4583 | — | 9.159 |
-| -11.1111 | — | 8.309 |
-| -10.7639 | — | 7.5113 |
-| -10.4167 | — | 6.7609 |
-| -10.0694 | — | 6.0533 |
-| -9.7222 | — | 5.384 |
-| -9.375 | — | 4.7489 |
-| -9.0278 | — | 4.1441 |
-| -8.6806 | — | 3.5659 |
-| -8.3333 | — | 3.0106 |
-| -7.9861 | — | 2.4748 |
-| -7.6389 | — | 1.9552 |
-| -7.2917 | — | 1.4485 |
-| -6.9444 | — | 0.9516 |
-| -6.5972 | — | 0.4614 |
-| -6.25 | — | -0.0253 |
-| -5.9028 | — | -0.5113 |
-| -5.5556 | — | -0.9998 |
-| -5.2083 | — | -1.4938 |
-| -4.8611 | — | -1.9964 |
-| -4.5139 | — | -2.5106 |
-| -4.1667 | — | -3.0398 |
-| -4.1667 | — | -0.0998 |
-| -3.8194 | — | -0.0999 |
-| -3.4722 | — | -0.0999 |
-| -3.125 | — | -0.0996 |
-| -2.7778 | — | -0.0993 |
-| -2.4306 | — | -0.0988 |
-| -2.0833 | — | -0.0983 |
-| -1.7361 | — | -0.0977 |
-| -1.3889 | — | -0.0971 |
-| -1.0417 | — | -0.0965 |
-| -0.6944 | — | -0.096 |
-| -0.3472 | — | -0.0955 |
-| 0 | — | -0.0951 |
-| 0.3472 | — | -0.0948 |
-| 0.6944 | — | -0.0946 |
-| 1.0417 | — | -0.0946 |
-| 1.3889 | — | -0.0948 |
-| 1.7361 | — | -0.0951 |
-| 2.0833 | — | -0.0957 |
-| 2.4306 | — | -0.0966 |
-| 2.7778 | — | -0.0977 |
-| 3.125 | — | -0.0992 |
-| 3.4722 | — | -0.101 |
-| 3.8194 | — | -0.1033 |
-| 4.1667 | — | -0.1059 |
-| 4.1667 | — | 3.6808 |
-| 4.5139 | — | 3.1074 |
-| 4.8611 | — | 2.5498 |
-| 5.2083 | — | 2.0046 |
-| 5.5556 | — | 1.4682 |
-| 5.9028 | — | 0.9375 |
-| 6.25 | — | 0.4091 |
-| 6.5972 | — | -0.1204 |
-| 6.9444 | — | -0.6541 |
-| 7.2917 | — | -1.1954 |
-| 7.6389 | — | -1.7476 |
-| 7.9861 | — | -2.3143 |
-| 8.3333 | — | -2.8989 |
-| 8.6806 | — | -3.5051 |
-| 9.0278 | — | -4.1366 |
-| 9.375 | — | -4.7973 |
-| 9.7222 | — | -5.4914 |
-| 10.0694 | — | -6.2231 |
-| 10.4167 | — | -6.9969 |
-| 10.7639 | — | -7.8177 |
-| 11.1111 | — | -8.6904 |
-| 11.4583 | — | -9.6204 |
-| 11.8056 | — | -10.6135 |
-| 12.1528 | — | -11.6756 |
-| 12.5 | — | -12.8134 |
-
-</details>
+| -12.5 | 11.8667 | n/a |
+| -11.1111 | 8.5003 | n/a |
+| -9.7222 | 5.2226 | n/a |
+| -8.3333 | 3.0819 | n/a |
+| -6.9444 | 0.9202 | n/a |
+| -5.5556 | -1.0199 | n/a |
+| -2.7778 | -0.0996 | n/a |
+| -1.3889 | -0.0977 | n/a |
+| 0 | -0.096 | n/a |
+| 1.3889 | -0.0942 | n/a |
+| 2.7778 | -0.0993 | n/a |
+| 5.5556 | 1.4915 | n/a |
+| 6.9444 | -0.6156 | n/a |
+| 8.3333 | -2.9751 | n/a |
+| 9.7222 | -5.3114 | n/a |
+| 11.1111 | -8.8976 | n/a |
+| 12.5 | -12.5808 | n/a |
+| -12.5 | n/a | 12.0763 |
+| -12.1528 | n/a | 11.0369 |
+| -11.8056 | n/a | 10.0664 |
+| -11.4583 | n/a | 9.159 |
+| -11.1111 | n/a | 8.309 |
+| -10.7639 | n/a | 7.5113 |
+| -10.4167 | n/a | 6.7609 |
+| -10.0694 | n/a | 6.0533 |
+| -9.7222 | n/a | 5.384 |
+| -9.375 | n/a | 4.7489 |
+| -9.0278 | n/a | 4.1441 |
+| -8.6806 | n/a | 3.5659 |
+| -8.3333 | n/a | 3.0106 |
+| -7.9861 | n/a | 2.4748 |
+| -7.6389 | n/a | 1.9552 |
+| -7.2917 | n/a | 1.4485 |
+| -6.9444 | n/a | 0.9516 |
+| -6.5972 | n/a | 0.4614 |
+| -6.25 | n/a | -0.0253 |
+| -5.9028 | n/a | -0.5113 |
+| -5.5556 | n/a | -0.9998 |
+| -5.2083 | n/a | -1.4938 |
+| -4.8611 | n/a | -1.9964 |
+| -4.5139 | n/a | -2.5106 |
+| -4.1667 | n/a | -3.0398 |
+| -4.1667 | n/a | -0.0998 |
+| -3.8194 | n/a | -0.0999 |
+| -3.4722 | n/a | -0.0999 |
+| -3.125 | n/a | -0.0996 |
+| -2.7778 | n/a | -0.0993 |
+| -2.4306 | n/a | -0.0988 |
+| -2.0833 | n/a | -0.0983 |
+| -1.7361 | n/a | -0.0977 |
+| -1.3889 | n/a | -0.0971 |
+| -1.0417 | n/a | -0.0965 |
+| -0.6944 | n/a | -0.096 |
+| -0.3472 | n/a | -0.0955 |
+| 0 | n/a | -0.0951 |
+| 0.3472 | n/a | -0.0948 |
+| 0.6944 | n/a | -0.0946 |
+| 1.0417 | n/a | -0.0946 |
+| 1.3889 | n/a | -0.0948 |
+| 1.7361 | n/a | -0.0951 |
+| 2.0833 | n/a | -0.0957 |
+| 2.4306 | n/a | -0.0966 |
+| 2.7778 | n/a | -0.0977 |
+| 3.125 | n/a | -0.0992 |
+| 3.4722 | n/a | -0.101 |
+| 3.8194 | n/a | -0.1033 |
+| 4.1667 | n/a | -0.1059 |
+| 4.1667 | n/a | 3.6808 |
+| 4.5139 | n/a | 3.1074 |
+| 4.8611 | n/a | 2.5498 |
+| 5.2083 | n/a | 2.0046 |
+| 5.5556 | n/a | 1.4682 |
+| 5.9028 | n/a | 0.9375 |
+| 6.25 | n/a | 0.4091 |
+| 6.5972 | n/a | -0.1204 |
+| 6.9444 | n/a | -0.6541 |
+| 7.2917 | n/a | -1.1954 |
+| 7.6389 | n/a | -1.7476 |
+| 7.9861 | n/a | -2.3143 |
+| 8.3333 | n/a | -2.8989 |
+| 8.6806 | n/a | -3.5051 |
+| 9.0278 | n/a | -4.1366 |
+| 9.375 | n/a | -4.7973 |
+| 9.7222 | n/a | -5.4914 |
+| 10.0694 | n/a | -6.2231 |
+| 10.4167 | n/a | -6.9969 |
+| 10.7639 | n/a | -7.8177 |
+| 11.1111 | n/a | -8.6904 |
+| 11.4583 | n/a | -9.6204 |
+| 11.8056 | n/a | -10.6135 |
+| 12.1528 | n/a | -11.6756 |
+| 12.5 | n/a | -12.8134 |
 
 The plots show the stress at the nodes of the result file. Their largest difference from the exact σ_xx is 0.23 MPa at the top face, 1.8 % of the largest σ_xx. The checks use the stress at the integration points (see "Reference values").
 
 The model has 2 quarter plates. The thin plate is at x = 0 to 50 mm, and the thick plate is at x = 60 to 110 mm.
 
 - σ_xx in the thick plate: the face x = 110 mm is the symmetry plane x = a/2. On this face, |σ_xx| at the nodes is up to 12.6 MPa in the 2 plies at 0 degrees. In the ply at 90 degrees in the core, it is less than 0.1 MPa. The σ_xx plot is on the line x = y = a/2 of this face.
-- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`): the thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
+- Deflection w of the 2 plates, at the centre of each plate (the checks `w_thin` and `w_thick`). The thin plate gives w = -0.06200 mm, exact -0.06210 mm. The thick plate gives w = -0.018338 mm, exact -0.018340 mm.
 
 The transverse shear stress τ_xz is continuous through the plies. At the supported edge x = 0, the 3D layers follow the exact τ_xz within 0.056 MPa:
 
-**The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2**
+### The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2
 
 ![The thick plate (a/h = 4): τ_xz through the thickness at the edge x = 0, y = a/2](laminate-pagano/txz.svg)
 
@@ -138,108 +134,104 @@ Pagano is the exact 3D solution of Pagano (1970) from pagano.py. τ_xz is contin
 
 The largest difference of the model from Pagano is -0.056 MPa, at z = 12.50 mm.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | z [mm] | model (τ_xz [MPa]) | Pagano (τ_xz [MPa]) |
 | ---: | ---: | ---: |
-| -12.5 | -0.051 | — |
-| -11.1111 | -0.4508 | — |
-| -9.7222 | -0.842 | — |
-| -8.3333 | -0.9861 | — |
-| -6.9444 | -1.137 | — |
-| -5.5556 | -1.1001 | — |
-| -4.1667 | -1.05 | — |
-| -2.7778 | -1.0341 | — |
-| -1.3889 | -1.0332 | — |
-| 0 | -1.0298 | — |
-| 1.3889 | -1.0266 | — |
-| 2.7778 | -1.0205 | — |
-| 4.1667 | -1.0305 | — |
-| 5.5556 | -1.1038 | — |
-| 6.9444 | -1.1627 | — |
-| 8.3333 | -1.0177 | — |
-| 9.7222 | -0.8802 | — |
-| 11.1111 | -0.4728 | — |
-| 12.5 | -0.056 | — |
-| -12.5 | — | 0 |
-| -12.1528 | — | -0.1346 |
-| -11.8056 | — | -0.2578 |
-| -11.4583 | — | -0.3703 |
-| -11.1111 | — | -0.4728 |
-| -10.7639 | — | -0.566 |
-| -10.4167 | — | -0.6504 |
-| -10.0694 | — | -0.7265 |
-| -9.7222 | — | -0.7947 |
-| -9.375 | — | -0.8555 |
-| -9.0278 | — | -0.9092 |
-| -8.6806 | — | -0.9561 |
-| -8.3333 | — | -0.9966 |
-| -7.9861 | — | -1.0308 |
-| -7.6389 | — | -1.059 |
-| -7.2917 | — | -1.0813 |
-| -6.9444 | — | -1.0979 |
-| -6.5972 | — | -1.1089 |
-| -6.25 | — | -1.1142 |
-| -5.9028 | — | -1.114 |
-| -5.5556 | — | -1.1082 |
-| -5.2083 | — | -1.0968 |
-| -4.8611 | — | -1.0798 |
-| -4.5139 | — | -1.0569 |
-| -4.1667 | — | -1.0281 |
-| -4.1667 | — | -1.0281 |
-| -3.8194 | — | -1.0282 |
-| -3.4722 | — | -1.0282 |
-| -3.125 | — | -1.0281 |
-| -2.7778 | — | -1.0279 |
-| -2.4306 | — | -1.0277 |
-| -2.0833 | — | -1.0273 |
-| -1.7361 | — | -1.0269 |
-| -1.3889 | — | -1.0264 |
-| -1.0417 | — | -1.0258 |
-| -0.6944 | — | -1.0251 |
-| -0.3472 | — | -1.0244 |
-| 0 | — | -1.0236 |
-| 0.3472 | — | -1.0228 |
-| 0.6944 | — | -1.0218 |
-| 1.0417 | — | -1.0208 |
-| 1.3889 | — | -1.0197 |
-| 1.7361 | — | -1.0186 |
-| 2.0833 | — | -1.0173 |
-| 2.4306 | — | -1.016 |
-| 2.7778 | — | -1.0145 |
-| 3.125 | — | -1.0129 |
-| 3.4722 | — | -1.0112 |
-| 3.8194 | — | -1.0094 |
-| 4.1667 | — | -1.0073 |
-| 4.1667 | — | -1.0073 |
-| 4.5139 | — | -1.0433 |
-| 4.8611 | — | -1.0728 |
-| 5.2083 | — | -1.096 |
-| 5.5556 | — | -1.1131 |
-| 5.9028 | — | -1.1241 |
-| 6.25 | — | -1.129 |
-| 6.5972 | — | -1.1279 |
-| 6.9444 | — | -1.1208 |
-| 7.2917 | — | -1.1075 |
-| 7.6389 | — | -1.088 |
-| 7.9861 | — | -1.062 |
-| 8.3333 | — | -1.0296 |
-| 8.6806 | — | -0.9903 |
-| 9.0278 | — | -0.9439 |
-| 9.375 | — | -0.8902 |
-| 9.7222 | — | -0.8287 |
-| 10.0694 | — | -0.7592 |
-| 10.4167 | — | -0.681 |
-| 10.7639 | — | -0.5938 |
-| 11.1111 | — | -0.497 |
-| 11.4583 | — | -0.3899 |
-| 11.8056 | — | -0.2718 |
-| 12.1528 | — | -0.1422 |
-| 12.5 | — | 0 |
-
-</details>
+| -12.5 | -0.051 | n/a |
+| -11.1111 | -0.4508 | n/a |
+| -9.7222 | -0.842 | n/a |
+| -8.3333 | -0.9861 | n/a |
+| -6.9444 | -1.137 | n/a |
+| -5.5556 | -1.1001 | n/a |
+| -4.1667 | -1.05 | n/a |
+| -2.7778 | -1.0341 | n/a |
+| -1.3889 | -1.0332 | n/a |
+| 0 | -1.0298 | n/a |
+| 1.3889 | -1.0266 | n/a |
+| 2.7778 | -1.0205 | n/a |
+| 4.1667 | -1.0305 | n/a |
+| 5.5556 | -1.1038 | n/a |
+| 6.9444 | -1.1627 | n/a |
+| 8.3333 | -1.0177 | n/a |
+| 9.7222 | -0.8802 | n/a |
+| 11.1111 | -0.4728 | n/a |
+| 12.5 | -0.056 | n/a |
+| -12.5 | n/a | 0 |
+| -12.1528 | n/a | -0.1346 |
+| -11.8056 | n/a | -0.2578 |
+| -11.4583 | n/a | -0.3703 |
+| -11.1111 | n/a | -0.4728 |
+| -10.7639 | n/a | -0.566 |
+| -10.4167 | n/a | -0.6504 |
+| -10.0694 | n/a | -0.7265 |
+| -9.7222 | n/a | -0.7947 |
+| -9.375 | n/a | -0.8555 |
+| -9.0278 | n/a | -0.9092 |
+| -8.6806 | n/a | -0.9561 |
+| -8.3333 | n/a | -0.9966 |
+| -7.9861 | n/a | -1.0308 |
+| -7.6389 | n/a | -1.059 |
+| -7.2917 | n/a | -1.0813 |
+| -6.9444 | n/a | -1.0979 |
+| -6.5972 | n/a | -1.1089 |
+| -6.25 | n/a | -1.1142 |
+| -5.9028 | n/a | -1.114 |
+| -5.5556 | n/a | -1.1082 |
+| -5.2083 | n/a | -1.0968 |
+| -4.8611 | n/a | -1.0798 |
+| -4.5139 | n/a | -1.0569 |
+| -4.1667 | n/a | -1.0281 |
+| -4.1667 | n/a | -1.0281 |
+| -3.8194 | n/a | -1.0282 |
+| -3.4722 | n/a | -1.0282 |
+| -3.125 | n/a | -1.0281 |
+| -2.7778 | n/a | -1.0279 |
+| -2.4306 | n/a | -1.0277 |
+| -2.0833 | n/a | -1.0273 |
+| -1.7361 | n/a | -1.0269 |
+| -1.3889 | n/a | -1.0264 |
+| -1.0417 | n/a | -1.0258 |
+| -0.6944 | n/a | -1.0251 |
+| -0.3472 | n/a | -1.0244 |
+| 0 | n/a | -1.0236 |
+| 0.3472 | n/a | -1.0228 |
+| 0.6944 | n/a | -1.0218 |
+| 1.0417 | n/a | -1.0208 |
+| 1.3889 | n/a | -1.0197 |
+| 1.7361 | n/a | -1.0186 |
+| 2.0833 | n/a | -1.0173 |
+| 2.4306 | n/a | -1.016 |
+| 2.7778 | n/a | -1.0145 |
+| 3.125 | n/a | -1.0129 |
+| 3.4722 | n/a | -1.0112 |
+| 3.8194 | n/a | -1.0094 |
+| 4.1667 | n/a | -1.0073 |
+| 4.1667 | n/a | -1.0073 |
+| 4.5139 | n/a | -1.0433 |
+| 4.8611 | n/a | -1.0728 |
+| 5.2083 | n/a | -1.096 |
+| 5.5556 | n/a | -1.1131 |
+| 5.9028 | n/a | -1.1241 |
+| 6.25 | n/a | -1.129 |
+| 6.5972 | n/a | -1.1279 |
+| 6.9444 | n/a | -1.1208 |
+| 7.2917 | n/a | -1.1075 |
+| 7.6389 | n/a | -1.088 |
+| 7.9861 | n/a | -1.062 |
+| 8.3333 | n/a | -1.0296 |
+| 8.6806 | n/a | -0.9903 |
+| 9.0278 | n/a | -0.9439 |
+| 9.375 | n/a | -0.8902 |
+| 9.7222 | n/a | -0.8287 |
+| 10.0694 | n/a | -0.7592 |
+| 10.4167 | n/a | -0.681 |
+| 10.7639 | n/a | -0.5938 |
+| 11.1111 | n/a | -0.497 |
+| 11.4583 | n/a | -0.3899 |
+| 11.8056 | n/a | -0.2718 |
+| 12.1528 | n/a | -0.1422 |
+| 12.5 | n/a | 0 |
 
 Use composite shells of this material only for a/h of 50 or more. At a/h = 4, the 8 x 8 composite shells give a deflection 26 % too small (see "Composite shell and the span ratio").
 
@@ -267,15 +259,15 @@ Both plates use the ply material `*ELASTIC, TYPE=ENGINEERING CONSTANTS`, and the
 ## Source
 
 N. J. Pagano, "Exact solutions for rectangular bidirectional composites and sandwich plates", Journal of Composite Materials 4 (1970) 20-34.
-The problem is a square plate of side a and thickness h, simply supported on the 4 edges, with the load q = q0 sin(πx/a) sin(πy/a) on the top face.
+The problem is a square plate of side a and thickness h, simply supported on the 4 edges. The load on the top face is q = q0 sin(πx/a) sin(πy/a).
 The plate has 3 plies of h/3 at 0, 90 and 0 degrees. The ply has E_L/E_T = 25, G_LT/E_T = 0.5, G_TT/E_T = 0.2 and ν_LT = ν_TT = 0.25 (L is the fibre).
 
 For this load, each field is 1 sine or cosine term in x and y, times a function of z. In each ply, the 3D equations of elasticity then become 6 linear equations in z with constant coefficients.
-`pagano.py` solves them exactly: the state (U, V, W, τ_xz, τ_yz, σ_z) goes from the bottom face to the top face through the matrix exponential of each ply.
+`pagano.py` solves them exactly. The state (U, V, W, τ_xz, τ_yz, σ_z) goes from the bottom face to the top face through the matrix exponential of each ply.
 The displacements and the transverse stresses are continuous at each interface. The top and bottom faces have τ_xz = τ_yz = 0, and σ_z = -q0 on the top and 0 on the bottom.
 This is the solution of Pagano. `pagano.py` has no other approximation than the round-off and the truncation of the series of the exponential (below 1e-12).
 
-`python3 pagano.py --table` prints the normalized values: w̄ = 100 E_T h^3 w / (q0 a^4), σ̄ = σ / (q0 S^2) and τ̄_xz = τ_xz / (q0 S), S = a/h.
+`python3 pagano.py --table` prints the normalized values. They are w̄ = 100 E_T h^3 w / (q0 a^4), σ̄ = σ / (q0 S^2) and τ̄_xz = τ_xz / (q0 S), with S = a/h.
 K. Bhaskar, T. Varadan and J. Ali, "Thermoelastic solutions for orthotropic and anisotropic composite laminates", Composites Part B 27 (1996) 415-420, give the same exact solution.
 Table 3 of A. Venkatachari et al., arXiv:1407.7171 (2014), gives their values. `pagano.py` agrees with them:
 
@@ -289,7 +281,7 @@ Table 3 of A. Venkatachari et al., arXiv:1407.7171 (2014), gives their values. `
 The only difference is τ̄_xz at a/h = 20 (0.4 %). This case does not use a/h = 20.
 The table gives these values at z = h/2. They agree with `pagano.py` at the mid-plane for w and at the face without load for σ_xx.
 At a/h = 100, `pagano.py` gives w̄ = 0.4347 and σ̄_xx = 0.5393. The classical laminate theory (CLT) gives w̄ = 0.4312 and σ̄_xx = 0.5387 at all a/h.
-At a/h = 4, the CLT deflection is 78 % too small, and σ_xx is not symmetric about the mid-plane (0.8008 on the top, 0.7548 on the bottom).
+At a/h = 4, the CLT deflection is 78 % too small. Also σ_xx is not symmetric about the mid-plane (0.8008 on the top, 0.7548 on the bottom).
 
 ## Data
 
@@ -320,7 +312,7 @@ Without DOF 5 and 4 on the symmetry edges, the shell is free to turn there, and 
 - `THIN`: 8 x 8 `S8R`. `*SHELL SECTION, COMPOSITE` has 1 line for each layer: the thickness, an empty field, the material and the orientation. The normal of the elements is +z, thus the first layer is at the bottom.
 - `THICK`: 8 x 8 x 9 `C3D20R`. The element sets `THICK_0` and `THICK_90` have their own `*SOLID SECTION` and orientation.
 - `OR0` puts the fibre (axis 1) on x, `OR90` puts it on y.
-- Load: `pagano.py` writes the nodal forces of q0 sin sin, from the shape functions of the 8-node faces with 4 x 4 Gauss points (`load.inp`). For `THIN` they are on the nodes of the shells, thus on the mid-surface. For `THICK` they are on the top face.
+- Load: `pagano.py` writes the nodal forces of q0 sin sin (`load.inp`). They come from the shape functions of the 8-node faces with 4 x 4 Gauss points. For `THIN` they are on the nodes of the shells, thus on the mid-surface. For `THICK` they are on the top face.
 
 ## Reference values
 
@@ -339,7 +331,7 @@ Thus each stress check compares with the exact stress at the integration points 
 τ_xz is negative at x = 0, thus the check takes the mean, not the maximum.
 `GLOBAL=YES` gives the stresses in x, y, z. Without it, `ccx` gives them in the axes of the ply, and it adds the name of the orientation at the end of each line.
 
-## Result
+## Comparison of the results
 
 | Check | ccx | Exact | Difference |
 |---|---:|---:|---:|
@@ -349,7 +341,7 @@ Thus each stress check compares with the exact stress at the integration points 
 | `sx_thick` | 10.3599 MPa | 10.3419 MPa | +0.17 % |
 | `txz_thick` | -1.01018 MPa | -1.01034 MPa | -0.015 % |
 
-The run takes less than 1 s. A wrong layup fails the case: with the 2 orientations swapped ([90/0/90]), w does not change (the plate is square), but `sx_thin` is -78 % and `sx_thick` is -89 %.
+The run takes less than 1 s. A wrong layup fails the case. With the 2 orientations swapped ([90/0/90]), w does not change (the plate is square). But `sx_thin` is -78 % and `sx_thick` is -89 %.
 With G_TT = G_LT, `w_thick` is -27 %.
 
 ## Mesh study
@@ -373,7 +365,7 @@ The exact values change with the mesh, because the integration points move. `pag
 | 8 x 8, 4 | -0.003 % | +0.08 % | -0.005 % |
 | 32 x 32, 4 | -0.003 % | +0.08 % | -0.005 % |
 
-The number of elements in each ply has the largest effect. 8 x 8 in the plane is sufficient.
+The number of elements in each ply has the largest effect. 8 x 8 in the plane is enough.
 The error of `THIN` does not change with the mesh. It comes from the model: `ccx` expands each composite shell into 1 brick across the full thickness, and the load is on the mid-surface.
 
 ## Composite shell and the span ratio
@@ -390,7 +382,7 @@ The error of `THIN` does not change with the mesh. It comes from the model: `ccx
 
 The composite shell is too stiff in transverse shear, because 1 brick cannot follow the zigzag of the displacement across the plies.
 Thus use composite shells only for a/h of 50 or more with this material (E_L/G_TT = 125). Use 3D layers for a thicker laminate.
-The transverse shear stress of a composite shell comes from the strain of the brick, not from the equilibrium. At a/h = 100, τ_xz at the bottom points of the shell is 3 times the exact value, and in the core it is 1/3 of the exact value.
+The transverse shear stress of a composite shell comes from the strain of the brick, not from the equilibrium. At a/h = 100, τ_xz at the bottom points of the shell is 3 times the exact value. In the core it is 1/3 of the exact value.
 A test with `S6` (each `S8R` cut into 2 `S6`) gave w of `THIN` -0.42 %.
 
 ## Tolerance

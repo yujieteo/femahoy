@@ -1,6 +1,6 @@
 # dynamics-bar-step derivation
 
-## Conclusion
+## Finding
 
 The solid bar gives the end displacement at t = 2L/c 1.57 % below the 1D wave theory of Graff (1975). The mean u1 of the end face is 0.0187484 mm, and the theory gives 0.0190476 mm. The tolerance is 3 %.
 
@@ -83,7 +83,7 @@ Most of the time was the last solve: 400 implicit increments of 0.25 µs. The ch
 Run `python3 mesh.py` to write `mesh.inp` from `mesh.geo` with gmsh.
 The transfinite faces and the extrusion use `Recombine` and `Mesh.ElementOrder=1`.
 The mesh has 80 x 4 x 4 C3D8R elements, 1280 elements and 2025 nodes.
-The mesh retains the 200 x 10 x 10 mm box, `FIXED` at x = 0 and `END` at x = 200.
+The mesh keeps the 200 x 10 x 10 mm box, `FIXED` at x = 0 and `END` at x = 200.
 The `END` surface uses the outward S4 face of each end element.
 `job.inp` includes the mesh and keeps the original material, explicit step, pressure, check and 3 % tolerance.
 

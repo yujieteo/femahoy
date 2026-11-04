@@ -1,4 +1,4 @@
-## Conclusion
+# Finding
 
 The solid model gives the first natural frequency of the cantilever 0.33 % above the beam theory of Blevins (1979). The model gives 419.12 Hz, and the beam theory gives 417.758 Hz. The tolerance is 1 %.
 

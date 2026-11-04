@@ -4,7 +4,7 @@ This case checks the TEM port of the built-in electromagnetic solver: a coaxial 
 
 ## Source
 
-A coaxial line with the inner radius a, the outer radius b and a dielectric of εr has the TEM mode with Z0 = η0 ln(b / a) / (2π sqrt(εr)) and β = k0 sqrt(εr). A uniform line with matched ports has S21 = exp(−jβL). D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, sections 2.1 and 3.4.
+A coaxial line has the inner radius a, the outer radius b and a dielectric of εr. It has the TEM mode with Z0 = η0 ln(b / a) / (2π sqrt(εr)) and β = k0 sqrt(εr). A uniform line with matched ports has S21 = exp(−jβL). D. M. Pozar, *Microwave Engineering*, 4th ed., Wiley, 2012, sections 2.1 and 3.4.
 
 ## Model
 

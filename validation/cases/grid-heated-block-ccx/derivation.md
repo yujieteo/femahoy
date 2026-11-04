@@ -1,6 +1,6 @@
 # grid-heated-block-ccx derivation
 
-This case compares the grid solver with CalculiX on the same 3D steady problem: a copper block with a heat source on a steel plate that a convection cools (units SI-m). It has no analytical solution.
+This case compares the grid solver with CalculiX on the same 3D steady problem (units SI-m). A copper block with a heat source sits on a steel plate, and a convection cools the plate. It has no analytical solution.
 
 ## Source
 

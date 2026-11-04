@@ -7,7 +7,7 @@ This case checks element birth: a concrete column built in 10 lifts, each lift a
 The theory is the axial deformation of a bar, δ = N L / (E A), applied to each step of the construction: J. M. Gere and B. J. Goodno, *Mechanics of Materials*, 8th ed., Cengage Learning, 2013, chapter 2 (axially loaded members).
 R. W. Clough and R. Woodward, "Analysis of embankment stresses and deformations", *Journal of the Soil Mechanics and Foundations Division*, ASCE 93, 1967, pp. 529-549, analysed embankments built in layers.
 J. Kadish, J. R. Barber, P. D. Washabaugh and D. J. Scheeres, "Stresses in accreted planetary bodies", *International Journal of Solids and Structures* 45, 2008, pp. 540-550, use the same principle: new material attaches stress free, and then it is elastic.
-They find that the result is very different from the solution for a body that is complete before the load starts.
+They find that the result is different from the solution for a body that is complete before the load starts.
 
 ## Model
 
@@ -92,4 +92,4 @@ The `.frd` file has the settlement of `job.dat` with 6 digits, for example -0.02
 
 ## Files
 
-`job.inp` is written by hand: 44 nodes and 10 `C3D8` elements, 1 for each lift. The run takes less than 1 s.
+The `job.inp` has 44 nodes and 10 `C3D8` elements, 1 for each lift. The run takes less than 1 s.

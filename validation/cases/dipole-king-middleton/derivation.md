@@ -20,7 +20,7 @@ The dipole is the simplest antenna with a published impedance, and its far field
 - R. W. P. King, "The Theory of Linear Antennas", Harvard University Press, 1956, Tables 30.6 to 30.10 (pages 172 to 176).
   The tables give the second-order impedance of King and Middleton for a centre-fed tube of radius a and half length h, with a delta-gap feed.
   The values are a function of beta h = 2 pi h / wavelength and of the thickness parameter Omega = 2 ln(2h / a).
-  The values below are copied from the comparison of AN-SOF with these tables, <https://www.antennasimulator.com/download/AN-SOF_vs_King-Middleton_2nd_Order_Impedances.xlsx>.
+  The values below come from the comparison of AN-SOF with these tables, <https://www.antennasimulator.com/download/AN-SOF_vs_King-Middleton_2nd_Order_Impedances.xlsx>.
   The same file gives the solution of AN-SOF, a method-of-moments program, for the same dipoles. This case uses it only to estimate the error of the second-order theory.
 - C. A. Balanis, "Antenna Theory: Analysis and Design", 4th edition, Wiley, 2016, section 4.6, "Half-wavelength dipole".
   A sinusoidal current on a dipole of length lambda / 2 gives the directivity D0 = 4 / Cin(2 pi) = 1.641, with Cin(2 pi) = 2.4377.
@@ -58,8 +58,8 @@ The openEMS case is the folder `omega12.5`: `openems.py` for the Python modules 
 | Feed | a gap of 0.6 mm at the centre, with a lumped port of 50 ohm across the full width |
 | Pulse | Gaussian, 1.5 GHz +/- 1.3 GHz. The run stops when the energy is 60 dB below its peak |
 | Free space | 100 mm of air on each side of the dipole (a quarter wavelength at beta h = 1.2), then a PML of 8 cells |
-| Mesh | 4 cells across the strip (d = 0.3 mm), with a line d/3 in the metal and the next line 2d/3 out of the metal at each edge and each end. The cells grow by 1.3 times or less, to a twentieth of the wavelength at 2.8 GHz. 405130 cells |
-| Far field | a box of near-field to far-field transformation at the frequency of beta h = pi / 2, then the far field on the full sphere in steps of 2 degrees (theta) and 5 degrees (phi) |
+| Mesh | 4 cells across the strip (d = 0.3 mm). A line is d/3 in the metal and the next line is 2d/3 out of the metal at each edge and each end. The cells grow by 1.3 times or less, to a twentieth of the wavelength at 2.8 GHz. 405130 cells |
+| Far field | a box of near-field to far-field transformation at the frequency of beta h = pi / 2. Then the far field on the full sphere in steps of 2 degrees (theta) and 5 degrees (phi) |
 | Output | `dipole.txt`: 1 row with the checks and with R12, X17, the resonance bh_res and R_res. `impedance.txt`: R, X and S11 for 50 ohm from 0.4 to 2.8 GHz. `pattern.pos`: the far-field pattern at beta h = pi / 2, a surface at the distance D(theta, phi) from the centre, for the viewer |
 
 The impedance is a function of beta h and Omega only. Thus the band of the pulse gives the values at each beta h of the table with 1 dipole.
@@ -67,14 +67,14 @@ The impedance is a function of beta h and Omega only. Thus the band of the pulse
 Problems that the model solves:
 
 - A sheet edge on a mesh line acts as an edge about d/3 out of the metal. Thus a strip with 4 cells across its width acts as a wider strip, and X12 has an error of 5 %. The 1/3 rule of the openEMS documentation puts the effective edge at the true edge.
-- With the end at 50 dB below the peak, R has a ripple of +/- 10 ohm below 0.6 GHz: the run stops before the current at low frequency is small. At 60 dB, R is smooth from 0.4 GHz. The checks change by 0.5 % or less.
+- With the end at 50 dB below the peak, R has a ripple of +/- 10 ohm below 0.6 GHz. The run stops before the current at low frequency is small. At 60 dB, R is smooth from 0.4 GHz. The checks change by 0.5 % or less.
 - `Run` changes the working folder of Python to the simulation folder. The script changes it back before it reads the results.
 
 ## Mesh study
 
 These commands, in the repository root, solve the case with 8 cells across the strip in a scratch folder. Set `FH_OPENEMS` to the Python of openEMS first (README.md):
 
-```
+```text
 mkdir /tmp/dipole && cp validation/cases/dipole-king-middleton/omega12.5/openems.py /tmp/dipole && cd /tmp/dipole
 sed -i.bak 's/^N = 4 /N = 8 /' openems.py && "$FH_OPENEMS" openems.py && cat dipole.txt
 ```
@@ -91,7 +91,7 @@ The resonance of the reference is the zero of X between the rows 1.4 and 1.5 of 
 
 From 4 to 8 cells, X12 changes by 0.3 %, R15 by 0.2 %, and D and eff by 0.05 % or less. The resonance changes by 0.04 %.
 
-These changes of the model change X12 and R15 by 0.2 % or less. They were tested with 4 cells across the strip and the end at 50 dB:
+These changes of the model change X12 and R15 by 0.2 % or less. The test used 4 cells across the strip and the end at 50 dB:
 
 | Change | X12 | R15 |
 |---|---:|---:|
@@ -110,7 +110,7 @@ The tolerance is `rel_tol = 0.06` and `abs_tol = 0`.
 | The directivity of a sinusoidal current | the current of a dipole with Omega = 12.5 is almost sinusoidal | 0.7 % |
 | openEMS of another version or platform | FDTD has no iteration and no random part | small |
 
-The strip with 8 cells has its resonance 0.6 % lower than the round dipole. X12 is 3.8 % less negative, and R15 is 3.7 % higher. The cause is not known exactly. The equivalent radius w / 4 is exact for the logarithm of the kernel, but not for the field near the feed and the ends. A 6 % tolerance covers the measured difference with a margin of 1.9 %.
+The strip with 8 cells has its resonance 0.6 % lower than the round dipole. X12 is 3.8 % less negative, and R15 is 3.7 % higher. The exact cause is unknown. The equivalent radius w / 4 is exact for the logarithm of the kernel, but not for the field near the feed and the ends. A 6 % tolerance covers the measured difference with a margin of 1.9 %.
 
 | Check | Model | Reference | Difference | Tolerance | Part of the tolerance |
 |---|---:|---:|---:|---:|---:|

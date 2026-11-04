@@ -1,10 +1,10 @@
 # taylor-bar-impact derivation
 
-## Conclusion
+## Finding
 
 The explicit model of CalculiX gives the final shape of the Taylor bar within the tolerance of 0.80 mm. At 80 µs, the final length of the model is 21.29 mm and the mushroom radius is 6.72 mm. DYNA3D gives 21.66 mm and 7.02 mm. The model values are 0.37 mm and 0.30 mm smaller, 46 % and 37 % of the tolerance.
 
-**The length of the bar and the mushroom radius against the time**
+### The length of the bar and the mushroom radius against the time
 
 ![The length of the bar and the mushroom radius against the time](taylor-bar-impact/shape.svg)
 
@@ -12,29 +12,25 @@ DYNA3D: DYNA3D (Hallquist and Benson 1987), from the Ansys Technology Showcase, 
 
 The length is 32.4 mm plus the mean u3 of the top face. The radius is 3.2 mm plus u1 of the rim node on the wall. ccx writes them each 10 µs.
 
-<details><summary>Values of the plot</summary>
-
-Original values. — means no sample.
+Original values. n/a means no sample.
 
 | t [µs] | length (length or radius [mm]) | radius (length or radius [mm]) | DYNA3D (length or radius [mm]) |
 | ---: | ---: | ---: | ---: |
-| 0 | 32.4 | 3.2 | — |
-| 10 | 30.1411 | 4.9623 | — |
-| 20 | 28.0574 | 5.8551 | — |
-| 30 | 26.1834 | 6.4037 | — |
-| 40 | 24.542 | 6.6802 | — |
-| 50 | 23.166 | 6.7233 | — |
-| 60 | 22.1013 | 6.7253 | — |
-| 70 | 21.428 | 6.723 | — |
-| 80 | 21.294 | 6.7225 | — |
-| 80 | — | — | 21.66 |
-| 80 | — | — | 7.02 |
-
-</details>
+| 0 | 32.4 | 3.2 | n/a |
+| 10 | 30.1411 | 4.9623 | n/a |
+| 20 | 28.0574 | 5.8551 | n/a |
+| 30 | 26.1834 | 6.4037 | n/a |
+| 40 | 24.542 | 6.6802 | n/a |
+| 50 | 23.166 | 6.7233 | n/a |
+| 60 | 22.1013 | 6.7253 | n/a |
+| 70 | 21.428 | 6.723 | n/a |
+| 80 | 21.294 | 6.7225 | n/a |
+| 80 | n/a | n/a | 21.66 |
+| 80 | n/a | n/a | 7.02 |
 
 The radius increases fast in the first 30 µs and stops at about 50 µs. The length decreases to the end, but from 70 to 80 µs the top moves only 0.13 mm. Thus the bar is almost at rest at 80 µs, the time of the checks.
 
-A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below), 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.
+A finer mesh gives a longer bar and a larger mushroom. The mesh study of 3 meshes extrapolates the model to 21.58 mm and 7.27 mm (section "Mesh study" below). They are 0.08 mm and 0.25 mm from DYNA3D. The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the radius. These errors are larger than the differences between the extrapolated model and DYNA3D.
 
 The model is the quarter bar, with 1 step each 10 µs. The length and the mushroom radius at each time are:
 
@@ -70,8 +66,8 @@ OpenRadioss, now OpenCourant (AGPL-3.0), has builds for Linux x86-64, Linux ARM6
 
 ## Sources
 
-- The benchmark: A. Kamoulakos, "A simple 'benchmark' for impact", Bench Mark, 1990, pp. 31-35. A copper bar with a radius of 3.2 mm and a length of 32.4 mm hits a rigid frictionless wall at 227 m/s. The material is elastic-plastic with E = 117 GPa, nu = 0.35, rho = 8930 kg/m3, a yield stress of 400 MPa and a linear hardening of 100 MPa. The results are at 80 µs.
-- The reference values: the DYNA3D results (J. O. Hallquist and D. J. Benson, DYNA3D user's manual, revision 3, report UCID-19592, Lawrence Livermore National Laboratory, 1987). The Ansys Technology Showcase, chapter 17 "Impact of a Metal Bar on a Rigid Wall", gives them as its reference: a mushroom radius of 7.02 mm, a final length of 21.66 mm and a largest equivalent plastic strain of 3.24.
+- The benchmark: A. Kamoulakos, "A simple 'benchmark' for impact", Bench Mark, 1990, pp. 31-35. A copper bar with a radius of 3.2 mm and a length of 32.4 mm hits a rigid frictionless wall at 227 m/s. The material is elastic-plastic with E = 117 GPa, nu = 0.35 and rho = 8930 kg/m3. The yield stress is 400 MPa and the linear hardening is 100 MPa. The results are at 80 µs.
+- The reference values: the DYNA3D results (J. O. Hallquist and D. J. Benson, DYNA3D user's manual, revision 3, report UCID-19592, Lawrence Livermore National Laboratory, 1987). The Ansys Technology Showcase, chapter 17 "Impact of a Metal Bar on a Rigid Wall", gives them as its reference. They are a mushroom radius of 7.02 mm, a final length of 21.66 mm and a largest equivalent plastic strain of 3.24.
 - The same setup, with the axial velocity 0 at the impact face: M. N. Rahimi and G. Moutsanidis, "SoliDualSPHysics", arXiv:2602.15149, section 4.3.2.
 
 ## Model
@@ -117,7 +113,7 @@ The mesh error of the check mesh is 0.29 mm in the length and 0.55 mm in the rad
 
 ## Tolerance
 
-The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of very different sizes (10.74 mm and 3.82 mm).
+The tolerance is `abs_tol = 0.80` (mm) and `rel_tol = 0`, the same for both checks. A tolerance in mm, not a relative tolerance, because the reference displacements are of different sizes (10.74 mm and 3.82 mm).
 
 | Cause | Basis | Length | Radius |
 |---|---|---:|---:|
@@ -143,5 +139,5 @@ The coarse mesh (4 4 27) passes. Its largest part of the tolerance is 83 % (`rad
 
 ## Not in the check
 
-- The largest equivalent plastic strain (3.24 for DYNA3D): it is a value at 1 point at the centre of the impact face, and it changes much with the mesh.
+- The largest equivalent plastic strain (3.24 for DYNA3D) is a value at 1 point at the centre of the impact face. It changes much with the mesh.
 - Friction on the wall and the bounce off the wall: the benchmark has no friction, and at 80 µs the bar is almost at rest.

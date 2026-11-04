@@ -16,7 +16,7 @@ The ends are open: the top is free and the bottom holds only uz. The solution is
 
 ## Reference
 
-The Lamé solution of a tube with open ends (S. P. Timoshenko and J. N. Goodier, Theory of Elasticity, 3rd ed., McGraw-Hill 1970, section 28): σrr = A − B / r², σθθ = A + B / r², σzz = 0, with A = p a² / (b² − a²) = 33.3333 MPa and B = p a² b² / (b² − a²) = 13333.33 MPa mm². The axial strain is constant, so the 3D solution of the short tube is exact. The radial displacement is u = ((1 − ν) A r + (1 + ν) B / r) / E.
+The Lamé solution of a tube with open ends (S. P. Timoshenko and J. N. Goodier, Theory of Elasticity, 3rd ed., McGraw-Hill 1970, section 28). It is σrr = A − B / r², σθθ = A + B / r² and σzz = 0. Here A = p a² / (b² − a²) = 33.3333 MPa, and B = p a² b² / (b² − a²) = 13333.33 MPa mm². The axial strain is constant, so the 3D solution of the short tube is exact. The radial displacement is u = ((1 − ν) A r + (1 + ν) B / r) / E.
 
 | Probe | Point (mm) | Column | Reference |
 |---|---|---|---:|
@@ -37,7 +37,7 @@ The Lamé solution of a tube with open ends (S. P. Timoshenko and J. N. Goodier,
 
 The solver makes each circle a polygon of 64 points (80 at max_cell 0.8 mm). The displacements are 0.1 % to 0.2 % low, the effect of the polygon. The stresses scatter by up to 0.6 % with the mesh.
 
-A point of a circle is a corner of the polygon. On the inner wall, which has the pressure, the corner is re-entrant by 5.6°, and its stress changes by a few percent with the mesh: `inner.syy` is 166.75, 166.74 and 174.79 MPa on the 3 meshes, against 166.67 MPa. For this reason the check reads the hoop stress of the inner wall at `wall`, 0.5 mm inside the wall, where it changes by less than 0.2 %.
+A point of a circle is a corner of the polygon. On the inner wall, which has the pressure, the corner is re-entrant by 5.6°. Its stress changes by a few percent with the mesh: `inner.syy` is 166.75, 166.74 and 174.79 MPa on the 3 meshes, against 166.67 MPa. For this reason the check reads the hoop stress of the inner wall at `wall`, 0.5 mm inside the wall. There it changes by less than 0.2 %.
 
 ## Tolerance
 

@@ -16,17 +16,17 @@ No other case of the suite has any of these items:
 
 ## Sources
 
-- K. Fujiwara and T. Nakata, "Results for benchmark problem 7 (asymmetrical conductor with a hole)", COMPEL 9 (1990) 137-154, https://doi.org/10.1108/eb010071.
+- K. Fujiwara and T. Nakata, "Results for benchmark problem 7 (asymmetrical conductor with a hole)", COMPEL 9 (1990) 137-154, <https://doi.org/10.1108/eb010071>.
   It defines TEAM problem 7, gives the measured values (Bz in its Table 4), and compares 25 solutions of 17 codes with them.
 - The table of the measured Bz on the line A1-B1 is also on 2 web pages:
-  - the TEAM problems of NGSolve, https://ngsolve.github.io/TEAM-problems/TEAM-7/team7.html;
-  - the TEAM 7 case of mufem, https://github.com/Raiden-Numerics/mufem/blob/main/Electromagnetics/Compumag-Team7-Asymmetrical-Conductor-with-a-Hole/README.md.
+  - the TEAM problems of NGSolve, <https://ngsolve.github.io/TEAM-problems/TEAM-7/team7.html>
+  - the TEAM 7 case of mufem, <https://github.com/Raiden-Numerics/mufem/blob/main/Electromagnetics/Compumag-Team7-Asymmetrical-Conductor-with-a-Hole/README.md>.
 
   The 2 copies have the same values at the points of the check. They differ at x = 18 mm, 90 degrees (2.84 G and 2.48 G). The check does not use that point.
-- The mufem page gives the relative L2 difference between its solution and these data, over the 17 points and the 2 phases of A1-B1: 3.3 % at 50 Hz and 5.9 % at 200 Hz.
+- The mufem page gives the relative L2 difference between its solution and these data, over the 17 points and the 2 phases of A1-B1. It is 3.3 % at 50 Hz and 5.9 % at 200 Hz.
 
 The line A1-B1 is y = 72 mm, z = 34 mm, from x = 0 to x = 288 mm. The plate is from z = 0 to z = 19 mm, thus the line is 15 mm above the plate.
-The source gives Bz at the instants omega t = 0 and omega t = 90 degrees, with the coil current at its peak at omega t = 0.
+The source gives Bz at the instants omega t = 0 and omega t = 90 degrees. The coil current is at its peak at omega t = 0.
 
 | Check | x (mm) | omega t | Measured Bz (G) | Value (T) | Why this point |
 |---|---:|---:|---:|---:|---|
@@ -44,11 +44,11 @@ The GetDP case is the folder `50hz`: `case.geo` for gmsh and `case.pro` for GetD
 | Item | Value |
 |---|---|
 | Plate | 294 x 294 x 19 mm, from (0, 0, 0). The hole is 108 x 108 mm, from x, y = 18 mm to 126 mm. sigma = 3.526e7 S/m |
-| Coil | 2742 ampere-turns, a uniform current density in the section of 25 x 100 mm. The inner edge is a square of 150 mm with corner radius 25 mm, the outer edge a square of 200 mm with corner radius 50 mm. Centre (194, 100) mm, from z = 49 mm to 149 mm. The current goes anticlockwise as seen from +z |
+| Coil | 2742 ampere-turns, a uniform current density in the section of 25 x 100 mm. The inner edge is a square of 150 mm with corner radius 25 mm. The outer edge is a square of 200 mm with corner radius 50 mm. Centre (194, 100) mm, from z = 49 mm to 149 mm. The current goes anticlockwise as seen from +z |
 | Air | a sphere of radius 0.35 m about (147, 147, 74) mm. Around it, a shell to 0.45 m that GetDP maps to infinity (`VolSphShell`). a = 0 on the outer face |
-| Formulation | the modified vector potential a, with E = -j omega a in the plate: curl(nu curl a) + j omega sigma a = js. First-order edge elements |
+| Formulation | the changed vector potential a, with E = -j omega a in the plate: curl(nu curl a) + j omega sigma a = js. First-order edge elements |
 | Gauge | a tree of edges in the coil and the air (`EdgesOfTreeIn`, `StartingOn` the outer face and the skin of the plate). The edges of the skin have a separate coefficient that the gauge does not fix |
-| Bz at a point | the L2 projection of curl a on first-order node functions in a band about A1-B1 (x = -6 to 294 mm, y = 62 to 82 mm, z = 26 to 42 mm) |
+| Bz at a point | the L2 projection of curl a on first-order node functions in a band about A1-B1. The band is x = -6 to 294 mm, y = 62 to 82 mm, z = 26 to 42 mm |
 | Phase | GetDP uses the time factor exp(j omega t). Thus Bz at omega t = 0 is Re(Bz), and at 90 degrees it is -Im(Bz) |
 | Mesh | first-order tetrahedra. Size 5 mm in the plate, 10 mm in the coil, 3 mm in the band and 50 mm at the sphere. 43848 nodes, 278808 unknowns |
 | Output | `bz.txt`: 1 row with the 6 values of the check. `j.pos`: the eddy current density in the plate, for the viewer |
@@ -68,7 +68,7 @@ Without eddy currents, the checks fail: `bz0_126` would be 88.3 G against 78.11 
 
 These commands, in the repository root, solve the case on another mesh in a scratch folder. `-setnumber` sets the mesh sizes of `case.geo` in m:
 
-```
+```text
 mkdir /tmp/team7 && cp validation/cases/team7-eddy-current/50hz/case.* /tmp/team7 && cd /tmp/team7
 gmsh case.geo -3 -o case.msh -setnumber hp 0.0035 -setnumber hc 0.007 -setnumber hb 0.0021 -setnumber hs 0.035
 getdp case.pro -msh case.msh -solve '#1' -pos '#1'
@@ -86,7 +86,7 @@ The values are in `/tmp/team7/bz.txt`. The 3 meshes use the sizes of the case ti
 The values are in G (1 G = 1e-4 T). The times are the times of GetDP on a Mac with 10 cores.
 
 The largest change from the check mesh to the fine mesh is 0.66 G (0.84 %), in `bz0_126`. There the values increase monotonically. The observed order is 1.33, and the extrapolated value is 79.81 G. Thus the mesh error of the check mesh is 1.75 G, 2.2 %.
-At the other points, the values do not change monotonically. From the check mesh to the fine mesh, the 0 degree values change by 0.36 % or less, and the 90 degree values by 0.11 G or less.
+At the other points, the values do not change monotonically. From the check mesh to the fine mesh, the 0 degree values change by 0.36 % or less. The 90 degree values change by 0.11 G or less.
 
 ## Tolerance
 
@@ -99,7 +99,7 @@ The tolerance is `rel_tol = 0.06` and `abs_tol = 1e-4` (T).
 
 `rel_tol` is the sum, 5.5 %, rounded up to 6 %.
 
-The 90 degree values are small, 4 to 15 G. A small error in the phase of the measurement moves them by a part of the 0 degree value: 1 degree of phase moves `bz90_126` by 78.11 G x sin(1 degree) = 1.4 G. The source gives no uncertainty of the phase. `abs_tol` = 1 G is 0.7 degree of phase at x = 126 mm.
+The 90 degree values are small, 4 to 15 G. A small error in the phase of the measurement moves them by a part of the 0 degree value. For example, 1 degree of phase moves `bz90_126` by 78.11 G x sin(1 degree) = 1.4 G. The source gives no uncertainty of the phase. `abs_tol` = 1 G is 0.7 degree of phase at x = 126 mm.
 
 | Check | Model (G) | Measured (G) | Difference (G) | Tolerance (G) | Part of the tolerance |
 |---|---:|---:|---:|---:|---:|
@@ -113,7 +113,7 @@ The 90 degree values are small, 4 to 15 G. A small error in the phase of the mea
 The tolerance stops these errors:
 
 - No eddy currents (the coil alone): `bz0_126` is 10.2 G away, and each 90 degree value is 4.15 G or more away.
-- The gauge that also fixes the skin edges: the 0 degree values are 15 % to 20 % low, and the 90 degree values are about 4 times too small.
+- The gauge that also fixes the skin edges gives wrong values. The 0 degree values are 15 % to 20 % low. The 90 degree values are about 4 times too small.
 
 The coarse mesh (x 1.5) passes. Its largest part of the tolerance is 63 % (`bz90_162`).
 
