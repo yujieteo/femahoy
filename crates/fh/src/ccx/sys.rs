@@ -148,7 +148,7 @@ mod os {
         // libproc.h: PROC_PGRP_ONLY = 2. Retry when the list fills the buffer.
         let mut pids = vec![0_i32; 32];
         loop {
-            let size = i32::try_from(pids.len() * std::mem::size_of::<i32>())
+            let size = i32::try_from(pids.len() * size_of::<i32>())
                 .map_err(|_| "process group is too large".to_string())?;
             // SAFETY: the buffer holds `size` bytes, with the alignment of pid_t.
             let used = unsafe { proc_listpids(2, pgid, pids.as_mut_ptr().cast(), size) };
@@ -160,7 +160,7 @@ mod os {
                 ));
             }
             if used < size {
-                pids.truncate(used as usize / std::mem::size_of::<i32>());
+                pids.truncate(used as usize / size_of::<i32>());
                 break;
             }
             pids.resize(pids.len() * 2, 0);
@@ -225,12 +225,12 @@ mod os {
             ) -> i32;
         }
         let mut value = 0_u64;
-        let mut len = std::mem::size_of::<u64>();
+        let mut len = size_of::<u64>();
         let rc = unsafe {
             sysctlbyname(
                 c"hw.memsize".as_ptr(),
-                (&mut value as *mut u64).cast(),
-                &mut len,
+                (&raw mut value).cast(),
+                &raw mut len,
                 std::ptr::null_mut(),
                 0,
             )
